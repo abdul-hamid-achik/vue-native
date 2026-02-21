@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": ".",
+    "types": [],
+    "paths": {
+      "vue": ["../../packages/runtime/src"],
+      "@vue-native/runtime": ["../../packages/runtime/src"]
+    }
+  },
+  "include": ["app/**/*", "env.d.ts", "vite.config.ts"],
+  "exclude": ["node_modules", "dist"]
+}

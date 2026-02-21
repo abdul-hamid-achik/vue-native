@@ -13,7 +13,7 @@ import { createVNode, type App, type Component } from '@vue/runtime-core'
 import { baseCreateApp, render } from './renderer'
 import { createNativeNode, type NativeNode } from './node'
 import { NativeBridge } from './bridge'
-import { VView, VText, VButton, VInput } from './components'
+import { VView, VText, VButton, VInput, VSwitch, VActivityIndicator, VScrollView } from './components'
 
 /**
  * Extended App interface with the .start() method for mounting to native.
@@ -57,6 +57,9 @@ export function createApp(rootComponent: Component, rootProps?: Record<string, a
   app.component('VText', VText)
   app.component('VButton', VButton)
   app.component('VInput', VInput)
+  app.component('VSwitch', VSwitch)
+  app.component('VActivityIndicator', VActivityIndicator)
+  app.component('VScrollView', VScrollView)
 
   /**
    * Create a virtual root node, register it with the native bridge,
@@ -106,7 +109,7 @@ export { render } from './renderer'
 export { createStyleSheet, validStyleProperties, type StyleProp, type StyleSheet } from './stylesheet'
 
 // Built-in components (for direct import in render functions)
-export { VView, VText, VButton, VInput } from './components'
+export { VView, VText, VButton, VInput, VSwitch, VActivityIndicator, VScrollView } from './components'
 
 // Bridge (for advanced native interop)
 export { NativeBridge } from './bridge'

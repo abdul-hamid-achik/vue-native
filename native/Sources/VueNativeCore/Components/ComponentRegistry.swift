@@ -37,6 +37,9 @@ final class ComponentRegistry {
         register("VText", factory: VTextFactory())
         register("VButton", factory: VButtonFactory())
         register("VInput", factory: VInputFactory())
+        register("VSwitch", factory: VSwitchFactory())
+        register("VActivityIndicator", factory: VActivityIndicatorFactory())
+        register("VScrollView", factory: VScrollViewFactory())
         register("__ROOT__", factory: VRootFactory())
     }
 

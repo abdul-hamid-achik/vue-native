@@ -275,7 +275,9 @@ public final class NativeBridge {
             return
         }
 
-        parentView.addSubview(childView)
+        // For scroll views, children go into the inner content view
+        let container = childContainer(for: parentView)
+        container.addSubview(childView)
     }
 
     /// insertBefore: [parentId: Int, childId: Int, beforeId: Int]
@@ -293,12 +295,22 @@ public final class NativeBridge {
             return
         }
 
-        // Find the index of the before view and insert at that position
-        if let index = parentView.subviews.firstIndex(of: beforeView) {
-            parentView.insertSubview(childView, at: index)
+        let container = childContainer(for: parentView)
+        if let index = container.subviews.firstIndex(of: beforeView) {
+            container.insertSubview(childView, at: index)
         } else {
-            parentView.addSubview(childView)
+            container.addSubview(childView)
         }
+    }
+
+    /// Returns the view that children should be inserted into.
+    /// For UIScrollView, this is the inner content view; for all others it is the view itself.
+    private func childContainer(for view: UIView) -> UIView {
+        if let scrollView = view as? UIScrollView,
+           let contentView = VScrollViewFactory.contentView(for: scrollView) {
+            return contentView
+        }
+        return view
     }
 
     /// removeChild: [childId: Int]
@@ -405,7 +417,7 @@ public final class NativeBridge {
 
     // MARK: - Layout
 
-    /// Trigger a FlexLayout relayout on the root view.
+    /// Trigger a FlexLayout relayout on the root view, then update any scroll views.
     /// Called after processing each operation batch.
     private func triggerLayout() {
         dispatchPrecondition(condition: .onQueue(.main))
@@ -416,6 +428,17 @@ public final class NativeBridge {
         NSLog("[VueNative Bridge] triggerLayout() rootView bounds: %.1f x %.1f", bounds.width, bounds.height)
         if bounds.width > 0 && bounds.height > 0 {
             rootView.flex.layout()
+            // After the main layout pass, recompute content sizes for all scroll views
+            updateScrollViewContentSizes()
+        }
+    }
+
+    /// After the main layout pass, iterate registered scroll views and update their contentSize.
+    private func updateScrollViewContentSizes() {
+        for (_, view) in viewRegistry {
+            if let scrollView = view as? UIScrollView {
+                VScrollViewFactory.layoutContentView(for: scrollView)
+            }
         }
     }
 

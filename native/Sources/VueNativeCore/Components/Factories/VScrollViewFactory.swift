@@ -1,0 +1,115 @@
+#if canImport(UIKit)
+import UIKit
+import ObjectiveC
+import FlexLayout
+
+/// Factory for VScrollView — the scrollable container component.
+///
+/// Maps to UIScrollView on iOS. An inner `contentView` UIView is created as
+/// a subview and managed separately from the scroll view's Yoga node. All
+/// children reported by the bridge are inserted into the contentView, not
+/// the scroll view itself.
+///
+/// After each main layout pass, NativeBridge calls `layoutContentView(for:)`
+/// to compute the contentView's natural height (unconstrained) and update
+/// the scroll view's contentSize.
+final class VScrollViewFactory: NativeComponentFactory {
+
+    // MARK: - Associated object keys
+
+    static var contentViewKey: UInt8 = 0
+
+    // MARK: - NativeComponentFactory
+
+    func createView() -> UIView {
+        let scrollView = UIScrollView()
+        scrollView.showsVerticalScrollIndicator = true
+        scrollView.showsHorizontalScrollIndicator = false
+        scrollView.alwaysBounceVertical = true
+        scrollView.clipsToBounds = true
+        _ = scrollView.flex
+
+        // Content view: children are added here so Yoga can measure
+        // their natural size without being constrained by the scroll view's bounds.
+        let contentView = UIView()
+        _ = contentView.flex
+        scrollView.addSubview(contentView)
+
+        objc_setAssociatedObject(
+            scrollView,
+            &VScrollViewFactory.contentViewKey,
+            contentView,
+            .OBJC_ASSOCIATION_RETAIN_NONATOMIC
+        )
+
+        return scrollView
+    }
+
+    func updateProp(view: UIView, key: String, value: Any?) {
+        guard let scrollView = view as? UIScrollView else {
+            StyleEngine.apply(key: key, value: value, to: view)
+            return
+        }
+
+        switch key {
+        case "horizontal":
+            let horizontal: Bool
+            if let h = value as? Bool { horizontal = h }
+            else if let h = value as? Int { horizontal = h != 0 }
+            else { horizontal = false }
+            scrollView.alwaysBounceHorizontal = horizontal
+            scrollView.alwaysBounceVertical = !horizontal
+
+        case "showsVerticalScrollIndicator":
+            if let shows = value as? Bool { scrollView.showsVerticalScrollIndicator = shows }
+
+        case "showsHorizontalScrollIndicator":
+            if let shows = value as? Bool { scrollView.showsHorizontalScrollIndicator = shows }
+
+        case "scrollEnabled":
+            if let enabled = value as? Bool { scrollView.isScrollEnabled = enabled }
+            else if let enabled = value as? Int { scrollView.isScrollEnabled = enabled != 0 }
+
+        case "bounces":
+            if let bounces = value as? Bool { scrollView.bounces = bounces }
+
+        case "pagingEnabled":
+            if let paging = value as? Bool { scrollView.isPagingEnabled = paging }
+
+        default:
+            StyleEngine.apply(key: key, value: value, to: view)
+        }
+    }
+
+    func addEventListener(view: UIView, event: String, handler: @escaping (Any?) -> Void) {
+        // Scroll events via UIScrollViewDelegate will be added in Phase 2
+    }
+
+    // MARK: - Static helpers
+
+    /// Retrieve the inner content UIView for a scroll view.
+    /// NativeBridge calls this to redirect child insertions.
+    static func contentView(for scrollView: UIScrollView) -> UIView? {
+        return objc_getAssociatedObject(scrollView, &contentViewKey) as? UIView
+    }
+
+    /// Recompute the content view's layout and update the scroll view's contentSize.
+    /// Call this after the main Yoga layout pass, once the scroll view's frame is set.
+    @MainActor
+    static func layoutContentView(for scrollView: UIScrollView) {
+        guard let contentView = contentView(for: scrollView) else { return }
+
+        let scrollWidth = scrollView.bounds.width
+        guard scrollWidth > 0 else { return }
+
+        // Pin the content view's origin and width
+        contentView.frame = CGRect(x: 0, y: 0, width: scrollWidth, height: 0)
+
+        // Compute natural height — adjustHeight mode grows height to fit children
+        contentView.flex.layout(mode: .adjustHeight)
+
+        // Update the scroll view's scrollable content size
+        scrollView.contentSize = contentView.frame.size
+    }
+}
+#endif
