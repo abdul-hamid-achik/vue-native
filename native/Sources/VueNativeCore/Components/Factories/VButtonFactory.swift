@@ -1,0 +1,106 @@
+#if canImport(UIKit)
+import UIKit
+import ObjectiveC
+import FlexLayout
+
+/// Factory for VButton — the touchable/pressable component.
+/// Maps to a TouchableView (custom UIView subclass) with FlexLayout enabled.
+/// Supports press and long press events with configurable active opacity.
+final class VButtonFactory: NativeComponentFactory {
+
+    // MARK: - Associated object keys for event handlers
+
+    private static var pressHandlerKey: UInt8 = 0
+    private static var longPressHandlerKey: UInt8 = 0
+
+    // MARK: - NativeComponentFactory
+
+    func createView() -> UIView {
+        let touchable = TouchableView()
+        // Accessing .flex automatically enables Yoga layout
+        _ = touchable.flex
+        return touchable
+    }
+
+    func updateProp(view: UIView, key: String, value: Any?) {
+        guard let touchable = view as? TouchableView else {
+            // Fallback to StyleEngine for non-TouchableView
+            StyleEngine.apply(key: key, value: value, to: view)
+            return
+        }
+
+        switch key {
+        case "disabled":
+            if let disabled = value as? Bool {
+                touchable.isDisabled = disabled
+            } else if let disabled = value as? Int {
+                touchable.isDisabled = disabled != 0
+            } else {
+                touchable.isDisabled = false
+            }
+
+        case "activeOpacity":
+            if let opacity = value as? Double {
+                touchable.activeOpacity = CGFloat(opacity)
+            } else if let opacity = value as? Int {
+                touchable.activeOpacity = CGFloat(opacity)
+            } else {
+                touchable.activeOpacity = 0.7
+            }
+
+        default:
+            // Delegate to StyleEngine for layout/visual styling
+            StyleEngine.apply(key: key, value: value, to: view)
+        }
+    }
+
+    func addEventListener(view: UIView, event: String, handler: @escaping (Any?) -> Void) {
+        guard let touchable = view as? TouchableView else { return }
+
+        switch event {
+        case "press":
+            touchable.onPress = {
+                handler(nil)
+            }
+            // Store handler reference
+            objc_setAssociatedObject(
+                view,
+                &VButtonFactory.pressHandlerKey,
+                handler as AnyObject,
+                .OBJC_ASSOCIATION_RETAIN_NONATOMIC
+            )
+
+        case "longpress":
+            touchable.onLongPress = {
+                handler(nil)
+            }
+            objc_setAssociatedObject(
+                view,
+                &VButtonFactory.longPressHandlerKey,
+                handler as AnyObject,
+                .OBJC_ASSOCIATION_RETAIN_NONATOMIC
+            )
+
+        default:
+            break
+        }
+    }
+
+    func removeEventListener(view: UIView, event: String) {
+        guard let touchable = view as? TouchableView else { return }
+
+        switch event {
+        case "press":
+            touchable.onPress = nil
+            objc_setAssociatedObject(view, &VButtonFactory.pressHandlerKey, nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+
+        case "longpress":
+            touchable.onLongPress = nil
+            objc_setAssociatedObject(view, &VButtonFactory.longPressHandlerKey, nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+
+        default:
+            break
+        }
+    }
+}
+#endif

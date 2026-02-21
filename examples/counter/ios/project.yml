@@ -1,0 +1,47 @@
+name: VueNativeCounter
+options:
+  bundleIdPrefix: com.vuenative
+  deploymentTarget:
+    iOS: "16.0"
+  xcodeVersion: "15.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: true
+
+packages:
+  VueNativeCore:
+    path: ../../../native
+
+targets:
+  VueNativeCounter:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources
+        type: group
+    dependencies:
+      - package: VueNativeCore
+        product: VueNativeCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.vuenative.counter
+        INFOPLIST_FILE: Sources/Info.plist
+        SWIFT_VERSION: "5.9"
+        SWIFT_STRICT_CONCURRENCY: minimal
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        CODE_SIGN_STYLE: Automatic
+        GENERATE_INFOPLIST_FILE: NO
+        ENABLE_PREVIEWS: NO
+      configs:
+        Debug:
+          SWIFT_OPTIMIZATION_LEVEL: "-Onone"
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: "DEBUG"
+        Release:
+          SWIFT_OPTIMIZATION_LEVEL: "-O"
+    postBuildScripts:
+      - script: |
+          cp "${SRCROOT}/../dist/vue-native-bundle.js" "${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app/vue-native-bundle.js"
+        name: Copy JS Bundle
+    scheme:
+      testTargets: []
+      gatherCoverageData: false

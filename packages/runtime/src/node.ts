@@ -1,0 +1,76 @@
+import { markRaw } from '@vue/reactivity'
+
+export interface NativeNode {
+  id: number
+  type: string // 'VView', 'VText', 'VButton', '__TEXT__', '__COMMENT__', '__ROOT__'
+  props: Record<string, any>
+  children: NativeNode[]
+  parent: NativeNode | null
+  isText: boolean
+  text?: string
+}
+
+let nextNodeId = 1
+
+/**
+ * Reset the node ID counter. Used for testing purposes only.
+ */
+export function resetNodeId(): void {
+  nextNodeId = 1
+}
+
+/**
+ * Create a NativeNode representing a native UIKit view element.
+ * The node is wrapped with markRaw() to prevent Vue's reactivity system
+ * from deeply tracking its internals, which would cause performance issues
+ * and unnecessary re-renders.
+ */
+export function createNativeNode(type: string): NativeNode {
+  const node: NativeNode = {
+    id: nextNodeId++,
+    type,
+    props: {},
+    children: [],
+    parent: null,
+    isText: false,
+  }
+  // CRITICAL: markRaw prevents Vue's reactivity from tracking node internals.
+  // Without this, Vue would recursively make all node properties reactive,
+  // leading to infinite loops and massive performance degradation.
+  return markRaw(node)
+}
+
+/**
+ * Create a text node representing raw text content.
+ * Text nodes use the special '__TEXT__' type and carry their content
+ * in the `text` property.
+ */
+export function createTextNode(text: string): NativeNode {
+  const node: NativeNode = {
+    id: nextNodeId++,
+    type: '__TEXT__',
+    props: {},
+    children: [],
+    parent: null,
+    isText: true,
+    text,
+  }
+  return markRaw(node)
+}
+
+/**
+ * Create a comment node used as a placeholder by Vue's virtual DOM.
+ * Comments are no-ops on the native side — they exist only so Vue
+ * can track insertion points for conditional/list rendering.
+ */
+export function createCommentNode(text: string): NativeNode {
+  const node: NativeNode = {
+    id: nextNodeId++,
+    type: '__COMMENT__',
+    props: {},
+    children: [],
+    parent: null,
+    isText: false,
+  }
+  return markRaw(node)
+}
