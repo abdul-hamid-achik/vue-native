@@ -2,44 +2,40 @@ package com.vuenative.core
 
 import android.content.Context
 import android.view.View
-import android.view.ViewGroup
 import android.widget.TextView
-import com.google.android.flexbox.AlignItems
-import com.google.android.flexbox.FlexDirection
 import com.google.android.flexbox.FlexboxLayout
-import com.google.android.flexbox.JustifyContent
 
 class VButtonFactory : NativeComponentFactory {
     override fun createView(context: Context): View {
-        // VButton is a pressable FlexboxLayout (can contain VText children)
-        return FlexboxLayout(context).apply {
-            flexDirection = FlexDirection.ROW
-            alignItems = AlignItems.CENTER
-            justifyContent = JustifyContent.CENTER
-            isClickable = true
-            isFocusable = true
-            // Add ripple feedback
-            val outValue = android.util.TypedValue()
-            context.theme.resolveAttribute(android.R.attr.selectableItemBackground, outValue, true)
-            foreground = context.getDrawable(outValue.resourceId)
-            layoutParams = ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-        }
+        return TouchableView(context)
     }
 
     override fun updateProp(view: View, key: String, value: Any?) {
+        val touchable = view as? TouchableView
+        if (touchable == null) {
+            StyleEngine.apply(key, value, view)
+            return
+        }
+
         when (key) {
             "disabled" -> {
-                view.isEnabled = !(value == true || value == "true")
-                view.alpha = if (!view.isEnabled) 0.4f else 1f
+                touchable.isDisabled = value == true || value == "true" ||
+                        (value is Number && value.toInt() != 0)
             }
-            "onPress" -> { /* handled via addEventListener */ }
+            "activeOpacity" -> {
+                touchable.activeOpacity = when (value) {
+                    is Double -> value.toFloat()
+                    is Float -> value
+                    is Int -> value.toFloat()
+                    is String -> value.toFloatOrNull() ?: 0.7f
+                    else -> 0.7f
+                }
+            }
             "title" -> {
-                // If the button has a TextView child, update it
                 val flex = view as? FlexboxLayout
-                val tv = (0 until (flex?.childCount ?: 0)).mapNotNull { flex?.getChildAt(it) as? TextView }.firstOrNull()
+                val tv = (0 until (flex?.childCount ?: 0))
+                    .mapNotNull { flex?.getChildAt(it) as? TextView }
+                    .firstOrNull()
                 tv?.text = value?.toString() ?: ""
             }
             else -> StyleEngine.apply(key, value, view)
@@ -47,16 +43,20 @@ class VButtonFactory : NativeComponentFactory {
     }
 
     override fun addEventListener(view: View, event: String, handler: (Any?) -> Unit) {
+        val touchable = view as? TouchableView ?: return
+
         when (event) {
-            "press" -> view.setOnClickListener { if (view.isEnabled) handler(null) }
-            "longPress" -> view.setOnLongClickListener { if (view.isEnabled) { handler(null); true } else false }
+            "press" -> touchable.onPress = { handler(null) }
+            "longPress", "longpress" -> touchable.onLongPress = { handler(null) }
         }
     }
 
     override fun removeEventListener(view: View, event: String) {
+        val touchable = view as? TouchableView ?: return
+
         when (event) {
-            "press" -> view.setOnClickListener(null)
-            "longPress" -> view.setOnLongClickListener(null)
+            "press" -> touchable.onPress = null
+            "longPress", "longpress" -> touchable.onLongPress = null
         }
     }
 

@@ -3,9 +3,11 @@ package com.vuenative.core
 import android.content.Context
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
+import android.os.Build
 import android.util.TypedValue
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewOutlineProvider
 import android.widget.TextView
 import com.google.android.flexbox.AlignContent
 import com.google.android.flexbox.AlignItems
@@ -14,6 +16,7 @@ import com.google.android.flexbox.FlexDirection
 import com.google.android.flexbox.FlexWrap
 import com.google.android.flexbox.FlexboxLayout
 import com.google.android.flexbox.JustifyContent
+import kotlin.math.PI
 
 /**
  * Converts JS style props to Android View properties.
@@ -121,6 +124,8 @@ object StyleEngine {
             "marginRight"      -> updateFlexProps(view) { fp -> fp.copy(marginRight = dpToPx(ctx, toFloat(value, 0f)).toInt()) }
             "marginTop"        -> updateFlexProps(view) { fp -> fp.copy(marginTop = dpToPx(ctx, toFloat(value, 0f)).toInt()) }
             "marginBottom"     -> updateFlexProps(view) { fp -> fp.copy(marginBottom = dpToPx(ctx, toFloat(value, 0f)).toInt()) }
+            "marginStart"      -> updateFlexProps(view) { fp -> fp.copy(marginStart = dpToPx(ctx, toFloat(value, 0f)).toInt()) }
+            "marginEnd"        -> updateFlexProps(view) { fp -> fp.copy(marginEnd = dpToPx(ctx, toFloat(value, 0f)).toInt()) }
 
             // --- Dimensions ---
             "width"  -> updateFlexProps(view) { fp -> fp.copy(width = parseDimension(ctx, value)) }
@@ -136,6 +141,20 @@ object StyleEngine {
             }
             "flexGrow"   -> updateFlexProps(view) { fp -> fp.copy(flexGrow = toFloat(value, 0f)) }
             "flexShrink" -> updateFlexProps(view) { fp -> fp.copy(flexShrink = toFloat(value, 1f)) }
+            "flexBasis" -> {
+                if (value == "auto" || value == null) {
+                    updateFlexProps(view) { fp -> fp.copy(flexBasisPercent = -1f) }
+                } else {
+                    val str = value.toString()
+                    if (str.endsWith("%")) {
+                        val pct = str.dropLast(1).toFloatOrNull() ?: -1f
+                        updateFlexProps(view) { fp -> fp.copy(flexBasisPercent = if (pct >= 0f) pct / 100f else -1f) }
+                    } else {
+                        val px = dpToPx(ctx, toFloat(value, 0f)).toInt()
+                        updateFlexProps(view) { fp -> fp.copy(flexBasisPercent = -1f, width = px) }
+                    }
+                }
+            }
             "alignSelf"  -> updateFlexProps(view) { fp -> fp.copy(alignSelf = parseAlignSelf(value)) }
             "order"      -> updateFlexProps(view) { fp -> fp.copy(order = toInt(value, 1)) }
 
@@ -173,14 +192,45 @@ object StyleEngine {
 
             // --- Elevation / Shadow ---
             "elevation" -> {
-                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-                    view.elevation = dpToPx(ctx, toFloat(value, 0f))
+                view.elevation = dpToPx(ctx, toFloat(value, 0f))
+            }
+            "zIndex" -> {
+                view.translationZ = dpToPx(ctx, toFloat(value, 0f))
+            }
+            "shadowColor" -> {
+                val color = parseColor(value) ?: return
+                view.setTag(TAG_SHADOW_COLOR, color)
+                applyShadow(view, ctx)
+            }
+            "shadowOpacity" -> {
+                view.setTag(TAG_SHADOW_OPACITY, toFloat(value, 1f))
+                applyShadow(view, ctx)
+            }
+            "shadowRadius" -> {
+                view.setTag(TAG_SHADOW_RADIUS, toFloat(value, 0f))
+                applyShadow(view, ctx)
+            }
+            "shadowOffsetX" -> {
+                view.setTag(TAG_SHADOW_OFFSET_X, toFloat(value, 0f))
+                applyShadow(view, ctx)
+            }
+            "shadowOffsetY" -> {
+                view.setTag(TAG_SHADOW_OFFSET_Y, toFloat(value, 0f))
+                applyShadow(view, ctx)
+            }
+            "shadowOffset" -> {
+                if (value is Map<*, *>) {
+                    val w = toFloat(value["width"], 0f)
+                    val h = toFloat(value["height"], 0f)
+                    view.setTag(TAG_SHADOW_OFFSET_X, w)
+                    view.setTag(TAG_SHADOW_OFFSET_Y, h)
+                    applyShadow(view, ctx)
                 }
             }
-            "shadowColor", "shadowOpacity", "shadowRadius", "shadowOffset" -> {
-                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-                    view.elevation = dpToPx(ctx, 2f)
-                }
+
+            // --- Transform ---
+            "transform" -> {
+                applyTransform(view, value, ctx)
             }
 
             // --- Text props (delegated to TextView) ---
@@ -215,6 +265,15 @@ object StyleEngine {
             "accessible" -> view.importantForAccessibility =
                 if (value == true) View.IMPORTANT_FOR_ACCESSIBILITY_YES
                 else View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            "importantForAccessibility" -> {
+                view.importantForAccessibility = when (value) {
+                    "auto" -> View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
+                    "yes"  -> View.IMPORTANT_FOR_ACCESSIBILITY_YES
+                    "no"   -> View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                    "no-hide-descendants" -> View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+                    else -> View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
+                }
+            }
         }
 
         // After updating flex props, re-apply to parent if already attached
@@ -292,8 +351,11 @@ object StyleEngine {
         val marginTop: Int = 0,
         val marginRight: Int = 0,
         val marginBottom: Int = 0,
+        val marginStart: Int = Int.MIN_VALUE,
+        val marginEnd: Int = Int.MIN_VALUE,
         val flexGrow: Float = 0f,
         val flexShrink: Float = 1f,
+        val flexBasisPercent: Float = -1f,
         val alignSelf: Int = AlignSelf.AUTO,
         val order: Int = 1,
         val minWidth: Int = 0,
@@ -311,25 +373,23 @@ object StyleEngine {
     fun applyFlexPropsToParent(view: View) {
         val parent = view.parent as? FlexboxLayout ?: return
         val fp = getFlexProps(view)
-        val lp = FlexboxLayout.LayoutParams(fp.width, fp.height).apply {
-            setMargins(fp.marginLeft, fp.marginTop, fp.marginRight, fp.marginBottom)
-            flexGrow = fp.flexGrow
-            flexShrink = fp.flexShrink
-            alignSelf = fp.alignSelf
-            order = fp.order
-            minWidth = fp.minWidth
-            minHeight = fp.minHeight
-        }
+        val lp = flexLayoutParamsFromProps(fp)
         view.layoutParams = lp
         parent.requestLayout()
     }
 
     fun buildFlexLayoutParams(view: View): FlexboxLayout.LayoutParams {
-        val fp = getFlexProps(view)
+        return flexLayoutParamsFromProps(getFlexProps(view))
+    }
+
+    private fun flexLayoutParamsFromProps(fp: FlexProps): FlexboxLayout.LayoutParams {
         return FlexboxLayout.LayoutParams(fp.width, fp.height).apply {
             setMargins(fp.marginLeft, fp.marginTop, fp.marginRight, fp.marginBottom)
+            if (fp.marginStart != Int.MIN_VALUE) marginStart = fp.marginStart
+            if (fp.marginEnd != Int.MIN_VALUE) marginEnd = fp.marginEnd
             flexGrow = fp.flexGrow
             flexShrink = fp.flexShrink
+            flexBasisPercent = fp.flexBasisPercent
             alignSelf = fp.alignSelf
             order = fp.order
             minWidth = fp.minWidth
@@ -461,8 +521,106 @@ object StyleEngine {
     }
 
     private val FLEX_LAYOUT_KEYS = setOf(
-        "width", "height", "flex", "flexGrow", "flexShrink", "alignSelf", "order",
+        "width", "height", "flex", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "order",
         "margin", "marginHorizontal", "marginVertical",
-        "marginLeft", "marginRight", "marginTop", "marginBottom", "minWidth", "minHeight"
+        "marginLeft", "marginRight", "marginTop", "marginBottom",
+        "marginStart", "marginEnd", "minWidth", "minHeight"
     )
+
+    // -- Shadow helpers -----------------------------------------------------------
+
+    private fun applyShadow(view: View, ctx: Context) {
+        val radius = (view.getTag(TAG_SHADOW_RADIUS) as? Float) ?: 0f
+        val opacity = (view.getTag(TAG_SHADOW_OPACITY) as? Float) ?: 1f
+        val color = (view.getTag(TAG_SHADOW_COLOR) as? Int) ?: Color.BLACK
+
+        // Use shadowRadius as elevation (Android's shadow model is elevation-based)
+        val elevationPx = dpToPx(ctx, radius)
+        view.elevation = elevationPx * opacity
+
+        // Ensure the view has an outline provider so the shadow is visible
+        if (view.outlineProvider == null || view.outlineProvider == ViewOutlineProvider.BACKGROUND) {
+            view.outlineProvider = ViewOutlineProvider.BOUNDS
+        }
+        view.clipToOutline = false
+
+        // On API 28+, set colored shadows
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            // Apply opacity to shadow color's alpha channel
+            val alpha = ((Color.alpha(color) * opacity).toInt()).coerceIn(0, 255)
+            val shadowWithOpacity = Color.argb(alpha, Color.red(color), Color.green(color), Color.blue(color))
+            view.outlineAmbientShadowColor = shadowWithOpacity
+            view.outlineSpotShadowColor = shadowWithOpacity
+        }
+    }
+
+    // -- Transform helpers --------------------------------------------------------
+
+    private fun applyTransform(view: View, value: Any?, ctx: Context) {
+        if (value == null || value == "none") {
+            view.rotation = 0f
+            view.scaleX = 1f
+            view.scaleY = 1f
+            view.translationX = 0f
+            view.translationY = 0f
+            return
+        }
+
+        val transforms = when (value) {
+            is List<*> -> value.filterIsInstance<Map<*, *>>()
+            else -> return
+        }
+
+        // Reset to defaults, then apply each transform in order
+        var rotation = 0f
+        var scaleX = 1f
+        var scaleY = 1f
+        var translateX = 0f
+        var translateY = 0f
+
+        val density = ctx.resources.displayMetrics.density
+
+        for (dict in transforms) {
+            dict["rotate"]?.let { v ->
+                rotation += parseAngle(v.toString())
+            }
+            dict["scale"]?.let { v ->
+                val s = toFloat(v, 1f)
+                scaleX *= s
+                scaleY *= s
+            }
+            dict["scaleX"]?.let { v ->
+                scaleX *= toFloat(v, 1f)
+            }
+            dict["scaleY"]?.let { v ->
+                scaleY *= toFloat(v, 1f)
+            }
+            dict["translateX"]?.let { v ->
+                translateX += toFloat(v, 0f) * density
+            }
+            dict["translateY"]?.let { v ->
+                translateY += toFloat(v, 0f) * density
+            }
+        }
+
+        view.rotation = rotation
+        view.scaleX = scaleX
+        view.scaleY = scaleY
+        view.translationX = translateX
+        view.translationY = translateY
+    }
+
+    /** Parse an angle string into degrees. Supports "45deg" and "1.5rad". */
+    private fun parseAngle(str: String): Float {
+        val s = str.trim().lowercase()
+        if (s.endsWith("deg")) {
+            return s.dropLast(3).toFloatOrNull() ?: 0f
+        }
+        if (s.endsWith("rad")) {
+            val rad = s.dropLast(3).toFloatOrNull() ?: 0f
+            return (rad * 180f / PI).toFloat()
+        }
+        // Fallback: treat as degrees if numeric
+        return s.toFloatOrNull() ?: 0f
+    }
 }

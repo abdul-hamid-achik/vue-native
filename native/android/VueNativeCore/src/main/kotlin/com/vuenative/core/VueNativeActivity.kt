@@ -70,6 +70,9 @@ abstract class VueNativeActivity : AppCompatActivity() {
         // Register native modules
         NativeModuleRegistry.getInstance(this).registerDefaults(runtime.bridge)
 
+        // Provide Activity reference for modules that need it (e.g. PermissionsModule)
+        PermissionsModule.setActivity(this)
+
         // Wire up resolveCallback for async module calls
         wireCallbackResolution()
 
@@ -146,9 +149,15 @@ abstract class VueNativeActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        PermissionsModule.setActivity(null)
         hotReloadManager?.disconnect()
         runtime.release()
         super.onDestroy()
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        PermissionsModule.onPermissionsResult(requestCode, permissions, grantResults)
     }
 
     @Suppress("DEPRECATION")
