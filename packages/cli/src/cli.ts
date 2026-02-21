@@ -1,0 +1,16 @@
+#!/usr/bin/env node
+import { program } from 'commander'
+import { createCommand } from './commands/create.js'
+import { devCommand } from './commands/dev.js'
+import { runCommand } from './commands/run.js'
+
+program
+  .name('vue-native')
+  .description('Vue Native — build native iOS apps with Vue.js')
+  .version('0.1.0')
+
+program.addCommand(createCommand)
+program.addCommand(devCommand)
+program.addCommand(runCommand)
+
+program.parse(process.argv)

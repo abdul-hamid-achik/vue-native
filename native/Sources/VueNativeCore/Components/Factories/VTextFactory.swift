@@ -131,6 +131,79 @@ final class VTextFactory: NativeComponentFactory {
                 }
             }
 
+        case "fontStyle":
+            if let str = value as? String {
+                let currentSize = label.font.pointSize
+                if str == "italic" {
+                    let descriptor = label.font.fontDescriptor.withSymbolicTraits(.traitItalic) ?? label.font.fontDescriptor
+                    label.font = UIFont(descriptor: descriptor, size: currentSize)
+                } else {
+                    var traits = label.font.fontDescriptor.symbolicTraits
+                    traits.remove(.traitItalic)
+                    if let descriptor = label.font.fontDescriptor.withSymbolicTraits(traits) {
+                        label.font = UIFont(descriptor: descriptor, size: currentSize)
+                    }
+                }
+            }
+            label.flex.markDirty()
+
+        case "lineHeight":
+            if let num = value as? Double {
+                let paragraphStyle = NSMutableParagraphStyle()
+                paragraphStyle.minimumLineHeight = CGFloat(num)
+                paragraphStyle.maximumLineHeight = CGFloat(num)
+                paragraphStyle.alignment = label.textAlignment
+                let text = label.text ?? ""
+                let attrs: [NSAttributedString.Key: Any] = [
+                    .paragraphStyle: paragraphStyle,
+                    .font: label.font as Any
+                ]
+                label.attributedText = NSAttributedString(string: text, attributes: attrs)
+                label.flex.markDirty()
+            }
+
+        case "letterSpacing":
+            if let num = value as? Double {
+                let text = label.text ?? ""
+                let attrs: [NSAttributedString.Key: Any] = [
+                    .kern: CGFloat(num),
+                    .font: label.font as Any
+                ]
+                label.attributedText = NSAttributedString(string: text, attributes: attrs)
+                label.flex.markDirty()
+            }
+
+        case "textDecorationLine":
+            if let str = value as? String {
+                let text = label.text ?? ""
+                var attrs: [NSAttributedString.Key: Any] = [.font: label.font as Any]
+                switch str {
+                case "underline":
+                    attrs[.underlineStyle] = NSUnderlineStyle.single.rawValue
+                case "line-through", "lineThrough":
+                    attrs[.strikethroughStyle] = NSUnderlineStyle.single.rawValue
+                case "underline line-through":
+                    attrs[.underlineStyle] = NSUnderlineStyle.single.rawValue
+                    attrs[.strikethroughStyle] = NSUnderlineStyle.single.rawValue
+                default:
+                    break
+                }
+                label.attributedText = NSAttributedString(string: text, attributes: attrs)
+                label.flex.markDirty()
+            }
+
+        case "textTransform":
+            if let str = value as? String {
+                let original = label.text ?? ""
+                switch str {
+                case "uppercase": label.text = original.uppercased()
+                case "lowercase": label.text = original.lowercased()
+                case "capitalize": label.text = original.capitalized
+                default: break
+                }
+                label.flex.markDirty()
+            }
+
         default:
             // Delegate unknown props to StyleEngine for layout/visual styling
             StyleEngine.apply(key: key, value: value, to: view)
@@ -138,8 +211,7 @@ final class VTextFactory: NativeComponentFactory {
     }
 
     func addEventListener(view: UIView, event: String, handler: @escaping (Any?) -> Void) {
-        // UILabel doesn't typically have events in Phase 1.
-        // Could add tap support via gesture recognizer if needed.
+        // Tap/press support via gesture recognizer.
         if event == "press" {
             let wrapper = GestureWrapper(handler: handler)
             let tap = UITapGestureRecognizer(

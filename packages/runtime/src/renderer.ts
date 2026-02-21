@@ -238,4 +238,4 @@ function findNextNonComment(parent: NativeNode, anchor: NativeNode): NativeNode 
  */
 const { render, createApp: baseCreateApp } = createRenderer<NativeNode, NativeNode>(nodeOps)
 
-export { render, baseCreateApp }
+export { render, baseCreateApp, nodeOps }

@@ -35,6 +35,7 @@ enum JSPolyfills {
         registerRAF(in: context, runtime: runtime)
         registerPerformance(in: context, runtime: runtime)
         registerGlobalThis(in: context)
+        registerFetch(in: context, runtime: runtime)
     }
 
     // MARK: - console.log / warn / error
@@ -289,6 +290,139 @@ enum JSPolyfills {
                 var globalThis = this;
             }
         """)
+    }
+
+    // MARK: - fetch
+
+    private static func registerFetch(in context: JSContext, runtime: JSRuntime) {
+        // fetch(url, options?) -> Promise<Response>
+        let fetch: @convention(block) (JSValue, JSValue) -> JSValue = { [weak runtime] urlValue, optionsValue in
+            guard let runtime = runtime, let context = runtime.context else {
+                return JSValue(undefinedIn: JSContext.current())
+            }
+
+            let urlString = urlValue.toString() ?? ""
+            guard let url = URL(string: urlString) else {
+                return context.evaluateScript("Promise.reject(new TypeError('Invalid URL'))")!
+            }
+
+            // Build URLRequest
+            var request = URLRequest(url: url)
+
+            if !optionsValue.isUndefined && !optionsValue.isNull {
+                if let method = optionsValue.objectForKeyedSubscript("method")?.toString() {
+                    request.httpMethod = method.uppercased()
+                } else {
+                    request.httpMethod = "GET"
+                }
+                if let headersObj = optionsValue.objectForKeyedSubscript("headers"),
+                   !headersObj.isUndefined, !headersObj.isNull,
+                   let headers = headersObj.toDictionary() as? [String: String] {
+                    for (key, val) in headers {
+                        request.setValue(val, forHTTPHeaderField: key)
+                    }
+                }
+                if let body = optionsValue.objectForKeyedSubscript("body"),
+                   !body.isUndefined, !body.isNull,
+                   let bodyStr = body.toString() {
+                    request.httpBody = bodyStr.data(using: .utf8)
+                }
+            } else {
+                request.httpMethod = "GET"
+            }
+
+            // Create a Promise via JS with captured resolve/reject
+            var resolveRef: JSValue?
+            var rejectRef: JSValue?
+
+            let captureExecutor: @convention(block) (JSValue, JSValue) -> Void = { resolve, reject in
+                resolveRef = resolve
+                rejectRef = reject
+            }
+
+            let promiseCtor = context.evaluateScript("""
+                (function(executor) {
+                    return new Promise(executor);
+                })
+            """)
+            let captureBlock = JSValue(object: captureExecutor as AnyObject, in: context)
+            let promise = promiseCtor?.call(withArguments: [captureBlock as Any])
+
+            let task = URLSession.shared.dataTask(with: request) { [weak runtime] data, response, error in
+                guard let runtime = runtime else { return }
+                runtime.jsQueue.async { [weak runtime] in
+                    guard runtime != nil, let context = runtime?.context else { return }
+
+                    if let error = error {
+                        let errMsg = error.localizedDescription
+                        if let reject = rejectRef, !reject.isUndefined {
+                            let errObj = context.evaluateScript("new Error(\(JSPolyfillsJSON.encode(errMsg)))")
+                            reject.call(withArguments: [errObj as Any])
+                        }
+                        return
+                    }
+
+                    let httpResponse = response as? HTTPURLResponse
+                    let status = httpResponse?.statusCode ?? 200
+                    let ok = (200...299).contains(status)
+                    let bodyData = data ?? Data()
+                    let bodyString = String(data: bodyData, encoding: .utf8) ?? ""
+
+                    // Build headers dictionary
+                    var headersDict: [String: String] = [:]
+                    if let httpResp = httpResponse {
+                        for (k, v) in httpResp.allHeaderFields {
+                            headersDict["\(k)"] = "\(v)"
+                        }
+                    }
+
+                    // Create response object in JS
+                    if let resolve = resolveRef, !resolve.isUndefined {
+                        let responseObj = JSValue(newObjectIn: context)!
+                        responseObj.setObject(status, forKeyedSubscript: "status" as NSString)
+                        responseObj.setObject(ok, forKeyedSubscript: "ok" as NSString)
+                        responseObj.setObject(bodyString, forKeyedSubscript: "_body" as NSString)
+
+                        // headers object
+                        let headersObj = JSValue(newObjectIn: context)!
+                        for (k, v) in headersDict {
+                            headersObj.setObject(v, forKeyedSubscript: k as NSString)
+                        }
+                        responseObj.setObject(headersObj, forKeyedSubscript: "headers" as NSString)
+
+                        // .text() method
+                        let bodyStringCopy = bodyString
+                        let textMethod: @convention(block) () -> JSValue = {
+                            return context.evaluateScript("Promise.resolve(\(JSPolyfillsJSON.encode(bodyStringCopy)))")!
+                        }
+                        responseObj.setObject(textMethod, forKeyedSubscript: "text" as NSString)
+
+                        // .json() method
+                        let jsonMethod: @convention(block) () -> JSValue = {
+                            return context.evaluateScript("(function(s){ try { return Promise.resolve(JSON.parse(s)); } catch(e) { return Promise.reject(e); } })(\(JSPolyfillsJSON.encode(bodyStringCopy)))")!
+                        }
+                        responseObj.setObject(jsonMethod, forKeyedSubscript: "json" as NSString)
+
+                        resolve.call(withArguments: [responseObj])
+                    }
+                }
+            }
+            task.resume()
+
+            return promise ?? JSValue(undefinedIn: context)
+        }
+
+        context.setObject(fetch, forKeyedSubscript: "fetch" as NSString)
+    }
+}
+
+// MARK: - JSON encode helper
+
+/// Produce a JSON-safe string literal (with quotes) for embedding in JS eval strings.
+private enum JSPolyfillsJSON {
+    static func encode(_ str: String) -> String {
+        let data = (try? JSONSerialization.data(withJSONObject: str)) ?? Data()
+        return String(data: data, encoding: .utf8) ?? "\"\""
     }
 }
 

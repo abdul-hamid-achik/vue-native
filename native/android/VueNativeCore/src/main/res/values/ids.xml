@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Tags stored on Android Views via View.setTag(id, value) -->
+    <item name="vue_native_flex_props" type="id"/>
+    <item name="vue_native_event_handlers" type="id"/>
+    <item name="vue_native_node_id" type="id"/>
+    <item name="vue_native_factory" type="id"/>
+</resources>

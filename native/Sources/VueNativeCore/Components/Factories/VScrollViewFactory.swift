@@ -18,6 +18,9 @@ final class VScrollViewFactory: NativeComponentFactory {
     // MARK: - Associated object keys
 
     static var contentViewKey: UInt8 = 0
+    static var delegateProxyKey: UInt8 = 1
+    static var onRefreshKey: UInt8 = 5
+    static var refreshTargetKey: UInt8 = 6
 
     // MARK: - NativeComponentFactory
 
@@ -76,13 +79,77 @@ final class VScrollViewFactory: NativeComponentFactory {
         case "pagingEnabled":
             if let paging = value as? Bool { scrollView.isPagingEnabled = paging }
 
+        case "refreshing":
+            let refreshing: Bool
+            if let b = value as? Bool { refreshing = b }
+            else if let n = value as? NSNumber { refreshing = n.boolValue }
+            else { refreshing = false }
+
+            if refreshing {
+                // Add UIRefreshControl if not already present
+                if scrollView.refreshControl == nil {
+                    let control = UIRefreshControl()
+                    scrollView.refreshControl = control
+                }
+                scrollView.refreshControl?.beginRefreshing()
+            } else {
+                scrollView.refreshControl?.endRefreshing()
+            }
+
         default:
             StyleEngine.apply(key: key, value: value, to: view)
         }
     }
 
     func addEventListener(view: UIView, event: String, handler: @escaping (Any?) -> Void) {
-        // Scroll events via UIScrollViewDelegate will be added in Phase 2
+        guard let scrollView = view as? UIScrollView else { return }
+        switch event {
+        case "scroll":
+            let proxy = ScrollDelegateProxy(handler: handler)
+            objc_setAssociatedObject(
+                scrollView,
+                &VScrollViewFactory.delegateProxyKey,
+                proxy,
+                .OBJC_ASSOCIATION_RETAIN_NONATOMIC
+            )
+            scrollView.delegate = proxy
+        case "refresh":
+            // Store the handler
+            objc_setAssociatedObject(
+                scrollView,
+                &VScrollViewFactory.onRefreshKey,
+                handler as AnyObject,
+                .OBJC_ASSOCIATION_RETAIN_NONATOMIC
+            )
+            // Create UIRefreshControl if not already present
+            if scrollView.refreshControl == nil {
+                scrollView.refreshControl = UIRefreshControl()
+            }
+            guard let refreshControl = scrollView.refreshControl else { break }
+            // Create a target helper and store it
+            let target = RefreshTarget(handler: handler)
+            objc_setAssociatedObject(
+                scrollView,
+                &VScrollViewFactory.refreshTargetKey,
+                target,
+                .OBJC_ASSOCIATION_RETAIN_NONATOMIC
+            )
+            refreshControl.addTarget(target, action: #selector(RefreshTarget.handleRefresh), for: .valueChanged)
+
+        default:
+            break
+        }
+    }
+
+    func removeEventListener(view: UIView, event: String) {
+        guard let scrollView = view as? UIScrollView, event == "scroll" else { return }
+        scrollView.delegate = nil
+        objc_setAssociatedObject(
+            scrollView,
+            &VScrollViewFactory.delegateProxyKey,
+            nil,
+            .OBJC_ASSOCIATION_RETAIN_NONATOMIC
+        )
     }
 
     // MARK: - Static helpers
@@ -110,6 +177,42 @@ final class VScrollViewFactory: NativeComponentFactory {
 
         // Update the scroll view's scrollable content size
         scrollView.contentSize = contentView.frame.size
+    }
+}
+
+// MARK: - RefreshTarget
+
+/// ObjC-compatible target for UIRefreshControl value-changed actions.
+private final class RefreshTarget: NSObject {
+    private let handler: (Any?) -> Void
+
+    init(handler: @escaping (Any?) -> Void) {
+        self.handler = handler
+        super.init()
+    }
+
+    @objc func handleRefresh() {
+        handler(nil)
+    }
+}
+
+// MARK: - ScrollDelegateProxy
+
+/// UIScrollViewDelegate proxy that forwards scroll events to a JS handler.
+private final class ScrollDelegateProxy: NSObject, UIScrollViewDelegate {
+    private let handler: (Any?) -> Void
+
+    init(handler: @escaping (Any?) -> Void) {
+        self.handler = handler
+        super.init()
+    }
+
+    func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        let payload: [String: Any] = [
+            "x": scrollView.contentOffset.x,
+            "y": scrollView.contentOffset.y
+        ]
+        handler(payload)
     }
 }
 #endif

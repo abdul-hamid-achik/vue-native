@@ -4,7 +4,7 @@ import FlexLayout
 
 /// Factory for VView — the basic container component.
 /// Maps to a plain UIView with FlexLayout enabled.
-/// Supports all style props via StyleEngine and optional tap gesture.
+/// Supports all style props via StyleEngine and gesture events.
 final class VViewFactory: NativeComponentFactory {
 
     func createView() -> UIView {
@@ -21,8 +21,9 @@ final class VViewFactory: NativeComponentFactory {
 
     func addEventListener(view: UIView, event: String, handler: @escaping (Any?) -> Void) {
         switch event {
+
+        // MARK: Tap / Press
         case "press":
-            // Add tap gesture recognizer
             let wrapper = GestureWrapper(handler: handler)
             let tapRecognizer = UITapGestureRecognizer(
                 target: wrapper,
@@ -30,10 +31,9 @@ final class VViewFactory: NativeComponentFactory {
             )
             view.addGestureRecognizer(tapRecognizer)
             view.isUserInteractionEnabled = true
-
-            // Store the wrapper to prevent deallocation
             GestureStorage.store(wrapper, for: view, event: event)
 
+        // MARK: Long Press
         case "longpress":
             let wrapper = GestureWrapper(handler: handler)
             let longPressRecognizer = UILongPressGestureRecognizer(
@@ -43,8 +43,49 @@ final class VViewFactory: NativeComponentFactory {
             longPressRecognizer.minimumPressDuration = 0.5
             view.addGestureRecognizer(longPressRecognizer)
             view.isUserInteractionEnabled = true
-
             GestureStorage.store(wrapper, for: view, event: event)
+
+        // MARK: Pan
+        case "pan":
+            let panWrapper = PanWrapper(handler: handler)
+            let pan = UIPanGestureRecognizer(
+                target: panWrapper,
+                action: #selector(PanWrapper.handle(_:))
+            )
+            view.addGestureRecognizer(pan)
+            view.isUserInteractionEnabled = true
+            GestureStorage.storeObject(panWrapper, for: view, event: event)
+
+        // MARK: Swipe
+        case "swipeLeft", "swipeRight", "swipeUp", "swipeDown":
+            let direction: UISwipeGestureRecognizer.Direction
+            let dirStr: String
+            switch event {
+            case "swipeLeft":  direction = .left;  dirStr = "left"
+            case "swipeRight": direction = .right; dirStr = "right"
+            case "swipeUp":    direction = .up;    dirStr = "up"
+            default:           direction = .down;  dirStr = "down"
+            }
+            let swipeWrapper = SwipeWrapper(handler: handler, direction: dirStr)
+            let swipe = UISwipeGestureRecognizer(
+                target: swipeWrapper,
+                action: #selector(SwipeWrapper.handle(_:))
+            )
+            swipe.direction = direction
+            view.addGestureRecognizer(swipe)
+            view.isUserInteractionEnabled = true
+            GestureStorage.storeObject(swipeWrapper, for: view, event: event)
+
+        // MARK: Pinch
+        case "pinch":
+            let pinchWrapper = PinchWrapper(handler: handler)
+            let pinch = UIPinchGestureRecognizer(
+                target: pinchWrapper,
+                action: #selector(PinchWrapper.handle(_:))
+            )
+            view.addGestureRecognizer(pinch)
+            view.isUserInteractionEnabled = true
+            GestureStorage.storeObject(pinchWrapper, for: view, event: event)
 
         default:
             break
@@ -55,10 +96,20 @@ final class VViewFactory: NativeComponentFactory {
         GestureStorage.remove(for: view, event: event)
         // Remove matching gesture recognizers
         view.gestureRecognizers?.forEach { recognizer in
-            if event == "press" && recognizer is UITapGestureRecognizer {
+            switch event {
+            case "press"      where recognizer is UITapGestureRecognizer:
                 view.removeGestureRecognizer(recognizer)
-            } else if event == "longpress" && recognizer is UILongPressGestureRecognizer {
+            case "longpress"  where recognizer is UILongPressGestureRecognizer:
                 view.removeGestureRecognizer(recognizer)
+            case "pan"        where recognizer is UIPanGestureRecognizer:
+                view.removeGestureRecognizer(recognizer)
+            case "swipeLeft", "swipeRight", "swipeUp", "swipeDown"
+                              where recognizer is UISwipeGestureRecognizer:
+                view.removeGestureRecognizer(recognizer)
+            case "pinch"      where recognizer is UIPinchGestureRecognizer:
+                view.removeGestureRecognizer(recognizer)
+            default:
+                break
             }
         }
     }
@@ -66,12 +117,20 @@ final class VViewFactory: NativeComponentFactory {
 
 // MARK: - GestureStorage
 
-/// Stores GestureWrapper references as associated objects on views to prevent deallocation.
+/// Stores gesture wrapper references as associated objects on views to prevent deallocation.
 /// Uses a dictionary keyed by event name to support multiple gesture types per view.
+/// The values are stored as AnyObject (NSObject subclasses) so both GestureWrapper and
+/// the newer PanWrapper / SwipeWrapper / PinchWrapper can be stored.
 enum GestureStorage {
     private static var storageKey: UInt8 = 0
 
+    // MARK: Legacy — typed store for GestureWrapper (keeps callers in VRootFactory compiling)
     static func store(_ wrapper: GestureWrapper, for view: UIView, event: String) {
+        storeObject(wrapper, for: view, event: event)
+    }
+
+    // MARK: Generic store for any NSObject-derived wrapper
+    static func storeObject(_ wrapper: NSObject, for view: UIView, event: String) {
         var storage = getStorage(for: view)
         storage[event] = wrapper
         setStorage(storage, for: view)
@@ -84,14 +143,14 @@ enum GestureStorage {
     }
 
     static func get(for view: UIView, event: String) -> GestureWrapper? {
-        return getStorage(for: view)[event]
+        return getStorage(for: view)[event] as? GestureWrapper
     }
 
-    private static func getStorage(for view: UIView) -> [String: GestureWrapper] {
-        return objc_getAssociatedObject(view, &storageKey) as? [String: GestureWrapper] ?? [:]
+    private static func getStorage(for view: UIView) -> [String: NSObject] {
+        return objc_getAssociatedObject(view, &storageKey) as? [String: NSObject] ?? [:]
     }
 
-    private static func setStorage(_ storage: [String: GestureWrapper], for view: UIView) {
+    private static func setStorage(_ storage: [String: NSObject], for view: UIView) {
         objc_setAssociatedObject(view, &storageKey, storage, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
     }
 }

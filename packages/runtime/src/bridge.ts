@@ -49,6 +49,9 @@ class NativeBridgeImpl {
   /** Auto-incrementing callback ID for async native module calls */
   private nextCallbackId = 1
 
+  /** Global event listeners: eventName -> Set of callbacks */
+  private globalEventHandlers = new Map<string, Set<(payload: any) => void>>()
+
   // ---------------------------------------------------------------------------
   // Operation batching
   // ---------------------------------------------------------------------------
@@ -296,6 +299,40 @@ class NativeBridgeImpl {
   }
 
   // ---------------------------------------------------------------------------
+  // Global push events
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Register a handler for a push-based global event from native.
+   * Returns an unsubscribe function.
+   */
+  onGlobalEvent(eventName: string, handler: (payload: any) => void): () => void {
+    if (!this.globalEventHandlers.has(eventName)) {
+      this.globalEventHandlers.set(eventName, new Set())
+    }
+    this.globalEventHandlers.get(eventName)!.add(handler)
+    return () => {
+      this.globalEventHandlers.get(eventName)?.delete(handler)
+    }
+  }
+
+  /**
+   * Called from Swift via globalThis.__VN_handleGlobalEvent when a push event fires.
+   */
+  handleGlobalEvent(eventName: string, payloadJSON: string): void {
+    let payload: any
+    try {
+      payload = JSON.parse(payloadJSON)
+    } catch {
+      payload = {}
+    }
+    const handlers = this.globalEventHandlers.get(eventName)
+    if (handlers) {
+      handlers.forEach(h => h(payload))
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // Cleanup
   // ---------------------------------------------------------------------------
 
@@ -308,6 +345,7 @@ class NativeBridgeImpl {
     this.eventHandlers.clear()
     this.pendingCallbacks.clear()
     this.nextCallbackId = 1
+    this.globalEventHandlers.clear()
   }
 }
 
@@ -325,3 +363,4 @@ export const NativeBridge = new NativeBridgeImpl()
 // Register global entry points that Swift calls into
 ;(globalThis as any).__VN_handleEvent = NativeBridge.handleNativeEvent.bind(NativeBridge)
 ;(globalThis as any).__VN_resolveCallback = NativeBridge.resolveCallback.bind(NativeBridge)
+;(globalThis as any).__VN_handleGlobalEvent = NativeBridge.handleGlobalEvent.bind(NativeBridge)

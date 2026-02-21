@@ -1,0 +1,42 @@
+import { defineComponent, h } from '@vue/runtime-core'
+
+export interface AlertButton {
+  label: string
+  style?: 'default' | 'cancel' | 'destructive'
+}
+
+/**
+ * Native alert dialog component.
+ *
+ * @example
+ * <VAlertDialog
+ *   :visible="showAlert"
+ *   title="Confirm"
+ *   message="Are you sure?"
+ *   :buttons="[{ label: 'Cancel', style: 'cancel' }, { label: 'Delete', style: 'destructive' }]"
+ *   @confirm="onConfirm"
+ *   @cancel="showAlert = false"
+ * />
+ */
+export const VAlertDialog = defineComponent({
+  name: 'VAlertDialog',
+  props: {
+    visible: { type: Boolean, default: false },
+    title: { type: String, default: '' },
+    message: { type: String, default: '' },
+    buttons: { type: Array as () => AlertButton[], default: () => [] },
+  },
+  emits: ['confirm', 'cancel', 'action'],
+  setup(props, { emit }) {
+    return () =>
+      h('VAlertDialog', {
+        visible: props.visible,
+        title: props.title,
+        message: props.message,
+        buttons: props.buttons,
+        onConfirm: (e: any) => emit('confirm', e),
+        onCancel: () => emit('cancel'),
+        onAction: (e: any) => emit('action', e),
+      })
+  },
+})

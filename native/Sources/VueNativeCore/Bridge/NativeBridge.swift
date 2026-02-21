@@ -37,6 +37,10 @@ public final class NativeBridge {
     /// The handlers dispatch the event payload back to the JS queue.
     private var eventHandlers: [String: (Any?) -> Void] = [:]
 
+    /// Maps each child node ID to its parent node ID.
+    /// Used to look up the parent factory when removing a child.
+    private var nodeParent: [Int: Int] = [:]
+
     /// The root UIView that contains all rendered native views.
     private weak var rootView: UIView?
 
@@ -52,6 +56,10 @@ public final class NativeBridge {
     // MARK: - Initialization
 
     private init() {}
+
+    // MARK: - Trait Observer Key
+
+    private static var traitObserverKey: UInt8 = 99
 
     // MARK: - Setup
 
@@ -88,11 +96,24 @@ public final class NativeBridge {
             }
             context.setObject(flushOps, forKeyedSubscript: "__VN_flushOperations" as NSString)
 
+            // Register __VN_teardown for graceful JS-side shutdown on hot reload
+            let teardown: @convention(block) () -> Void = { [weak self] in
+                // Graceful shutdown: bridge will be re-initialized on reload
+                NSLog("[VueNative] Teardown called from JS")
+                _ = self
+            }
+            context.setObject(teardown, forKeyedSubscript: "__VN_teardown" as NSString)
+
             // Register __VN_log for debug logging from JS
             let log: @convention(block) (JSValue) -> Void = { message in
                 NSLog("[VueNative JS] \(message.toString() ?? "")")
             }
             context.setObject(log, forKeyedSubscript: "__VN_log" as NSString)
+        }
+
+        // Register all native modules
+        DispatchQueue.main.async {
+            NativeModuleRegistry.shared.registerDefaults()
         }
     }
 
@@ -136,6 +157,10 @@ public final class NativeBridge {
                 handleRemoveEventListener(args: args)
             case "setRootView":
                 handleSetRootView(args: args)
+            case "invokeNativeModule":
+                handleInvokeNativeModule(args: args)
+            case "invokeNativeModuleSync":
+                handleInvokeNativeModuleSync(args: args)
             default:
                 NSLog("[VueNative Bridge] Warning: Unknown operation '\(op)'")
             }
@@ -275,9 +300,14 @@ public final class NativeBridge {
             return
         }
 
+        nodeParent[childId] = parentId
         // For scroll views, children go into the inner content view
         let container = childContainer(for: parentView)
-        container.addSubview(childView)
+        if let factory = ComponentRegistry.factory(for: parentView) {
+            factory.insertChild(childView, into: container, before: nil)
+        } else {
+            container.addSubview(childView)
+        }
     }
 
     /// insertBefore: [parentId: Int, childId: Int, beforeId: Int]
@@ -295,8 +325,11 @@ public final class NativeBridge {
             return
         }
 
+        nodeParent[childId] = parentId
         let container = childContainer(for: parentView)
-        if let index = container.subviews.firstIndex(of: beforeView) {
+        if let factory = ComponentRegistry.factory(for: parentView) {
+            factory.insertChild(childView, into: container, before: beforeView)
+        } else if let index = container.subviews.firstIndex(of: beforeView) {
             container.insertSubview(childView, at: index)
         } else {
             container.addSubview(childView)
@@ -322,13 +355,39 @@ public final class NativeBridge {
 
         guard let childView = viewRegistry[childId] else { return }
 
-        childView.removeFromSuperview()
+        // Recursively clean up all descendant views from the registries
+        removeDescendants(of: childView)
+
+        // Look up parent factory for custom removal
+        if let parentId = nodeParent[childId],
+           let parentView = viewRegistry[parentId],
+           let factory = ComponentRegistry.factory(for: parentView) {
+            let container = childContainer(for: parentView)
+            factory.removeChild(childView, from: container)
+        } else {
+            childView.removeFromSuperview()
+        }
+        nodeParent.removeValue(forKey: childId)
         viewRegistry.removeValue(forKey: childId)
         typeRegistry.removeValue(forKey: childId)
 
         // Clean up any event handlers for this node
         let prefix = "\(childId):"
         eventHandlers = eventHandlers.filter { !$0.key.hasPrefix(prefix) }
+    }
+
+    /// Recursively remove all registered descendants of a view from the view/type/event registries.
+    private func removeDescendants(of view: UIView) {
+        for subview in view.subviews {
+            removeDescendants(of: subview)
+            // Find the nodeId for this subview
+            if let nodeId = viewRegistry.first(where: { $0.value === subview })?.key {
+                viewRegistry.removeValue(forKey: nodeId)
+                typeRegistry.removeValue(forKey: nodeId)
+                let prefix = "\(nodeId):"
+                eventHandlers = eventHandlers.filter { !$0.key.hasPrefix(prefix) }
+            }
+        }
     }
 
     /// addEventListener: [nodeId: Int, eventName: String, callbackId: Int]
@@ -405,32 +464,115 @@ public final class NativeBridge {
             view.bottomAnchor.constraint(equalTo: vc.view.safeAreaLayoutGuide.bottomAnchor),
         ])
 
-        // Schedule an initial layout pass after the constraints are resolved
+        // Force AutoLayout to resolve the root view's frame immediately.
+        // This ensures rootView.bounds is non-zero before the Yoga layout pass.
         vc.view.setNeedsLayout()
         vc.view.layoutIfNeeded()
 
-        // Perform FlexLayout on next run loop to ensure frame is set
+        // Perform FlexLayout on the next run loop tick.
+        // By then AutoLayout has fully resolved all frames including safe area insets.
+        // We also retry once more after 100 ms to handle edge cases where the window
+        // has not yet been presented (e.g., first launch before viewDidAppear).
         DispatchQueue.main.async { [weak self] in
             self?.triggerLayout()
+            // Second pass for cases where the first pass still sees zero bounds
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+                self?.triggerLayout()
+            }
         }
+
+        // Monitor trait changes (dark mode) via a lightweight observer view
+        let traitObserver = TraitObserverView()
+        traitObserver.onChange = { [weak self] isDark in
+            self?.dispatchGlobalEvent("colorScheme:change", payload: ["colorScheme": isDark ? "dark" : "light"])
+        }
+        traitObserver.isHidden = true
+        vc.view.addSubview(traitObserver)
+        // Retain the observer for the lifetime of the root view controller's view
+        objc_setAssociatedObject(vc.view as UIView, &NativeBridge.traitObserverKey, traitObserver as AnyObject, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+    }
+
+    // MARK: - Native Module Handlers
+
+    /// invokeNativeModule: [moduleName: String, methodName: String, args: [Any], callbackId: Int]
+    private func handleInvokeNativeModule(args: [Any]) {
+        guard args.count >= 4,
+              let moduleName = args[0] as? String,
+              let methodName = args[1] as? String,
+              let moduleArgs = args[2] as? [Any],
+              let callbackId = asInt(args[3]) else {
+            NSLog("[VueNative Bridge] Error: Invalid invokeNativeModule args: \(args)")
+            return
+        }
+
+        NativeModuleRegistry.shared.invoke(
+            module: moduleName,
+            method: methodName,
+            args: moduleArgs
+        ) { [weak self] result, error in
+            self?.resolveNativeCallback(callbackId: callbackId, result: result, error: error)
+        }
+    }
+
+    /// invokeNativeModuleSync: [moduleName: String, methodName: String, args: [Any]]
+    private func handleInvokeNativeModuleSync(args: [Any]) {
+        guard args.count >= 3,
+              let moduleName = args[0] as? String,
+              let methodName = args[1] as? String,
+              let moduleArgs = args[2] as? [Any] else {
+            NSLog("[VueNative Bridge] Error: Invalid invokeNativeModuleSync args: \(args)")
+            return
+        }
+
+        _ = NativeModuleRegistry.shared.invokeSync(
+            module: moduleName,
+            method: methodName,
+            args: moduleArgs
+        )
+    }
+
+    /// Resolve a native module callback by calling __VN_resolveCallback on the JS side.
+    private func resolveNativeCallback(callbackId: Int, result: Any?, error: String?) {
+        let safeResult: Any = result ?? NSNull()
+        let safeError: Any = error ?? NSNull()
+        runtime.callFunction("__VN_resolveCallback", withArguments: [callbackId, safeResult, safeError])
     }
 
     // MARK: - Layout
 
     /// Trigger a FlexLayout relayout on the root view, then update any scroll views.
     /// Called after processing each operation batch.
+    ///
+    /// Uses `layout(mode: .fitContainer)` so that Yoga fills the root view's current
+    /// AutoLayout-resolved bounds rather than computing a size from scratch.
+    /// `pointScaleFactor` is set from UIScreen.main.scale so text and border measurements
+    /// are pixel-perfect on both 2x and 3x displays.
     private func triggerLayout() {
         dispatchPrecondition(condition: .onQueue(.main))
         guard let rootView = rootView else { return }
 
-        // FlexLayout computes layout based on the root view's bounds
+        // Ensure AutoLayout has resolved the frame before Yoga runs.
+        rootView.layoutIfNeeded()
+
         let bounds = rootView.bounds
         NSLog("[VueNative Bridge] triggerLayout() rootView bounds: %.1f x %.1f", bounds.width, bounds.height)
-        if bounds.width > 0 && bounds.height > 0 {
-            rootView.flex.layout()
-            // After the main layout pass, recompute content sizes for all scroll views
-            updateScrollViewContentSizes()
+
+        guard bounds.width > 0 && bounds.height > 0 else {
+            // Bounds not yet resolved — schedule a retry.
+            NSLog("[VueNative Bridge] triggerLayout() skipped: bounds not yet resolved")
+            return
         }
+
+        // Note: pointScaleFactor is already set to UIScreen.main.scale by FlexLayout's
+        // YogaKit layer during globalConfig initialisation (YGLayout.mm line 179).
+        // No manual override is needed here.
+
+        // layout(mode: .fitContainer) instructs Yoga to use rootView.bounds as the
+        // available space rather than computing it from children, matching CSS behaviour.
+        rootView.flex.layout(mode: .fitContainer)
+
+        // After the main layout pass, recompute content sizes for all scroll views.
+        updateScrollViewContentSizes()
     }
 
     /// After the main layout pass, iterate registered scroll views and update their contentSize.
@@ -466,6 +608,23 @@ public final class NativeBridge {
         runtime.callFunction("__VN_handleEvent", withArguments: [nodeId, eventName, safePayload])
     }
 
+
+    /// Dispatch a global event to the JS side (not tied to any specific node).
+    /// Safe to call from any thread — dispatches to the JS queue internally.
+    /// JS must register a handler via `__VN_handleGlobalEvent(eventName, payloadJSON)`.
+    public func dispatchGlobalEvent(_ eventName: String, payload: [String: Any] = [:]) {
+        // Serialize payload dict to JSON string on whatever thread we're on
+        let payloadJSON: String
+        if let data = try? JSONSerialization.data(withJSONObject: payload),
+           let str = String(data: data, encoding: .utf8) {
+            payloadJSON = str
+        } else {
+            payloadJSON = "{}"
+        }
+
+        runtime.callFunction("__VN_handleGlobalEvent", withArguments: [eventName, payloadJSON])
+    }
+
     // MARK: - View Registry Access (for testing/debugging)
 
     /// Get a view from the registry by node ID. Must be called on main thread.
@@ -474,9 +633,80 @@ public final class NativeBridge {
         return viewRegistry[nodeId]
     }
 
+    /// Returns the UIView registered for the given node ID, or nil if not found.
+    func view(forId id: Int) -> UIView? {
+        return viewRegistry[id]
+    }
+
     /// Get the total number of registered views.
     public var registeredViewCount: Int {
         return viewRegistry.count
+    }
+
+    // MARK: - Hot Reload
+
+    /// Reload the app with a new JavaScript bundle string.
+    /// 1. Clears all views and registries on the main thread.
+    /// 2. Re-registers bridge functions on the new JSContext.
+    /// 3. Evaluates the new bundle via JSRuntime.reload(bundle:).
+    public func reloadWithBundle(_ bundle: String) {
+        dispatchPrecondition(condition: .onQueue(.main))
+        NSLog("[VueNative Bridge] reloadWithBundle: clearing view hierarchy...")
+
+        // Step 1: Remove all subviews from root and clear registries on main thread
+        for (_, view) in viewRegistry {
+            view.removeFromSuperview()
+        }
+        viewRegistry.removeAll()
+        typeRegistry.removeAll()
+        eventHandlers.removeAll()
+        nodeParent.removeAll()
+        // Keep rootView reference and rootViewController — we re-use the same container
+
+        // Step 2: Re-register bridge functions on the new JSContext after runtime reloads.
+        // JSRuntime.reload creates a fresh JSContext, so we must re-register our Swift blocks.
+        // We do this by scheduling on the JS queue after the reload completes.
+        runtime.reload(bundle: bundle) { [weak self] success in
+            guard let self = self, success else {
+                NSLog("[VueNative Bridge] reloadWithBundle: runtime reload failed")
+                return
+            }
+
+            // Re-register __VN_flushOperations, __VN_teardown, __VN_log on new context
+            guard let context = self.runtime.context else { return }
+
+            let flushOps: @convention(block) (JSValue) -> Void = { [weak self] opsValue in
+                guard let self = self else { return }
+                guard let jsonString = opsValue.toString(), !jsonString.isEmpty else {
+                    NSLog("[VueNative Bridge] Warning: Empty operations batch")
+                    return
+                }
+
+                guard let data = jsonString.data(using: .utf8),
+                      let operations = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
+                    NSLog("[VueNative Bridge] Error: Failed to parse operations JSON")
+                    return
+                }
+
+                DispatchQueue.main.async { [weak self] in
+                    self?.processOperations(operations)
+                }
+            }
+            context.setObject(flushOps, forKeyedSubscript: "__VN_flushOperations" as NSString)
+
+            let teardown: @convention(block) () -> Void = { [weak self] in
+                NSLog("[VueNative] Teardown called from JS")
+                _ = self
+            }
+            context.setObject(teardown, forKeyedSubscript: "__VN_teardown" as NSString)
+
+            let log: @convention(block) (JSValue) -> Void = { message in
+                NSLog("[VueNative JS] \(message.toString() ?? "")")
+            }
+            context.setObject(log, forKeyedSubscript: "__VN_log" as NSString)
+
+            NSLog("[VueNative Bridge] reloadWithBundle: bridge re-registered on new context")
+        }
     }
 
     // MARK: - Cleanup
@@ -491,6 +721,7 @@ public final class NativeBridge {
             self.viewRegistry.removeAll()
             self.typeRegistry.removeAll()
             self.eventHandlers.removeAll()
+            self.nodeParent.removeAll()
             self.rootView = nil
         }
     }
@@ -506,4 +737,18 @@ public final class NativeBridge {
         return nil
     }
 }
+// MARK: - TraitObserverView
+
+private final class TraitObserverView: UIView {
+    var onChange: ((Bool) -> Void)?
+
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        if traitCollection.hasDifferentColorAppearance(comparedTo: previousTraitCollection) {
+            onChange?(traitCollection.userInterfaceStyle == .dark)
+        }
+    }
+}
+
+
 #endif

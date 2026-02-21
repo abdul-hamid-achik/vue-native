@@ -40,6 +40,19 @@ final class ComponentRegistry {
         register("VSwitch", factory: VSwitchFactory())
         register("VActivityIndicator", factory: VActivityIndicatorFactory())
         register("VScrollView", factory: VScrollViewFactory())
+        register("VImage", factory: VImageFactory())
+        register("VKeyboardAvoiding", factory: VKeyboardAvoidingFactory())
+        register("VSafeArea", factory: VSafeAreaFactory())
+        register("VSlider", factory: VSliderFactory())
+        register("VList", factory: VListFactory())
+        register("VModal", factory: VModalFactory())
+        register("VAlertDialog", factory: VAlertDialogFactory())
+        register("VStatusBar", factory: VStatusBarFactory())
+        register("VWebView", factory: VWebViewFactory())
+        register("VProgressBar",       factory: VProgressBarFactory())
+        register("VPicker",            factory: VPickerFactory())
+        register("VSegmentedControl",  factory: VSegmentedControlFactory())
+        register("VActionSheet",       factory: VActionSheetFactory())
         register("__ROOT__", factory: VRootFactory())
     }
 
@@ -158,7 +171,16 @@ final class VRootFactory: NativeComponentFactory {
     }
 
     func addEventListener(view: UIView, event: String, handler: @escaping (Any?) -> Void) {
-        // Root view doesn't support events in Phase 1
+        if event == "press" {
+            let wrapper = GestureWrapper(handler: handler)
+            let tap = UITapGestureRecognizer(
+                target: wrapper,
+                action: #selector(GestureWrapper.handleGesture(_:))
+            )
+            view.addGestureRecognizer(tap)
+            view.isUserInteractionEnabled = true
+            GestureStorage.store(wrapper, for: view, event: event)
+        }
     }
 }
 #endif

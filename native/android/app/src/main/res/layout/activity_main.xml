@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Vue Native manages all views programmatically — this is just the host container -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/vue_native_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent" />

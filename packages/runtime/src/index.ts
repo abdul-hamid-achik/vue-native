@@ -13,7 +13,13 @@ import { createVNode, type App, type Component } from '@vue/runtime-core'
 import { baseCreateApp, render } from './renderer'
 import { createNativeNode, type NativeNode } from './node'
 import { NativeBridge } from './bridge'
-import { VView, VText, VButton, VInput, VSwitch, VActivityIndicator, VScrollView } from './components'
+import {
+  VView, VText, VButton, VInput, VSwitch, VActivityIndicator,
+  VScrollView, VImage, VKeyboardAvoiding, VSafeArea, VSlider,
+  VList, VModal, VAlertDialog, VStatusBar, VWebView,
+  VProgressBar, VPicker, VSegmentedControl, VActionSheet,
+} from './components'
+import { vShow } from './directives/vShow'
 
 /**
  * Extended App interface with the .start() method for mounting to native.
@@ -60,6 +66,20 @@ export function createApp(rootComponent: Component, rootProps?: Record<string, a
   app.component('VSwitch', VSwitch)
   app.component('VActivityIndicator', VActivityIndicator)
   app.component('VScrollView', VScrollView)
+  app.component('VImage', VImage)
+  app.component('VKeyboardAvoiding', VKeyboardAvoiding)
+  app.component('VSafeArea', VSafeArea)
+  app.component('VSlider', VSlider)
+  app.component('VList', VList)
+  app.component('VModal', VModal)
+  app.component('VAlertDialog', VAlertDialog)
+  app.component('VStatusBar', VStatusBar)
+  app.component('VWebView', VWebView)
+  app.component('VProgressBar', VProgressBar)
+  app.component('VPicker', VPicker)
+  app.component('VSegmentedControl', VSegmentedControl)
+  app.component('VActionSheet', VActionSheet)
+  app.directive('show', vShow)
 
   /**
    * Create a virtual root node, register it with the native bridge,
@@ -109,7 +129,31 @@ export { render } from './renderer'
 export { createStyleSheet, validStyleProperties, type StyleProp, type StyleSheet } from './stylesheet'
 
 // Built-in components (for direct import in render functions)
-export { VView, VText, VButton, VInput, VSwitch, VActivityIndicator, VScrollView } from './components'
+export {
+  VView, VText, VButton, VInput, VSwitch, VActivityIndicator,
+  VScrollView, VImage, VKeyboardAvoiding, VSafeArea, VSlider,
+  VList, VModal, VAlertDialog, VStatusBar, VWebView,
+  VProgressBar, VPicker, VSegmentedControl, VActionSheet,
+} from './components'
+export type { AlertButton, StatusBarStyle, WebViewSource, ActionSheetAction } from './components'
+
+// Directives
+export { vShow } from './directives/vShow'
+
+// Composables (native module wrappers)
+export {
+  useHaptics, useAsyncStorage, useClipboard, useDeviceInfo, useKeyboard,
+  useAnimation, useNetwork, useAppState, useLinking, useShare, usePermissions,
+  useGeolocation, useCamera, useNotifications, useBiometry, useHttp,
+  useColorScheme,
+} from './composables'
+export type {
+  TimingOptions, SpringOptions, NetworkState, ConnectionType, AppStateStatus,
+  ShareContent, ShareResult, Permission, PermissionStatus, GeoCoordinates,
+  CameraOptions, CameraResult, LocalNotification, NotificationPayload,
+  BiometryType, BiometryResult, HttpRequestConfig, HttpResponse,
+  ColorScheme,
+} from './composables'
 
 // Bridge (for advanced native interop)
 export { NativeBridge } from './bridge'

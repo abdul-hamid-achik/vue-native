@@ -22,12 +22,32 @@ protocol NativeComponentFactory {
     /// Remove an event listener from the view for the given event name.
     /// Default implementation is a no-op.
     func removeEventListener(view: UIView, event: String)
+
+    /// Insert a child view into the parent. Called by the bridge instead of addSubview.
+    /// Default implementation calls parent.addSubview(child) or insertSubview(at:) with anchor.
+    func insertChild(_ child: UIView, into parent: UIView, before anchor: UIView?)
+
+    /// Remove a child view from the parent. Called by the bridge instead of removeFromSuperview.
+    /// Default implementation calls child.removeFromSuperview().
+    func removeChild(_ child: UIView, from parent: UIView)
 }
 
 // Default implementation for optional methods
 extension NativeComponentFactory {
     func removeEventListener(view: UIView, event: String) {
         // Default no-op. Factories can override to clean up specific listeners.
+    }
+
+    func insertChild(_ child: UIView, into parent: UIView, before anchor: UIView?) {
+        if let anchor = anchor, let idx = parent.subviews.firstIndex(of: anchor) {
+            parent.insertSubview(child, at: idx)
+        } else {
+            parent.addSubview(child)
+        }
+    }
+
+    func removeChild(_ child: UIView, from parent: UIView) {
+        child.removeFromSuperview()
     }
 }
 #endif

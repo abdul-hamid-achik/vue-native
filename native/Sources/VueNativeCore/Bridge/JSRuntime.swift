@@ -72,6 +72,10 @@ public final class JSRuntime: @unchecked Sendable {
                 if !stack.isEmpty {
                     NSLog("[VueNative JS Stack] \(stack)")
                 }
+                #if DEBUG
+                let fullMessage = stack.isEmpty ? message : "\(message)\n\n\(stack)"
+                ErrorOverlayView.show(error: fullMessage)
+                #endif
                 _ = self // prevent unused warning
             }
 
@@ -341,6 +345,55 @@ public final class JSRuntime: @unchecked Sendable {
             }
         }
         task.resume()
+    }
+
+    // MARK: - Hot Reload
+
+    /// Reload the runtime with a new JavaScript bundle string.
+    /// Creates a fresh JSContext, re-registers polyfills, and evaluates the bundle.
+    /// Calls completion on the JS queue with success/failure.
+    public func reload(bundle: String, completion: ((Bool) -> Void)? = nil) {
+        jsQueue.async { [weak self] in
+            guard let self = self else {
+                completion?(false)
+                return
+            }
+
+            NSLog("[VueNative] Hot reload: tearing down old context...")
+
+            // Tear down old Vue app gracefully
+            if let teardown = self.context?.objectForKeyedSubscript("__VN_teardown"),
+               !teardown.isUndefined {
+                teardown.call(withArguments: [])
+                self.context?.evaluateScript("void 0;")
+            }
+
+            // Create fresh context
+            self.context = JSContext()
+            self.context.exceptionHandler = { [weak self] _, exception in
+                guard let exception = exception else { return }
+                let message = exception.toString() ?? "Unknown JS error"
+                let line = exception.objectForKeyedSubscript("line")?.toInt32() ?? 0
+                let stack = exception.objectForKeyedSubscript("stack")?.toString() ?? ""
+                NSLog("[VueNative JS Error] \(message) at line \(line)")
+                #if DEBUG
+                let fullMessage = stack.isEmpty ? message : "\(message)\n\n\(stack)"
+                ErrorOverlayView.show(error: fullMessage)
+                #endif
+                _ = self
+            }
+
+            // Re-register globalThis and polyfills
+            self.context.evaluateScript("var globalThis = this;")
+            JSPolyfills.register(in: self)
+
+            NSLog("[VueNative] Hot reload: evaluating new bundle (\(bundle.count) bytes)...")
+            self.context.evaluateScript(bundle)
+            self.context.evaluateScript("void 0;")
+            NSLog("[VueNative] Hot reload: complete")
+
+            completion?(true)
+        }
     }
 
     // MARK: - Teardown

@@ -1,137 +1,82 @@
 # Vue Native
 
-Build truly native iOS apps with Vue.js 3 — no WebViews.
+Build native iOS and Android apps with Vue 3. Write Vue components, render real native views — no WebView, no compromise.
 
-Vue Native lets Vue developers write `.vue` Single File Components that render to native UIKit views, achieving performance comparable to React Native while using the Vue ecosystem they already know.
+## Features
 
-> **Status:** Active development — Phase 1 (Proof of Concept) in progress.
+- **Vue 3 First** — Composition API, `<script setup>`, `ref`, `computed`, `watch` — all just work
+- **Real Native UI** — Every component maps to native UIKit (iOS) or Android Views. No DOM, no WebView
+- **Cross-Platform** — Same Vue code targets both iOS and Android from a single codebase
+- **20 Built-in Components** — VView, VText, VButton, VInput, VScrollView, VImage, VList, VModal, and more
+- **Native Modules** — Haptics, AsyncStorage, Clipboard, Network, Camera, Geolocation, and more
+- **Navigation** — Stack navigation, tab bars, deep linking via `@vue-native/navigation`
+- **Flexbox Layout** — Yoga (iOS) and FlexboxLayout (Android) for consistent cross-platform layouts
+- **Hot Reload** — Edit Vue files, see changes instantly on device or emulator
+- **TypeScript** — Full type coverage across components, composables, and bridge
 
----
+## Platform Support
 
-## Why Vue Native?
+| Feature | iOS | Android |
+|---------|-----|---------|
+| All 20 components | ✅ | ✅ |
+| Native Modules | ✅ | ✅ |
+| Navigation | ✅ | ✅ |
+| Hot Reload | ✅ | ✅ |
+| Dark Mode | ✅ | ✅ |
+| JS Engine | JavaScriptCore | V8 (J2V8) |
+| Layout | Yoga/FlexLayout | FlexboxLayout |
 
-Vue 3's `createRenderer()` API was designed for exactly this: targeting non-DOM environments. Vue Native uses it to map Vue's virtual node operations to native iOS UIKit views through a high-performance bridge.
+## Requirements
 
-**Vue's advantages for native:**
+### iOS
+- iOS 16.0+
+- Xcode 15+
+- Swift 5.9+
 
-- **Fine-grained reactivity** — Vue knows exactly which property changed. Only the affected native view gets updated — no full subtree diffing like React Native.
-- **Smaller runtime** — `@vue/runtime-core` is ~10KB gzipped vs React's ~40KB. Matters on mobile.
-- **Composition API** — No rules-of-hooks restrictions. Composables can be called conditionally and composed freely, mapping perfectly to native module access patterns.
-- **SFC compiler** — Static analysis at build time hoists static content and reduces runtime work, critical on mobile.
-- **2M+ Vue developers** with no production-grade native mobile story — until now.
+### Android
+- Android 5.0+ (API 21+)
+- Android Studio Hedgehog+
+- Kotlin 1.9+
 
----
-
-## Architecture
-
-```
-┌──────────────────────────────────┐
-│        Your .vue Files           │
-│  <template> + <script setup>     │
-└──────────────┬───────────────────┘
-               │  Vite + @vue-native/vite-plugin
-               ▼
-┌──────────────────────────────────┐
-│     Compiled IIFE Bundle         │
-│     (loaded by JavaScriptCore)   │
-└──────────────┬───────────────────┘
-               │
-               ▼
-┌──────────────────────────────────┐
-│   @vue/runtime-core              │
-│   + Vue Native Custom Renderer   │  ← JavaScript (JSC)
-│                                  │
-│   createElement() → Bridge       │
-│   patchProp()     → Bridge       │
-│   insert()        → Bridge       │
-└──────────────┬───────────────────┘
-               │  JSON / JSContext calls
-               ▼
-┌──────────────────────────────────┐
-│   VueNativeCore (Swift)          │
-│   + Yoga layout engine           │  ← Native (Swift/UIKit)
-│   + UIKit component registry     │
-└──────────────────────────────────┘
-```
-
-**10-layer stack:**
-
-| Layer | Responsibility |
-|-------|---------------|
-| 1 | JavaScriptCore runtime + Vue custom renderer |
-| 2 | Bridge (JS ↔ Swift via JSContext) |
-| 3 | Native component registry (Swift/UIKit factories) |
-| 4 | Layout engine (Yoga via FlexLayout) |
-| 5 | Native module system (composables) |
-| 6 | Navigation (Phase 2) |
-| 7 | Styling (JS style objects → Yoga + UIView props) |
-| 8 | Developer tooling (CLI, scaffold) |
-| 9 | Build system (Vite + custom plugin → IIFE) |
-| 10 | Hot reload / dev server |
-
----
-
-## Monorepo Structure
-
-```
-vue-native/
-├── packages/
-│   ├── runtime/          # @vue-native/runtime — Vue custom renderer
-│   └── vite-plugin/      # @vue-native/vite-plugin — Build tooling
-├── native/               # VueNativeCore Swift Package
-│   ├── Sources/          # Bridge, ComponentRegistry, LayoutEngine
-│   └── Package.swift
-├── examples/
-│   └── counter/          # Phase 1 demo: counter app
-├── SPEC.md               # Full technical specification
-├── PLAN.md               # Implementation plan
-└── package.json          # Bun workspaces + Turborepo
-```
-
----
+### Shared
+- Node.js 18+ / Bun
 
 ## Quick Start
 
-> **Prerequisites:** macOS 13+, Xcode 15+, Bun, iOS 16+ device or simulator.
-
-### 1. Clone and install
+### Create a new project
 
 ```bash
-git clone https://github.com/abdul-hamid-achik/vue-native.git
-cd vue-native
-bun install
+npx @vue-native/cli create my-app
+cd my-app
 ```
 
-### 2. Build JS packages
+### Project structure
 
-```bash
-bun run build
+```
+my-app/
+├── app/
+│   ├── main.ts        # Entry point
+│   ├── App.vue        # Root component
+│   └── views/         # Screen components
+├── ios/               # Xcode project
+│   ├── AppDelegate.swift
+│   └── SceneDelegate.swift
+├── dist/              # Built JS bundle (auto-generated)
+└── vite.config.ts
 ```
 
-### 3. Open the example in Xcode
-
-```bash
-open examples/counter/ios/VueNativeCounter.xcodeproj
-```
-
-### 4. Run on simulator
-
-Select an iOS 16+ simulator in Xcode and hit **Run**.
-
----
-
-## Writing an App
+### Write your first component
 
 ```vue
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref } from '@vue-native/runtime'
 
 const count = ref(0)
 </script>
 
 <template>
   <VView :style="styles.container">
-    <VText :style="styles.counter">Count: {{ count }}</VText>
+    <VText :style="styles.title">Count: {{ count }}</VText>
     <VButton :style="styles.button" @press="count++">
       <VText>Increment</VText>
     </VButton>
@@ -139,124 +84,221 @@ const count = ref(0)
 </template>
 
 <script>
+import { createStyleSheet } from '@vue-native/runtime'
+
 const styles = createStyleSheet({
-  container: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#fff',
-  },
-  counter: {
-    fontSize: 32,
-    marginBottom: 20,
-  },
-  button: {
-    backgroundColor: '#42b883',
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
-  },
+  container: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  title: { fontSize: 24, marginBottom: 20 },
+  button: { backgroundColor: '#007AFF', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 8 },
 })
 </script>
 ```
 
----
-
-## Component Reference (Phase 1)
-
-| Component | UIKit View | Key Props |
-|-----------|-----------|-----------|
-| `VView` | `UIView` | `style` |
-| `VText` | `UILabel` | `style` |
-| `VButton` | Custom `TouchableView` | `style`, `disabled`, `@press` |
-| `VInput` | `UITextField` | `style`, `v-model`, `placeholder`, `@change-text` |
-
----
-
-## Technical Decisions
-
-| Decision | Choice | Rationale |
-|----------|--------|-----------|
-| JS engine (Phase 1) | JavaScriptCore | Built into iOS, zero size overhead |
-| JS engine (Phase 2) | Hermes (optional) | AOT compilation, faster cold starts |
-| Layout | Yoga via FlexLayout | React Native battle-tested, Flexbox familiar to web devs |
-| Bridge (Phase 1) | JSON over JSContext calls | Simple, fast to implement |
-| Bridge (Phase 2) | MessagePack binary | Lower serialization overhead |
-| Component framework | UIKit | Mature, imperatively controllable from JS |
-| Build | Vite + IIFE bundle | IIFE required — JSC has no ESM support |
-
----
-
-## Roadmap
-
-### Phase 1 — Proof of Concept (current)
-
-- [x] Monorepo setup (Bun + Turborepo)
-- [x] Swift Package with Yoga/FlexLayout
-- [ ] JSC runtime + polyfills
-- [ ] Vue custom renderer (`@vue-native/runtime`)
-- [ ] JS↔Swift bridge
-- [ ] VView, VText, VButton, VInput
-- [ ] Vite IIFE build pipeline
-- [ ] Counter demo app running on iOS simulator
-
-### Phase 2 — Production Foundation
-
-- [ ] Navigation system (stack + tab)
-- [ ] Hot module replacement over WebSocket
-- [ ] VList (virtualized list, native recycling)
-- [ ] VImage with async loading
-- [ ] Native modules (camera, geolocation, haptics, storage)
-- [ ] Shadow tree layout (background-thread Yoga)
-- [ ] MessagePack bridge
-
-### Phase 3 — Ecosystem
-
-- [ ] CLI (`vue-native create`)
-- [ ] Animations (`VAnimated`)
-- [ ] Accessibility
-- [ ] Android / Kotlin port
-
----
-
-## Development
+### Start development
 
 ```bash
-# Watch mode for JS packages
-bun run dev
-
-# Type checking
-bun run typecheck
-
-# Tests
-bun run test
-
-# Clean all build artifacts
-bun run clean
+bun run dev      # Start Vite watch mode + dev server
+# Open ios/ in Xcode and run on simulator
 ```
 
-### Package requirements
+## Components
 
-- **Bun** >= 1.3.8
-- **Node.js** >= 20 (for some tooling)
-- **TypeScript** >= 5.7
-- **Xcode** >= 15
-- **iOS target** >= 16.0
-- **Swift** >= 5.9
+### Layout
+| Component | Description |
+|-----------|-------------|
+| `<VView>` | Container view. Equivalent to `<div>`. Supports all Flexbox props |
+| `<VScrollView>` | Scrollable container. `horizontal` prop for horizontal scroll |
+| `<VSafeArea>` | Respects device safe areas (notch, home indicator) |
+| `<VKeyboardAvoiding>` | Shifts content up when keyboard appears |
 
----
+### Text & Input
+| Component | Description |
+|-----------|-------------|
+| `<VText>` | Text display. Supports `fontSize`, `fontWeight`, `color`, etc. |
+| `<VInput>` | Text input. Supports `v-model`, `placeholder`, `keyboardType`, `secureTextEntry` |
+
+### Interactive
+| Component | Description |
+|-----------|-------------|
+| `<VButton>` | Pressable view with `@press` and `@longPress` events |
+| `<VSwitch>` | Toggle switch. Supports `v-model` |
+| `<VSlider>` | Range slider. Supports `v-model`, `minimumValue`, `maximumValue` |
+| `<VSegmentedControl>` | Tab strip selector |
+
+### Media
+| Component | Description |
+|-----------|-------------|
+| `<VImage>` | Async image loading with caching. `source={{ uri: 'https://...' }}` |
+| `<VWebView>` | Embedded WKWebView. `source={{ uri: '...' }}` or `source={{ html: '...' }}` |
+
+### Lists
+| Component | Description |
+|-----------|-------------|
+| `<VList>` | Virtualized list backed by UITableView. Efficient for large datasets |
+
+### Feedback
+| Component | Description |
+|-----------|-------------|
+| `<VActivityIndicator>` | Loading spinner |
+| `<VProgressBar>` | Horizontal progress bar |
+| `<VAlertDialog>` | Native alert with customizable buttons |
+| `<VActionSheet>` | Native bottom action sheet |
+| `<VModal>` | Window-level overlay modal |
+
+### System
+| Component | Description |
+|-----------|-------------|
+| `<VStatusBar>` | Control status bar style and visibility |
+| `<VPicker>` | Date/time picker |
+
+## Composables
+
+### Device & System
+```typescript
+const { isConnected, connectionType } = useNetwork()
+const { state } = useAppState()   // 'active' | 'inactive' | 'background'
+const { colorScheme, isDark } = useColorScheme()
+const { model, screenWidth, screenHeight } = useDeviceInfo()
+```
+
+### Storage
+```typescript
+const { getItem, setItem, removeItem } = useAsyncStorage()
+```
+
+### Sensors & Hardware
+```typescript
+const { coords, getCurrentPosition } = useGeolocation()
+const { authenticate, getSupportedBiometry } = useBiometry()
+const { vibrate } = useHaptics()
+```
+
+### Media
+```typescript
+const { launchCamera, launchImageLibrary } = useCamera()
+```
+
+### Permissions
+```typescript
+const { request, check } = usePermissions()
+const status = await request('camera')  // 'granted' | 'denied' | 'restricted'
+```
+
+### Notifications
+```typescript
+const { requestPermission, scheduleLocal, onNotification } = useNotifications()
+await scheduleLocal({ title: 'Reminder', body: 'Hello!', delay: 5 })
+```
+
+### UI
+```typescript
+const { isVisible, height } = useKeyboard()
+const { copy, paste } = useClipboard()
+const { share } = useShare()
+const { openURL, canOpenURL } = useLinking()
+const { timing, spring, keyframe, sequence, parallel } = useAnimation()
+const http = useHttp({ baseURL: 'https://api.example.com' })
+```
+
+## Navigation
+
+```typescript
+import { createRouter, useRouter, useRoute, VNavigationBar, VTabBar } from '@vue-native/navigation'
+
+const { router, RouterView } = createRouter([
+  { name: 'home', component: HomeView },
+  { name: 'detail', component: DetailView },
+])
+```
+
+```vue
+<!-- App.vue -->
+<template>
+  <RouterView />
+</template>
+```
+
+```vue
+<!-- HomeView.vue -->
+<script setup>
+const router = useRouter()
+</script>
+<template>
+  <VView style="flex: 1">
+    <VNavigationBar title="Home" />
+    <VButton @press="router.push('detail', { id: 42 })">
+      <VText>Open Detail</VText>
+    </VButton>
+  </VView>
+</template>
+```
+
+## Styling
+
+Vue Native uses **Yoga Flexbox** layout — the same engine as React Native. All CSS Flexbox properties are supported.
+
+```typescript
+import { createStyleSheet } from '@vue-native/runtime'
+
+const styles = createStyleSheet({
+  container: {
+    flex: 1,
+    flexDirection: 'column',
+    backgroundColor: '#F5F5F5',
+    padding: 16,
+    gap: 12,
+  },
+  card: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+})
+```
+
+## Building for Release
+
+```bash
+# Build optimized bundle
+bun run build
+
+# In Xcode: Product → Archive → Distribute App
+```
+
+## Architecture
+
+Vue Native bridges Vue 3's custom renderer to the native view system on each platform:
+
+```
+Vue Component (SFC)
+      ↓ Vue renderer (patchProp, insert, remove)
+  NativeBridge (TypeScript)
+      ↓ JSON batch via queueMicrotask
+      ├── iOS: NativeBridge (Swift / @MainActor)
+      │         ↓ ComponentRegistry → UIKit Factory
+      │      UIKit Views  →  Yoga Layout (FlexLayout)
+      │
+      └── Android: NativeBridge (Kotlin / Main Thread)
+                ↓ ComponentRegistry → Android Factory
+             Android Views  →  FlexboxLayout
+```
+
+## Packages
+
+| Package | Description |
+|---------|-------------|
+| `@vue-native/runtime` | Core runtime: renderer, bridge, components, composables |
+| `@vue-native/navigation` | Stack and tab navigation |
+| `@vue-native/vite-plugin` | Vite build integration |
+| `@vue-native/cli` | Project scaffolding and dev tooling |
 
 ## Contributing
 
-This project is in early development. The [SPEC.md](./SPEC.md) contains the full technical specification and [PLAN.md](./PLAN.md) the implementation roadmap.
-
-Before contributing:
-
-1. Read `SPEC.md` for architecture decisions and rationale
-2. Read `AGENTS.md` for AI-assisted development conventions
-3. Open an issue to discuss significant changes before implementing
-
----
+See [CONTRIBUTING.md](./CONTRIBUTING.md). The project is a monorepo managed with Bun workspaces and Turborepo.
 
 ## License
 

@@ -1,0 +1,29 @@
+{
+  "name": "@vue-native/cli",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "vue-native": "./dist/cli.js"
+  },
+  "exports": {
+    ".": "./dist/cli.js"
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsup src/cli.ts --format esm --dts --banner.js '#!/usr/bin/env node'",
+    "dev": "tsup src/cli.ts --format esm --watch --banner.js '#!/usr/bin/env node'",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "commander": "^12.1.0",
+    "ws": "^8.18.0",
+    "chokidar": "^3.6.0",
+    "picocolors": "^1.1.0"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.5.13",
+    "@types/node": "^22.0.0",
+    "tsup": "^8.4.0",
+    "typescript": "^5.7.0"
+  }
+}

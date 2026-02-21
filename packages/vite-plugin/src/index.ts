@@ -33,6 +33,19 @@ export interface VueNativePluginOptions {
    * @default 'VueNativeApp'
    */
   globalName?: string
+
+  /**
+   * Enable hot reload WebSocket server integration.
+   * When true, configures the build for watch mode output.
+   * @default true
+   */
+  hotReload?: boolean
+
+  /**
+   * Port for the hot reload WebSocket server (started by `vue-native dev`).
+   * @default 8174
+   */
+  hotReloadPort?: number
 }
 
 export default function vueNativePlugin(options: VueNativePluginOptions = {}) {

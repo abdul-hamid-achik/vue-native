@@ -42,6 +42,10 @@ targets:
       - script: |
           cp "${SRCROOT}/../dist/vue-native-bundle.js" "${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app/vue-native-bundle.js"
         name: Copy JS Bundle
+        inputFiles:
+          - $(SRCROOT)/../dist/vue-native-bundle.js
+        outputFiles:
+          - $(BUILT_PRODUCTS_DIR)/$(PRODUCT_NAME).app/vue-native-bundle.js
     scheme:
       testTargets: []
       gatherCoverageData: false

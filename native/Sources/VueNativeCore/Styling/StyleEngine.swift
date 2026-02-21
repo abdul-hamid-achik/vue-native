@@ -6,7 +6,7 @@ import FlexLayout
 /// Handles both Yoga layout properties (flex, padding, margin, etc.) and
 /// UIView visual properties (backgroundColor, borderRadius, etc.).
 ///
-/// Phase 1 supports point values for dimensions. Percentage support deferred to Phase 2.
+/// Supports point values, percentage values, and auto for dimensions.
 @MainActor
 enum StyleEngine {
 
@@ -42,7 +42,7 @@ enum StyleEngine {
     // MARK: - Yoga Value Helpers
 
     /// Convert a value to CGFloat points. Supports Double and Int.
-    /// Returns nil for non-numeric values (strings like "50%", "auto" deferred to Phase 2).
+    /// Returns nil for non-numeric values (strings like "50%", "auto").
     static func yogaValue(_ value: Any?) -> CGFloat? {
         if let num = value as? Double { return CGFloat(num) }
         if let num = value as? Int { return CGFloat(num) }
@@ -57,6 +57,13 @@ enum StyleEngine {
             return true
         }
         return false
+    }
+
+    /// Extract percentage value from strings like "50%". Returns 50.0 for "50%".
+    static func asPercent(_ value: Any?) -> CGFloat? {
+        guard let str = value as? String, str.hasSuffix("%"),
+              let num = Double(str.dropLast()) else { return nil }
+        return CGFloat(num)
     }
 
     // MARK: - Layout Properties (FlexLayout / Yoga)
@@ -184,7 +191,9 @@ enum StyleEngine {
 
         case "width":
             if isAuto(value) {
-                flex.width(nil) // nil means auto in FlexLayout
+                flex.width(nil)
+            } else if let pct = asPercent(value) {
+                flex.width(pct%)
             } else if let num = yogaValue(value) {
                 flex.width(num)
             }
@@ -192,32 +201,42 @@ enum StyleEngine {
 
         case "height":
             if isAuto(value) {
-                flex.height(nil) // nil means auto in FlexLayout
+                flex.height(nil)
+            } else if let pct = asPercent(value) {
+                flex.height(pct%)
             } else if let num = yogaValue(value) {
                 flex.height(num)
             }
             return true
 
         case "minWidth":
-            if let num = yogaValue(value) {
+            if let pct = asPercent(value) {
+                flex.minWidth(pct%)
+            } else if let num = yogaValue(value) {
                 flex.minWidth(num)
             }
             return true
 
         case "minHeight":
-            if let num = yogaValue(value) {
+            if let pct = asPercent(value) {
+                flex.minHeight(pct%)
+            } else if let num = yogaValue(value) {
                 flex.minHeight(num)
             }
             return true
 
         case "maxWidth":
-            if let num = yogaValue(value) {
+            if let pct = asPercent(value) {
+                flex.maxWidth(pct%)
+            } else if let num = yogaValue(value) {
                 flex.maxWidth(num)
             }
             return true
 
         case "maxHeight":
-            if let num = yogaValue(value) {
+            if let pct = asPercent(value) {
+                flex.maxHeight(pct%)
+            } else if let num = yogaValue(value) {
                 flex.maxHeight(num)
             }
             return true
@@ -288,8 +307,10 @@ enum StyleEngine {
 
         case "margin":
             // Note: FlexLayout does not expose auto margins via its Swift API.
-            // For Phase 1, only point values are supported.
-            if let num = yogaValue(value) {
+            // Point values are supported; auto margins are not.
+            if isAuto(value) {
+                // Auto margins not supported by FlexLayout — skip gracefully
+            } else if let num = yogaValue(value) {
                 flex.margin(num)
             }
             return true
@@ -556,7 +577,49 @@ enum StyleEngine {
             }
             return true
 
-        case "hidden", "isHidden":
+        case "shadowOffset":
+            if let dict = value as? [String: Any] {
+                let w = (dict["width"] as? Double).map { CGFloat($0) } ?? view.layer.shadowOffset.width
+                let h = (dict["height"] as? Double).map { CGFloat($0) } ?? view.layer.shadowOffset.height
+                view.layer.shadowOffset = CGSize(width: w, height: h)
+            }
+            return true
+
+        case "transform":
+            if let transforms = value as? [[String: Any]] {
+                var result = CGAffineTransform.identity
+                for dict in transforms {
+                    if let rotateStr = dict["rotate"] as? String {
+                        let angle = parseAngle(rotateStr)
+                        result = result.rotated(by: angle)
+                    }
+                    if let scale = dict["scale"] as? Double {
+                        result = result.scaledBy(x: CGFloat(scale), y: CGFloat(scale))
+                    }
+                    if let scaleX = dict["scaleX"] as? Double {
+                        result = result.scaledBy(x: CGFloat(scaleX), y: 1)
+                    }
+                    if let scaleY = dict["scaleY"] as? Double {
+                        result = result.scaledBy(x: 1, y: CGFloat(scaleY))
+                    }
+                    if let tx = dict["translateX"] as? Double {
+                        result = result.translatedBy(x: CGFloat(tx), y: 0)
+                    }
+                    if let ty = dict["translateY"] as? Double {
+                        result = result.translatedBy(x: 0, y: CGFloat(ty))
+                    }
+                }
+                view.transform = result
+            } else {
+                view.transform = .identity
+            }
+            return true
+
+        case "hidden":
+            view.isHidden = (value as? Bool) ?? false
+            return true
+
+        case "isHidden":
             if let hidden = value as? Bool {
                 view.isHidden = hidden
             } else if let hidden = value as? Int {
@@ -567,6 +630,58 @@ enum StyleEngine {
         case "zIndex":
             if let num = yogaValue(value) {
                 view.layer.zPosition = num
+            }
+            return true
+
+
+        case "accessibilityLabel":
+            view.accessibilityLabel = value as? String
+            return true
+
+        case "accessibilityHint":
+            view.accessibilityHint = value as? String
+            return true
+
+        case "accessibilityValue":
+            view.accessibilityValue = value as? String
+            return true
+
+        case "accessibilityRole":
+            if let role = value as? String {
+                switch role {
+                case "button":    view.accessibilityTraits = .button
+                case "link":      view.accessibilityTraits = .link
+                case "header":    view.accessibilityTraits = .header
+                case "image":     view.accessibilityTraits = .image
+                case "selected":  view.accessibilityTraits = .selected
+                case "text":      view.accessibilityTraits = .staticText
+                case "adjustable": view.accessibilityTraits = .adjustable
+                case "search":    view.accessibilityTraits = .searchField
+                case "tab":       view.accessibilityTraits = .tabBar
+                case "none":      view.accessibilityTraits = .none
+                default:          break
+                }
+            }
+            return true
+
+        case "accessibilityState":
+            if let state = value as? [String: Any] {
+                var traits = view.accessibilityTraits
+                if let disabled = state["disabled"] as? Bool, disabled { traits.insert(.notEnabled) }
+                if let selected = state["selected"] as? Bool, selected { traits.insert(.selected) }
+                if let checked = state["checked"] as? Bool, checked { traits.insert(.selected) }
+                view.accessibilityTraits = traits
+            }
+            return true
+
+        case "accessible":
+            let acc = (value as? Bool) ?? (value as? NSNumber)?.boolValue ?? false
+            view.isAccessibilityElement = acc
+            return true
+
+        case "importantForAccessibility":
+            if let val = value as? String {
+                view.accessibilityElementsHidden = (val == "no-hide-descendants")
             }
             return true
 
@@ -611,6 +726,82 @@ enum StyleEngine {
             }
             return true
 
+        case "fontStyle":
+            if let str = value as? String, str == "italic" {
+                let descriptor = label.font.fontDescriptor.withSymbolicTraits(.traitItalic) ?? label.font.fontDescriptor
+                label.font = UIFont(descriptor: descriptor, size: label.font.pointSize)
+                label.flex.markDirty()
+            } else {
+                // Remove italic if "normal"
+                var traits = label.font.fontDescriptor.symbolicTraits
+                traits.remove(.traitItalic)
+                if let descriptor = label.font.fontDescriptor.withSymbolicTraits(traits) {
+                    label.font = UIFont(descriptor: descriptor, size: label.font.pointSize)
+                    label.flex.markDirty()
+                }
+            }
+            return true
+
+        case "lineHeight":
+            if let num = yogaValue(value) {
+                let paragraphStyle = NSMutableParagraphStyle()
+                paragraphStyle.minimumLineHeight = num
+                paragraphStyle.maximumLineHeight = num
+                paragraphStyle.alignment = label.textAlignment
+                let text = label.text ?? ""
+                let attrs: [NSAttributedString.Key: Any] = [
+                    .paragraphStyle: paragraphStyle,
+                    .font: label.font as Any
+                ]
+                label.attributedText = NSAttributedString(string: text, attributes: attrs)
+                label.flex.markDirty()
+            }
+            return true
+
+        case "letterSpacing":
+            if let num = yogaValue(value) {
+                let text = label.text ?? ""
+                let attrs: [NSAttributedString.Key: Any] = [
+                    .kern: num,
+                    .font: label.font as Any
+                ]
+                label.attributedText = NSAttributedString(string: text, attributes: attrs)
+                label.flex.markDirty()
+            }
+            return true
+
+        case "textDecorationLine":
+            if let str = value as? String {
+                let text = label.text ?? ""
+                var attrs: [NSAttributedString.Key: Any] = [.font: label.font as Any]
+                switch str {
+                case "underline":
+                    attrs[.underlineStyle] = NSUnderlineStyle.single.rawValue
+                case "line-through", "lineThrough":
+                    attrs[.strikethroughStyle] = NSUnderlineStyle.single.rawValue
+                case "underline line-through":
+                    attrs[.underlineStyle] = NSUnderlineStyle.single.rawValue
+                    attrs[.strikethroughStyle] = NSUnderlineStyle.single.rawValue
+                default:
+                    break
+                }
+                label.attributedText = NSAttributedString(string: text, attributes: attrs)
+                label.flex.markDirty()
+            }
+            return true
+
+        case "textTransform":
+            if let str = value as? String, let text = label.text {
+                switch str {
+                case "uppercase": label.text = text.uppercased()
+                case "lowercase": label.text = text.lowercased()
+                case "capitalize": label.text = text.capitalized
+                default: break
+                }
+                label.flex.markDirty()
+            }
+            return true
+
         default:
             return false
         }
@@ -623,6 +814,25 @@ enum StyleEngine {
         view.clipsToBounds = true
         view.layer.maskedCorners.insert(corner)
         view.layer.cornerRadius = max(view.layer.cornerRadius, radius)
+    }
+
+    // MARK: - Helpers
+
+    /// Parse an angle string into radians.
+    /// Supports "45deg" (degrees) and "1.5rad" (radians).
+    private static func parseAngle(_ str: String) -> CGFloat {
+        let s = str.trimmingCharacters(in: .whitespaces).lowercased()
+        if s.hasSuffix("deg"), let num = Double(s.dropLast(3)) {
+            return CGFloat(num * .pi / 180)
+        }
+        if s.hasSuffix("rad"), let num = Double(s.dropLast(3)) {
+            return CGFloat(num)
+        }
+        // Fallback: try to parse as raw number (radians)
+        if let num = Double(s) {
+            return CGFloat(num)
+        }
+        return 0
     }
 }
 #endif
