@@ -21,14 +21,14 @@ export function useKeyboard() {
    * Dismiss the keyboard programmatically.
    */
   function dismiss(): Promise<void> {
-    return NativeBridge.invokeNativeModule('Keyboard', 'dismiss', []).then(() => undefined)
+    return NativeBridge.invokeNativeModule<void>('Keyboard', 'dismiss', [])
   }
 
   /**
    * Get current keyboard height and visibility.
    */
   async function getHeight(): Promise<{ height: number; isVisible: boolean }> {
-    const result = await NativeBridge.invokeNativeModule('Keyboard', 'getHeight', []) as { height: number; isVisible: boolean }
+    const result = await NativeBridge.invokeNativeModule<{ height: number; isVisible: boolean }>('Keyboard', 'getHeight', [])
     isVisible.value = result.isVisible ?? false
     height.value = result.height ?? 0
     return result

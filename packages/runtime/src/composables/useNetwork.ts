@@ -18,20 +18,23 @@ export interface NetworkState {
 export function useNetwork() {
   const isConnected = ref(true)
   const connectionType = ref<ConnectionType>('unknown')
+  const error = ref<string | null>(null)
 
   // Fetch initial state
-  NativeBridge.invokeNativeModule('Network', 'getStatus').then((status: NetworkState) => {
+  NativeBridge.invokeNativeModule<NetworkState>('Network', 'getStatus').then(status => {
     isConnected.value = status.isConnected
     connectionType.value = status.connectionType
-  }).catch(() => {})
+  }).catch((e: unknown) => {
+    error.value = e instanceof Error ? e.message : String(e)
+  })
 
   // Subscribe to push updates
-  const unsubscribe = NativeBridge.onGlobalEvent('network:change', (payload: NetworkState) => {
+  const unsubscribe = NativeBridge.onGlobalEvent<NetworkState>('network:change', payload => {
     isConnected.value = payload.isConnected
     connectionType.value = payload.connectionType
   })
 
   onUnmounted(unsubscribe)
 
-  return { isConnected, connectionType }
+  return { isConnected, connectionType, error }
 }

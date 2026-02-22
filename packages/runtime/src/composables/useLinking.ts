@@ -9,11 +9,11 @@ import { NativeBridge } from '../bridge'
  */
 export function useLinking() {
   async function openURL(url: string): Promise<void> {
-    await NativeBridge.invokeNativeModule('Linking', 'openURL', [url])
+    await NativeBridge.invokeNativeModule<void>('Linking', 'openURL', [url])
   }
 
   async function canOpenURL(url: string): Promise<boolean> {
-    return NativeBridge.invokeNativeModule('Linking', 'canOpenURL', [url])
+    return NativeBridge.invokeNativeModule<boolean>('Linking', 'canOpenURL', [url])
   }
 
   return { openURL, canOpenURL }

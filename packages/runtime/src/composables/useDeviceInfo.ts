@@ -30,17 +30,22 @@ export function useDeviceInfo() {
   const screenHeight = ref(0)
   const scale = ref(1)
   const isLoaded = ref(false)
+  const error = ref<string | null>(null)
 
   async function fetchInfo(): Promise<void> {
-    const info = await NativeBridge.invokeNativeModule('DeviceInfo', 'getInfo', []) as DeviceInfo
-    model.value = info.model ?? ''
-    systemVersion.value = info.systemVersion ?? ''
-    systemName.value = info.systemName ?? ''
-    name.value = info.name ?? ''
-    screenWidth.value = info.screenWidth ?? 0
-    screenHeight.value = info.screenHeight ?? 0
-    scale.value = info.scale ?? 1
-    isLoaded.value = true
+    try {
+      const info = await NativeBridge.invokeNativeModule<DeviceInfo>('DeviceInfo', 'getInfo', [])
+      model.value = info.model ?? ''
+      systemVersion.value = info.systemVersion ?? ''
+      systemName.value = info.systemName ?? ''
+      name.value = info.name ?? ''
+      screenWidth.value = info.screenWidth ?? 0
+      screenHeight.value = info.screenHeight ?? 0
+      scale.value = info.scale ?? 1
+      isLoaded.value = true
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : String(e)
+    }
   }
 
   onMounted(() => {
@@ -56,6 +61,7 @@ export function useDeviceInfo() {
     screenHeight,
     scale,
     isLoaded,
+    error,
     fetchInfo,
   }
 }

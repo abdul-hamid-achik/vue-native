@@ -24,23 +24,38 @@ export function useGeolocation() {
   const coords = ref<GeoCoordinates | null>(null)
   const error = ref<string | null>(null)
   let watchId: number | null = null
+  let unsubscribeLocation: (() => void) | null = null
 
   async function getCurrentPosition(): Promise<GeoCoordinates> {
-    const result: GeoCoordinates = await NativeBridge.invokeNativeModule('Geolocation', 'getCurrentPosition')
-    coords.value = result
-    return result
+    try {
+      const result = await NativeBridge.invokeNativeModule<GeoCoordinates>('Geolocation', 'getCurrentPosition')
+      coords.value = result
+      return result
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : String(e)
+      throw e
+    }
   }
 
   async function watchPosition(): Promise<number> {
-    const id: number = await NativeBridge.invokeNativeModule('Geolocation', 'watchPosition')
+    // Prevent multiple concurrent watches — clean up existing one first
+    if (watchId !== null) {
+      await clearWatch(watchId)
+    }
+    if (unsubscribeLocation) {
+      unsubscribeLocation()
+    }
+
+    const id = await NativeBridge.invokeNativeModule<number>('Geolocation', 'watchPosition')
     watchId = id
 
-    const unsubscribe = NativeBridge.onGlobalEvent('location:update', (payload: GeoCoordinates) => {
+    unsubscribeLocation = NativeBridge.onGlobalEvent<GeoCoordinates>('location:update', payload => {
       coords.value = payload
     })
 
     onUnmounted(() => {
-      unsubscribe()
+      unsubscribeLocation?.()
+      unsubscribeLocation = null
       if (watchId !== null) clearWatch(watchId)
     })
 
@@ -48,7 +63,7 @@ export function useGeolocation() {
   }
 
   async function clearWatch(id: number): Promise<void> {
-    await NativeBridge.invokeNativeModule('Geolocation', 'clearWatch', [id])
+    await NativeBridge.invokeNativeModule<void>('Geolocation', 'clearWatch', [id])
     watchId = null
   }
 

@@ -14,7 +14,7 @@ import {
 } from '@vue/runtime-core'
 
 // console exists at runtime in JavaScriptCore (polyfilled) but is not in ES2020 lib
-declare const console: { warn(...args: any[]): void }
+declare const console: { warn(...args: unknown[]): void }
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -39,13 +39,13 @@ export type NavigationOptions = RouteOptions
 
 export interface RouteEntry {
   config: RouteConfig
-  params: Record<string, any>
+  params: Record<string, unknown>
   key: number
 }
 
 export interface RouteLocation {
   name: string
-  params: Record<string, any>
+  params: Record<string, unknown>
   options: RouteOptions
 }
 
@@ -55,17 +55,17 @@ export interface RouterInstance {
   /** Full navigation stack (ref). */
   stack: Ref<RouteEntry[]>
   /** Push a new route onto the stack. */
-  navigate(name: string, params?: Record<string, any>): void
+  navigate(name: string, params?: Record<string, unknown>): void
   /** Alias for navigate — preferred name in new API. */
-  push(name: string, params?: Record<string, any>): void
+  push(name: string, params?: Record<string, unknown>): void
   /** Pop the current route off the stack. */
   goBack(): void
   /** Alias for goBack — preferred name in new API. */
   pop(): void
   /** Replace the current route without adding to the stack. */
-  replace(name: string, params?: Record<string, any>): void
+  replace(name: string, params?: Record<string, unknown>): void
   /** Reset the stack to a single route. */
-  reset(name: string, params?: Record<string, any>): void
+  reset(name: string, params?: Record<string, unknown>): void
   /** Whether there is a previous route to go back to. */
   canGoBack: ComputedRef<boolean>
   /** Install into a Vue app (app.use(router)). */
@@ -87,6 +87,13 @@ const ROUTE_KEY: InjectionKey<ComputedRef<RouteLocation>> = Symbol('route')
 
 let keyCounter = 0
 
+/**
+ * Reset the key counter. Used for testing purposes only.
+ */
+export function resetKeyCounter(): void {
+  keyCounter = 0
+}
+
 export function createRouter(routes: RouteConfig[]): RouterInstance {
   if (routes.length === 0) {
     throw new Error('[vue-native/navigation] createRouter requires at least one route')
@@ -100,7 +107,7 @@ export function createRouter(routes: RouteConfig[]): RouterInstance {
 
   const canGoBack: ComputedRef<boolean> = computed(() => stack.value.length > 1)
 
-  function navigate(name: string, params: Record<string, any> = {}): void {
+  function navigate(name: string, params: Record<string, unknown> = {}): void {
     const config = routeMap.get(name)
     if (!config) {
       console.warn(`[vue-native/navigation] Route "${name}" not found`)
@@ -118,7 +125,7 @@ export function createRouter(routes: RouteConfig[]): RouterInstance {
     currentRoute.value = newStack[newStack.length - 1]
   }
 
-  function replace(name: string, params: Record<string, any> = {}): void {
+  function replace(name: string, params: Record<string, unknown> = {}): void {
     const config = routeMap.get(name)
     if (!config) {
       console.warn(`[vue-native/navigation] Route "${name}" not found`)
@@ -129,7 +136,7 @@ export function createRouter(routes: RouteConfig[]): RouterInstance {
     currentRoute.value = entry
   }
 
-  function reset(name: string, params: Record<string, any> = {}): void {
+  function reset(name: string, params: Record<string, unknown> = {}): void {
     const config = routeMap.get(name)
     if (!config) {
       console.warn(`[vue-native/navigation] Route "${name}" not found`)

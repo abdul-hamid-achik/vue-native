@@ -31,29 +31,29 @@ export function useNotifications() {
   const isGranted = ref(false)
 
   async function requestPermission(): Promise<boolean> {
-    const granted: boolean = await NativeBridge.invokeNativeModule('Notifications', 'requestPermission')
+    const granted = await NativeBridge.invokeNativeModule<boolean>('Notifications', 'requestPermission')
     isGranted.value = granted
     return granted
   }
 
   async function getPermissionStatus(): Promise<string> {
-    return NativeBridge.invokeNativeModule('Notifications', 'getPermissionStatus')
+    return NativeBridge.invokeNativeModule<string>('Notifications', 'getPermissionStatus')
   }
 
   async function scheduleLocal(notification: LocalNotification): Promise<string> {
-    return NativeBridge.invokeNativeModule('Notifications', 'scheduleLocal', [notification])
+    return NativeBridge.invokeNativeModule<string>('Notifications', 'scheduleLocal', [notification])
   }
 
   async function cancel(id: string): Promise<void> {
-    return NativeBridge.invokeNativeModule('Notifications', 'cancel', [id])
+    return NativeBridge.invokeNativeModule<void>('Notifications', 'cancel', [id])
   }
 
   async function cancelAll(): Promise<void> {
-    return NativeBridge.invokeNativeModule('Notifications', 'cancelAll')
+    return NativeBridge.invokeNativeModule<void>('Notifications', 'cancelAll')
   }
 
   function onNotification(handler: (payload: NotificationPayload) => void): () => void {
-    const unsubscribe = NativeBridge.onGlobalEvent('notification:received', handler)
+    const unsubscribe = NativeBridge.onGlobalEvent<NotificationPayload>('notification:received', handler)
     onUnmounted(unsubscribe)
     return unsubscribe
   }

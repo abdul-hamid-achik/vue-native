@@ -18,7 +18,7 @@ export interface ShareResult {
  */
 export function useShare() {
   async function share(content: ShareContent): Promise<ShareResult> {
-    return NativeBridge.invokeNativeModule('Share', 'share', [content])
+    return NativeBridge.invokeNativeModule<ShareResult>('Share', 'share', [content])
   }
 
   return { share }

@@ -13,17 +13,20 @@ export type AppStateStatus = 'active' | 'inactive' | 'background' | 'unknown'
  */
 export function useAppState() {
   const state = ref<AppStateStatus>('active')
+  const error = ref<string | null>(null)
 
   // Fetch initial state
-  NativeBridge.invokeNativeModule('AppState', 'getState').then((s: string) => {
+  NativeBridge.invokeNativeModule<string>('AppState', 'getState').then(s => {
     state.value = s as AppStateStatus
-  }).catch(() => {})
+  }).catch((e: unknown) => {
+    error.value = e instanceof Error ? e.message : String(e)
+  })
 
-  const unsubscribe = NativeBridge.onGlobalEvent('appState:change', (payload: { state: AppStateStatus }) => {
+  const unsubscribe = NativeBridge.onGlobalEvent<{ state: AppStateStatus }>('appState:change', payload => {
     state.value = payload.state
   })
 
   onUnmounted(unsubscribe)
 
-  return { state }
+  return { state, error }
 }

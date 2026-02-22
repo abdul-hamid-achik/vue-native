@@ -17,15 +17,15 @@ export interface BiometryResult {
  */
 export function useBiometry() {
   async function authenticate(reason = 'Authenticate'): Promise<BiometryResult> {
-    return NativeBridge.invokeNativeModule('Biometry', 'authenticate', [reason])
+    return NativeBridge.invokeNativeModule<BiometryResult>('Biometry', 'authenticate', [reason])
   }
 
   async function getSupportedBiometry(): Promise<BiometryType> {
-    return NativeBridge.invokeNativeModule('Biometry', 'getSupportedBiometry')
+    return NativeBridge.invokeNativeModule<BiometryType>('Biometry', 'getSupportedBiometry')
   }
 
   async function isAvailable(): Promise<boolean> {
-    return NativeBridge.invokeNativeModule('Biometry', 'isAvailable')
+    return NativeBridge.invokeNativeModule<boolean>('Biometry', 'isAvailable')
   }
 
   return { authenticate, getSupportedBiometry, isAvailable }

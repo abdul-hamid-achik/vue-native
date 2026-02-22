@@ -67,12 +67,19 @@ export function useHttp(config: HttpRequestConfig = {}) {
       const response = await fetch(fullUrl, fetchOptions)
       const data: T = await response.json()
 
-      return {
+      const result: HttpResponse<T> = {
         data,
         status: response.status,
         ok: response.ok,
         headers: {},
       }
+
+      if (!response.ok) {
+        const msg = `HTTP ${response.status}`
+        error.value = msg
+      }
+
+      return result
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
       error.value = msg

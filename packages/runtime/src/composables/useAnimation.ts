@@ -84,23 +84,23 @@ export type SpringOptions = SpringConfig
  */
 export function useAnimation() {
   function timing(viewId: number, toStyles: Record<string, any>, config: TimingConfig = {}): Promise<void> {
-    return NativeBridge.invokeNativeModule('Animation', 'timing', [viewId, toStyles, config])
+    return NativeBridge.invokeNativeModule<void>('Animation', 'timing', [viewId, toStyles, config])
   }
 
   function spring(viewId: number, toStyles: Record<string, any>, config: SpringConfig = {}): Promise<void> {
-    return NativeBridge.invokeNativeModule('Animation', 'spring', [viewId, toStyles, config])
+    return NativeBridge.invokeNativeModule<void>('Animation', 'spring', [viewId, toStyles, config])
   }
 
   function keyframe(viewId: number, steps: KeyframeStep[], config: { duration?: number } = {}): Promise<void> {
-    return NativeBridge.invokeNativeModule('Animation', 'keyframe', [viewId, steps, config])
+    return NativeBridge.invokeNativeModule<void>('Animation', 'keyframe', [viewId, steps, config])
   }
 
   function sequence(animations: SequenceAnimation[]): Promise<void> {
-    return NativeBridge.invokeNativeModule('Animation', 'sequence', [animations])
+    return NativeBridge.invokeNativeModule<void>('Animation', 'sequence', [animations])
   }
 
   function parallel(animations: SequenceAnimation[]): Promise<void> {
-    return NativeBridge.invokeNativeModule('Animation', 'parallel', [animations])
+    return NativeBridge.invokeNativeModule<void>('Animation', 'parallel', [animations])
   }
 
   /** Convenience: fade a view to opacity 0 then remove or hide */

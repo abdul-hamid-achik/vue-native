@@ -14,23 +14,23 @@ import { NativeBridge } from '../bridge'
  */
 export function useAsyncStorage() {
   function getItem(key: string): Promise<string | null> {
-    return NativeBridge.invokeNativeModule('AsyncStorage', 'getItem', [key])
+    return NativeBridge.invokeNativeModule<string | null>('AsyncStorage', 'getItem', [key])
   }
 
   function setItem(key: string, value: string): Promise<void> {
-    return NativeBridge.invokeNativeModule('AsyncStorage', 'setItem', [key, value]).then(() => undefined)
+    return NativeBridge.invokeNativeModule<void>('AsyncStorage', 'setItem', [key, value])
   }
 
   function removeItem(key: string): Promise<void> {
-    return NativeBridge.invokeNativeModule('AsyncStorage', 'removeItem', [key]).then(() => undefined)
+    return NativeBridge.invokeNativeModule<void>('AsyncStorage', 'removeItem', [key])
   }
 
   function getAllKeys(): Promise<string[]> {
-    return NativeBridge.invokeNativeModule('AsyncStorage', 'getAllKeys', [])
+    return NativeBridge.invokeNativeModule<string[]>('AsyncStorage', 'getAllKeys', [])
   }
 
   function clear(): Promise<void> {
-    return NativeBridge.invokeNativeModule('AsyncStorage', 'clear', []).then(() => undefined)
+    return NativeBridge.invokeNativeModule<void>('AsyncStorage', 'clear', [])
   }
 
   return { getItem, setItem, removeItem, getAllKeys, clear }

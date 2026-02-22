@@ -21,14 +21,14 @@ export function useClipboard() {
    * Copy text to the clipboard.
    */
   function copy(text: string): Promise<void> {
-    return NativeBridge.invokeNativeModule('Clipboard', 'copy', [text]).then(() => undefined)
+    return NativeBridge.invokeNativeModule<void>('Clipboard', 'copy', [text])
   }
 
   /**
    * Paste the current clipboard content. Updates the `content` ref.
    */
   async function paste(): Promise<string> {
-    const text = await NativeBridge.invokeNativeModule('Clipboard', 'paste', [])
+    const text = await NativeBridge.invokeNativeModule<string>('Clipboard', 'paste', [])
     const result = typeof text === 'string' ? text : ''
     content.value = result
     return result

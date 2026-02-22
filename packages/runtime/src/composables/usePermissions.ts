@@ -25,11 +25,11 @@ export type PermissionStatus =
  */
 export function usePermissions() {
   async function request(permission: Permission): Promise<PermissionStatus> {
-    return NativeBridge.invokeNativeModule('Permissions', 'request', [permission])
+    return NativeBridge.invokeNativeModule<PermissionStatus>('Permissions', 'request', [permission])
   }
 
   async function check(permission: Permission): Promise<PermissionStatus> {
-    return NativeBridge.invokeNativeModule('Permissions', 'check', [permission])
+    return NativeBridge.invokeNativeModule<PermissionStatus>('Permissions', 'check', [permission])
   }
 
   return { request, check }

@@ -24,11 +24,11 @@ export interface CameraResult {
  */
 export function useCamera() {
   async function launchCamera(options: CameraOptions = {}): Promise<CameraResult> {
-    return NativeBridge.invokeNativeModule('Camera', 'launchCamera', [options])
+    return NativeBridge.invokeNativeModule<CameraResult>('Camera', 'launchCamera', [options])
   }
 
   async function launchImageLibrary(options: CameraOptions = {}): Promise<CameraResult> {
-    return NativeBridge.invokeNativeModule('Camera', 'launchImageLibrary', [options])
+    return NativeBridge.invokeNativeModule<CameraResult>('Camera', 'launchImageLibrary', [options])
   }
 
   return { launchCamera, launchImageLibrary }

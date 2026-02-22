@@ -5,6 +5,10 @@
 
 import { vi } from 'vitest'
 
+// setTimeout is available in Node.js test environment but not declared in ES2020 lib
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+declare function setTimeout(callback: (...args: any[]) => void, ms: number): number
+
 export interface CapturedOperation {
   op: string
   args: any[]

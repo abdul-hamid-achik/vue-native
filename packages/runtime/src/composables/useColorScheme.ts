@@ -16,9 +16,9 @@ export function useColorScheme() {
   const colorScheme = ref<ColorScheme>('light')
   const isDark = ref(false)
 
-  const unsubscribe = NativeBridge.onGlobalEvent(
+  const unsubscribe = NativeBridge.onGlobalEvent<{ colorScheme: ColorScheme }>(
     'colorScheme:change',
-    (payload: { colorScheme: ColorScheme }) => {
+    payload => {
       colorScheme.value = payload.colorScheme
       isDark.value = payload.colorScheme === 'dark'
     },
