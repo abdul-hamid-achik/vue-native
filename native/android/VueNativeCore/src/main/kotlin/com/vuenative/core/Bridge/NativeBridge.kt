@@ -250,7 +250,7 @@ class NativeBridge(private val context: Context) {
             val payloadJson = when (payload) {
                 null -> "null"
                 is Map<*, *> -> JSONObject(payload).toString()
-                is String -> "\"${payload.replace("\"", "\\\"")}\""
+                is String -> JSONObject.quote(payload)
                 else -> payload.toString()
             }
             onFireEvent?.invoke(nodeId, eventName, payloadJson)

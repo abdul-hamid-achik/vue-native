@@ -368,6 +368,9 @@ public final class JSRuntime: @unchecked Sendable {
                 self.context?.evaluateScript("void 0;")
             }
 
+            // Reset polyfill state (timers, RAF, display link) before creating new context
+            JSPolyfills.reset()
+
             // Create fresh context
             self.context = JSContext()
             self.context.exceptionHandler = { [weak self] _, exception in

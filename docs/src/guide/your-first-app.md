@@ -38,7 +38,7 @@ const styles = createStyleSheet({
 import { createApp } from '@vue-native/runtime'
 import App from './App.vue'
 
-createApp(App).mount('#app')
+createApp(App).start()
 ```
 
 ## Start development

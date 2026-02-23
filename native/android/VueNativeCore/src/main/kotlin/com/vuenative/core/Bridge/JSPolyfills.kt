@@ -49,6 +49,23 @@ object JSPolyfills {
         }
     }
 
+    /** Reset all timers, RAF callbacks, and counters. Call before hot-reloading a new bundle. */
+    fun reset() {
+        // Cancel all pending timer callbacks
+        for ((_, runnable) in timers) {
+            mainHandler.removeCallbacks(runnable)
+        }
+        timers.clear()
+
+        // Clear RAF state
+        rafCallbacks.clear()
+        rafChoreographerPosted = false
+
+        // Reset counters
+        nextTimerId = 1
+        nextRafId = 1
+    }
+
     // -- console ------------------------------------------------------------------
 
     private fun registerConsole(runtime: JSRuntime) {
@@ -58,12 +75,16 @@ object JSPolyfills {
 
             listOf("log", "warn", "error", "debug", "info").forEach { level ->
                 v8.registerJavaMethod(JavaVoidCallback { _, params ->
-                    val msg = if (params.length() == 0) "undefined"
-                              else params.get(0)?.toString() ?: "null"
-                    when (level) {
-                        "error" -> Log.e("VueNative JS", msg)
-                        "warn"  -> Log.w("VueNative JS", msg)
-                        else    -> Log.d("VueNative JS", msg)
+                    try {
+                        val msg = if (params.length() == 0) "undefined"
+                                  else params.get(0)?.toString() ?: "null"
+                        when (level) {
+                            "error" -> Log.e("VueNative JS", msg)
+                            "warn"  -> Log.w("VueNative JS", msg)
+                            else    -> Log.d("VueNative JS", msg)
+                        }
+                    } finally {
+                        params.close()
                     }
                 }, "__console_$level")
             }
@@ -86,66 +107,92 @@ object JSPolyfills {
 
             // setTimeout(fn, delay) -> timerId
             v8.registerJavaMethod(JavaCallback { _, params ->
-                val timerId = nextTimerId++
-                val delayMs = if (params.length() > 1) params.getDouble(1).toLong() else 0L
+                try {
+                    val timerId = nextTimerId++
+                    val delayMs = if (params.length() > 1) params.getDouble(1).toLong() else 0L
 
-                // Post to main thread which posts back to JS thread after delay
-                mainHandler.postDelayed({
-                    runtime.runOnJsThread {
-                        try {
-                            v8.executeVoidScript(
-                                "if(typeof __vnTimerCb_$timerId==='function'){" +
-                                "var f=__vnTimerCb_$timerId;" +
-                                "delete __vnTimerCb_$timerId;" +
-                                "f();}"
-                            )
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Timer callback error", e)
+                    // Post to main thread which posts back to JS thread after delay
+                    val runnable = Runnable {
+                        runtime.runOnJsThread {
+                            try {
+                                v8.executeVoidScript(
+                                    "if(typeof __vnTimerCb_$timerId==='function'){" +
+                                    "var f=__vnTimerCb_$timerId;" +
+                                    "delete __vnTimerCb_$timerId;" +
+                                    "f();}"
+                                )
+                            } catch (e: Exception) {
+                                Log.e(TAG, "Timer callback error", e)
+                            } finally {
+                                timers.remove(timerId)
+                            }
                         }
                     }
-                }, delayMs.coerceAtLeast(1L))
+                    timers[timerId] = runnable
+                    mainHandler.postDelayed(runnable, delayMs.coerceAtLeast(1L))
 
-                return@JavaCallback timerId
+                    return@JavaCallback timerId
+                } finally {
+                    params.close()
+                }
             }, "__vnSetTimeout")
 
             // clearTimeout(timerId)
             v8.registerJavaMethod(JavaVoidCallback { _, params ->
-                val id = params.getInteger(0)
-                v8.executeVoidScript("delete __vnTimerCb_$id")
+                try {
+                    val id = params.getInteger(0)
+                    timers.remove(id)?.let { mainHandler.removeCallbacks(it) }
+                    v8.executeVoidScript("delete __vnTimerCb_$id")
+                } finally {
+                    params.close()
+                }
             }, "__vnClearTimeout")
 
             // setInterval(fn, delay) -> timerId
             v8.registerJavaMethod(JavaCallback { _, params ->
-                val timerId = nextTimerId++
-                val delayMs = if (params.length() > 1) params.getDouble(1).toLong() else 0L
+                try {
+                    val timerId = nextTimerId++
+                    val delayMs = if (params.length() > 1) params.getDouble(1).toLong() else 0L
 
-                fun scheduleNext() {
-                    mainHandler.postDelayed({
-                        runtime.runOnJsThread {
-                            try {
-                                val active = v8.executeBooleanScript(
-                                    "!!__vnIntervalActive_$timerId"
-                                )
-                                if (active) {
-                                    v8.executeVoidScript(
-                                        "if(typeof __vnIntervalCb_$timerId==='function')" +
-                                        "__vnIntervalCb_$timerId()"
+                    fun scheduleNext() {
+                        val runnable = Runnable {
+                            runtime.runOnJsThread {
+                                try {
+                                    val active = v8.executeBooleanScript(
+                                        "!!__vnIntervalActive_$timerId"
                                     )
-                                    scheduleNext()
+                                    if (active) {
+                                        v8.executeVoidScript(
+                                            "if(typeof __vnIntervalCb_$timerId==='function')" +
+                                            "__vnIntervalCb_$timerId()"
+                                        )
+                                        scheduleNext()
+                                    } else {
+                                        timers.remove(timerId)
+                                    }
+                                } catch (e: Exception) {
+                                    Log.e(TAG, "Interval callback error", e)
                                 }
-                            } catch (e: Exception) {
-                                Log.e(TAG, "Interval callback error", e)
                             }
                         }
-                    }, delayMs.coerceAtLeast(1L))
+                        timers[timerId] = runnable
+                        mainHandler.postDelayed(runnable, delayMs.coerceAtLeast(1L))
+                    }
+                    scheduleNext()
+                    return@JavaCallback timerId
+                } finally {
+                    params.close()
                 }
-                scheduleNext()
-                return@JavaCallback timerId
             }, "__vnSetInterval")
 
             v8.registerJavaMethod(JavaVoidCallback { _, params ->
-                val id = params.getInteger(0)
-                v8.executeVoidScript("__vnIntervalActive_$id = false; delete __vnIntervalCb_$id")
+                try {
+                    val id = params.getInteger(0)
+                    timers.remove(id)?.let { mainHandler.removeCallbacks(it) }
+                    v8.executeVoidScript("__vnIntervalActive_$id = false; delete __vnIntervalCb_$id")
+                } finally {
+                    params.close()
+                }
             }, "__vnClearInterval")
 
             // Expose standard names via JS wrapper
@@ -188,18 +235,28 @@ object JSPolyfills {
             val v8 = runtime.v8() ?: return@runOnJsThread
 
             v8.registerJavaMethod(JavaCallback { _, params ->
-                val rafId = nextRafId++
+                try {
+                    val rafId = nextRafId++
+                    rafCallbacks[rafId] = true
 
-                if (!rafChoreographerPosted) {
-                    rafChoreographerPosted = true
-                    postRAFChoreographer(runtime)
+                    if (!rafChoreographerPosted) {
+                        rafChoreographerPosted = true
+                        postRAFChoreographer(runtime)
+                    }
+                    return@JavaCallback rafId
+                } finally {
+                    params.close()
                 }
-                return@JavaCallback rafId
             }, "__vnRequestRAF")
 
             v8.registerJavaMethod(JavaVoidCallback { _, params ->
-                val id = params.getInteger(0)
-                v8.executeVoidScript("delete __vnRafCb_$id")
+                try {
+                    val id = params.getInteger(0)
+                    rafCallbacks.remove(id)
+                    v8.executeVoidScript("delete __vnRafCb_$id")
+                } finally {
+                    params.close()
+                }
             }, "__vnCancelRAF")
 
             v8.executeVoidScript("""
@@ -251,8 +308,12 @@ object JSPolyfills {
         runtime.runOnJsThread {
             val v8 = runtime.v8() ?: return@runOnJsThread
             v8.executeVoidScript("var performance = {};")
-            v8.registerJavaMethod(JavaCallback { _, _ ->
-                return@JavaCallback (System.currentTimeMillis() - runtime.startTimeMs).toDouble()
+            v8.registerJavaMethod(JavaCallback { _, params ->
+                try {
+                    return@JavaCallback (System.currentTimeMillis() - runtime.startTimeMs).toDouble()
+                } finally {
+                    params.close()
+                }
             }, "__vnPerfNow")
             v8.executeVoidScript("performance.now = function(){ return __vnPerfNow(); };")
         }
@@ -280,9 +341,16 @@ object JSPolyfills {
 
             // __vnFetch(url, optsJson, requestId) — requestId is echoed back to JS callbacks
             v8.registerJavaMethod(JavaVoidCallback { _, params ->
-                val url = params.getString(0)
-                val optsJson = if (params.length() > 1 && params.getType(1) == 4) params.getString(1) else "{}"
-                val requestId = if (params.length() > 2) params.getDouble(2).toInt() else 0
+                val url: String
+                val optsJson: String
+                val requestId: Int
+                try {
+                    url = params.getString(0)
+                    optsJson = if (params.length() > 1 && params.getType(1) == 4) params.getString(1) else "{}"
+                    requestId = if (params.length() > 2) params.getDouble(2).toInt() else 0
+                } finally {
+                    params.close()
+                }
                 val opts = try { JSONObject(optsJson) } catch (e: Exception) { JSONObject() }
 
                 val method = opts.optString("method", "GET").uppercase()

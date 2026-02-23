@@ -6,7 +6,7 @@ import { runCommand } from './commands/run.js'
 
 program
   .name('vue-native')
-  .description('Vue Native — build native iOS apps with Vue.js')
+  .description('Vue Native — build native iOS and Android apps with Vue.js')
   .version('0.1.0')
 
 program.addCommand(createCommand)

@@ -232,7 +232,11 @@ class NativeBridgeImpl {
     const key = `${nodeId}:${eventName}`
     const handler = this.eventHandlers.get(key)
     if (handler) {
-      handler(payload)
+      try {
+        handler(payload)
+      } catch (err) {
+        console.error(`[VueNative] Error in event handler "${eventName}" on node ${nodeId}:`, err)
+      }
     } else if (__DEV__) {
       console.warn(
         `[VueNative] No handler registered for event "${eventName}" on node ${nodeId}`
@@ -344,7 +348,13 @@ class NativeBridgeImpl {
     }
     const handlers = this.globalEventHandlers.get(eventName)
     if (handlers) {
-      handlers.forEach(h => h(payload))
+      handlers.forEach(h => {
+        try {
+          h(payload)
+        } catch (err) {
+          console.error(`[VueNative] Error in global event handler "${eventName}":`, err)
+        }
+      })
     }
   }
 
@@ -376,7 +386,14 @@ if (typeof (globalThis as any).__DEV__ === 'undefined') {
  */
 export const NativeBridge = new NativeBridgeImpl()
 
-// Register global entry points that Swift calls into
+// Register global entry points that Swift/Kotlin calls into
 ;(globalThis as any).__VN_handleEvent = NativeBridge.handleNativeEvent.bind(NativeBridge)
 ;(globalThis as any).__VN_resolveCallback = NativeBridge.resolveCallback.bind(NativeBridge)
 ;(globalThis as any).__VN_handleGlobalEvent = NativeBridge.handleGlobalEvent.bind(NativeBridge)
+
+// Teardown function called by native before hot reload to reset all JS state
+import { resetNodeId } from './node'
+;(globalThis as any).__VN_teardown = () => {
+  NativeBridge.reset()
+  resetNodeId()
+}

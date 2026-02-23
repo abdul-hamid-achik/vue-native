@@ -37,3 +37,5 @@ export type { HttpRequestConfig, HttpResponse } from './useHttp'
 
 export { useColorScheme } from './useColorScheme'
 export type { ColorScheme } from './useColorScheme'
+
+export { useBackHandler } from './useBackHandler'

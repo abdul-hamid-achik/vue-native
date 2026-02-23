@@ -4,6 +4,8 @@ A virtualized scrollable list backed by `UITableView` on iOS and `RecyclerView` 
 
 ## Usage
 
+VList uses a `:data` prop and an `#item` slot to render each row. Do **not** use `v-for` inside VList — the native virtualization engine manages which rows are rendered.
+
 ```vue
 <script setup>
 import { ref } from '@vue-native/runtime'
@@ -16,14 +18,16 @@ const items = ref([
 </script>
 
 <template>
-  <VList :style="{ flex: 1 }">
-    <VView
-      v-for="item in items"
-      :key="item.id"
-      :style="{ padding: 16, borderBottomWidth: 1, borderBottomColor: '#eee' }"
-    >
-      <VText>{{ item.title }}</VText>
-    </VView>
+  <VList
+    :data="items"
+    :keyExtractor="item => item.id"
+    :style="{ flex: 1 }"
+  >
+    <template #item="{ item }">
+      <VView :style="{ padding: 16, borderBottomWidth: 1, borderBottomColor: '#eee' }">
+        <VText>{{ item.title }}</VText>
+      </VView>
+    </template>
   </VList>
 </template>
 ```
@@ -32,6 +36,8 @@ const items = ref([
 
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
+| `data` | `Array` | **required** | The array of items to render |
+| `keyExtractor` | `(item: T) => string \| number` | — | Function that returns a unique key for each item |
 | `style` | `StyleProp` | — | Container styles |
 | `estimatedItemHeight` | `number` | `44` | Estimated row height (improves scroll perf) |
 | `showsScrollIndicator` | `boolean` | `true` | Show/hide the scroll bar |
@@ -57,18 +63,25 @@ async function loadMore() {
   if (loading.value) return
   loading.value = true
   // fetch more items…
-  items.value.push(…newItems)
+  items.value.push(...newItems)
   loading.value = false
 }
 </script>
 
 <template>
-  <VList :style="{ flex: 1 }" @endReached="loadMore">
-    <VView v-for="item in items" :key="item.id" :style="{ padding: 16 }">
-      <VText>Item {{ item.id }}</VText>
-    </VView>
-    <VActivityIndicator v-if="loading" />
+  <VList
+    :data="items"
+    :keyExtractor="item => item.id"
+    :style="{ flex: 1 }"
+    @endReached="loadMore"
+  >
+    <template #item="{ item }">
+      <VView :style="{ padding: 16 }">
+        <VText>Item {{ item.id }}</VText>
+      </VView>
+    </template>
   </VList>
+  <VActivityIndicator v-if="loading" />
 </template>
 ```
 

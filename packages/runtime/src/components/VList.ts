@@ -49,6 +49,11 @@ export const VList = defineComponent({
       type: Boolean,
       default: true,
     },
+    /** Render list horizontally. Default: false */
+    horizontal: {
+      type: Boolean,
+      default: false,
+    },
     style: {
       type: Object,
       default: () => ({}),
@@ -61,17 +66,26 @@ export const VList = defineComponent({
     return () => {
       const items = props.data ?? []
 
-      return h(
-        'VList',
-        {
-          style: props.style,
-          estimatedItemHeight: props.estimatedItemHeight,
-          showsScrollIndicator: props.showsScrollIndicator,
-          bounces: props.bounces,
-          onScroll: (e: { x: number; y: number }) => emit('scroll', e),
-          onEndReached: () => emit('endReached'),
-        },
-        items.map((item, index) =>
+      const children: any[] = []
+
+      // Header slot
+      if (slots.header) {
+        children.push(
+          h('VView', { key: '__header__', style: { flexShrink: 0 } }, slots.header())
+        )
+      }
+
+      // Empty state slot (shown when data is empty)
+      if (items.length === 0 && slots.empty) {
+        children.push(
+          h('VView', { key: '__empty__', style: { flexShrink: 0 } }, slots.empty())
+        )
+      }
+
+      // Item slots
+      for (let index = 0; index < items.length; index++) {
+        const item = items[index]
+        children.push(
           h(
             'VView',
             {
@@ -81,6 +95,27 @@ export const VList = defineComponent({
             slots.item?.({ item, index }) ?? []
           )
         )
+      }
+
+      // Footer slot
+      if (slots.footer) {
+        children.push(
+          h('VView', { key: '__footer__', style: { flexShrink: 0 } }, slots.footer())
+        )
+      }
+
+      return h(
+        'VList',
+        {
+          style: props.style,
+          estimatedItemHeight: props.estimatedItemHeight,
+          showsScrollIndicator: props.showsScrollIndicator,
+          bounces: props.bounces,
+          horizontal: props.horizontal,
+          onScroll: (e: { x: number; y: number }) => emit('scroll', e),
+          onEndReached: () => emit('endReached'),
+        },
+        children,
       )
     }
   },

@@ -17,5 +17,16 @@ declare interface Console {
 }
 declare var console: Console
 
+// Timer functions polyfilled by JSPolyfills.swift / JSPolyfills.kt
+declare function setTimeout(cb: (...args: any[]) => void, ms?: number): number
+declare function clearTimeout(id: number | undefined): void
+declare function setInterval(cb: (...args: any[]) => void, ms?: number): number
+declare function clearInterval(id: number | undefined): void
+declare function requestAnimationFrame(cb: (ts: number) => void): number
+declare function cancelAnimationFrame(id: number): void
+
+// __DEV__ is a compile-time constant replaced by the Vite plugin
+declare const __DEV__: boolean
+
 // process.env is used only for the __DEV__ fallback; not present in JSC
 declare var process: { env: { NODE_ENV?: string } } | undefined

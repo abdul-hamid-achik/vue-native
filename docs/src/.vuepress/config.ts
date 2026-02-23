@@ -15,7 +15,7 @@ export default defineUserConfig({
 
   theme: defaultTheme({
     logo: '/logo.svg',
-    repo: 'https://github.com/your-org/vue-native',
+    repo: 'https://github.com/AnatoleMusic/vue-native',
     docsDir: 'docs/src',
 
     navbar: [
@@ -151,6 +151,12 @@ export default defineUserConfig({
           text: 'Permissions',
           children: [
             '/composables/usePermissions.md',
+          ],
+        },
+        {
+          text: 'Navigation',
+          children: [
+            '/composables/useBackHandler.md',
           ],
         },
         {

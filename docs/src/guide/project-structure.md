@@ -27,13 +27,13 @@ my-app/
 
 ### `app/main.ts`
 
-Creates the Vue app and mounts it to the native root view:
+Creates the Vue app and starts the native renderer:
 
 ```ts
 import { createApp } from '@vue-native/runtime'
 import App from './App.vue'
 
-createApp(App).mount('#app')
+createApp(App).start()
 ```
 
 ### `vite.config.ts`

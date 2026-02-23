@@ -8,7 +8,6 @@ import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.util.Log
 import androidx.appcompat.app.AppCompatActivity
-import org.json.JSONObject
 
 /**
  * Base Activity class for all Vue Native apps.
@@ -73,42 +72,9 @@ abstract class VueNativeActivity : AppCompatActivity() {
         // Provide Activity reference for modules that need it (e.g. PermissionsModule)
         PermissionsModule.setActivity(this)
 
-        // Wire up resolveCallback for async module calls
-        wireCallbackResolution()
-
         // Initialize JS engine then load bundle
         runtime.initialize {
             loadBundle()
-        }
-    }
-
-    private fun wireCallbackResolution() {
-        runtime.bridge.onFireEvent = { nodeId, eventName, payloadJson ->
-            if (nodeId == -1 && eventName == "__callback__") {
-                try {
-                    val obj = JSONObject(payloadJson)
-                    val cbId = obj.getInt("callbackId")
-                    val result = if (obj.isNull("result")) "null" else obj.get("result").toString()
-                    val error  = if (obj.isNull("error"))  "null" else "\"${obj.getString("error").replace("\"","\\\"")}\""
-                    runtime.executeVoidScript(
-                        "if(typeof __VN_resolveCallback==='function')" +
-                        "__VN_resolveCallback($cbId,$result,$error)"
-                    )
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error resolving callback: ${e.message}")
-                }
-            } else {
-                runtime.executeVoidScript(
-                    "if(typeof __VN_handleEvent==='function')" +
-                    "__VN_handleEvent($nodeId,\"$eventName\",$payloadJson)"
-                )
-            }
-        }
-        runtime.bridge.onDispatchGlobalEvent = { eventName, payloadJson ->
-            runtime.executeVoidScript(
-                "if(typeof __VN_handleGlobalEvent==='function')" +
-                "__VN_handleGlobalEvent(\"$eventName\",${JSONObject.quote(payloadJson)})"
-            )
         }
     }
 
@@ -162,10 +128,10 @@ abstract class VueNativeActivity : AppCompatActivity() {
 
     @Suppress("DEPRECATION")
     override fun onBackPressed() {
+        // Let JS handle back navigation — do not call super.onBackPressed()
         runtime.executeVoidScript(
             "if(typeof __VN_handleGlobalEvent==='function')" +
-            "__VN_handleGlobalEvent('android:back','{}')"
+            "__VN_handleGlobalEvent('hardware:backPress','{}')"
         )
-        super.onBackPressed()
     }
 }

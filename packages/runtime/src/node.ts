@@ -12,11 +12,28 @@ export interface NativeNode {
 
 let nextNodeId = 1
 
+/** Maximum safe node ID for 32-bit signed integer (Java/Kotlin int, Swift Int32) */
+const MAX_NODE_ID = 2_147_483_647
+
 /**
- * Reset the node ID counter. Used for testing purposes only.
+ * Reset the node ID counter. Used for testing and hot reload teardown.
  */
 export function resetNodeId(): void {
   nextNodeId = 1
+}
+
+/**
+ * Get the next node ID, wrapping around at MAX_NODE_ID to prevent overflow
+ * on platforms using 32-bit integers for node IDs.
+ */
+function getNextNodeId(): number {
+  const id = nextNodeId
+  if (nextNodeId >= MAX_NODE_ID) {
+    nextNodeId = 1
+  } else {
+    nextNodeId++
+  }
+  return id
 }
 
 /**
@@ -27,7 +44,7 @@ export function resetNodeId(): void {
  */
 export function createNativeNode(type: string): NativeNode {
   const node: NativeNode = {
-    id: nextNodeId++,
+    id: getNextNodeId(),
     type,
     props: {},
     children: [],
@@ -47,7 +64,7 @@ export function createNativeNode(type: string): NativeNode {
  */
 export function createTextNode(text: string): NativeNode {
   const node: NativeNode = {
-    id: nextNodeId++,
+    id: getNextNodeId(),
     type: '__TEXT__',
     props: {},
     children: [],
@@ -65,7 +82,7 @@ export function createTextNode(text: string): NativeNode {
  */
 export function createCommentNode(text: string): NativeNode {
   const node: NativeNode = {
-    id: nextNodeId++,
+    id: getNextNodeId(),
     type: '__COMMENT__',
     props: {},
     children: [],

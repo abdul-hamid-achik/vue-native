@@ -109,6 +109,27 @@ public final class NativeBridge {
                 NSLog("[VueNative JS] \(message.toString() ?? "")")
             }
             context.setObject(log, forKeyedSubscript: "__VN_log" as NSString)
+
+            // Register __VN_handleError for JS error reporting
+            // Called from JS with a JSON-encoded string containing error info
+            // (message, stack, componentName).
+            let handleError: @convention(block) (JSValue) -> Void = { errorInfoValue in
+                let jsonString = errorInfoValue.toString() ?? "{}"
+                NSLog("[VueNative Error] %@", jsonString)
+
+                // Try to extract structured fields for clearer logging
+                if let data = jsonString.data(using: .utf8),
+                   let info = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                    let message = info["message"] as? String ?? "Unknown error"
+                    let stack = info["stack"] as? String ?? ""
+                    let componentName = info["componentName"] as? String ?? "unknown"
+                    NSLog("[VueNative Error] Component: %@, Message: %@", componentName, message)
+                    if !stack.isEmpty {
+                        NSLog("[VueNative Error] Stack: %@", stack)
+                    }
+                }
+            }
+            context.setObject(handleError, forKeyedSubscript: "__VN_handleError" as NSString)
         }
 
         // Register all native modules
@@ -707,8 +728,34 @@ public final class NativeBridge {
             }
             context.setObject(log, forKeyedSubscript: "__VN_log" as NSString)
 
+            let handleError: @convention(block) (JSValue) -> Void = { errorInfoValue in
+                let jsonString = errorInfoValue.toString() ?? "{}"
+                NSLog("[VueNative Error] %@", jsonString)
+
+                if let data = jsonString.data(using: .utf8),
+                   let info = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                    let message = info["message"] as? String ?? "Unknown error"
+                    let stack = info["stack"] as? String ?? ""
+                    let componentName = info["componentName"] as? String ?? "unknown"
+                    NSLog("[VueNative Error] Component: %@, Message: %@", componentName, message)
+                    if !stack.isEmpty {
+                        NSLog("[VueNative Error] Stack: %@", stack)
+                    }
+                }
+            }
+            context.setObject(handleError, forKeyedSubscript: "__VN_handleError" as NSString)
+
             NSLog("[VueNative Bridge] reloadWithBundle: bridge re-registered on new context")
         }
+    }
+
+    // MARK: - Memory Warning
+
+    /// Handle a system memory warning by dispatching a global event to JS.
+    /// Call this from your UIApplicationDelegate's `applicationDidReceiveMemoryWarning`
+    /// or from `UIViewController.didReceiveMemoryWarning()`.
+    public func handleMemoryWarning() {
+        dispatchGlobalEvent("memory:warning")
     }
 
     // MARK: - Cleanup

@@ -198,6 +198,30 @@ object StyleEngine {
                 (view as? FlexboxLayout)?.columnGap = px
             }
 
+            // --- Position (absolute) ---
+            "position" -> {
+                view.setTag(TAG_POSITION, value?.toString())
+                if (value == "absolute") {
+                    applyAbsolutePosition(view, ctx)
+                }
+            }
+            "top" -> {
+                view.setTag(TAG_POSITION_TOP, toFloat(value, Float.NaN))
+                if (view.getTag(TAG_POSITION) == "absolute") applyAbsolutePosition(view, ctx)
+            }
+            "left" -> {
+                view.setTag(TAG_POSITION_LEFT, toFloat(value, Float.NaN))
+                if (view.getTag(TAG_POSITION) == "absolute") applyAbsolutePosition(view, ctx)
+            }
+            "right" -> {
+                view.setTag(TAG_POSITION_RIGHT, toFloat(value, Float.NaN))
+                if (view.getTag(TAG_POSITION) == "absolute") applyAbsolutePosition(view, ctx)
+            }
+            "bottom" -> {
+                view.setTag(TAG_POSITION_BOTTOM, toFloat(value, Float.NaN))
+                if (view.getTag(TAG_POSITION) == "absolute") applyAbsolutePosition(view, ctx)
+            }
+
             // --- Elevation / Shadow ---
             "elevation" -> {
                 view.elevation = dpToPx(ctx, toFloat(value, 0f))
@@ -633,6 +657,45 @@ object StyleEngine {
         view.scaleY = scaleY
         view.translationX = translateX
         view.translationY = translateY
+    }
+
+    // -- Absolute positioning helpers ---------------------------------------------
+
+    /**
+     * Apply absolute positioning to a view using translationX/translationY.
+     * The view is positioned relative to its parent using top/left/right/bottom offsets.
+     * Must be called after the view is attached to a parent, or deferred via View.post().
+     */
+    private fun applyAbsolutePosition(view: View, ctx: Context) {
+        // Defer until after layout so parent dimensions are available
+        view.post {
+            val parent = view.parent as? ViewGroup ?: return@post
+
+            val topVal = view.getTag(TAG_POSITION_TOP) as? Float ?: Float.NaN
+            val leftVal = view.getTag(TAG_POSITION_LEFT) as? Float ?: Float.NaN
+            val rightVal = view.getTag(TAG_POSITION_RIGHT) as? Float ?: Float.NaN
+            val bottomVal = view.getTag(TAG_POSITION_BOTTOM) as? Float ?: Float.NaN
+
+            // Calculate translation relative to where the FlexboxLayout placed this view
+            if (!topVal.isNaN()) {
+                val targetY = dpToPx(ctx, topVal)
+                view.translationY = targetY - view.top
+            } else if (!bottomVal.isNaN()) {
+                val targetY = parent.height - view.height - dpToPx(ctx, bottomVal)
+                view.translationY = targetY - view.top
+            }
+
+            if (!leftVal.isNaN()) {
+                val targetX = dpToPx(ctx, leftVal)
+                view.translationX = targetX - view.left
+            } else if (!rightVal.isNaN()) {
+                val targetX = parent.width - view.width - dpToPx(ctx, rightVal)
+                view.translationX = targetX - view.left
+            }
+
+            // Bring absolute-positioned views to the front
+            view.bringToFront()
+        }
     }
 
     /** Parse an angle string into degrees. Supports "45deg" and "1.5rad". */

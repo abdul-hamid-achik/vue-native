@@ -93,9 +93,24 @@ class JSRuntime(private val context: Context) {
                 JSPolyfills.register(this)
                 // Register __VN_flushOperations — JS calls this to send batched ops to native
                 v8?.registerJavaMethod(JavaVoidCallback { _, params ->
-                    val json = if (params.length() > 0) params.getString(0) else "[]"
-                    bridge.processOperations(json)
+                    try {
+                        val json = if (params.length() > 0) params.getString(0) else "[]"
+                        bridge.processOperations(json)
+                    } finally {
+                        params.close()
+                    }
                 }, "__VN_flushOperations")
+
+                // Register __VN_handleError — JS calls this to report errors to native
+                v8?.registerJavaMethod(JavaVoidCallback { _, params ->
+                    try {
+                        val errorJson = if (params.length() > 0) params.getString(0) else "{}"
+                        Log.e(TAG, "[VueNative Error] $errorJson")
+                    } finally {
+                        params.close()
+                    }
+                }, "__VN_handleError")
+
                 isInitialized = true
                 Log.d(TAG, "V8 runtime initialized")
                 mainHandler.post { completion?.invoke() }
@@ -146,16 +161,20 @@ class JSRuntime(private val context: Context) {
     fun registerVoidCallback(name: String, callback: (Array<Any?>) -> Unit) {
         jsHandler.post {
             v8?.registerJavaMethod(JavaVoidCallback { _, params ->
-                val args = Array<Any?>(params.length()) { i ->
-                    when {
-                        params.getType(i) == 1 -> params.getInteger(i)  // INT
-                        params.getType(i) == 2 -> params.getDouble(i)   // DOUBLE
-                        params.getType(i) == 3 -> params.getBoolean(i)  // BOOLEAN
-                        params.getType(i) == 4 -> params.getString(i)   // STRING
-                        else -> null
+                try {
+                    val args = Array<Any?>(params.length()) { i ->
+                        when {
+                            params.getType(i) == 1 -> params.getInteger(i)  // INT
+                            params.getType(i) == 2 -> params.getDouble(i)   // DOUBLE
+                            params.getType(i) == 3 -> params.getBoolean(i)  // BOOLEAN
+                            params.getType(i) == 4 -> params.getString(i)   // STRING
+                            else -> null
+                        }
                     }
+                    callback(args)
+                } finally {
+                    params.close()
                 }
-                callback(args)
             }, name)
         }
     }

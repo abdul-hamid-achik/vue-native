@@ -44,12 +44,20 @@ export const VScrollView = defineComponent({
       default: false,
     },
     contentContainerStyle: Object,
+    /** Whether the pull-to-refresh indicator is active */
+    refreshing: {
+      type: Boolean,
+      default: false,
+    },
     style: Object,
   },
-  emits: ['scroll'],
+  emits: ['scroll', 'refresh'],
   setup(props, { slots, emit }) {
     const onScroll = (payload: any) => {
       emit('scroll', payload)
+    }
+    const onRefresh = () => {
+      emit('refresh')
     }
 
     return () =>
@@ -63,8 +71,10 @@ export const VScrollView = defineComponent({
           bounces: props.bounces,
           pagingEnabled: props.pagingEnabled,
           contentContainerStyle: props.contentContainerStyle,
+          refreshing: props.refreshing,
           style: props.style,
           onScroll,
+          onRefresh,
         },
         slots.default?.(),
       )

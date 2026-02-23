@@ -22,6 +22,29 @@ enum JSPolyfills {
     /// Next RAF ID counter. Accessed only from JS queue.
     private static var nextRafId: Int = 1
 
+    // MARK: - Reset
+
+    /// Reset all polyfill state. Call before creating a fresh JSContext on hot reload.
+    /// MUST be called on the JS queue.
+    static func reset() {
+        // Invalidate all active timers
+        for (_, timer) in timers {
+            timer.invalidate()
+        }
+        timers.removeAll()
+
+        // Clear RAF callbacks
+        rafCallbacks.removeAll()
+
+        // Reset counters
+        nextTimerId = 1
+        nextRafId = 1
+
+        // Stop the display link
+        displayLink?.invalidate()
+        displayLink = nil
+    }
+
     // MARK: - Registration
 
     /// Register all polyfills into the given JSRuntime's context.
@@ -44,29 +67,34 @@ enum JSPolyfills {
         // Create a console object
         context.evaluateScript("var console = {};")
 
-        let consoleLog: @convention(block) (JSValue) -> Void = { message in
-            let text = message.isUndefined ? "undefined" : (message.toString() ?? "null")
-            NSLog("[VueNative LOG] \(text)")
+        /// Helper: format all arguments passed from JS into a single space-separated string.
+        func formatArgs() -> String {
+            guard let args = JSContext.currentArguments() as? [JSValue], !args.isEmpty else {
+                return ""
+            }
+            return args.map { value in
+                value.isUndefined ? "undefined" : (value.toString() ?? "null")
+            }.joined(separator: " ")
         }
 
-        let consoleWarn: @convention(block) (JSValue) -> Void = { message in
-            let text = message.isUndefined ? "undefined" : (message.toString() ?? "null")
-            NSLog("[VueNative WARN] \(text)")
+        let consoleLog: @convention(block) () -> Void = {
+            NSLog("[VueNative LOG] %@", formatArgs())
         }
 
-        let consoleError: @convention(block) (JSValue) -> Void = { message in
-            let text = message.isUndefined ? "undefined" : (message.toString() ?? "null")
-            NSLog("[VueNative ERROR] \(text)")
+        let consoleWarn: @convention(block) () -> Void = {
+            NSLog("[VueNative WARN] %@", formatArgs())
         }
 
-        let consoleDebug: @convention(block) (JSValue) -> Void = { message in
-            let text = message.isUndefined ? "undefined" : (message.toString() ?? "null")
-            NSLog("[VueNative DEBUG] \(text)")
+        let consoleError: @convention(block) () -> Void = {
+            NSLog("[VueNative ERROR] %@", formatArgs())
         }
 
-        let consoleInfo: @convention(block) (JSValue) -> Void = { message in
-            let text = message.isUndefined ? "undefined" : (message.toString() ?? "null")
-            NSLog("[VueNative INFO] \(text)")
+        let consoleDebug: @convention(block) () -> Void = {
+            NSLog("[VueNative DEBUG] %@", formatArgs())
+        }
+
+        let consoleInfo: @convention(block) () -> Void = {
+            NSLog("[VueNative INFO] %@", formatArgs())
         }
 
         let consoleObj = context.objectForKeyedSubscript("console")!

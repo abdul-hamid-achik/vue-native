@@ -14,6 +14,11 @@ object Tags {
     const val SHADOW_RADIUS = 0x7F_FF_0015
     const val SHADOW_OFFSET_X = 0x7F_FF_0016
     const val SHADOW_OFFSET_Y = 0x7F_FF_0017
+    const val POSITION       = 0x7F_FF_0020
+    const val POSITION_TOP   = 0x7F_FF_0021
+    const val POSITION_LEFT  = 0x7F_FF_0022
+    const val POSITION_RIGHT = 0x7F_FF_0023
+    const val POSITION_BOTTOM= 0x7F_FF_0024
 }
 
 /** Alias used throughout the codebase */
@@ -29,3 +34,8 @@ const val TAG_SHADOW_OPACITY  = Tags.SHADOW_OPACITY
 const val TAG_SHADOW_RADIUS   = Tags.SHADOW_RADIUS
 const val TAG_SHADOW_OFFSET_X = Tags.SHADOW_OFFSET_X
 const val TAG_SHADOW_OFFSET_Y = Tags.SHADOW_OFFSET_Y
+const val TAG_POSITION        = Tags.POSITION
+const val TAG_POSITION_TOP    = Tags.POSITION_TOP
+const val TAG_POSITION_LEFT   = Tags.POSITION_LEFT
+const val TAG_POSITION_RIGHT  = Tags.POSITION_RIGHT
+const val TAG_POSITION_BOTTOM = Tags.POSITION_BOTTOM

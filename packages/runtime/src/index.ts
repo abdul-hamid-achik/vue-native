@@ -81,6 +81,32 @@ export function createApp(rootComponent: Component, rootProps?: Record<string, a
   app.component('VActionSheet', VActionSheet)
   app.directive('show', vShow)
 
+  // Global error handler — catches unhandled errors in components,
+  // formats them, and forwards to native for error overlay display.
+  app.config.errorHandler = (err: unknown, instance, info) => {
+    const error = err instanceof Error ? err : new Error(String(err))
+    const componentName = instance?.$options?.name || instance?.$.type?.name || 'Anonymous'
+    const errorInfo = JSON.stringify({
+      message: error.message,
+      stack: error.stack || '',
+      componentName,
+      info,
+    })
+    console.error(`[VueNative] Error in ${componentName}: ${error.message}`)
+    const handleError = (globalThis as any).__VN_handleError
+    if (typeof handleError === 'function') {
+      handleError(errorInfo)
+    }
+  }
+
+  // Dev-only warning handler
+  if (typeof __DEV__ !== 'undefined' && __DEV__) {
+    app.config.warnHandler = (msg, instance, trace) => {
+      const componentName = instance?.$options?.name || instance?.$.type?.name || 'Anonymous'
+      console.warn(`[VueNative] Warning in ${componentName}: ${msg}`)
+    }
+  }
+
   /**
    * Create a virtual root node, register it with the native bridge,
    * and mount the Vue application tree onto it.
@@ -145,7 +171,7 @@ export {
   useHaptics, useAsyncStorage, useClipboard, useDeviceInfo, useKeyboard,
   useAnimation, useNetwork, useAppState, useLinking, useShare, usePermissions,
   useGeolocation, useCamera, useNotifications, useBiometry, useHttp,
-  useColorScheme,
+  useColorScheme, useBackHandler,
 } from './composables'
 export type {
   TimingOptions, SpringOptions, NetworkState, ConnectionType, AppStateStatus,

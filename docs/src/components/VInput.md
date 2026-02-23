@@ -25,7 +25,6 @@ const text = ref('')
 |------|------|---------|-------------|
 | `modelValue` / `v-model` | `string` | `''` | Input value |
 | `placeholder` | `string` | — | Placeholder text |
-| `placeholderColor` | `string` | `'#999'` | Placeholder text color |
 | `keyboardType` | `KeyboardType` | `'default'` | Keyboard type |
 | `secureTextEntry` | `boolean` | `false` | Password field (hides text) |
 | `autoCapitalize` | `'none'` \| `'sentences'` \| `'words'` \| `'characters'` | `'sentences'` | Auto-capitalization |
@@ -33,7 +32,6 @@ const text = ref('')
 | `returnKeyType` | `'done'` \| `'go'` \| `'next'` \| `'search'` \| `'send'` | `'done'` | Return key label |
 | `multiline` | `boolean` | `false` | Multi-line text input |
 | `maxLength` | `number` | — | Maximum character count |
-| `editable` | `boolean` | `true` | Whether the input is editable |
 | `style` | `StyleProp` | — | Layout + appearance styles |
 
 ### `keyboardType` values

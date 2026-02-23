@@ -20,12 +20,12 @@ import App from './App.vue'
 import HomeView from './views/HomeView.vue'
 import DetailView from './views/DetailView.vue'
 
-const { router } = createRouter([
+const router = createRouter([
   { name: 'home', component: HomeView },
   { name: 'detail', component: DetailView },
 ])
 
-createApp(App).use(router).mount('#app')
+createApp(App).use(router).start()
 ```
 
 ```vue
