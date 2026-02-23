@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { createStyleSheet } from '@thelacanians/runtime'
+import { createStyleSheet } from '@thelacanians/vue-native-runtime'
 
 // --- State ---
 

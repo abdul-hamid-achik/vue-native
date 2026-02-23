@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
-import { createStyleSheet, useAsyncStorage, useColorScheme, useAnimation } from '@thelacanians/runtime'
-import { useRouter } from '@thelacanians/navigation'
+import { createStyleSheet, useAsyncStorage, useColorScheme, useAnimation } from '@thelacanians/vue-native-runtime'
+import { useRouter } from '@thelacanians/vue-native-navigation'
 
 interface Task {
   id: number

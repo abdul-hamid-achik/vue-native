@@ -27,12 +27,12 @@ export const createCommand = new Command('create')
           typecheck: 'tsc --noEmit',
         },
         dependencies: {
-          '@thelacanians/runtime': '^0.1.0',
-          '@thelacanians/navigation': '^0.1.0',
+          '@thelacanians/vue-native-runtime': '^0.1.0',
+          '@thelacanians/vue-native-navigation': '^0.1.0',
           'vue': '^3.5.0',
         },
         devDependencies: {
-          '@thelacanians/vite-plugin': '^0.1.0',
+          '@thelacanians/vue-native-vite-plugin': '^0.1.0',
           '@vitejs/plugin-vue': '^5.0.0',
           'vite': '^6.1.0',
           'typescript': '^5.7.0',
@@ -42,7 +42,7 @@ export const createCommand = new Command('create')
       // vite.config.ts
       await writeFile(join(dir, 'vite.config.ts'), `import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
-import vueNative from '@thelacanians/vite-plugin'
+import vueNative from '@thelacanians/vue-native-vite-plugin'
 
 export default defineConfig({
   plugins: [vue(), vueNative()],
@@ -65,7 +65,7 @@ export default defineConfig({
 
       // app/main.ts
       await writeFile(join(dir, 'app', 'main.ts'), `import { createApp } from 'vue'
-import { createRouter } from '@thelacanians/navigation'
+import { createRouter } from '@thelacanians/vue-native-navigation'
 import App from './App.vue'
 import Home from './pages/Home.vue'
 
@@ -86,7 +86,7 @@ app.start()
 </template>
 
 <script setup lang="ts">
-import { RouterView } from '@thelacanians/navigation'
+import { RouterView } from '@thelacanians/vue-native-navigation'
 </script>
 `)
 

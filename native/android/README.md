@@ -178,7 +178,7 @@ class MainActivity : VueNativeActivity() {
 
 From Vue/TypeScript:
 ```typescript
-import { NativeBridge } from '@thelacanians/runtime'
+import { NativeBridge } from '@thelacanians/vue-native-runtime'
 
 const result = await NativeBridge.invokeNativeModule('MyModule', 'doSomething', [])
 ```

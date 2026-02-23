@@ -1,4 +1,4 @@
-import { createApp } from '@thelacanians/runtime'
+import { createApp } from '@thelacanians/vue-native-runtime'
 import App from './App.vue'
 
 const app = createApp(App)

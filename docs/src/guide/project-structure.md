@@ -30,7 +30,7 @@ my-app/
 Creates the Vue app and starts the native renderer:
 
 ```ts
-import { createApp } from '@thelacanians/runtime'
+import { createApp } from '@thelacanians/vue-native-runtime'
 import App from './App.vue'
 
 createApp(App).start()
@@ -41,7 +41,7 @@ createApp(App).start()
 ```ts
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
-import vueNative from '@thelacanians/vite-plugin'
+import vueNative from '@thelacanians/vue-native-vite-plugin'
 
 export default defineConfig({
   plugins: [vue(), vueNative({ platform: 'ios' })],

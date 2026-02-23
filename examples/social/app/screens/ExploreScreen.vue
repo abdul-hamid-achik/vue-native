@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { createStyleSheet } from '@thelacanians/runtime'
+import { createStyleSheet } from '@thelacanians/vue-native-runtime'
 
 interface Photo {
   id: number

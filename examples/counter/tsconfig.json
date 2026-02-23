@@ -6,7 +6,7 @@
     "types": [],
     "paths": {
       "vue": ["../../packages/runtime/src"],
-      "@thelacanians/runtime": ["../../packages/runtime/src"]
+      "@thelacanians/vue-native-runtime": ["../../packages/runtime/src"]
     }
   },
   "include": ["app/**/*", "env.d.ts", "vite.config.ts"],

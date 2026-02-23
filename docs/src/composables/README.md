@@ -2,7 +2,7 @@
 
 Vue Native exposes native device capabilities as Vue 3 composables.
 
-All composables are exported from `@thelacanians/runtime`.
+All composables are exported from `@thelacanians/vue-native-runtime`.
 
 ## Device & System
 - [useNetwork](./useNetwork.md) — Network connectivity

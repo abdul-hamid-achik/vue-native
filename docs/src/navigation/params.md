@@ -10,7 +10,7 @@ router.push('profile', { userId: 123, username: 'alice' })
 
 ```vue
 <script setup>
-import { useRoute } from '@thelacanians/navigation'
+import { useRoute } from '@thelacanians/vue-native-navigation'
 
 const route = useRoute()
 const userId = route.params.userId     // 123

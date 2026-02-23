@@ -2,7 +2,7 @@
  * Built-in Vue Native components.
  *
  * These components are automatically registered when using createApp()
- * from @thelacanians/runtime, so they can be used directly in templates
+ * from @thelacanians/vue-native-runtime, so they can be used directly in templates
  * without explicit imports. They can also be imported individually for
  * use in render functions or JSX.
  */

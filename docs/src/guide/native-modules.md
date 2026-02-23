@@ -7,7 +7,7 @@ Native modules expose device capabilities to your Vue code via composables.
 ### Device & System
 
 ```ts
-import { useNetwork, useAppState, useColorScheme, useDeviceInfo } from '@thelacanians/runtime'
+import { useNetwork, useAppState, useColorScheme, useDeviceInfo } from '@thelacanians/vue-native-runtime'
 
 const { isConnected, connectionType } = useNetwork()
 const { state } = useAppState()          // 'active' | 'inactive' | 'background'
@@ -18,7 +18,7 @@ const { model, screenWidth, screenHeight } = useDeviceInfo()
 ### Storage
 
 ```ts
-import { useAsyncStorage } from '@thelacanians/runtime'
+import { useAsyncStorage } from '@thelacanians/vue-native-runtime'
 
 const { getItem, setItem, removeItem } = useAsyncStorage()
 
@@ -29,7 +29,7 @@ const value = await getItem('key')
 ### Sensors & Hardware
 
 ```ts
-import { useGeolocation, useBiometry, useHaptics } from '@thelacanians/runtime'
+import { useGeolocation, useBiometry, useHaptics } from '@thelacanians/vue-native-runtime'
 
 const { coords, getCurrentPosition } = useGeolocation()
 const { authenticate, getSupportedBiometry } = useBiometry()
@@ -39,7 +39,7 @@ const { vibrate } = useHaptics()
 ### Media
 
 ```ts
-import { useCamera } from '@thelacanians/runtime'
+import { useCamera } from '@thelacanians/vue-native-runtime'
 
 const { launchCamera, launchImageLibrary } = useCamera()
 ```
@@ -47,7 +47,7 @@ const { launchCamera, launchImageLibrary } = useCamera()
 ### Permissions
 
 ```ts
-import { usePermissions } from '@thelacanians/runtime'
+import { usePermissions } from '@thelacanians/vue-native-runtime'
 
 const { request, check } = usePermissions()
 const status = await request('camera')  // 'granted' | 'denied' | 'restricted'
@@ -56,7 +56,7 @@ const status = await request('camera')  // 'granted' | 'denied' | 'restricted'
 ### UI
 
 ```ts
-import { useKeyboard, useClipboard, useShare, useLinking, useAnimation, useHttp } from '@thelacanians/runtime'
+import { useKeyboard, useClipboard, useShare, useLinking, useAnimation, useHttp } from '@thelacanians/vue-native-runtime'
 
 const { isVisible, height } = useKeyboard()
 const { copy, paste } = useClipboard()
@@ -69,7 +69,7 @@ const http = useHttp({ baseURL: 'https://api.example.com' })
 ### Notifications
 
 ```ts
-import { useNotifications } from '@thelacanians/runtime'
+import { useNotifications } from '@thelacanians/vue-native-runtime'
 
 const { requestPermission, scheduleLocal, onNotification } = useNotifications()
 await scheduleLocal({ title: 'Reminder', body: 'Hello!', delay: 5 })

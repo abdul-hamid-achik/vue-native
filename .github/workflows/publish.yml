@@ -37,25 +37,25 @@ jobs:
       - name: Test
         run: bun run test
 
-      - name: Publish @thelacanians/runtime
+      - name: Publish @thelacanians/vue-native-runtime
         run: npm publish --access public --provenance
         working-directory: packages/runtime
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      - name: Publish @thelacanians/navigation
+      - name: Publish @thelacanians/vue-native-navigation
         run: npm publish --access public --provenance
         working-directory: packages/navigation
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      - name: Publish @thelacanians/vite-plugin
+      - name: Publish @thelacanians/vue-native-vite-plugin
         run: npm publish --access public --provenance
         working-directory: packages/vite-plugin
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      - name: Publish @thelacanians/cli
+      - name: Publish @thelacanians/vue-native-cli
         run: npm publish --access public --provenance
         working-directory: packages/cli
         env:

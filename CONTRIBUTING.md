@@ -22,10 +22,10 @@ bun run build
 
 ```
 packages/
-  runtime/       — Core renderer and bridge (@thelacanians/runtime)
-  navigation/    — Stack and tab navigation (@thelacanians/navigation)
-  vite-plugin/   — Build integration (@thelacanians/vite-plugin)
-  cli/           — Project scaffolding (@thelacanians/cli)
+  runtime/       — Core renderer and bridge (@thelacanians/vue-native-runtime)
+  navigation/    — Stack and tab navigation (@thelacanians/vue-native-navigation)
+  vite-plugin/   — Build integration (@thelacanians/vue-native-vite-plugin)
+  cli/           — Project scaffolding (@thelacanians/vue-native-cli)
 native/
   ios/VueNativeCore/    — Swift package (VueNativeCore) for iOS
   android/VueNativeCore/ — Kotlin library (VueNativeCore) for Android

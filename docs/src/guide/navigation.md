@@ -1,13 +1,13 @@
 # Navigation
 
-Vue Native includes stack-based navigation via `@thelacanians/navigation`.
+Vue Native includes stack-based navigation via `@thelacanians/vue-native-navigation`.
 
 ## Setup
 
 ```ts
 // app/main.ts
-import { createApp } from '@thelacanians/runtime'
-import { createRouter } from '@thelacanians/navigation'
+import { createApp } from '@thelacanians/vue-native-runtime'
+import { createRouter } from '@thelacanians/vue-native-navigation'
 import App from './App.vue'
 import HomeView from './views/HomeView.vue'
 import DetailView from './views/DetailView.vue'
@@ -34,7 +34,7 @@ createApp(App).use(router).start()
 ```vue
 <!-- HomeView.vue -->
 <script setup>
-import { useRouter } from '@thelacanians/navigation'
+import { useRouter } from '@thelacanians/vue-native-navigation'
 const router = useRouter()
 </script>
 
@@ -52,7 +52,7 @@ const router = useRouter()
 ```vue
 <!-- DetailView.vue -->
 <script setup>
-import { useRoute } from '@thelacanians/navigation'
+import { useRoute } from '@thelacanians/vue-native-navigation'
 const route = useRoute()
 // route.params.id === 42
 </script>

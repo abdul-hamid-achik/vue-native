@@ -6,7 +6,7 @@ Vue Native components are standard Vue 3 SFCs. Use the built-in native component
 
 ```vue
 <script setup lang="ts">
-import { ref } from '@thelacanians/runtime'
+import { ref } from '@thelacanians/vue-native-runtime'
 
 const count = ref(0)
 </script>
@@ -21,7 +21,7 @@ const count = ref(0)
 </template>
 
 <script>
-import { createStyleSheet } from '@thelacanians/runtime'
+import { createStyleSheet } from '@thelacanians/vue-native-runtime'
 
 const styles = createStyleSheet({
   container: { flex: 1, alignItems: 'center', justifyContent: 'center' },
@@ -35,7 +35,7 @@ const styles = createStyleSheet({
 
 ```ts
 // app/main.ts
-import { createApp } from '@thelacanians/runtime'
+import { createApp } from '@thelacanians/vue-native-runtime'
 import App from './App.vue'
 
 createApp(App).start()

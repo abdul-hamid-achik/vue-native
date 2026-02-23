@@ -1,21 +1,21 @@
 # Navigation
 
-Vue Native provides stack-based navigation via `@thelacanians/navigation`.
+Vue Native provides stack-based navigation via `@thelacanians/vue-native-navigation`.
 
 ## Install
 
 Navigation is included in the default project scaffold. To add it manually:
 
 ```bash
-bun add @thelacanians/navigation
+bun add @thelacanians/vue-native-navigation
 ```
 
 ## Quick start
 
 ```ts
 // app/main.ts
-import { createApp } from '@thelacanians/runtime'
-import { createRouter } from '@thelacanians/navigation'
+import { createApp } from '@thelacanians/vue-native-runtime'
+import { createRouter } from '@thelacanians/vue-native-navigation'
 import App from './App.vue'
 import HomeView from './views/HomeView.vue'
 import DetailView from './views/DetailView.vue'
@@ -38,7 +38,7 @@ createApp(App).use(router).start()
 ```vue
 <!-- HomeView.vue -->
 <script setup>
-import { useRouter } from '@thelacanians/navigation'
+import { useRouter } from '@thelacanians/vue-native-navigation'
 const router = useRouter()
 </script>
 

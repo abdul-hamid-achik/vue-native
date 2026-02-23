@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { createStyleSheet } from '@thelacanians/runtime'
-import { RouterView } from '@thelacanians/navigation'
+import { createStyleSheet } from '@thelacanians/vue-native-runtime'
+import { RouterView } from '@thelacanians/vue-native-navigation'
 
 const styles = createStyleSheet({
   container: { flex: 1 },

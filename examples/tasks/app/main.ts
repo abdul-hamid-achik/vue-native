@@ -1,5 +1,5 @@
-import { createApp } from '@thelacanians/runtime'
-import { createRouter } from '@thelacanians/navigation'
+import { createApp } from '@thelacanians/vue-native-runtime'
+import { createRouter } from '@thelacanians/vue-native-navigation'
 import App from './App.vue'
 import TaskListScreen from './screens/TaskListScreen.vue'
 import TaskDetailScreen from './screens/TaskDetailScreen.vue'
