@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 jobs:
   publish:
@@ -37,25 +38,25 @@ jobs:
         run: bun run test
 
       - name: Publish @thelacanians/runtime
-        run: npm publish --access public
+        run: npm publish --access public --provenance
         working-directory: packages/runtime
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish @thelacanians/navigation
-        run: npm publish --access public
+        run: npm publish --access public --provenance
         working-directory: packages/navigation
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish @thelacanians/vite-plugin
-        run: npm publish --access public
+        run: npm publish --access public --provenance
         working-directory: packages/vite-plugin
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish @thelacanians/cli
-        run: npm publish --access public
+        run: npm publish --access public --provenance
         working-directory: packages/cli
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
