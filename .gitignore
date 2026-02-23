@@ -29,5 +29,8 @@ Thumbs.db
 .env
 .env.local
 
+# Test coverage
+coverage/
+
 # vecgrep
 .vecgrep/

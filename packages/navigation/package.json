@@ -1,6 +1,17 @@
 {
   "name": "@vue-native/navigation",
   "version": "0.1.0",
+  "description": "Stack navigation for Vue Native apps",
+  "license": "MIT",
+  "author": "Vue Native Contributors",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/abdul-hamid-achik/vue-native",
+    "directory": "packages/navigation"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -16,7 +27,8 @@
   "scripts": {
     "build": "tsup src/index.ts --format esm,cjs --dts",
     "dev": "tsup src/index.ts --format esm,cjs --dts --watch",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
   },
   "dependencies": {
     "@vue/runtime-core": "^3.5.0",

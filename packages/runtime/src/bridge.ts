@@ -18,11 +18,6 @@
  * minimizing JS-to-native context switches.
  */
 
-// __DEV__ is a compile-time constant replaced by the Vite plugin.
-// This declaration makes TypeScript aware of it. At runtime without a bundler
-// (e.g. in tests), the fallback below ensures it exists on globalThis.
-declare const __DEV__: boolean
-
 export type EventCallback = (payload: any) => void
 
 export interface BridgeOperation {

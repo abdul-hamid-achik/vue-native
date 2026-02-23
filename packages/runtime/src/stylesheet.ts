@@ -120,9 +120,6 @@ export type StyleSheet<T extends Record<string, StyleProp>> = Readonly<{
   [K in keyof T]: Readonly<T[K]>
 }>
 
-// Declare __DEV__ global
-declare const __DEV__: boolean
-
 /**
  * Create a style sheet object. This is the recommended way to define styles
  * for Vue Native components.

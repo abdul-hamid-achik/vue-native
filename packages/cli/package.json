@@ -1,6 +1,17 @@
 {
   "name": "@vue-native/cli",
   "version": "0.1.0",
+  "description": "CLI for creating and running Vue Native apps",
+  "license": "MIT",
+  "author": "Vue Native Contributors",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/abdul-hamid-achik/vue-native",
+    "directory": "packages/cli"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "bin": {
     "vue-native": "./dist/cli.js"
@@ -10,9 +21,10 @@
   },
   "files": ["dist"],
   "scripts": {
-    "build": "tsup src/cli.ts --format esm --dts --banner.js '#!/usr/bin/env node'",
-    "dev": "tsup src/cli.ts --format esm --watch --banner.js '#!/usr/bin/env node'",
-    "typecheck": "tsc --noEmit"
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
   },
   "dependencies": {
     "commander": "^12.1.0",

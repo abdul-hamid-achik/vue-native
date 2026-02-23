@@ -64,7 +64,7 @@ export default defineConfig({
       }, null, 2))
 
       // app/main.ts
-      await writeFile(join(dir, 'app', 'main.ts'), `import { createApp } from 'vue-native'
+      await writeFile(join(dir, 'app', 'main.ts'), `import { createApp } from 'vue'
 import { createRouter } from '@vue-native/navigation'
 import App from './App.vue'
 import Home from './pages/Home.vue'
@@ -103,7 +103,7 @@ import { RouterView } from '@vue-native/navigation'
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import { createStyleSheet } from 'vue-native'
+import { createStyleSheet } from 'vue'
 
 const count = ref(0)
 
@@ -275,15 +275,18 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         guard let windowScene = scene as? UIWindowScene else { return }
 
         let window = UIWindow(windowScene: windowScene)
-
-        let bundlePath = Bundle.main.path(forResource: "vue-native-bundle", ofType: "js")
-        let viewController = VueNativeViewController(bundlePath: bundlePath)
-        viewController.devServerURL = "ws://localhost:3000/__vue_native_hmr__"
-
-        window.rootViewController = viewController
+        window.rootViewController = AppViewController()
         window.makeKeyAndVisible()
         self.window = window
     }
+}
+
+class AppViewController: VueNativeViewController {
+    override var bundleName: String { "vue-native-bundle" }
+
+    #if DEBUG
+    override var devServerURL: URL? { URL(string: "ws://localhost:8174") }
+    #endif
 }
 `)
 
@@ -299,7 +302,8 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
       // android/build.gradle.kts
       await writeFile(join(androidDir, 'build.gradle.kts'), `// Top-level build file
 plugins {
-    id("com.android.application") version "8.2.0" apply false
+    id("com.android.application") version "8.2.2" apply false
+    id("com.android.library") version "8.2.2" apply false
     id("org.jetbrains.kotlin.android") version "1.9.22" apply false
 }
 `)
@@ -312,7 +316,8 @@ plugins {
         gradlePluginPortal()
     }
 }
-dependencyResolution {
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
         google()
         mavenCentral()
@@ -403,7 +408,7 @@ class MainActivity : VueNativeActivity() {
     }
 
     override fun getDevServerUrl(): String? {
-        return "http://10.0.2.2:3000"
+        return "ws://10.0.2.2:8174"
     }
 }
 `)

@@ -1,6 +1,17 @@
 {
   "name": "@vue-native/vite-plugin",
   "version": "0.1.0",
+  "description": "Vite plugin for Vue Native — builds IIFE bundles for native runtimes",
+  "license": "MIT",
+  "author": "Vue Native Contributors",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/abdul-hamid-achik/vue-native",
+    "directory": "packages/vite-plugin"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",

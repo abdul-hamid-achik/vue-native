@@ -1,6 +1,17 @@
 {
   "name": "@vue-native/runtime",
   "version": "0.1.0",
+  "description": "Vue 3 custom renderer for native iOS and Android apps",
+  "license": "MIT",
+  "author": "Vue Native Contributors",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/abdul-hamid-achik/vue-native",
+    "directory": "packages/runtime"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",

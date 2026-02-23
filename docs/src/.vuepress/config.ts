@@ -15,7 +15,7 @@ export default defineUserConfig({
 
   theme: defaultTheme({
     logo: '/logo.svg',
-    repo: 'https://github.com/AnatoleMusic/vue-native',
+    repo: 'https://github.com/abdul-hamid-achik/vue-native',
     docsDir: 'docs/src',
 
     navbar: [
