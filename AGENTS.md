@@ -21,10 +21,10 @@ Vue SFC  →  Vue custom renderer  →  NativeBridge (TS)
 
 ```
 packages/
-  runtime/          @vue-native/runtime — renderer, bridge, components, composables
-  navigation/       @vue-native/navigation — createRouter, RouterView, useRouter
-  vite-plugin/      @vue-native/vite-plugin — Vite build config for native targets
-  cli/              @vue-native/cli — project scaffold + dev tooling
+  runtime/          @thelacanians/runtime — renderer, bridge, components, composables
+  navigation/       @thelacanians/navigation — createRouter, RouterView, useRouter
+  vite-plugin/      @thelacanians/vite-plugin — Vite build config for native targets
+  cli/              @thelacanians/cli — project scaffold + dev tooling
 native/
   ios/VueNativeCore/         Swift Package (iOS 16+, UIKit, JavaScriptCore, Yoga)
     Package.swift
@@ -160,7 +160,7 @@ cd docs && bun install && bun run dev
 | Passing J2V8 objects across threads (Android) | V8 objects are thread-local, crashes | Serialize to primitives on the JS thread before posting to main |
 | Using `reloadData()` on VList | Causes re-entrant layout loops | Use `insertRows`/`deleteRows`/`reloadRows` at specific index paths |
 | Using `WRAP_CONTENT` for percentage dims (Android) | Percentage sizing silently broken | Use `LayoutParams.widthPercent` / `heightPercent` |
-| Duplicate Vue instances | Two copies of Vue produce two reactivity systems | Ensure `@vue-native/runtime` re-exports from one `@vue/runtime-core` |
+| Duplicate Vue instances | Two copies of Vue produce two reactivity systems | Ensure `@thelacanians/runtime` re-exports from one `@vue/runtime-core` |
 | `FPercent(value:)` in FlexLayout (iOS) | Internal type, not public API | Use the postfix `%` operator: `50%` |
 | Removing `invokeNativeModule` timeout | Promise hangs forever if native never replies | The 30s timeout in `bridge.ts` is intentional |
 

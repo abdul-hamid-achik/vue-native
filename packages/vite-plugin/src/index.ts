@@ -1,9 +1,9 @@
 /**
- * @vue-native/vite-plugin — Vite plugin for building Vue Native applications.
+ * @thelacanians/vite-plugin — Vite plugin for building Vue Native applications.
  *
  * This plugin is used ALONGSIDE @vitejs/plugin-vue (not as a replacement).
  * It configures Vite to:
- * - Alias 'vue' imports to '@vue-native/runtime' so that Vue SFCs use the
+ * - Alias 'vue' imports to '@thelacanians/runtime' so that Vue SFCs use the
  *   native renderer instead of the DOM renderer
  * - Define __DEV__ and __PLATFORM__ compile-time constants
  * - Configure the build for IIFE output suitable for embedding in a native
@@ -13,7 +13,7 @@
  * ```ts
  * // vite.config.ts
  * import vue from '@vitejs/plugin-vue'
- * import vueNative from '@vue-native/vite-plugin'
+ * import vueNative from '@thelacanians/vite-plugin'
  *
  * export default defineConfig({
  *   plugins: [vue(), vueNative()],
@@ -68,9 +68,9 @@ export default function vueNativePlugin(options: VueNativePluginOptions = {}) {
           alias: {
             // Redirect all 'vue' imports to the native runtime.
             // This means when @vitejs/plugin-vue compiles SFCs and they
-            // import from 'vue', they actually get '@vue-native/runtime'
+            // import from 'vue', they actually get '@thelacanians/runtime'
             // which uses the native renderer instead of the DOM renderer.
-            vue: '@vue-native/runtime',
+            vue: '@thelacanians/runtime',
           },
         },
 

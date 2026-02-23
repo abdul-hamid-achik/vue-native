@@ -1,5 +1,5 @@
 {
-  "name": "@vue-native/cli",
+  "name": "@thelacanians/cli",
   "version": "0.1.0",
   "description": "CLI for creating and running Vue Native apps",
   "license": "MIT",

@@ -43,7 +43,7 @@ const submit = () => console.log('Submitted!')
 </template>
 
 <script>
-import { createStyleSheet } from '@vue-native/runtime'
+import { createStyleSheet } from '@thelacanians/runtime'
 
 const styles = createStyleSheet({
   button: {

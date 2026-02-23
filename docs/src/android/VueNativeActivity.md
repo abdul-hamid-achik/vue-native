@@ -64,7 +64,7 @@ override fun onRequestPermissionsResult(
 By default, pressing the back button dispatches an `android:back` global event to JS. Handle it in your Vue app:
 
 ```ts
-import { onGlobalEvent } from '@vue-native/runtime'
+import { onGlobalEvent } from '@thelacanians/runtime'
 
 onGlobalEvent('android:back', () => {
   router.pop()

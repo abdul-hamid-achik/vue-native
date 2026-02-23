@@ -1,6 +1,6 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
-import vueNative from '@vue-native/vite-plugin'
+import vueNative from '@thelacanians/vite-plugin'
 
 export default defineConfig({
   plugins: [

@@ -3,7 +3,7 @@
 ## New project
 
 ```bash
-npx @vue-native/cli create my-app
+npx @thelacanians/cli create my-app
 cd my-app
 bun install
 ```

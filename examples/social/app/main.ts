@@ -1,5 +1,5 @@
-import { createApp } from '@vue-native/runtime'
-import { createRouter } from '@vue-native/navigation'
+import { createApp } from '@thelacanians/runtime'
+import { createRouter } from '@thelacanians/navigation'
 import App from './App.vue'
 import FeedScreen from './screens/FeedScreen.vue'
 import ExploreScreen from './screens/ExploreScreen.vue'

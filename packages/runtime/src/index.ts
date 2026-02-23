@@ -1,5 +1,5 @@
 /**
- * @vue-native/runtime — Vue 3 custom renderer for native iOS views.
+ * @thelacanians/runtime — Vue 3 custom renderer for native iOS views.
  *
  * This is the main entry point for the Vue Native runtime. It provides:
  * - A createApp() function that sets up the native renderer
@@ -47,7 +47,7 @@ export interface NativeApp extends App {
  *
  * @example
  * ```ts
- * import { createApp } from '@vue-native/runtime'
+ * import { createApp } from '@thelacanians/runtime'
  * import App from './App.vue'
  *
  * const app = createApp(App)
@@ -136,11 +136,11 @@ export function createApp(rootComponent: Component, rootProps?: Record<string, a
 // ---------------------------------------------------------------------------
 // Re-export everything from @vue/runtime-core
 // This gives users access to all Vue 3 APIs (ref, reactive, computed, etc.)
-// through a single import from '@vue-native/runtime'.
+// through a single import from '@thelacanians/runtime'.
 // The wildcard re-export is essential because Vue's SFC template compiler
 // generates code that imports internal helpers (resolveComponent, createVNode,
 // openBlock, createBlock, toDisplayString, etc.) from 'vue', which our
-// Vite plugin aliases to '@vue-native/runtime'.
+// Vite plugin aliases to '@thelacanians/runtime'.
 // ---------------------------------------------------------------------------
 export * from '@vue/runtime-core'
 

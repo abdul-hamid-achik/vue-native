@@ -1,5 +1,5 @@
 {
-  "name": "@vue-native/runtime",
+  "name": "@thelacanians/runtime",
   "version": "0.1.0",
   "description": "Vue 3 custom renderer for native iOS and Android apps",
   "license": "MIT",

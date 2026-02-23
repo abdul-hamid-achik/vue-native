@@ -9,7 +9,7 @@ Build native iOS and Android apps with Vue 3. Write Vue components, render real 
 - **Cross-Platform** — Same Vue code targets both iOS and Android from a single codebase
 - **20 Built-in Components** — VView, VText, VButton, VInput, VScrollView, VImage, VList, VModal, and more
 - **Native Modules** — Haptics, AsyncStorage, Clipboard, Network, Camera, Geolocation, and more
-- **Navigation** — Stack navigation via `@vue-native/navigation`
+- **Navigation** — Stack navigation via `@thelacanians/navigation`
 - **Flexbox Layout** — Yoga (iOS) and FlexboxLayout (Android) for consistent cross-platform layouts
 - **Hot Reload** — Edit Vue files, see changes instantly on device or emulator
 - **TypeScript** — Full type coverage across components, composables, and bridge
@@ -46,7 +46,7 @@ Build native iOS and Android apps with Vue 3. Write Vue components, render real 
 ### Create a new project
 
 ```bash
-npx @vue-native/cli create my-app
+npx @thelacanians/cli create my-app
 cd my-app
 ```
 
@@ -69,7 +69,7 @@ my-app/
 
 ```vue
 <script setup lang="ts">
-import { ref } from '@vue-native/runtime'
+import { ref } from '@thelacanians/runtime'
 
 const count = ref(0)
 </script>
@@ -84,7 +84,7 @@ const count = ref(0)
 </template>
 
 <script>
-import { createStyleSheet } from '@vue-native/runtime'
+import { createStyleSheet } from '@thelacanians/runtime'
 
 const styles = createStyleSheet({
   container: { flex: 1, alignItems: 'center', justifyContent: 'center' },
@@ -203,7 +203,7 @@ const http = useHttp({ baseURL: 'https://api.example.com' })
 ## Navigation
 
 ```typescript
-import { createRouter, RouterView, useRouter, useRoute } from '@vue-native/navigation'
+import { createRouter, RouterView, useRouter, useRoute } from '@thelacanians/navigation'
 
 const { router } = createRouter([
   { name: 'home', component: HomeView },
@@ -237,7 +237,7 @@ const router = useRouter()
 Vue Native uses **Yoga Flexbox** layout — the same engine as React Native. All CSS Flexbox properties are supported.
 
 ```typescript
-import { createStyleSheet } from '@vue-native/runtime'
+import { createStyleSheet } from '@thelacanians/runtime'
 
 const styles = createStyleSheet({
   container: {
@@ -290,10 +290,10 @@ Vue Component (SFC)
 
 | Package | Description |
 |---------|-------------|
-| `@vue-native/runtime` | Core runtime: renderer, bridge, components, composables |
-| `@vue-native/navigation` | Stack and tab navigation |
-| `@vue-native/vite-plugin` | Vite build integration |
-| `@vue-native/cli` | Project scaffolding and dev tooling |
+| `@thelacanians/runtime` | Core runtime: renderer, bridge, components, composables |
+| `@thelacanians/navigation` | Stack and tab navigation |
+| `@thelacanians/vite-plugin` | Vite build integration |
+| `@thelacanians/cli` | Project scaffolding and dev tooling |
 
 ## Contributing
 

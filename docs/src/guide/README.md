@@ -27,7 +27,7 @@ The JavaScript engine runs your Vue app:
 - **Cross-platform** — One Vue codebase, both platforms
 - **20 built-in components** — VView, VText, VButton, VInput, VList, and more
 - **Native modules** — Haptics, AsyncStorage, Camera, Geolocation, and more
-- **Navigation** — Stack navigation via `@vue-native/navigation`
+- **Navigation** — Stack navigation via `@thelacanians/navigation`
 - **Hot reload** — Edit Vue files, see changes instantly
 - **TypeScript** — Full type coverage
 

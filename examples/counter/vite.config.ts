@@ -1,12 +1,12 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
-import vueNative from '@vue-native/vite-plugin'
+import vueNative from '@thelacanians/vite-plugin'
 
 export default defineConfig({
   plugins: [
     // @vitejs/plugin-vue compiles .vue SFCs (templates, <script setup>, etc.)
     vue(),
-    // @vue-native/vite-plugin aliases 'vue' to '@vue-native/runtime' and
+    // @thelacanians/vite-plugin aliases 'vue' to '@thelacanians/runtime' and
     // configures IIFE build output for embedding in native iOS apps
     vueNative({
       platform: 'ios',

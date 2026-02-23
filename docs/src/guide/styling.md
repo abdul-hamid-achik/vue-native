@@ -7,7 +7,7 @@ Vue Native uses **Yoga Flexbox** on iOS and **FlexboxLayout** on Android — the
 Use `createStyleSheet` to define styles as typed objects:
 
 ```ts
-import { createStyleSheet } from '@vue-native/runtime'
+import { createStyleSheet } from '@thelacanians/runtime'
 
 const styles = createStyleSheet({
   container: {

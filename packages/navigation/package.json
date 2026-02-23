@@ -1,5 +1,5 @@
 {
-  "name": "@vue-native/navigation",
+  "name": "@thelacanians/navigation",
   "version": "0.1.0",
   "description": "Stack navigation for Vue Native apps",
   "license": "MIT",
@@ -32,7 +32,7 @@
   },
   "dependencies": {
     "@vue/runtime-core": "^3.5.0",
-    "@vue-native/runtime": "workspace:*"
+    "@thelacanians/runtime": "workspace:*"
   },
   "devDependencies": {
     "tsup": "^8.4.0",

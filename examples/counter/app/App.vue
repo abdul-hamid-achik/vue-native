@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { createStyleSheet } from '@vue-native/runtime'
+import { createStyleSheet } from '@thelacanians/runtime'
 
 const name = ref('World')
 const count = ref(0)

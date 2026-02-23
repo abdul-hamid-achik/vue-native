@@ -1,5 +1,5 @@
 {
-  "name": "@vue-native/example-social",
+  "name": "@thelacanians/example-social",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -7,11 +7,11 @@
     "dev": "vite build --watch"
   },
   "dependencies": {
-    "@vue-native/runtime": "workspace:*",
-    "@vue-native/navigation": "workspace:*"
+    "@thelacanians/runtime": "workspace:*",
+    "@thelacanians/navigation": "workspace:*"
   },
   "devDependencies": {
-    "@vue-native/vite-plugin": "workspace:*",
+    "@thelacanians/vite-plugin": "workspace:*",
     "@vitejs/plugin-vue": "^5.2.0",
     "vite": "^6.1.0",
     "vue": "^3.5.0",

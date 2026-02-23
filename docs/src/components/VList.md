@@ -8,7 +8,7 @@ VList uses a `:data` prop and an `#item` slot to render each row. Do **not** use
 
 ```vue
 <script setup>
-import { ref } from '@vue-native/runtime'
+import { ref } from '@thelacanians/runtime'
 
 const items = ref([
   { id: 1, title: 'Item 1' },
@@ -54,7 +54,7 @@ const items = ref([
 
 ```vue
 <script setup>
-import { ref } from '@vue-native/runtime'
+import { ref } from '@thelacanians/runtime'
 
 const items = ref(Array.from({ length: 20 }, (_, i) => ({ id: i + 1 })))
 const loading = ref(false)

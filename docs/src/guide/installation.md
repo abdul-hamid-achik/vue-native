@@ -18,7 +18,7 @@
 ## Create a new project
 
 ```bash
-npx @vue-native/cli create my-app
+npx @thelacanians/cli create my-app
 cd my-app
 ```
 
@@ -27,15 +27,15 @@ The CLI scaffolds a full project with:
 - Vue 3 app in `app/`
 - iOS Xcode project in `ios/`
 - Android Gradle project in `android/`
-- Vite config with `@vue-native/vite-plugin`
+- Vite config with `@thelacanians/vite-plugin`
 
 ## Manual setup
 
 If you prefer to set up manually, install the packages:
 
 ```bash
-bun add @vue-native/runtime
-bun add -d @vue-native/vite-plugin @vitejs/plugin-vue vite
+bun add @thelacanians/runtime
+bun add -d @thelacanians/vite-plugin @vitejs/plugin-vue vite
 ```
 
 Then configure Vite:
@@ -44,7 +44,7 @@ Then configure Vite:
 // vite.config.ts
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
-import vueNative from '@vue-native/vite-plugin'
+import vueNative from '@thelacanians/vite-plugin'
 
 export default defineConfig({
   plugins: [vue(), vueNative()],

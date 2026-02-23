@@ -6,7 +6,7 @@ Text input field. Maps to `UITextField` on iOS and `EditText` on Android.
 
 ```vue
 <script setup>
-import { ref } from '@vue-native/runtime'
+import { ref } from '@thelacanians/runtime'
 const text = ref('')
 </script>
 

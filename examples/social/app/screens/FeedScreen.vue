@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { createStyleSheet, useNetwork, useHaptics } from '@vue-native/runtime'
+import { createStyleSheet, useNetwork, useHaptics } from '@thelacanians/runtime'
 
 interface Post {
   id: number

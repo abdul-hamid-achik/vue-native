@@ -10,7 +10,7 @@
       },
     },
     "docs": {
-      "name": "@vue-native/docs",
+      "name": "@thelacanians/docs",
       "version": "1.0.0",
       "devDependencies": {
         "@vuepress/bundler-vite": "2.0.0-rc.26",
@@ -21,93 +21,93 @@
       },
     },
     "examples/calculator": {
-      "name": "@vue-native/example-calculator",
+      "name": "@thelacanians/example-calculator",
       "version": "0.1.0",
       "dependencies": {
-        "@vue-native/runtime": "workspace:*",
+        "@thelacanians/runtime": "workspace:*",
       },
       "devDependencies": {
+        "@thelacanians/vite-plugin": "workspace:*",
         "@vitejs/plugin-vue": "^5.2.0",
-        "@vue-native/vite-plugin": "workspace:*",
         "typescript": "^5.7.0",
         "vite": "^6.1.0",
         "vue": "^3.5.0",
       },
     },
     "examples/counter": {
-      "name": "@vue-native/example-counter",
+      "name": "@thelacanians/example-counter",
       "version": "0.1.0",
       "dependencies": {
-        "@vue-native/runtime": "workspace:*",
+        "@thelacanians/runtime": "workspace:*",
       },
       "devDependencies": {
+        "@thelacanians/vite-plugin": "workspace:*",
         "@vitejs/plugin-vue": "^5.2.0",
-        "@vue-native/vite-plugin": "workspace:*",
         "typescript": "^5.7.0",
         "vite": "^6.1.0",
         "vue": "^3.5.0",
       },
     },
     "examples/settings": {
-      "name": "@vue-native/example-settings",
+      "name": "@thelacanians/example-settings",
       "version": "0.1.0",
       "dependencies": {
-        "@vue-native/runtime": "workspace:*",
+        "@thelacanians/runtime": "workspace:*",
       },
       "devDependencies": {
+        "@thelacanians/vite-plugin": "workspace:*",
         "@vitejs/plugin-vue": "^5.2.0",
-        "@vue-native/vite-plugin": "workspace:*",
         "typescript": "^5.7.0",
         "vite": "^6.1.0",
         "vue": "^3.5.0",
       },
     },
     "examples/social": {
-      "name": "@vue-native/example-social",
+      "name": "@thelacanians/example-social",
       "version": "0.1.0",
       "dependencies": {
-        "@vue-native/navigation": "workspace:*",
-        "@vue-native/runtime": "workspace:*",
+        "@thelacanians/navigation": "workspace:*",
+        "@thelacanians/runtime": "workspace:*",
       },
       "devDependencies": {
+        "@thelacanians/vite-plugin": "workspace:*",
         "@vitejs/plugin-vue": "^5.2.0",
-        "@vue-native/vite-plugin": "workspace:*",
         "typescript": "^5.7.0",
         "vite": "^6.1.0",
         "vue": "^3.5.0",
       },
     },
     "examples/tasks": {
-      "name": "@vue-native/example-tasks",
+      "name": "@thelacanians/example-tasks",
       "version": "0.1.0",
       "dependencies": {
-        "@vue-native/navigation": "workspace:*",
-        "@vue-native/runtime": "workspace:*",
+        "@thelacanians/navigation": "workspace:*",
+        "@thelacanians/runtime": "workspace:*",
       },
       "devDependencies": {
+        "@thelacanians/vite-plugin": "workspace:*",
         "@vitejs/plugin-vue": "^5.2.0",
-        "@vue-native/vite-plugin": "workspace:*",
         "typescript": "^5.7.0",
         "vite": "^6.1.0",
         "vue": "^3.5.0",
       },
     },
     "examples/todo": {
-      "name": "@vue-native/example-todo",
+      "name": "@thelacanians/example-todo",
       "version": "0.1.0",
       "dependencies": {
-        "@vue-native/runtime": "workspace:*",
+        "@thelacanians/runtime": "workspace:*",
       },
       "devDependencies": {
+        "@thelacanians/vite-plugin": "workspace:*",
         "@vitejs/plugin-vue": "^5.2.0",
-        "@vue-native/vite-plugin": "workspace:*",
         "typescript": "^5.7.0",
         "vite": "^6.1.0",
         "vue": "^3.5.0",
       },
     },
     "packages/cli": {
-      "name": "@vue-native/cli",
+      "name": "@thelacanians/cli",
       "version": "0.1.0",
       "bin": {
         "vue-native": "./dist/cli.js",
@@ -126,10 +126,10 @@
       },
     },
     "packages/navigation": {
-      "name": "@vue-native/navigation",
+      "name": "@thelacanians/navigation",
       "version": "0.1.0",
       "dependencies": {
-        "@vue-native/runtime": "workspace:*",
+        "@thelacanians/runtime": "workspace:*",
         "@vue/runtime-core": "^3.5.0",
       },
       "devDependencies": {
@@ -138,7 +138,7 @@
       },
     },
     "packages/runtime": {
-      "name": "@vue-native/runtime",
+      "name": "@thelacanians/runtime",
       "version": "0.1.0",
       "dependencies": {
         "@vue/reactivity": "^3.5.0",
@@ -154,7 +154,7 @@
       },
     },
     "packages/vite-plugin": {
-      "name": "@vue-native/vite-plugin",
+      "name": "@thelacanians/vite-plugin",
       "version": "0.1.0",
       "devDependencies": {
         "tsup": "^8.4.0",
@@ -346,6 +346,28 @@
 
     "@standard-schema/spec": ["@standard-schema/spec@1.1.0", "", {}, "sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w=="],
 
+    "@thelacanians/cli": ["@thelacanians/cli@workspace:packages/cli"],
+
+    "@thelacanians/docs": ["@thelacanians/docs@workspace:docs"],
+
+    "@thelacanians/example-calculator": ["@thelacanians/example-calculator@workspace:examples/calculator"],
+
+    "@thelacanians/example-counter": ["@thelacanians/example-counter@workspace:examples/counter"],
+
+    "@thelacanians/example-settings": ["@thelacanians/example-settings@workspace:examples/settings"],
+
+    "@thelacanians/example-social": ["@thelacanians/example-social@workspace:examples/social"],
+
+    "@thelacanians/example-tasks": ["@thelacanians/example-tasks@workspace:examples/tasks"],
+
+    "@thelacanians/example-todo": ["@thelacanians/example-todo@workspace:examples/todo"],
+
+    "@thelacanians/navigation": ["@thelacanians/navigation@workspace:packages/navigation"],
+
+    "@thelacanians/runtime": ["@thelacanians/runtime@workspace:packages/runtime"],
+
+    "@thelacanians/vite-plugin": ["@thelacanians/vite-plugin@workspace:packages/vite-plugin"],
+
     "@types/chai": ["@types/chai@5.2.3", "", { "dependencies": { "@types/deep-eql": "*", "assertion-error": "^2.0.1" } }, "sha512-Mw558oeA9fFbv65/y4mHtXDs9bPnFMZAL/jxdPFUpOHHIXX91mcgEHbS5Lahr+pwZFR8A7GQleRWeI6cGFC2UA=="],
 
     "@types/debug": ["@types/debug@4.1.12", "", { "dependencies": { "@types/ms": "*" } }, "sha512-vIChWdVG3LG1SMxEvI/AK+FWJthlrqlTu7fbrlywTkkaONwk/UAGaULXRlf8vkzFBLVm0zkMdCquhL5aOjhXPQ=="],
@@ -407,28 +429,6 @@
     "@vitest/spy": ["@vitest/spy@4.0.18", "", {}, "sha512-cbQt3PTSD7P2OARdVW3qWER5EGq7PHlvE+QfzSC0lbwO+xnt7+XH06ZzFjFRgzUX//JmpxrCu92VdwvEPlWSNw=="],
 
     "@vitest/utils": ["@vitest/utils@4.0.18", "", { "dependencies": { "@vitest/pretty-format": "4.0.18", "tinyrainbow": "^3.0.3" } }, "sha512-msMRKLMVLWygpK3u2Hybgi4MNjcYJvwTb0Ru09+fOyCXIgT5raYP041DRRdiJiI3k/2U6SEbAETB3YtBrUkCFA=="],
-
-    "@vue-native/cli": ["@vue-native/cli@workspace:packages/cli"],
-
-    "@vue-native/docs": ["@vue-native/docs@workspace:docs"],
-
-    "@vue-native/example-calculator": ["@vue-native/example-calculator@workspace:examples/calculator"],
-
-    "@vue-native/example-counter": ["@vue-native/example-counter@workspace:examples/counter"],
-
-    "@vue-native/example-settings": ["@vue-native/example-settings@workspace:examples/settings"],
-
-    "@vue-native/example-social": ["@vue-native/example-social@workspace:examples/social"],
-
-    "@vue-native/example-tasks": ["@vue-native/example-tasks@workspace:examples/tasks"],
-
-    "@vue-native/example-todo": ["@vue-native/example-todo@workspace:examples/todo"],
-
-    "@vue-native/navigation": ["@vue-native/navigation@workspace:packages/navigation"],
-
-    "@vue-native/runtime": ["@vue-native/runtime@workspace:packages/runtime"],
-
-    "@vue-native/vite-plugin": ["@vue-native/vite-plugin@workspace:packages/vite-plugin"],
 
     "@vue/compiler-core": ["@vue/compiler-core@3.5.28", "", { "dependencies": { "@babel/parser": "^7.29.0", "@vue/shared": "3.5.28", "entities": "^7.0.1", "estree-walker": "^2.0.2", "source-map-js": "^1.2.1" } }, "sha512-kviccYxTgoE8n6OCw96BNdYlBg2GOWfBuOW4Vqwrt7mSKWKwFVvI8egdTltqRgITGPsTFYtKYfxIG8ptX2PJHQ=="],
 

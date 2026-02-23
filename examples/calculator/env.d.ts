@@ -15,7 +15,7 @@ declare module '*.vue' {
 }
 
 /**
- * Compile-time constants injected by @vue-native/vite-plugin.
+ * Compile-time constants injected by @thelacanians/vite-plugin.
  */
 declare const __DEV__: boolean
 declare const __PLATFORM__: string

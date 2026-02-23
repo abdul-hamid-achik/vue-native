@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { createStyleSheet } from '@vue-native/runtime'
+import { createStyleSheet } from '@thelacanians/runtime'
 import FeedScreen from './screens/FeedScreen.vue'
 import ExploreScreen from './screens/ExploreScreen.vue'
 import ProfileScreen from './screens/ProfileScreen.vue'
