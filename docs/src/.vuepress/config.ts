@@ -9,8 +9,12 @@ export default defineUserConfig({
 
   bundler: viteBundler(),
 
+  head: [
+    ['link', { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' }],
+  ],
+
   theme: defaultTheme({
-    logo: '/logo.png',
+    logo: '/logo.svg',
     repo: 'https://github.com/your-org/vue-native',
     docsDir: 'docs/src',
 
