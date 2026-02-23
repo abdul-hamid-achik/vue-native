@@ -667,8 +667,10 @@ public final class NativeBridge {
         // JSRuntime.reload creates a fresh JSContext, so we must re-register our Swift blocks.
         // We do this by scheduling on the JS queue after the reload completes.
         runtime.reload(bundle: bundle) { [weak self] success in
-            guard let self = self, success else {
-                NSLog("[VueNative Bridge] reloadWithBundle: runtime reload failed")
+            guard let self = self else { return }
+            guard success else {
+                NSLog("[VueNative Bridge] reloadWithBundle: runtime reload failed — showing error overlay")
+                ErrorOverlayView.show(error: "Hot reload failed.\n\nThe new bundle could not be evaluated. Check the terminal for the JS error.\n\nSave the file again to retry.")
                 return
             }
 

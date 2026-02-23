@@ -27,8 +27,8 @@ packages/
   vite-plugin/   — Build integration (@vue-native/vite-plugin)
   cli/           — Project scaffolding (@vue-native/cli)
 native/
-  Sources/       — Swift package (VueNativeCore) for iOS
-  android/       — Kotlin library (VueNativeCore) for Android
+  ios/VueNativeCore/    — Swift package (VueNativeCore) for iOS
+  android/VueNativeCore/ — Kotlin library (VueNativeCore) for Android
 examples/        — Example apps
 ```
 
@@ -45,9 +45,9 @@ bun run typecheck    # Type-check all packages
 
 ### iOS native
 
-Open `native/` as a Swift Package in Xcode, or build with:
+Open `native/ios/VueNativeCore/` as a Swift Package in Xcode, or build with:
 ```bash
-swift build --package-path native/
+swift build --package-path native/ios/VueNativeCore/
 ```
 
 ### Android native
@@ -70,8 +70,8 @@ cd examples/counter && bun run dev
 
 1. Add the TypeScript component definition in `packages/runtime/src/components/`
 2. Register it in `packages/runtime/src/index.ts`
-3. Add the iOS Swift factory in `native/Sources/VueNativeCore/Components/Factories/`
-4. Register the factory in `native/Sources/VueNativeCore/Components/ComponentRegistry.swift`
+3. Add the iOS Swift factory in `native/ios/VueNativeCore/Sources/VueNativeCore/Components/Factories/`
+4. Register the factory in `native/ios/VueNativeCore/Sources/VueNativeCore/Components/ComponentRegistry.swift`
 5. Add the Android Kotlin factory in `native/android/VueNativeCore/src/main/kotlin/com/vuenative/core/Components/Factories/`
 6. Register it in `native/android/VueNativeCore/src/main/kotlin/com/vuenative/core/Components/ComponentRegistry.kt`
 7. Add an example in the appropriate example app
@@ -81,8 +81,8 @@ cd examples/counter && bun run dev
 
 1. Add the TypeScript composable in `packages/runtime/src/composables/`
 2. Export it from `packages/runtime/src/index.ts`
-3. Implement the Swift module in `native/Sources/VueNativeCore/Modules/`
-4. Register it in `NativeModuleRegistry.swift`
+3. Implement the Swift module in `native/ios/VueNativeCore/Sources/VueNativeCore/Modules/`
+4. Register it in `native/ios/VueNativeCore/Sources/VueNativeCore/Modules/NativeModuleRegistry.swift`
 5. Implement the Kotlin module in `native/android/.../Modules/`
 6. Register it in `NativeModuleRegistry.kt`
 

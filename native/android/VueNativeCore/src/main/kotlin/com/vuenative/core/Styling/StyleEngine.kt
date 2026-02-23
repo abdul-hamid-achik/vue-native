@@ -128,8 +128,16 @@ object StyleEngine {
             "marginEnd"        -> updateFlexProps(view) { fp -> fp.copy(marginEnd = dpToPx(ctx, toFloat(value, 0f)).toInt()) }
 
             // --- Dimensions ---
-            "width"  -> updateFlexProps(view) { fp -> fp.copy(width = parseDimension(ctx, value)) }
-            "height" -> updateFlexProps(view) { fp -> fp.copy(height = parseDimension(ctx, value)) }
+            "width" -> {
+                val pct = parsePercent(value)
+                if (pct != null) updateFlexProps(view) { fp -> fp.copy(width = ViewGroup.LayoutParams.WRAP_CONTENT, widthPercent = pct) }
+                else updateFlexProps(view) { fp -> fp.copy(width = parseDimension(ctx, value), widthPercent = -1f) }
+            }
+            "height" -> {
+                val pct = parsePercent(value)
+                if (pct != null) updateFlexProps(view) { fp -> fp.copy(height = ViewGroup.LayoutParams.WRAP_CONTENT, heightPercent = pct) }
+                else updateFlexProps(view) { fp -> fp.copy(height = parseDimension(ctx, value), heightPercent = -1f) }
+            }
             "minWidth"  -> updateFlexProps(view) { fp -> fp.copy(minWidth = dpToPx(ctx, toFloat(value, 0f)).toInt()) }
             "minHeight" -> updateFlexProps(view) { fp -> fp.copy(minHeight = dpToPx(ctx, toFloat(value, 0f)).toInt()) }
             "maxWidth"  -> view.post { view.maxWidth = dpToPx(ctx, toFloat(value, 0f)).toInt() }
@@ -347,6 +355,10 @@ object StyleEngine {
     data class FlexProps(
         val width: Int = ViewGroup.LayoutParams.WRAP_CONTENT,
         val height: Int = ViewGroup.LayoutParams.WRAP_CONTENT,
+        /** Percentage of parent width [0.0, 1.0]. -1f means not set (use `width` instead). */
+        val widthPercent: Float = -1f,
+        /** Percentage of parent height [0.0, 1.0]. -1f means not set (use `height` instead). */
+        val heightPercent: Float = -1f,
         val marginLeft: Int = 0,
         val marginTop: Int = 0,
         val marginRight: Int = 0,
@@ -394,6 +406,9 @@ object StyleEngine {
             order = fp.order
             minWidth = fp.minWidth
             minHeight = fp.minHeight
+            // Apply percentage dimensions when set (FlexboxLayout 3.x widthPercent/heightPercent)
+            if (fp.widthPercent >= 0f) widthPercent = fp.widthPercent
+            if (fp.heightPercent >= 0f) heightPercent = fp.heightPercent
         }
     }
 
@@ -434,12 +449,22 @@ object StyleEngine {
     private fun parseDimension(context: Context, value: Any?): Int {
         return when {
             value is String && value.endsWith("%") -> {
+                // 100% maps to MATCH_PARENT; other percentages are handled via widthPercent/heightPercent
+                // in the "width"/"height" cases above — this fallback covers minWidth/minHeight
                 if (value == "100%") ViewGroup.LayoutParams.MATCH_PARENT
                 else ViewGroup.LayoutParams.WRAP_CONTENT
             }
             value == "auto" || value == null -> ViewGroup.LayoutParams.WRAP_CONTENT
             else -> dpToPx(context, toFloat(value, 0f)).toInt()
         }
+    }
+
+    /** Returns the fraction [0.0, 1.0] if value is a percentage string (e.g. "50%"), else null. */
+    private fun parsePercent(value: Any?): Float? {
+        val str = value?.toString() ?: return null
+        if (!str.endsWith("%")) return null
+        val num = str.dropLast(1).toFloatOrNull() ?: return null
+        return (num / 100f).coerceIn(0f, 1f)
     }
 
     fun toFloat(value: Any?, default: Float): Float = when (value) {

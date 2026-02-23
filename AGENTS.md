@@ -1,228 +1,190 @@
 # AGENTS.md — Vue Native
 
-Guidelines for AI agents (Claude, Codex, Gemini, etc.) working on this codebase.
+Guidelines for AI agents (Claude, Codex, etc.) working on this codebase. Read this before making any changes.
 
 ---
 
-## What This Project Is
+## What this project is
 
-Vue Native renders Vue.js 3 SFCs to native iOS (UIKit) and Android (Android Views) using:
-- **JavaScriptCore** (iOS) / **V8 via J2V8** (Android) — runs the Vue bundle
-- A **custom Vue renderer** (`createRenderer()`) that emits native view operations instead of DOM mutations
-- A **JSON bridge** that batches those operations and dispatches them to native on the main thread
-- **Yoga / FlexLayout** (iOS) and **FlexboxLayout** (Android) for CSS Flexbox layout
+Vue Native is a framework for building **real native iOS and Android apps with Vue 3**. It is NOT a WebView wrapper. Vue components drive `UIKit` views on iOS and `Android Views` on Android via a custom `createRenderer()` bridge.
 
-It is **not** a WebView wrapper. Every component maps to a real native view.
+```
+Vue SFC  →  Vue custom renderer  →  NativeBridge (TS)
+                                          ↓  JSON batch
+                                  iOS: Swift → UIKit + Yoga
+                                  Android: Kotlin → Views + FlexboxLayout
+```
 
 ---
 
-## Architecture
+## Repository layout
 
 ```
-Vue SFC → Vite IIFE bundle → JS Engine (JSC / V8)
-       → Vue custom renderer → NativeBridge (batched JSON ops)
-       → Swift (iOS): UIKit + Yoga
-       → Kotlin (Android): Android Views + FlexboxLayout
-```
-
-**Three worlds that must stay separated:**
-
-| World | Language | Entry point |
-|-------|----------|-------------|
-| JS runtime | TypeScript | `packages/runtime/src/` |
-| Build tooling | TypeScript | `packages/vite-plugin/src/` |
-| Native iOS | Swift | `native/Sources/VueNativeCore/` |
-| Native Android | Kotlin | `native/android/VueNativeCore/src/` |
-
----
-
-## Monorepo Layout
-
-```
-packages/runtime/          @vue-native/runtime
-  src/
-    renderer.ts            Vue createRenderer() — insert/patch/remove ops
-    bridge.ts              JS-side bridge: batches ops, calls __VN_flushOperations
-    node.ts                NativeNode type + markRaw() factory
-    stylesheet.ts          createStyleSheet() helper
-    components/            VView, VText, VButton, VInput, VImage, VList, VModal, …
-    composables/           useNetwork, useHaptics, useCamera, useGeolocation, …
-    directives/            v-show
-    index.ts               Public API + createApp()
-
-packages/navigation/       @vue-native/navigation
-  src/
-    index.ts               createRouter, useRouter, useRoute, RouterView,
-                           VNavigationBar, VTabBar, createTabNavigator
-
-packages/vite-plugin/      @vue-native/vite-plugin
-  src/
-    index.ts               IIFE build config, Vue alias, __PLATFORM__ define
-
-packages/cli/              @vue-native/cli
-  src/
-    cli.ts                 Commander entry (vue-native create/dev/run)
-    commands/              create.ts, dev.ts, run.ts
-
-native/Sources/VueNativeCore/   iOS Swift package
-  Bridge/                  JSRuntime, NativeBridge, JSPolyfills, HotReloadManager
-  Components/              ComponentRegistry + 20 factory files (VViewFactory, etc.)
-  Styling/                 StyleEngine.swift (Yoga prop mapping)
-  Modules/                 19 native modules (Haptics, AsyncStorage, Geolocation, …)
-  Helpers/                 GestureWrapper, TouchableView
-
-native/android/VueNativeCore/   Android Kotlin library
-  Bridge/                  JSRuntime, NativeBridge, JSPolyfills, HotReloadManager
-  Components/              ComponentRegistry + 20 factory files
-  Styling/                 StyleEngine.kt (FlexboxLayout prop mapping)
-  Modules/                 16 native modules
-
+packages/
+  runtime/          @vue-native/runtime — renderer, bridge, components, composables
+  navigation/       @vue-native/navigation — createRouter, RouterView, useRouter
+  vite-plugin/      @vue-native/vite-plugin — Vite build config for native targets
+  cli/              @vue-native/cli — project scaffold + dev tooling
+native/
+  ios/VueNativeCore/         Swift Package (iOS 16+, UIKit, JavaScriptCore, Yoga)
+    Package.swift
+    Sources/VueNativeCore/
+      Bridge/                JSRuntime, NativeBridge, VueNativeViewController,
+                             HotReloadManager, JSPolyfills, ErrorOverlayView
+      Components/Factories/  One Swift factory per component (VButtonFactory, etc.)
+      Modules/               Native module implementations (Haptics, Camera, etc.)
+      Styling/               StyleEngine.swift — CSS props → UIKit/Yoga
+    Tests/
+  android/VueNativeCore/     Android library (API 21+, Kotlin, J2V8/V8, FlexboxLayout)
+    src/main/kotlin/com/vuenative/core/
+      Bridge/                JSRuntime, NativeBridge, HotReloadManager, JSPolyfills
+      Components/Factories/  One Kotlin factory per component
+      Modules/               Native module implementations
+      Styling/               StyleEngine.kt — CSS props → FlexboxLayout/View
+      VueNativeActivity.kt   Base Activity for apps
+docs/
+  src/               VuePress 2.x documentation site (bun run dev in docs/)
 examples/
-  counter/                 Minimal counter — good starting point
-  todo/                    Todo list with filtering
-  calculator/              Calculator UI
-  tasks/                   Multi-screen app with navigation
-  settings/                Settings screen with sliders + toggles
-  social/                  Social feed with tab navigation
+  counter/  calculator/  settings/  social/  tasks/  todo/
 ```
 
 ---
 
-## Bridge Protocol
+## Architecture rules — do not break these
 
-JS calls `__VN_flushOperations(json)` with a JSON array of operations. Each op:
+### Bridge protocol
+- JS batches operations via `queueMicrotask` then calls `__VN_flushOperations(json)`
+- Each operation is `{ op: string, args: any[] }`
+- Operations are processed on the **main thread** (Swift `@MainActor` / Kotlin `mainHandler.post`)
+- Valid ops: `create`, `createText`, `setText`, `setElementText`, `updateProp`, `updateStyle`, `appendChild`, `insertBefore`, `removeChild`, `setRootView`, `addEventListener`, `removeEventListener`, `invokeNativeModule`, `invokeNativeModuleSync`
 
-```typescript
-type BridgeOp =
-  | { op: 'createView';   id: number; type: string; props: Record<string, unknown> }
-  | { op: 'updateProp';   id: number; key: string;  value: unknown }
-  | { op: 'insertChild';  id: number; parentId: number; index: number }
-  | { op: 'removeChild';  id: number; parentId: number }
-  | { op: 'setText';      id: number; text: string }
-  | { op: 'addEventListener';    id: number; event: string }
-  | { op: 'removeEventListener'; id: number; event: string }
-  | { op: 'invokeNativeModule';  module: string; method: string; args: unknown[]; callbackId: number }
-```
+### Thread model — iOS
+- `JSRuntime` runs the JSContext on a dedicated serial `jsQueue` (DispatchQueue)
+- **Never pass a `JSValue` across threads** — extract primitives first
+- Always use `[weak self]` in closures registered with JSContext
+- UI updates must be dispatched to `DispatchQueue.main`
 
-Native resolves module callbacks by calling `__VN_resolveCallback(callbackId, result, error)` in JS.
-Native fires view events by calling `__VN_handleEvent(nodeId, eventName, payloadJson)` in JS.
+### Thread model — Android
+- V8 runs exclusively on `HandlerThread("VueNative-JS")`
+- **Never pass a J2V8 `V8Object` or `V8Array` across threads** — release on the JS thread
+- All view operations must run on the main thread (`mainHandler.post`)
 
----
+### Vue renderer (`packages/runtime/src/renderer.ts`)
+- **Always call `markRaw(node)`** when creating a `NativeNode` — prevents Vue from tracking node internals as reactive state, which would cause infinite loops
+- The scheduler uses only `Promise.resolve().then()` — no DOM APIs needed
+- `mountElement` → `bridge.enqueue('create', ...)`, `patchProp` → `bridge.enqueue('updateProp', ...)`, etc.
 
-## Critical Rules
+### Native module callbacks
+- Async modules: JS side calls `invokeNativeModule` with a `callbackId`; native calls back via `nodeId=-1, eventName="__callback__"` with `{ callbackId, result, error }`
+- `bridge.ts` has a **30-second timeout** on all async module calls — do not remove it
+- Sync modules: use `invokeNativeModuleSync` — blocks the JS thread, use sparingly
 
-### JavaScript / TypeScript
+### Layout
+- **iOS:** Yoga via `layoutBox/FlexLayout` SPM. Use `view.flex.xxx` to set Yoga props. Call `view.flex.layout(mode:)` to trigger layout. Percentage widths/heights: use `view.flex.width(50%)` (postfix `%` operator, not `FPercent(value:)`).
+- **Android:** `FlexboxLayout` 3.0.0. Use `StyleEngine.kt` to set flex props. Percentage widths/heights use `FlexboxLayout.LayoutParams.widthPercent` / `heightPercent` — **not** `ViewGroup.LayoutParams.WRAP_CONTENT`.
 
-1. **`markRaw()` on every NativeNode.** Vue's reactivity will track node internals without this, causing severe performance regressions. See `node.ts`.
-
-2. **Never import from `@vue/runtime-dom`.** Use `@vue/runtime-core` only. `runtime-dom` is DOM-specific and fails in JSC/V8.
-
-3. **No ESM dynamic imports in bundles.** JSC/V8-via-IIFE has no ESM loader. The Vite build produces an IIFE with `inlineDynamicImports: true`. Any `import()` will silently fail.
-
-4. **Externalize `@vue/runtime-core` in library builds.** Two copies break `resolveComponent()` everywhere.
-
-5. **All bridge calls must be batched.** Never flush per-property. Accumulate ops and call `__VN_flushOperations` once per microtask tick.
-
-### Swift (iOS)
-
-6. **JSContext is NOT thread-safe.** All JS evaluation and all `JSValue` access must happen on the dedicated `jsQueue` (serial DispatchQueue). Never capture a `JSValue` cross-thread — extract primitives first.
-
-7. **`[weak self]` in every JSContext closure.** Missing weak references create retain cycles that prevent JSContext from deallocating.
-
-8. **Never store `JSValue` long-term.** Extract what you need immediately; stored `JSValue` keeps the entire JSContext alive.
-
-9. **Do not mix Auto Layout with Yoga in the same hierarchy.** Use Yoga exclusively for all Vue-managed views.
-
-10. **Text nodes require a Yoga measure function.** Without `YGMeasureFunc`, `UILabel` dimensions are zero and layout collapses.
-
-### Kotlin (Android)
-
-11. **V8 (J2V8) is NOT thread-safe.** All V8 operations must run on the dedicated `HandlerThread` (`VueNative-JS`). Never call `v8.executeScript()` from the main thread.
-
-12. **`View` operations must run on the main thread.** Use `Handler(Looper.getMainLooper()).post { }` to dispatch from the JS thread to UI.
-
-13. **Never pass `V8Object` or `V8Array` across threads.** Extract primitives (String, Int, Map) before dispatching to another thread.
+### VList — special child management
+Both platforms override `insertChild`/`removeChild` in VListFactory. Item views are stored in a separate array (`itemViews` on iOS, adapter items on Android) — they are **not** regular ViewGroup/subview children. Use targeted row operations (`insertRows`, `deleteRows`) instead of `reloadData`/`notifyDataSetChanged` to avoid layout loops.
 
 ---
 
-## Coding Conventions
+## Coding conventions
 
-### TypeScript
+### TypeScript (`packages/`)
+- Use `bun` (not npm or pnpm) for all package operations
+- All exports go through `packages/runtime/src/index.ts`
+- Component files: `packages/runtime/src/components/V<Name>.ts`
+- Composables: `packages/runtime/src/composables/use<Name>.ts`
+- Run `bun run typecheck` before committing — must pass with zero errors
+- Tests in `packages/runtime/src/__tests__/` — run with `bun run test`
 
-- Use `interface` for public-facing types, `type` for unions/aliases
-- No `any` — use `unknown` and narrow explicitly
-- Export types separately: `export type { Foo }`
+### Swift (`native/ios/VueNativeCore/`)
+- Swift 5.9+, iOS 16+, UIKit only (no SwiftUI)
+- No force-unwraps (`!`) in production paths — use `guard let` or `if let`
+- Factories implement `NativeComponentFactory` — always implement `insertChild` and `removeChild` (default impls use `addSubview`/`removeFromSuperview`, but override if needed)
+- `StyleEngine.apply(key:value:to:)` is the single entry point for all style props — call it for unknown props from within a factory's `updateProp`
 
-### Swift
-
-- Follow Swift API Design Guidelines (no Hungarian notation, clear argument labels)
-- All public types exposed to JSC prefixed `VN` (e.g., `VNBridge`)
-- Error handling: `Result<T, Error>` for bridge operations; never swallow errors silently
-- Log prefix: `[VueNative]` for all `os_log` calls
-
-### Kotlin
-
-- Standard Kotlin style; prefer `?.` safe calls over `!!`
-- All bridge callbacks dispatched through `bridge.onFireEvent` — never directly call V8 from other threads
-- Factory `createView()` must be called on the main thread and return a fully initialized `View`
-
-### File naming
-
-- TypeScript: `camelCase.ts` for modules, `PascalCase.ts` for class files
-- Swift: `PascalCase.swift` matching the primary type
-- Kotlin: `PascalCase.kt` matching the primary class
-- Tests: `*.test.ts` (Vitest), `*Tests.swift` (XCTest)
+### Kotlin (`native/android/VueNativeCore/`)
+- Kotlin 1.9+, API 21+, AppCompat
+- Prefer `?.` safe calls over `!!` — treat `!!` as a code smell
+- Factories implement `ComponentFactory` interface — same `insertChild`/`removeChild` pattern as Swift
+- `StyleEngine.apply(view, key, value)` is the single entry point for style props
 
 ---
 
-## Common Pitfalls
+## How to add a component
 
-| Symptom | Likely cause |
-|---------|-------------|
-| `resolveComponent` returns null at runtime | Duplicate Vue instances. Externalize `@vue/runtime-core`. |
-| Vue reactivity becomes extremely slow | Missing `markRaw()` on NativeNode. |
-| Text nodes have zero height | Yoga measure function not set for text nodes. |
-| JSC crashes with `EXC_BAD_ACCESS` | `JSValue` accessed off `jsQueue`. |
-| Layout doesn't match CSS | Yoga web defaults not enabled (`useWebDefaults: true`). |
-| Dynamic imports fail silently | ESM not supported. Use `inlineDynamicImports: true`. |
-| Bridge calls cause UI jank | Not batching bridge commands — accumulate per frame, flush once. |
-| Memory leak after JSContext teardown | Retain cycle from missing `[weak self]` in JSContext closures. |
-| Android crash: `UnsatisfiedLinkError` | J2V8 `.so` not present for target ABI. Check `j2v8` artifact includes arm64-v8a. |
-| Android fetch concurrent calls resolve to same value | Always pass a unique request ID to `__vnFetch`. See `JSPolyfills.kt`. |
+1. **TypeScript** — add `packages/runtime/src/components/V<Name>.ts` and export from `index.ts`
+2. **iOS** — add `native/ios/VueNativeCore/Sources/VueNativeCore/Components/Factories/V<Name>Factory.swift` and register in `ComponentRegistry.swift`
+3. **Android** — add `native/android/VueNativeCore/src/main/kotlin/.../Components/Factories/V<Name>Factory.kt` and register in `ComponentRegistry.kt`
+4. Keep both platforms in parity — if a prop or event exists on one, it must exist on the other
+
+## How to add a native module
+
+1. **TypeScript** — add `packages/runtime/src/composables/use<Name>.ts`, export from `index.ts`
+2. **iOS** — add `native/ios/VueNativeCore/Sources/VueNativeCore/Modules/<Name>Module.swift`, register in `NativeModuleRegistry.swift`
+3. **Android** — add `.../Modules/<Name>Module.kt`, register in `NativeModuleRegistry.kt`
+4. Async methods: use `invokeNativeModule` (returns a Promise with 30s timeout)
+5. Sync methods: use `invokeNativeModuleSync` only when the result is needed immediately and latency is guaranteed low
 
 ---
 
-## Running the Project
+## Build & dev commands
 
 ```bash
-# Install JS dependencies
-bun install
+bun install                  # Install all workspace dependencies
+bun run build                # Build all packages (turbo)
+bun run test                 # Run TS unit tests
+bun run typecheck            # TypeScript type-check
 
-# Build all packages
-bun run build
+# iOS Swift package
+swift build --package-path native/ios/VueNativeCore
 
-# Watch mode
-bun run dev
+# Example app dev
+cd examples/counter
+bun run dev                  # Vite watch + hot reload server
+# Then open examples/counter/ios/ in Xcode and run
 
-# Type check
-bun run typecheck
-
-# Tests
-bun run test
+# Docs
+cd docs && bun install && bun run dev
 ```
-
-**iOS:** Open `examples/counter/ios/` in Xcode 15+, build for iOS 16+ simulator.
-The SPM package resolves `VueNativeCore` from `../../native/`.
-
-**Android:** Open `native/android/` in Android Studio, run on API 21+ emulator.
-The library is referenced via `include(":VueNativeCore")` in `settings.gradle.kts`.
 
 ---
 
-## References
+## Common pitfalls
 
-- [Vue `@vue/runtime-test`](https://github.com/vuejs/core/tree/main/packages/runtime-test) — reference implementation for custom renderers
-- [FlexLayout (Yoga Swift wrapper)](https://github.com/layoutBox/FlexLayout) — iOS layout engine
-- [JavaScriptCore docs](https://developer.apple.com/documentation/javascriptcore) — Apple's JSC Swift API
-- [J2V8](https://github.com/eclipsesource/J2V8) — V8 for Android (Java/Kotlin bindings)
-- [FlexboxLayout](https://github.com/google/flexbox-layout) — Android CSS Flexbox
+| Mistake | Why it breaks | Fix |
+|---------|---------------|-----|
+| Forgetting `markRaw(node)` on NativeNode | Vue tracks node internals as reactive, causes infinite re-renders | Always call `markRaw` in `createNode` |
+| Passing `JSValue` across threads (iOS) | JSContext is not thread-safe, crashes | Extract primitives before crossing thread boundary |
+| Passing J2V8 objects across threads (Android) | V8 objects are thread-local, crashes | Serialize to primitives on the JS thread before posting to main |
+| Using `reloadData()` on VList | Causes re-entrant layout loops | Use `insertRows`/`deleteRows`/`reloadRows` at specific index paths |
+| Using `WRAP_CONTENT` for percentage dims (Android) | Percentage sizing silently broken | Use `LayoutParams.widthPercent` / `heightPercent` |
+| Duplicate Vue instances | Two copies of Vue produce two reactivity systems | Ensure `@vue-native/runtime` re-exports from one `@vue/runtime-core` |
+| `FPercent(value:)` in FlexLayout (iOS) | Internal type, not public API | Use the postfix `%` operator: `50%` |
+| Removing `invokeNativeModule` timeout | Promise hangs forever if native never replies | The 30s timeout in `bridge.ts` is intentional |
+
+---
+
+## Key file locations
+
+| What | Path |
+|------|------|
+| Vue custom renderer | `packages/runtime/src/renderer.ts` |
+| JS bridge (TS) | `packages/runtime/src/bridge.ts` |
+| NativeNode definition | `packages/runtime/src/node.ts` |
+| StyleSheet helper | `packages/runtime/src/stylesheet.ts` |
+| All component exports | `packages/runtime/src/components/` |
+| All composable exports | `packages/runtime/src/composables/` |
+| iOS Swift bridge | `native/ios/VueNativeCore/Sources/VueNativeCore/Bridge/NativeBridge.swift` |
+| iOS JS runtime | `native/ios/VueNativeCore/Sources/VueNativeCore/Bridge/JSRuntime.swift` |
+| iOS style engine | `native/ios/VueNativeCore/Sources/VueNativeCore/Styling/StyleEngine.swift` |
+| iOS component registry | `native/ios/VueNativeCore/Sources/VueNativeCore/Components/ComponentRegistry.swift` |
+| iOS base VC | `native/ios/VueNativeCore/Sources/VueNativeCore/Bridge/VueNativeViewController.swift` |
+| Android bridge | `native/android/VueNativeCore/src/main/kotlin/com/vuenative/core/Bridge/NativeBridge.kt` |
+| Android JS runtime | `native/android/VueNativeCore/src/main/kotlin/com/vuenative/core/Bridge/JSRuntime.kt` |
+| Android style engine | `native/android/VueNativeCore/src/main/kotlin/com/vuenative/core/Styling/StyleEngine.kt` |
+| Android component registry | `native/android/VueNativeCore/src/main/kotlin/com/vuenative/core/Components/ComponentRegistry.kt` |
+| Android base Activity | `native/android/VueNativeCore/src/main/kotlin/com/vuenative/core/VueNativeActivity.kt` |
+| Vite plugin | `packages/vite-plugin/src/index.ts` |
+| Navigation | `packages/navigation/src/index.ts` |

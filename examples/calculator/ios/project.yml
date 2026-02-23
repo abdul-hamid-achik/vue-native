@@ -9,7 +9,7 @@ options:
 
 packages:
   VueNativeCore:
-    path: ../../../native
+    path: ../../../native/ios/VueNativeCore
 
 targets:
   VueNativeCalculator:

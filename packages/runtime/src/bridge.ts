@@ -44,6 +44,7 @@ class NativeBridgeImpl {
   private pendingCallbacks = new Map<number, {
     resolve: (result: any) => void
     reject: (error: any) => void
+    timeoutId: ReturnType<typeof setTimeout>
   }>()
 
   /** Auto-incrementing callback ID for async native module calls */
@@ -257,12 +258,26 @@ class NativeBridgeImpl {
 
   /**
    * Invoke a native module method asynchronously. Returns a Promise that
-   * resolves when Swift calls __VN_resolveCallback with the matching callbackId.
+   * resolves when Swift/Kotlin calls __VN_resolveCallback with the matching callbackId.
+   *
+   * A 30-second timeout is applied. If the native side never responds (e.g. due to
+   * a crash or unregistered module), the Promise rejects with a clear error instead
+   * of hanging forever.
    */
-  invokeNativeModule(moduleName: string, methodName: string, args: any[] = []): Promise<any> {
+  invokeNativeModule(moduleName: string, methodName: string, args: any[] = [], timeoutMs = 30_000): Promise<any> {
     return new Promise((resolve, reject) => {
       const callbackId = this.nextCallbackId++
-      this.pendingCallbacks.set(callbackId, { resolve, reject })
+
+      const timeoutId = setTimeout(() => {
+        if (this.pendingCallbacks.has(callbackId)) {
+          this.pendingCallbacks.delete(callbackId)
+          reject(new Error(
+            `[VueNative] Native module ${moduleName}.${methodName} timed out after ${timeoutMs}ms`
+          ))
+        }
+      }, timeoutMs)
+
+      this.pendingCallbacks.set(callbackId, { resolve, reject, timeoutId })
       this.enqueue('invokeNativeModule', [moduleName, methodName, args, callbackId])
     })
   }
@@ -290,6 +305,7 @@ class NativeBridgeImpl {
       }
       return
     }
+    clearTimeout(pending.timeoutId)
     this.pendingCallbacks.delete(callbackId)
     if (error != null) {
       pending.reject(typeof error === 'string' ? new Error(error) : error)

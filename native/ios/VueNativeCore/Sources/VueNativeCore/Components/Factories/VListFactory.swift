@@ -65,14 +65,18 @@ final class VListFactory: NativeComponentFactory {
             }
             return
         }
+        let insertIdx: Int
         if let anchor = anchor, let idx = container.itemViews.firstIndex(where: { $0 === anchor }) {
             container.itemViews.insert(child, at: idx)
+            insertIdx = idx
         } else {
+            insertIdx = container.itemViews.count
             container.itemViews.append(child)
         }
-        // Trigger layout so Yoga can calculate item heights
+        // Trigger layout so Yoga can calculate item height before the cell is displayed
         container.setNeedsLayout()
-        container.tableView.reloadData()
+        // Use targeted insert rather than reloadData to avoid triggering layoutSubviews recursively
+        container.tableView.insertRows(at: [IndexPath(row: insertIdx, section: 0)], with: .none)
     }
 
     func removeChild(_ child: UIView, from parent: UIView) {
@@ -80,10 +84,15 @@ final class VListFactory: NativeComponentFactory {
             child.removeFromSuperview()
             return
         }
-        container.itemViews.removeAll { $0 === child }
+        guard let idx = container.itemViews.firstIndex(where: { $0 === child }) else {
+            child.removeFromSuperview()
+            return
+        }
+        container.itemViews.remove(at: idx)
         // Remove from any cell it's currently displayed in
         child.removeFromSuperview()
-        container.tableView.reloadData()
+        // Use targeted delete rather than reloadData
+        container.tableView.deleteRows(at: [IndexPath(row: idx, section: 0)], with: .none)
     }
 }
 
@@ -123,17 +132,18 @@ final class VListContainerView: UIView {
         let width = bounds.width
         guard width > 0 else { return }
 
-        var needsReload = false
-        for itemView in itemViews {
-            // Only recompute if width changed (avoids infinite layout loops)
+        var changedIndexPaths: [IndexPath] = []
+        for (idx, itemView) in itemViews.enumerated() {
+            // Only recompute if width changed (avoids re-entrant layout loops)
             if abs(itemView.frame.size.width - width) > 0.5 {
                 itemView.frame.size.width = width
                 itemView.flex.layout(mode: .adjustHeight)
-                needsReload = true
+                changedIndexPaths.append(IndexPath(row: idx, section: 0))
             }
         }
-        if needsReload {
-            tableView.reloadData()
+        if !changedIndexPaths.isEmpty {
+            // Reload only the rows whose heights changed, not the entire table
+            tableView.reloadRows(at: changedIndexPaths, with: .none)
         }
     }
 }

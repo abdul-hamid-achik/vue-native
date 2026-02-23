@@ -7,7 +7,7 @@
  *   native renderer instead of the DOM renderer
  * - Define __DEV__ and __PLATFORM__ compile-time constants
  * - Configure the build for IIFE output suitable for embedding in a native
- *   iOS app's JavaScript runtime (JavaScriptCore / Hermes)
+ *   app's JavaScript runtime (JavaScriptCore on iOS, V8/J2V8 on Android)
  *
  * @example
  * ```ts
@@ -23,10 +23,12 @@
 
 export interface VueNativePluginOptions {
   /**
-   * Target platform. Currently only 'ios' is supported.
+   * Target platform.
+   * - `'ios'` — JavaScriptCore (built into iOS)
+   * - `'android'` — V8 via J2V8
    * @default 'ios'
    */
-  platform?: 'ios'
+  platform?: 'ios' | 'android'
 
   /**
    * The global variable name for the IIFE bundle.
@@ -56,7 +58,7 @@ export default function vueNativePlugin(options: VueNativePluginOptions = {}) {
 
     /**
      * Modify Vite's resolved config to set up aliases, defines, and build
-     * settings appropriate for a native iOS target.
+     * settings appropriate for a native iOS or Android target.
      */
     config(config: any, env: { mode: string }) {
       const isDev = env.mode !== 'production'
@@ -85,7 +87,7 @@ export default function vueNativePlugin(options: VueNativePluginOptions = {}) {
 
         build: {
           // Target ES2020 for modern JavaScript engine compatibility
-          // (JavaScriptCore on iOS supports ES2020+)
+          // (JavaScriptCore on iOS and V8/J2V8 on Android both support ES2020+)
           target: 'es2020',
 
           // IIFE output for embedding in native app

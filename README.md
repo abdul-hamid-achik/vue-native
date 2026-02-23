@@ -9,7 +9,7 @@ Build native iOS and Android apps with Vue 3. Write Vue components, render real 
 - **Cross-Platform** — Same Vue code targets both iOS and Android from a single codebase
 - **20 Built-in Components** — VView, VText, VButton, VInput, VScrollView, VImage, VList, VModal, and more
 - **Native Modules** — Haptics, AsyncStorage, Clipboard, Network, Camera, Geolocation, and more
-- **Navigation** — Stack navigation, tab bars, deep linking via `@vue-native/navigation`
+- **Navigation** — Stack navigation via `@vue-native/navigation`
 - **Flexbox Layout** — Yoga (iOS) and FlexboxLayout (Android) for consistent cross-platform layouts
 - **Hot Reload** — Edit Vue files, see changes instantly on device or emulator
 - **TypeScript** — Full type coverage across components, composables, and bridge
@@ -203,9 +203,9 @@ const http = useHttp({ baseURL: 'https://api.example.com' })
 ## Navigation
 
 ```typescript
-import { createRouter, useRouter, useRoute, VNavigationBar, VTabBar } from '@vue-native/navigation'
+import { createRouter, RouterView, useRouter, useRoute } from '@vue-native/navigation'
 
-const { router, RouterView } = createRouter([
+const { router } = createRouter([
   { name: 'home', component: HomeView },
   { name: 'detail', component: DetailView },
 ])
@@ -225,9 +225,8 @@ const router = useRouter()
 </script>
 <template>
   <VView style="flex: 1">
-    <VNavigationBar title="Home" />
     <VButton @press="router.push('detail', { id: 42 })">
-      <VText>Open Detail</VText>
+      <VText>Go to Detail</VText>
     </VButton>
   </VView>
 </template>

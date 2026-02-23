@@ -352,7 +352,7 @@
 /* Begin XCLocalSwiftPackageReference section */
 		F77A0B33DF3098965D7EA9C0 /* XCLocalSwiftPackageReference "../../../native" */ = {
 			isa = XCLocalSwiftPackageReference;
-			relativePath = ../../../native;
+			relativePath = ../../../native/ios/VueNativeCore;
 		};
 /* End XCLocalSwiftPackageReference section */
 

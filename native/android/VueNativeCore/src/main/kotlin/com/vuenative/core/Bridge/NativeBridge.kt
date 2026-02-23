@@ -218,12 +218,11 @@ class NativeBridge(private val context: Context) {
     private fun cleanupNode(nodeId: Int) {
         nodeParents.remove(nodeId)
         eventHandlers.entries.removeAll { it.key.startsWith("$nodeId:") }
-        val view = nodeViews.remove(nodeId) ?: return
-        // Clean up children
-        (view as? ViewGroup)?.let { vg ->
-            val childIds = nodeViews.entries.filter { (_, v) -> v.parent == vg }.map { it.key }
-            childIds.forEach { cleanupNode(it) }
-        }
+        nodeViews.remove(nodeId)
+        // Find all direct children via the nodeParents map (more reliable than view.parent
+        // because factories like VList store items in a separate array, not as ViewGroup children)
+        val childIds = nodeParents.entries.filter { it.value == nodeId }.map { it.key }
+        childIds.forEach { cleanupNode(it) }
     }
 
     private fun handleSetRootView(args: JSONArray) {
