@@ -19,7 +19,7 @@
   "exports": {
     ".": "./dist/cli.js"
   },
-  "files": ["dist"],
+  "files": ["dist", "README.md"],
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
