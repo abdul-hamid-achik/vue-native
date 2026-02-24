@@ -50,7 +50,10 @@ open class VueNativeViewController: UIViewController {
 
     override open func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = .systemBackground
+        // Use black as the loading background so any unstyled gap between the
+        // native chrome and the Vue-rendered root view is not visible.
+        // The Vue app sets its own background colour via VSafeArea / VView props.
+        view.backgroundColor = .black
 
         // Initialize JS engine first (creates JSContext, registers polyfills).
         // Bridge init MUST happen inside this callback so the JSContext exists

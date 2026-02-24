@@ -166,8 +166,16 @@ final class VRootFactory: NativeComponentFactory {
 
     func createView() -> UIView {
         let view = UIView()
-        // Accessing .flex automatically enables Yoga layout
-        _ = view.flex
+        // Configure the root Yoga node to fill its container and stack children
+        // vertically (column direction matches the default CSS flex behaviour).
+        // grow(1) + width/height 100% ensures the entire safe-area rect is
+        // occupied even if the first child doesn't explicitly set flex: 1.
+        view.flex
+            .direction(.column)
+            .grow(1)
+            .shrink(1)
+            .width(100%)
+            .height(100%)
         return view
     }
 
