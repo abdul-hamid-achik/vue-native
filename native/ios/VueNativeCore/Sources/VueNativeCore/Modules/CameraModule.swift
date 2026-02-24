@@ -271,16 +271,19 @@ private final class QRScanDelegate: NSObject, AVCaptureMetadataOutputObjectsDele
               let data = readable.stringValue else { return }
 
         let bounds = readable.bounds
-        bridge?.dispatchGlobalEvent("camera:qrDetected", payload: [
-            "data": data,
-            "type": readable.type.rawValue,
-            "bounds": [
-                "x": bounds.origin.x,
-                "y": bounds.origin.y,
-                "width": bounds.size.width,
-                "height": bounds.size.height,
-            ],
-        ])
+        let type = readable.type.rawValue
+        DispatchQueue.main.async { [weak self] in
+            self?.bridge?.dispatchGlobalEvent("camera:qrDetected", payload: [
+                "data": data,
+                "type": type,
+                "bounds": [
+                    "x": bounds.origin.x,
+                    "y": bounds.origin.y,
+                    "width": bounds.size.width,
+                    "height": bounds.size.height,
+                ],
+            ])
+        }
     }
 }
 

@@ -116,7 +116,9 @@ final class PerformanceModule: NativeModule {
         guard isProfiling else { return }
         bridgeOpsCount += 1 // Count the metrics dispatch itself
         let metrics = collectMetrics()
-        bridge?.dispatchGlobalEvent("perf:metrics", payload: metrics)
+        DispatchQueue.main.async { [weak self] in
+            self?.bridge?.dispatchGlobalEvent("perf:metrics", payload: metrics)
+        }
     }
 
     // MARK: - Memory measurement

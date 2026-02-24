@@ -44,7 +44,7 @@ final class BackgroundTaskModule: NativeModule {
                 callback(nil, "cancelTask: missing taskId")
                 return
             }
-            BGTaskScheduler.shared.cancel(taskIdentifier: taskId)
+            BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: taskId)
             callback(nil, nil)
 
         case "cancelAllTasks":

@@ -154,7 +154,7 @@ final class IAPModule: NativeModule {
                         "transactionId": String(transaction.id),
                     ]
                     await MainActor.run {
-                        self.bridge?.emitGlobalEvent("iap:transactionUpdate", payload: payload)
+                        self.bridge?.dispatchGlobalEvent("iap:transactionUpdate", payload: payload)
                     }
                 } catch {
                     let payload: [String: Any] = [
@@ -163,7 +163,7 @@ final class IAPModule: NativeModule {
                         "error": error.localizedDescription,
                     ]
                     await MainActor.run {
-                        self.bridge?.emitGlobalEvent("iap:transactionUpdate", payload: payload)
+                        self.bridge?.dispatchGlobalEvent("iap:transactionUpdate", payload: payload)
                     }
                 }
             }

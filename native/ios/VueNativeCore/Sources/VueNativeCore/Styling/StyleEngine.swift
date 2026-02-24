@@ -495,9 +495,9 @@ enum StyleEngine {
         case "direction":
             if let str = value as? String {
                 switch str {
-                case "ltr": flex.direction(.LTR)
-                case "rtl": flex.direction(.RTL)
-                case "inherit": flex.direction(.inherit)
+                case "ltr": flex.layoutDirection(.ltr)
+                case "rtl": flex.layoutDirection(.rtl)
+                case "inherit": flex.layoutDirection(.inherit)
                 default: break
                 }
             }

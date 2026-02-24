@@ -227,7 +227,7 @@ final class SocialAuthModule: NSObject, NativeModule, ASAuthorizationControllerD
             queue: .main
         ) { [weak self] _ in
             UserDefaults.standard.removeObject(forKey: "vn_apple_userId")
-            self?.bridge?.emitGlobalEvent("auth:appleCredentialRevoked", payload: [:])
+            self?.bridge?.dispatchGlobalEvent("auth:appleCredentialRevoked", payload: [:])
         }
     }
 

@@ -153,7 +153,9 @@ final class AudioModule: NativeModule {
             guard let self = self else { return }
             self.isPlaying = false
             self.stopProgressReporting()
-            self.bridge?.dispatchGlobalEvent("audio:complete", payload: [:])
+            DispatchQueue.main.async { [weak self] in
+                self?.bridge?.dispatchGlobalEvent("audio:complete", payload: [:])
+            }
         }
         player.delegate = delegate
         self.playerDelegate = delegate
@@ -233,10 +235,13 @@ final class AudioModule: NativeModule {
 
     @objc private func reportProgress() {
         guard let player = player, isPlaying else { return }
-        bridge?.dispatchGlobalEvent("audio:progress", payload: [
-            "currentTime": player.currentTime,
-            "duration": player.duration,
-        ])
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self, let player = self.player else { return }
+            self.bridge?.dispatchGlobalEvent("audio:progress", payload: [
+                "currentTime": player.currentTime,
+                "duration": player.duration,
+            ])
+        }
     }
 
     // MARK: - Recording
