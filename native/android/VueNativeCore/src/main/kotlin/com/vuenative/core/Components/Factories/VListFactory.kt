@@ -7,7 +7,8 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 
 class VListFactory : NativeComponentFactory {
-    // For each RecyclerView, store child views managed by the bridge
+    // For each RecyclerView, store child views managed by the bridge.
+    // All maps are cleaned up in cleanupRecyclerView() when the view is removed.
     private val childViews = mutableMapOf<RecyclerView, MutableList<View>>()
     private val scrollHandlers = mutableMapOf<RecyclerView, (Any?) -> Unit>()
     private val endReachedHandlers = mutableMapOf<RecyclerView, (Any?) -> Unit>()
@@ -124,9 +125,9 @@ class VListFactory : NativeComponentFactory {
     override fun insertChild(parent: View, child: View, index: Int) {
         val rv = parent as? RecyclerView ?: return
         val list = childViews[rv] ?: return
-        if (index >= list.size) list.add(child)
-        else list.add(index, child)
-        rv.adapter?.notifyItemInserted(if (index >= list.size - 1) list.size - 1 else index)
+        val insertIdx = if (index >= list.size) list.size else index
+        list.add(insertIdx, child)
+        rv.adapter?.notifyItemInserted(insertIdx)
     }
 
     override fun removeChild(parent: View, child: View) {
@@ -137,6 +138,28 @@ class VListFactory : NativeComponentFactory {
             list.removeAt(idx)
             rv.adapter?.notifyItemRemoved(idx)
         }
+    }
+
+    /**
+     * Clean up all state associated with a RecyclerView when it is removed from the tree.
+     * Prevents memory leaks by clearing all map entries that reference the view.
+     */
+    fun cleanupRecyclerView(rv: RecyclerView) {
+        scrollListeners.remove(rv)?.let { rv.removeOnScrollListener(it) }
+        scrollHandlers.remove(rv)
+        endReachedHandlers.remove(rv)
+        firedEndReached.remove(rv)
+        estimatedItemHeights.remove(rv)
+        childViews.remove(rv)
+        rv.adapter = null
+    }
+
+    /**
+     * Called when the parent view is being destroyed. Cleans up the RecyclerView.
+     */
+    fun destroyView(view: View) {
+        val rv = view as? RecyclerView ?: return
+        cleanupRecyclerView(rv)
     }
 }
 

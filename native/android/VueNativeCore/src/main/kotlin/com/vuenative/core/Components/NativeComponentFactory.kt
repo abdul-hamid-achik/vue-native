@@ -28,4 +28,13 @@ interface NativeComponentFactory {
     fun removeChild(parent: View, child: View) {
         (parent as? ViewGroup)?.removeView(child)
     }
+
+    /**
+     * Called when a view is being permanently destroyed (removed from tree).
+     * Override to clean up any factory-level state associated with this view
+     * to prevent memory leaks. Default implementation is a no-op.
+     */
+    fun destroyView(view: View) {
+        // Default: no-op. Override in factories that maintain per-view state.
+    }
 }

@@ -22,27 +22,32 @@ function toEventName(key: string): string {
  * Diff two style objects and send only the changed properties to native.
  * - Properties in nextStyle that differ from prevStyle are updated.
  * - Properties in prevStyle missing from nextStyle are set to null (removed).
+ * Errors are caught to prevent breaking the Vue render loop.
  */
 function patchStyle(
   nodeId: number,
   prevStyle: Record<string, any> | null | undefined,
   nextStyle: Record<string, any> | null | undefined,
 ): void {
-  const prev = prevStyle || {}
-  const next = nextStyle || {}
+  try {
+    const prev = prevStyle || {}
+    const next = nextStyle || {}
 
-  // Update changed or new properties
-  for (const key in next) {
-    if (next[key] !== prev[key]) {
-      NativeBridge.updateStyle(nodeId, key, next[key])
+    // Update changed or new properties
+    for (const key in next) {
+      if (next[key] !== prev[key]) {
+        NativeBridge.updateStyle(nodeId, key, next[key])
+      }
     }
-  }
 
-  // Remove properties that no longer exist
-  for (const key in prev) {
-    if (!(key in next)) {
-      NativeBridge.updateStyle(nodeId, key, null)
+    // Remove properties that no longer exist
+    for (const key in prev) {
+      if (!(key in next)) {
+        NativeBridge.updateStyle(nodeId, key, null)
+      }
     }
+  } catch (err) {
+    console.error(`[VueNative] Error patching style on node ${nodeId}:`, err)
   }
 }
 
@@ -107,31 +112,35 @@ const nodeOps: RendererOptions<NativeNode, NativeNode> = {
     prevValue: any,
     nextValue: any,
   ): void {
-    // Event handlers: keys starting with "on" followed by uppercase letter
-    if (key.startsWith('on') && key.length > 2 && key[2] === key[2].toUpperCase()) {
-      const eventName = toEventName(key)
+    try {
+      // Event handlers: keys starting with "on" followed by uppercase letter
+      if (key.startsWith('on') && key.length > 2 && key[2] === key[2].toUpperCase()) {
+        const eventName = toEventName(key)
 
-      // Remove old handler if it existed
-      if (prevValue) {
-        NativeBridge.removeEventListener(el.id, eventName)
+        // Remove old handler if it existed
+        if (prevValue) {
+          NativeBridge.removeEventListener(el.id, eventName)
+        }
+
+        // Register new handler if provided
+        if (nextValue) {
+          NativeBridge.addEventListener(el.id, eventName, nextValue)
+        }
+        return
       }
 
-      // Register new handler if provided
-      if (nextValue) {
-        NativeBridge.addEventListener(el.id, eventName, nextValue)
+      // Style prop: diff old and new style objects
+      if (key === 'style') {
+        patchStyle(el.id, prevValue, nextValue)
+        return
       }
-      return
-    }
 
-    // Style prop: diff old and new style objects
-    if (key === 'style') {
-      patchStyle(el.id, prevValue, nextValue)
-      return
+      // Regular props
+      el.props[key] = nextValue
+      NativeBridge.updateProp(el.id, key, nextValue)
+    } catch (err) {
+      console.error(`[VueNative] Error patching prop "${key}" on node ${el.id}:`, err)
     }
-
-    // Regular props
-    el.props[key] = nextValue
-    NativeBridge.updateProp(el.id, key, nextValue)
   },
 
   /**
@@ -150,34 +159,38 @@ const nodeOps: RendererOptions<NativeNode, NativeNode> = {
 
     child.parent = parent
 
-    if (anchor) {
-      const anchorIdx = parent.children.indexOf(anchor)
-      if (anchorIdx !== -1) {
-        parent.children.splice(anchorIdx, 0, child)
-      } else {
-        // Anchor not found — append to end
-        parent.children.push(child)
-      }
-      // Comment nodes are not sent to native, so only send insertBefore
-      // for non-comment children with a non-comment anchor
-      if (child.type !== '__COMMENT__') {
-        if (anchor.type !== '__COMMENT__') {
-          NativeBridge.insertBefore(parent.id, child.id, anchor.id)
+    try {
+      if (anchor) {
+        const anchorIdx = parent.children.indexOf(anchor)
+        if (anchorIdx !== -1) {
+          parent.children.splice(anchorIdx, 0, child)
         } else {
-          // Anchor is a comment — find the next non-comment sibling to use as anchor
-          const realAnchor = findNextNonComment(parent, anchor)
-          if (realAnchor) {
-            NativeBridge.insertBefore(parent.id, child.id, realAnchor.id)
+          // Anchor not found — append to end
+          parent.children.push(child)
+        }
+        // Comment nodes are not sent to native, so only send insertBefore
+        // for non-comment children with a non-comment anchor
+        if (child.type !== '__COMMENT__') {
+          if (anchor.type !== '__COMMENT__') {
+            NativeBridge.insertBefore(parent.id, child.id, anchor.id)
           } else {
-            NativeBridge.appendChild(parent.id, child.id)
+            // Anchor is a comment — find the next non-comment sibling to use as anchor
+            const realAnchor = findNextNonComment(parent, anchor)
+            if (realAnchor) {
+              NativeBridge.insertBefore(parent.id, child.id, realAnchor.id)
+            } else {
+              NativeBridge.appendChild(parent.id, child.id)
+            }
           }
         }
+      } else {
+        parent.children.push(child)
+        if (child.type !== '__COMMENT__') {
+          NativeBridge.appendChild(parent.id, child.id)
+        }
       }
-    } else {
-      parent.children.push(child)
-      if (child.type !== '__COMMENT__') {
-        NativeBridge.appendChild(parent.id, child.id)
-      }
+    } catch (err) {
+      console.error(`[VueNative] Error inserting node ${child.id} into ${parent.id}:`, err)
     }
   },
 
@@ -192,8 +205,12 @@ const nodeOps: RendererOptions<NativeNode, NativeNode> = {
         parent.children.splice(idx, 1)
       }
       child.parent = null
-      if (child.type !== '__COMMENT__') {
-        NativeBridge.removeChild(parent.id, child.id)
+      try {
+        if (child.type !== '__COMMENT__') {
+          NativeBridge.removeChild(parent.id, child.id)
+        }
+      } catch (err) {
+        console.error(`[VueNative] Error removing node ${child.id}:`, err)
       }
     }
   },

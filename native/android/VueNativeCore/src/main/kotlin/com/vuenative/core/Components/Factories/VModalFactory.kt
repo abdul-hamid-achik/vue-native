@@ -88,4 +88,18 @@ class VModalFactory : NativeComponentFactory {
     override fun removeChild(parent: View, child: View) {
         contentContainers[parent]?.removeView(child)
     }
+
+    /**
+     * Clean up all state associated with a modal view when it is removed from the tree.
+     * Dismisses the dialog and clears all map entries that reference the view,
+     * preventing memory leaks.
+     */
+    fun destroyView(view: View) {
+        dialogs[view]?.let { dialog ->
+            if (dialog.isShowing) dialog.dismiss()
+        }
+        dialogs.remove(view)
+        contentContainers.remove(view)
+        dismissHandlers.remove(view)
+    }
 }

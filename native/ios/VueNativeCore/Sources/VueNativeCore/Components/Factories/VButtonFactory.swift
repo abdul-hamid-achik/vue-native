@@ -59,27 +59,16 @@ final class VButtonFactory: NativeComponentFactory {
 
         switch event {
         case "press":
+            // Capture handler weakly via the closure to avoid retain cycles.
+            // TouchableView.onPress holds the only strong reference to the closure.
             touchable.onPress = {
                 handler(nil)
             }
-            // Store handler reference
-            objc_setAssociatedObject(
-                view,
-                &VButtonFactory.pressHandlerKey,
-                handler as AnyObject,
-                .OBJC_ASSOCIATION_RETAIN_NONATOMIC
-            )
 
         case "longpress":
             touchable.onLongPress = {
                 handler(nil)
             }
-            objc_setAssociatedObject(
-                view,
-                &VButtonFactory.longPressHandlerKey,
-                handler as AnyObject,
-                .OBJC_ASSOCIATION_RETAIN_NONATOMIC
-            )
 
         default:
             break
@@ -92,11 +81,9 @@ final class VButtonFactory: NativeComponentFactory {
         switch event {
         case "press":
             touchable.onPress = nil
-            objc_setAssociatedObject(view, &VButtonFactory.pressHandlerKey, nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
 
         case "longpress":
             touchable.onLongPress = nil
-            objc_setAssociatedObject(view, &VButtonFactory.longPressHandlerKey, nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
 
         default:
             break

@@ -36,12 +36,12 @@ export const createCommand = new Command('create')
           typecheck: 'tsc --noEmit',
         },
         dependencies: {
-          '@thelacanians/vue-native-runtime': '^0.1.0',
-          '@thelacanians/vue-native-navigation': '^0.1.0',
+          '@thelacanians/vue-native-runtime': '^0.3.0',
+          '@thelacanians/vue-native-navigation': '^0.3.0',
           'vue': '^3.5.0',
         },
         devDependencies: {
-          '@thelacanians/vue-native-vite-plugin': '^0.1.0',
+          '@thelacanians/vue-native-vite-plugin': '^0.3.0',
           '@vitejs/plugin-vue': '^5.0.0',
           'vite': '^6.1.0',
           'typescript': '^5.7.0',

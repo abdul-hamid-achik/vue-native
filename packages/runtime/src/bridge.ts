@@ -42,8 +42,12 @@ class NativeBridgeImpl {
     timeoutId: ReturnType<typeof setTimeout>
   }>()
 
-  /** Auto-incrementing callback ID for async native module calls */
+  /** Auto-incrementing callback ID for async native module calls.
+   *  Wraps around at MAX_SAFE_CALLBACK_ID to prevent overflow. */
   private nextCallbackId = 1
+
+  /** Maximum callback ID before wraparound (safe for 32-bit signed int) */
+  private static readonly MAX_CALLBACK_ID = 2_147_483_647
 
   /** Global event listeners: eventName -> Set of callbacks */
   private globalEventHandlers = new Map<string, Set<(payload: any) => void>>()
@@ -79,11 +83,16 @@ class NativeBridgeImpl {
     const json = JSON.stringify(ops)
     const flushFn = (globalThis as any).__VN_flushOperations
     if (typeof flushFn === 'function') {
-      flushFn(json)
-    } else if (__DEV__) {
+      try {
+        flushFn(json)
+      } catch (err) {
+        console.error('[VueNative] Error in __VN_flushOperations:', err)
+      }
+    } else {
+      // Log in both dev and production — silent bridge failures are dangerous
       console.warn(
         '[VueNative] __VN_flushOperations is not registered. '
-        + 'Make sure the Swift runtime has been initialized.',
+        + 'Make sure the native runtime has been initialized.',
       )
     }
   }
@@ -265,7 +274,12 @@ class NativeBridgeImpl {
    */
   invokeNativeModule(moduleName: string, methodName: string, args: any[] = [], timeoutMs = 30_000): Promise<any> {
     return new Promise((resolve, reject) => {
-      const callbackId = this.nextCallbackId++
+      const callbackId = this.nextCallbackId
+      if (this.nextCallbackId >= NativeBridgeImpl.MAX_CALLBACK_ID) {
+        this.nextCallbackId = 1
+      } else {
+        this.nextCallbackId++
+      }
 
       const timeoutId = setTimeout(() => {
         if (this.pendingCallbacks.has(callbackId)) {

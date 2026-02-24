@@ -93,11 +93,14 @@ abstract class VueNativeActivity : AppCompatActivity() {
                 .trimEnd('/') + "/${getBundleAssetPath()}"
 
             hotReloadManager = HotReloadManager(runtime) { bundleCode ->
+                // Reset polyfill state (timers, RAF) before reloading
+                JSPolyfills.reset()
                 runOnUiThread {
                     runtime.bridge.nodeViews.clear()
                     runtime.bridge.nodeTypes.clear()
                     runtime.bridge.eventHandlers.clear()
                     runtime.bridge.nodeParents.clear()
+                    runtime.bridge.nodeChildren.clear()
                     runtime.bridge.rootView = null
                     rootContainer.removeAllViews()
                 }

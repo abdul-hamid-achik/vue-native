@@ -22,11 +22,13 @@ class HotReloadManager(
         private const val RECONNECT_DELAY_MS = 3000L
     }
 
-    private val scope = CoroutineScope(Dispatchers.IO + Job())
+    private var scopeJob = Job()
+    private var scope = CoroutineScope(Dispatchers.IO + scopeJob)
     private var wsSession: okhttp3.WebSocket? = null
     private val httpClient = okhttp3.OkHttpClient()
     private var devServerUrl: String? = null
     private var bundleUrl: String? = null
+    @Volatile
     private var isConnected = false
 
     fun connect(wsUrl: String, bundleUrl: String) {
@@ -89,7 +91,15 @@ class HotReloadManager(
     }
 
     fun disconnect() {
+        // Cancel all pending coroutines (reconnection attempts, bundle fetches)
+        scopeJob.cancel()
         wsSession?.close(1000, "Shutting down")
         wsSession = null
+        isConnected = false
+        devServerUrl = null
+        bundleUrl = null
+        // Create a fresh scope/job in case connect() is called again
+        scopeJob = Job()
+        scope = CoroutineScope(Dispatchers.IO + scopeJob)
     }
 }

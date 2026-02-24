@@ -37,6 +37,10 @@ public final class NativeBridge {
     /// The handlers dispatch the event payload back to the JS queue.
     private var eventHandlers: [String: (Any?) -> Void] = [:]
 
+    /// Reverse index: maps nodeId to the set of event handler keys for that node.
+    /// Provides O(1) cleanup instead of O(n) scan of eventHandlers on removal.
+    private var eventKeysPerNode: [Int: Set<String>] = [:]
+
     /// Maps each child node ID to its parent node ID.
     /// Used to look up the parent factory when removing a child.
     private var nodeParent: [Int: Int] = [:]
@@ -425,14 +429,23 @@ public final class NativeBridge {
             childrenOf[parentId]?.removeAll { $0 == childId }
         }
 
-        nodeParent.removeValue(forKey: childId)
-        viewRegistry.removeValue(forKey: childId)
-        typeRegistry.removeValue(forKey: childId)
-        childrenOf.removeValue(forKey: childId)
+        cleanupNodeRegistries(childId)
+    }
 
-        // Clean up any event handlers for this node
-        let prefix = "\(childId):"
-        eventHandlers = eventHandlers.filter { !$0.key.hasPrefix(prefix) }
+    /// Clean up all registry entries for a single node ID.
+    /// Uses the eventKeysPerNode index for O(1) event handler cleanup.
+    private func cleanupNodeRegistries(_ nodeId: Int) {
+        nodeParent.removeValue(forKey: nodeId)
+        viewRegistry.removeValue(forKey: nodeId)
+        typeRegistry.removeValue(forKey: nodeId)
+        childrenOf.removeValue(forKey: nodeId)
+
+        // O(k) cleanup where k = number of handlers on this node, not O(total handlers)
+        if let keys = eventKeysPerNode.removeValue(forKey: nodeId) {
+            for key in keys {
+                eventHandlers.removeValue(forKey: key)
+            }
+        }
     }
 
     /// Recursively clean up all descendant nodes using the childrenOf reverse index.
@@ -441,12 +454,7 @@ public final class NativeBridge {
         guard let children = childrenOf[nodeId] else { return }
         for childId in children {
             removeDescendantsFromIndex(childId)
-            nodeParent.removeValue(forKey: childId)
-            viewRegistry.removeValue(forKey: childId)
-            typeRegistry.removeValue(forKey: childId)
-            childrenOf.removeValue(forKey: childId)
-            let prefix = "\(childId):"
-            eventHandlers = eventHandlers.filter { !$0.key.hasPrefix(prefix) }
+            cleanupNodeRegistries(childId)
         }
     }
 
@@ -468,6 +476,7 @@ public final class NativeBridge {
         }
 
         eventHandlers[handlerKey] = handler
+        eventKeysPerNode[nodeId, default: []].insert(handlerKey)
 
         // Wire up the native event via the component's factory
         registry.addEventListener(view: view, event: eventName, handler: handler)
@@ -483,6 +492,7 @@ public final class NativeBridge {
 
         let handlerKey = "\(nodeId):\(eventName)"
         eventHandlers.removeValue(forKey: handlerKey)
+        eventKeysPerNode[nodeId]?.remove(handlerKey)
 
         if let view = viewRegistry[nodeId] {
             registry.removeEventListener(view: view, event: eventName)
@@ -720,6 +730,7 @@ public final class NativeBridge {
         viewRegistry.removeAll()
         typeRegistry.removeAll()
         eventHandlers.removeAll()
+        eventKeysPerNode.removeAll()
         nodeParent.removeAll()
         childrenOf.removeAll()
         // Keep rootView reference and rootViewController — we re-use the same container
@@ -810,6 +821,7 @@ public final class NativeBridge {
             self.viewRegistry.removeAll()
             self.typeRegistry.removeAll()
             self.eventHandlers.removeAll()
+            self.eventKeysPerNode.removeAll()
             self.nodeParent.removeAll()
             self.childrenOf.removeAll()
             self.rootView = nil
@@ -820,9 +832,13 @@ public final class NativeBridge {
 
     /// Safely convert a JSON value to Int.
     /// JSON numbers may come as Int, Double, or NSNumber.
+    /// Guards against NaN and Infinity which would produce undefined behavior in Int().
     private func asInt(_ value: Any) -> Int? {
         if let i = value as? Int { return i }
-        if let d = value as? Double { return Int(d) }
+        if let d = value as? Double {
+            guard d.isFinite, d >= Double(Int.min), d <= Double(Int.max) else { return nil }
+            return Int(d)
+        }
         if let n = value as? NSNumber { return n.intValue }
         return nil
     }

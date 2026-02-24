@@ -251,7 +251,14 @@ class NativeBridge(private val context: Context) {
         nodeChildren[nodeId]?.toList()?.forEach { cleanupNode(it) }
         nodeParents.remove(nodeId)
         eventHandlers.entries.removeAll { it.key.startsWith("$nodeId:") }
+        // Call destroyView on the factory to clean up factory-level state (e.g. VListFactory maps)
+        val view = nodeViews[nodeId]
+        if (view != null) {
+            val factory = componentRegistry.factoryForView(view)
+            factory?.destroyView(view)
+        }
         nodeViews.remove(nodeId)
+        nodeTypes.remove(nodeId)
         nodeChildren.remove(nodeId)
     }
 
