@@ -5,6 +5,12 @@ import AVKit
 import FlexLayout
 import ObjectiveC
 
+// File-level keys used in non-isolated contexts (e.g. deinit).
+// Must live outside the @MainActor-isolated class so they can be
+// passed as `inout` without actor-isolation violations.
+private nonisolated(unsafe) var _timeObserverKey: UInt8 = 7
+private nonisolated(unsafe) var _endObserverKey: UInt8 = 9
+
 /// Factory for VVideo — the video playback component.
 /// Uses AVPlayer + AVPlayerLayer for inline video playback.
 final class VVideoFactory: NativeComponentFactory {
@@ -18,9 +24,7 @@ final class VVideoFactory: NativeComponentFactory {
     private static var onErrorKey: UInt8 = 4
     private static var onProgressKey: UInt8 = 5
     private static var playerKey: UInt8 = 6
-    fileprivate static var timeObserverKey: UInt8 = 7
     private static var statusObserverKey: UInt8 = 8
-    fileprivate static var endObserverKey: UInt8 = 9
 
     // MARK: - NativeComponentFactory
 
@@ -169,7 +173,7 @@ final class VVideoFactory: NativeComponentFactory {
                                payload: ["currentTime": currentTime, "duration": dur])
             }
         }
-        objc_setAssociatedObject(container, &VVideoFactory.timeObserverKey, timeObserver as AnyObject, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        objc_setAssociatedObject(container, &_timeObserverKey, timeObserver as AnyObject, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
 
         // End observer
         let endObserver = NotificationCenter.default.addObserver(
@@ -184,20 +188,20 @@ final class VVideoFactory: NativeComponentFactory {
                 container.player?.play()
             }
         }
-        objc_setAssociatedObject(container, &VVideoFactory.endObserverKey, endObserver as AnyObject, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        objc_setAssociatedObject(container, &_endObserverKey, endObserver as AnyObject, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
     }
 
     private func cleanupPlayer(for container: VideoContainerView) {
         // Remove time observer
-        if let timeObserver = objc_getAssociatedObject(container, &VVideoFactory.timeObserverKey) {
+        if let timeObserver = objc_getAssociatedObject(container, &_timeObserverKey) {
             container.player?.removeTimeObserver(timeObserver)
-            objc_setAssociatedObject(container, &VVideoFactory.timeObserverKey, nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+            objc_setAssociatedObject(container, &_timeObserverKey, nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
         }
 
         // Remove end observer
-        if let endObserver = objc_getAssociatedObject(container, &VVideoFactory.endObserverKey) {
+        if let endObserver = objc_getAssociatedObject(container, &_endObserverKey) {
             NotificationCenter.default.removeObserver(endObserver)
-            objc_setAssociatedObject(container, &VVideoFactory.endObserverKey, nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+            objc_setAssociatedObject(container, &_endObserverKey, nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
         }
 
         // Remove status observer
@@ -232,10 +236,10 @@ private class VideoContainerView: UIView {
 
     deinit {
         // Clean up player resources
-        if let timeObserver = objc_getAssociatedObject(self, &VVideoFactory.timeObserverKey) {
+        if let timeObserver = objc_getAssociatedObject(self, &_timeObserverKey) {
             player?.removeTimeObserver(timeObserver)
         }
-        if let endObserver = objc_getAssociatedObject(self, &VVideoFactory.endObserverKey) {
+        if let endObserver = objc_getAssociatedObject(self, &_endObserverKey) {
             NotificationCenter.default.removeObserver(endObserver)
         }
         player?.pause()

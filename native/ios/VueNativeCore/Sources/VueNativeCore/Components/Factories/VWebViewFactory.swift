@@ -12,9 +12,11 @@ import FlexLayout
 final class VWebViewFactory: NativeComponentFactory {
 
     // fileprivate so the inner delegate/handler classes in this file can access them.
-    fileprivate static var onLoadKey:    UInt8 = 0
-    fileprivate static var onErrorKey:   UInt8 = 1
-    fileprivate static var onMessageKey: UInt8 = 2
+    // nonisolated(unsafe) allows usage from non-isolated contexts (WKNavigationDelegate,
+    // WKScriptMessageHandler callbacks) without actor-isolation errors.
+    nonisolated(unsafe) fileprivate static var onLoadKey:    UInt8 = 0
+    nonisolated(unsafe) fileprivate static var onErrorKey:   UInt8 = 1
+    nonisolated(unsafe) fileprivate static var onMessageKey: UInt8 = 2
     fileprivate static var delegateKey:  UInt8 = 3
     fileprivate static var msgHandlerKey: UInt8 = 4
 

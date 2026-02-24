@@ -17,7 +17,7 @@ import AVFoundation
 ///   - resumeRecording()                    -- resume recording
 ///   - getStatus()                          -- returns current playback status
 ///
-/// Events (via bridge.sendGlobalEvent):
+/// Events (via bridge.dispatchGlobalEvent):
 ///   - audio:progress { currentTime, duration }
 ///   - audio:complete {}
 ///   - audio:error { message }
@@ -116,7 +116,7 @@ final class AudioModule: NativeModule {
                 guard let self = self else { return }
                 if let error = error {
                     callback(nil, "Failed to download audio: \(error.localizedDescription)")
-                    self.bridge?.sendGlobalEvent("audio:error", payload: ["message": error.localizedDescription])
+                    self.bridge?.dispatchGlobalEvent("audio:error", payload: ["message": error.localizedDescription])
                     return
                 }
                 guard let data = data else {
@@ -153,7 +153,7 @@ final class AudioModule: NativeModule {
             guard let self = self else { return }
             self.isPlaying = false
             self.stopProgressReporting()
-            self.bridge?.sendGlobalEvent("audio:complete", payload: [:])
+            self.bridge?.dispatchGlobalEvent("audio:complete", payload: [:])
         }
         player.delegate = delegate
         self.playerDelegate = delegate
@@ -233,7 +233,7 @@ final class AudioModule: NativeModule {
 
     @objc private func reportProgress() {
         guard let player = player, isPlaying else { return }
-        bridge?.sendGlobalEvent("audio:progress", payload: [
+        bridge?.dispatchGlobalEvent("audio:progress", payload: [
             "currentTime": player.currentTime,
             "duration": player.duration,
         ])
