@@ -147,7 +147,7 @@ object StyleEngine {
             }
             "minWidth"  -> updateFlexProps(view) { fp -> fp.copy(minWidth = dpToPx(ctx, toFloat(value, 0f)).toInt()) }
             "minHeight" -> updateFlexProps(view) { fp -> fp.copy(minHeight = dpToPx(ctx, toFloat(value, 0f)).toInt()) }
-            "maxWidth"  -> view.post { view.maxWidth = dpToPx(ctx, toFloat(value, 0f)).toInt() }
+            "maxWidth"  -> updateFlexProps(view) { fp -> fp.copy(maxWidth = dpToPx(ctx, toFloat(value, 0f)).toInt()) }
 
             // --- Flex props (stored in FlexProps, applied when inserted) ---
             "flex" -> {
@@ -424,8 +424,8 @@ object StyleEngine {
                 tv.paintFlags = when (value) {
                     "underline"    -> tv.paintFlags or android.graphics.Paint.UNDERLINE_TEXT_FLAG
                     "line-through" -> tv.paintFlags or android.graphics.Paint.STRIKE_THRU_TEXT_FLAG
-                    "none"         -> tv.paintFlags and android.graphics.Paint.UNDERLINE_TEXT_FLAG.inv()
-                                               and android.graphics.Paint.STRIKE_THRU_TEXT_FLAG.inv()
+                    "none"         -> (tv.paintFlags and android.graphics.Paint.UNDERLINE_TEXT_FLAG.inv()
+                                               and android.graphics.Paint.STRIKE_THRU_TEXT_FLAG.inv())
                     else           -> tv.paintFlags
                 }
             }
@@ -467,6 +467,8 @@ object StyleEngine {
         val order: Int = 1,
         val minWidth: Int = 0,
         val minHeight: Int = 0,
+        val maxWidth: Int = Int.MAX_VALUE,
+        val maxHeight: Int = Int.MAX_VALUE,
     )
 
     fun getFlexProps(view: View): FlexProps =
@@ -501,6 +503,8 @@ object StyleEngine {
             order = fp.order
             minWidth = fp.minWidth
             minHeight = fp.minHeight
+            maxWidth = fp.maxWidth
+            maxHeight = fp.maxHeight
             // Apply percentage dimensions when set (FlexboxLayout 3.x widthPercent/heightPercent)
             if (fp.widthPercent >= 0f) widthPercent = fp.widthPercent
             if (fp.heightPercent >= 0f) heightPercent = fp.heightPercent

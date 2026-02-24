@@ -14,7 +14,7 @@ import com.google.android.flexbox.JustifyContent
  * with configurable active opacity and support for press and long press events.
  * Mirrors the Swift TouchableView (UIView subclass) for Android.
  */
-class TouchableView(context: Context) : FlexboxLayout(context) {
+open class TouchableView(context: Context) : FlexboxLayout(context) {
 
     /** The opacity to apply when the user is pressing the view. */
     var activeOpacity: Float = 1.0f

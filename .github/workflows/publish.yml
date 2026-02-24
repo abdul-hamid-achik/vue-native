@@ -100,12 +100,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build VueNativeCore Swift Package
-        run: swift build -c release
-
-      - name: Run Swift tests
-        run: swift test
-        continue-on-error: true
+      - name: Build VueNativeCore Swift Package for iOS Simulator
+        run: |
+          xcodebuild build \
+            -scheme VueNativeCore \
+            -destination 'platform=iOS Simulator,name=iPhone 15,OS=latest' \
+            -configuration Release \
+            -skipPackagePluginValidation
 
   # ── Maven artifact (Android) ────────────────────────────
   publish-android:

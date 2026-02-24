@@ -108,14 +108,14 @@ class AudioModule : NativeModule {
                 mp.setOnCompletionListener {
                     isPlaying = false
                     stopProgressReporting()
-                    bridge?.sendGlobalEvent("audio:complete", emptyMap())
+                    bridge?.dispatchGlobalEvent("audio:complete", emptyMap())
                 }
 
                 mp.setOnErrorListener { _, what, extra ->
                     isPlaying = false
                     stopProgressReporting()
                     val msg = "MediaPlayer error: what=$what extra=$extra"
-                    bridge?.sendGlobalEvent("audio:error", mapOf("message" to msg))
+                    bridge?.dispatchGlobalEvent("audio:error", mapOf("message" to msg))
                     true
                 }
 
@@ -179,7 +179,7 @@ class AudioModule : NativeModule {
             override fun run() {
                 val mp = player ?: return
                 if (isPlaying) {
-                    bridge?.sendGlobalEvent("audio:progress", mapOf(
+                    bridge?.dispatchGlobalEvent("audio:progress", mapOf(
                         "currentTime" to mp.currentPosition.toDouble() / 1000.0,
                         "duration" to mp.duration.toDouble() / 1000.0
                     ))

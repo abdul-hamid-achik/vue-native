@@ -157,7 +157,7 @@ class VListFactory : NativeComponentFactory {
     /**
      * Called when the parent view is being destroyed. Cleans up the RecyclerView.
      */
-    fun destroyView(view: View) {
+    override fun destroyView(view: View) {
         val rv = view as? RecyclerView ?: return
         cleanupRecyclerView(rv)
     }

@@ -40,16 +40,16 @@ jobs:
       - name: Dead code check
         run: bun run knip
 
-  # Validate Swift package builds on macOS
+  # Validate Swift package builds on macOS (iOS target requires xcodebuild)
   swift:
     runs-on: macos-14
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build VueNativeCore
-        run: swift build
-
-      - name: Test VueNativeCore
-        run: swift test
-        continue-on-error: true
+      - name: Build VueNativeCore for iOS Simulator
+        run: |
+          xcodebuild build \
+            -scheme VueNativeCore \
+            -destination 'platform=iOS Simulator,name=iPhone 15,OS=latest' \
+            -skipPackagePluginValidation

@@ -62,10 +62,10 @@ class SocialAuthModule : NativeModule {
 
     private fun handleGoogleSignIn(clientId: String, callback: (Any?, String?) -> Unit) {
         val ctx = context ?: run { callback(null, "SocialAuth: no context"); return }
-        val activity = bridge?.activity
+        val activity = ctx as? Activity
 
         if (activity == null) {
-            callback(null, "signInWithGoogle: no activity available")
+            callback(null, "signInWithGoogle: no activity available (context is not an Activity)")
             return
         }
 

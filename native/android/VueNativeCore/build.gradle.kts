@@ -66,6 +66,12 @@ dependencies {
     // Kotlin Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
 
+    // Lifecycle Process (for ProcessLifecycleOwner)
+    implementation("androidx.lifecycle:lifecycle-process:2.7.0")
+
+    // WorkManager (for BackgroundTaskModule)
+    implementation("androidx.work:work-runtime-ktx:2.8.1")
+
     // Location (for GeolocationModule)
     implementation("com.google.android.gms:play-services-location:21.1.0")
 
@@ -74,6 +80,13 @@ dependencies {
 
     // Secure Storage (for SecureStorageModule)
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
+
+    // Google Play Billing (for IAPModule)
+    implementation("com.android.billingclient:billing:7.0.0")
+
+    // Credential Manager + Google Identity (for SocialAuthModule)
+    implementation("androidx.credentials:credentials:1.2.2")
+    implementation("com.google.android.libraries.identity:googleid:1.1.0")
 }
 
 afterEvaluate {
