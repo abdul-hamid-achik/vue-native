@@ -4,9 +4,7 @@
     "packages/runtime": {
       "ignoreDependencies": ["@vue/shared"]
     },
-    "packages/navigation": {
-      "ignoreDependencies": ["@thelacanians/vue-native-runtime"]
-    },
+    "packages/navigation": {},
     "packages/vite-plugin": {
       "ignoreDependencies": ["vite"]
     },
@@ -16,6 +14,7 @@
   "ignore": [
     "native/**",
     "docs/**",
+    "tools/**",
     "**/*.d.ts"
   ],
   "exclude": ["classMembers", "exports", "types"]
