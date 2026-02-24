@@ -95,7 +95,7 @@ afterEvaluate {
             create<MavenPublication>("release") {
                 groupId = "com.vuenative"
                 artifactId = "core"
-                version = "0.4.5"
+                version = "0.4.6"
                 from(components["release"])
             }
         }
