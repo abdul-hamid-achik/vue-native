@@ -1,4 +1,5 @@
-import { defineComponent, h } from '@vue/runtime-core'
+import { defineComponent, h, type PropType } from '@vue/runtime-core'
+import type { ImageStyle } from '../types/styles'
 
 /**
  * VImage — the image display component in Vue Native.
@@ -25,9 +26,12 @@ export const VImage = defineComponent({
       type: String as () => 'cover' | 'contain' | 'stretch' | 'center',
       default: 'cover',
     },
-    style: Object,
+    style: Object as PropType<ImageStyle>,
     testID: String,
     accessibilityLabel: String,
+    accessibilityRole: String,
+    accessibilityHint: String,
+    accessibilityState: Object,
   },
   emits: ['load', 'error'],
   setup(props, { emit }) {

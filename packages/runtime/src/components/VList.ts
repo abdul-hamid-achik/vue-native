@@ -1,4 +1,5 @@
-import { defineComponent, h } from '@vue/runtime-core'
+import { defineComponent, h, type PropType } from '@vue/runtime-core'
+import type { ViewStyle } from '../types/styles'
 
 /**
  * VList — A virtualized list component backed by UITableView on iOS.
@@ -55,7 +56,7 @@ export const VList = defineComponent({
       default: false,
     },
     style: {
-      type: Object,
+      type: Object as PropType<ViewStyle>,
       default: () => ({}),
     },
   },
@@ -71,14 +72,14 @@ export const VList = defineComponent({
       // Header slot
       if (slots.header) {
         children.push(
-          h('VView', { key: '__header__', style: { flexShrink: 0 } }, slots.header())
+          h('VView', { key: '__header__', style: { flexShrink: 0 } }, slots.header()),
         )
       }
 
       // Empty state slot (shown when data is empty)
       if (items.length === 0 && slots.empty) {
         children.push(
-          h('VView', { key: '__empty__', style: { flexShrink: 0 } }, slots.empty())
+          h('VView', { key: '__empty__', style: { flexShrink: 0 } }, slots.empty()),
         )
       }
 
@@ -92,15 +93,15 @@ export const VList = defineComponent({
               key: props.keyExtractor(item, index),
               style: { flexShrink: 0 },
             },
-            slots.item?.({ item, index }) ?? []
-          )
+            slots.item?.({ item, index }) ?? [],
+          ),
         )
       }
 
       // Footer slot
       if (slots.footer) {
         children.push(
-          h('VView', { key: '__footer__', style: { flexShrink: 0 } }, slots.footer())
+          h('VView', { key: '__footer__', style: { flexShrink: 0 } }, slots.footer()),
         )
       }
 
@@ -112,7 +113,7 @@ export const VList = defineComponent({
           showsScrollIndicator: props.showsScrollIndicator,
           bounces: props.bounces,
           horizontal: props.horizontal,
-          onScroll: (e: { x: number; y: number }) => emit('scroll', e),
+          onScroll: (e: { x: number, y: number }) => emit('scroll', e),
           onEndReached: () => emit('endReached'),
         },
         children,

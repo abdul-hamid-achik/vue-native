@@ -40,7 +40,7 @@ const router = useRouter()
 
 <template>
   <VView style="flex: 1">
-    <VButton @press="router.push('detail', { id: 42 })">
+    <VButton :onPress="() => router.push('detail', { id: 42 })">
       <VText>Go to Detail</VText>
     </VButton>
   </VView>
@@ -54,7 +54,7 @@ const router = useRouter()
 <script setup>
 import { useRoute } from '@thelacanians/vue-native-navigation'
 const route = useRoute()
-// route.params.id === 42
+// route.value.params.id === 42
 </script>
 ```
 
@@ -84,9 +84,10 @@ Returns the router instance.
 
 ### `useRoute()`
 
-Returns the current route.
+Returns a `ComputedRef<RouteLocation>` for the current route. Access via `.value`:
 
 | Property | Type | Description |
 |----------|------|-------------|
-| `route.name` | `string` | Current screen name |
-| `route.params` | `Record<string, any>` | Navigation params |
+| `route.value.name` | `string` | Current screen name |
+| `route.value.params` | `Record<string, any>` | Navigation params |
+| `route.value.options` | `RouteOptions` | Route options (title, animation, etc.) |

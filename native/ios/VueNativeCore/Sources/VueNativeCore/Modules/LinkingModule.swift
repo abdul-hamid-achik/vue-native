@@ -4,6 +4,10 @@ import UIKit
 final class LinkingModule: NativeModule {
     var moduleName: String { "Linking" }
 
+    /// The URL that launched the app. Set by the host app's SceneDelegate
+    /// or AppDelegate before the JS bundle loads.
+    static var initialURL: String?
+
     func invoke(method: String, args: [Any], callback: @escaping (Any?, String?) -> Void) {
         switch method {
         case "openURL":
@@ -26,6 +30,8 @@ final class LinkingModule: NativeModule {
             DispatchQueue.main.async {
                 callback(UIApplication.shared.canOpenURL(url), nil)
             }
+        case "getInitialURL":
+            callback(LinkingModule.initialURL, nil)
         default:
             callback(nil, "Unknown method: \(method)")
         }

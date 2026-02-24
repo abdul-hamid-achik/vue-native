@@ -36,11 +36,27 @@ class NativeModuleRegistry private constructor(private val context: Context) {
             HttpModule(),
             BiometryModule(),
             CameraModule(),
+            SecureStorageModule(),
+            WebSocketModule(),
+            FileSystemModule(),
+            SensorsModule(),
+            AudioModule(),
+            DatabaseModule(),
+            PerformanceModule(),
+            BackgroundTaskModule(),
+            OTAModule(),
+            IAPModule(),
+            SocialAuthModule(),
+            BluetoothModule(),
+            CalendarModule(),
+            ContactsModule(),
         ).forEach { m ->
             register(m)
             m.initialize(ctx, bridge)
         }
     }
+
+    fun getModule(name: String): NativeModule? = modules[name]
 
     fun invoke(
         moduleName: String,

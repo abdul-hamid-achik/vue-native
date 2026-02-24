@@ -72,13 +72,13 @@ async function dialPhone() {
 
 <template>
   <VView :style="{ padding: 20 }">
-    <VButton title="Open Website" :onPress="openBrowser" />
-    <VButton title="Send Email" :onPress="sendEmail" />
-    <VButton title="Call Phone" :onPress="dialPhone" />
+    <VButton :onPress="openBrowser"><VText>Open Website</VText></VButton>
+    <VButton :onPress="sendEmail"><VText>Send Email</VText></VButton>
+    <VButton :onPress="dialPhone"><VText>Call Phone</VText></VButton>
 
-    <VButton title="Check Maps" :onPress="checkMaps" />
+    <VButton :onPress="checkMaps"><VText>Check Maps</VText></VButton>
     <VText>Can open Maps: {{ canOpenMaps }}</VText>
-    <VButton title="Open Maps" :onPress="openMaps" />
+    <VButton :onPress="openMaps"><VText>Open Maps</VText></VButton>
   </VView>
 </template>
 ```

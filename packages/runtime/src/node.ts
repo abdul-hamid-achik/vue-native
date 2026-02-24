@@ -80,7 +80,7 @@ export function createTextNode(text: string): NativeNode {
  * Comments are no-ops on the native side — they exist only so Vue
  * can track insertion points for conditional/list rendering.
  */
-export function createCommentNode(text: string): NativeNode {
+export function createCommentNode(_text: string): NativeNode {
   const node: NativeNode = {
     id: getNextNodeId(),
     type: '__COMMENT__',

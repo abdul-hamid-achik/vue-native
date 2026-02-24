@@ -12,7 +12,9 @@ const { vibrate, notificationFeedback, selectionChanged } = useHaptics()
 </script>
 
 <template>
-  <VButton title="Tap me" :onPress="() => vibrate('medium')" />
+  <VButton :onPress="() => vibrate('medium')">
+    <VText>Tap me</VText>
+  </VButton>
 </template>
 ```
 
@@ -84,13 +86,13 @@ function onPaymentError() {
   <VView :style="{ padding: 20, gap: 12 }">
     <VText :style="{ fontSize: 18, fontWeight: 'bold' }">Haptics Demo</VText>
 
-    <VButton title="Impact: Light" :onPress="() => vibrate('light')" />
-    <VButton title="Impact: Medium" :onPress="() => vibrate('medium')" />
-    <VButton title="Impact: Heavy" :onPress="() => vibrate('heavy')" />
-    <VButton title="Notify: Success" :onPress="() => notificationFeedback('success')" />
-    <VButton title="Notify: Warning" :onPress="() => notificationFeedback('warning')" />
-    <VButton title="Notify: Error" :onPress="() => notificationFeedback('error')" />
-    <VButton title="Selection" :onPress="selectionChanged" />
+    <VButton :onPress="() => vibrate('light')"><VText>Impact: Light</VText></VButton>
+    <VButton :onPress="() => vibrate('medium')"><VText>Impact: Medium</VText></VButton>
+    <VButton :onPress="() => vibrate('heavy')"><VText>Impact: Heavy</VText></VButton>
+    <VButton :onPress="() => notificationFeedback('success')"><VText>Notify: Success</VText></VButton>
+    <VButton :onPress="() => notificationFeedback('warning')"><VText>Notify: Warning</VText></VButton>
+    <VButton :onPress="() => notificationFeedback('error')"><VText>Notify: Error</VText></VButton>
+    <VButton :onPress="selectionChanged"><VText>Selection</VText></VButton>
   </VView>
 </template>
 ```

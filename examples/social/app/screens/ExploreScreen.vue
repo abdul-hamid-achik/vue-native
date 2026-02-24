@@ -71,7 +71,7 @@ const styles = createStyleSheet({
 </script>
 
 <template>
-  <VScrollView :style="styles.container" :showsVerticalScrollIndicator="false">
+  <VScrollView :style="styles.container" :shows-vertical-scroll-indicator="false">
     <VView :style="styles.header">
       <VText :style="styles.headerTitle">Explore</VText>
       <VInput
@@ -83,7 +83,7 @@ const styles = createStyleSheet({
     <VView :style="styles.grid">
       <VView v-for="(row, rowIndex) in rows" :key="rowIndex" :style="styles.row">
         <VView v-for="photo in row" :key="photo.id" :style="styles.cell">
-          <VImage :source="{ uri: photo.url }" :style="styles.image" resizeMode="cover" />
+          <VImage :source="{ uri: photo.url }" :style="styles.image" resize-mode="cover" />
           <VView :style="styles.captionContainer">
             <VText :style="styles.captionText">{{ photo.caption }}</VText>
           </VView>

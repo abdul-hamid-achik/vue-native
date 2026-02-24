@@ -8,6 +8,9 @@ class LinkingModule : NativeModule {
     override val moduleName = "Linking"
     private var context: Context? = null
 
+    /** The URL that launched the app. Set by VueNativeActivity from the launch intent. */
+    var initialURL: String? = null
+
     override fun initialize(context: Context, bridge: NativeBridge) {
         this.context = context.applicationContext
     }
@@ -33,7 +36,7 @@ class LinkingModule : NativeModule {
                 val canOpen = ctx.packageManager.resolveActivity(intent, 0) != null
                 callback(canOpen, null)
             }
-            "getInitialURL" -> callback(null, null)
+            "getInitialURL" -> callback(initialURL, null)
             else -> callback(null, "Unknown method: $method")
         }
     }

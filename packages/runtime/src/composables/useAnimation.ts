@@ -29,7 +29,7 @@ export interface SpringConfig {
 }
 
 export interface KeyframeStep {
-  offset: number  // 0.0 – 1.0
+  offset: number // 0.0 – 1.0
   opacity?: number
   translateX?: number
   translateY?: number

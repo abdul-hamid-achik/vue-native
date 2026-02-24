@@ -35,3 +35,15 @@ export { VPicker } from './VPicker'
 export { VSegmentedControl } from './VSegmentedControl'
 export { VActionSheet } from './VActionSheet'
 export type { ActionSheetAction } from './VActionSheet'
+
+export { VRefreshControl } from './VRefreshControl'
+export { VPressable } from './VPressable'
+export { VSectionList } from './VSectionList'
+
+export { VCheckbox } from './VCheckbox'
+export { VRadio } from './VRadio'
+export type { RadioOption } from './VRadio'
+export { VDropdown } from './VDropdown'
+export type { DropdownOption } from './VDropdown'
+
+export { VVideo } from './VVideo'

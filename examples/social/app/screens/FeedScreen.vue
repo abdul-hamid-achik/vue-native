@@ -147,7 +147,7 @@ const styles = createStyleSheet({
 
     <VScrollView
       :style="styles.container"
-      :showsVerticalScrollIndicator="false"
+      :shows-vertical-scroll-indicator="false"
       :refreshing="refreshing"
       @refresh="onRefresh"
     >
@@ -173,11 +173,11 @@ const styles = createStyleSheet({
           v-if="post.imageUrl"
           :source="{ uri: post.imageUrl }"
           :style="styles.postImage"
-          resizeMode="cover"
+          resize-mode="cover"
         />
 
         <VView :style="styles.actions">
-          <VButton :style="styles.actionButton" :onPress="() => toggleLike(post)">
+          <VButton :style="styles.actionButton" :on-press="() => toggleLike(post)">
             <VText :style="styles.actionIcon">{{ post.liked ? '❤️' : '🤍' }}</VText>
             <VText :style="[styles.actionCount, post.liked && styles.actionCountLiked]">
               {{ post.likes }}

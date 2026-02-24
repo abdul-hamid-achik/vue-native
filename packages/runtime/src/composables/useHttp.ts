@@ -1,4 +1,5 @@
 import { ref } from '@vue/runtime-core'
+import { NativeBridge } from '../bridge'
 
 // fetch and RequestInit are not in ES2020 lib (no DOM). Declare them here so
 // TypeScript is satisfied; the actual implementation is provided at runtime
@@ -12,12 +13,23 @@ interface RequestInit {
 declare function fetch(
   input: string,
   init?: RequestInit,
-): Promise<{ status: number; ok: boolean; json(): Promise<any> }>
+): Promise<{ status: number, ok: boolean, json(): Promise<any> }>
 
 export interface HttpRequestConfig {
   baseURL?: string
   headers?: Record<string, string>
   timeout?: number
+  /**
+   * Certificate pinning configuration.
+   * Maps domain names to arrays of SHA-256 pin hashes.
+   * Each pin must be in the format "sha256/<base64-encoded-hash>".
+   *
+   * @example
+   * pins: {
+   *   'api.example.com': ['sha256/AAAAAAA...', 'sha256/BBBBBBB...'],
+   * }
+   */
+  pins?: Record<string, string[]>
 }
 
 export interface HttpResponse<T = any> {
@@ -36,13 +48,25 @@ export interface HttpResponse<T = any> {
  * const users = await http.get<User[]>('/users')
  */
 export function useHttp(config: HttpRequestConfig = {}) {
+  // Configure certificate pins on the native side if provided.
+  // iOS: uses __VN_configurePins (registered in JSPolyfills.registerFetch).
+  // Android: uses Http module's configurePins method via the bridge.
+  if (config.pins && Object.keys(config.pins).length > 0) {
+    const configurePins = (globalThis as any).__VN_configurePins
+    if (typeof configurePins === 'function') {
+      configurePins(JSON.stringify(config.pins))
+    } else {
+      NativeBridge.invokeNativeModule('Http', 'configurePins', [config.pins])
+    }
+  }
+
   const loading = ref(false)
   const error = ref<string | null>(null)
 
   async function request<T = any>(
     method: string,
     url: string,
-    options: { body?: any; headers?: Record<string, string> } = {},
+    options: { body?: any, headers?: Record<string, string> } = {},
   ): Promise<HttpResponse<T>> {
     const fullUrl = config.baseURL ? `${config.baseURL}${url}` : url
     loading.value = true

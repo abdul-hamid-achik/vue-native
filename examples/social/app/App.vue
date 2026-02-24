@@ -48,7 +48,7 @@ const styles = createStyleSheet({
         v-for="tab in tabs"
         :key="tab.key"
         :style="styles.tab"
-        :onPress="() => activeTab = tab.key"
+        :on-press="() => activeTab = tab.key"
       >
         <VText :style="styles.tabIcon">{{ tab.icon }}</VText>
         <VText :style="[styles.tabLabel, activeTab === tab.key && styles.tabLabelActive]">

@@ -19,6 +19,7 @@ object Tags {
     const val POSITION_LEFT  = 0x7F_FF_0022
     const val POSITION_RIGHT = 0x7F_FF_0023
     const val POSITION_BOTTOM= 0x7F_FF_0024
+    const val INTERNAL_PROPS = 0x7F_FF_0030
 }
 
 /** Alias used throughout the codebase */
@@ -39,3 +40,4 @@ const val TAG_POSITION_TOP    = Tags.POSITION_TOP
 const val TAG_POSITION_LEFT   = Tags.POSITION_LEFT
 const val TAG_POSITION_RIGHT  = Tags.POSITION_RIGHT
 const val TAG_POSITION_BOTTOM = Tags.POSITION_BOTTOM
+const val TAG_INTERNAL_PROPS  = Tags.INTERNAL_PROPS

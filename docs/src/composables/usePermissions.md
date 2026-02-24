@@ -93,11 +93,11 @@ async function requestLocation() {
 <template>
   <VView :style="{ padding: 20 }">
     <VText>Camera: {{ cameraStatus }}</VText>
-    <VButton title="Check Camera" :onPress="checkCamera" />
-    <VButton title="Request Camera" :onPress="requestCamera" />
+    <VButton :onPress="checkCamera"><VText>Check Camera</VText></VButton>
+    <VButton :onPress="requestCamera"><VText>Request Camera</VText></VButton>
 
     <VText :style="{ marginTop: 20 }">Location: {{ locationStatus }}</VText>
-    <VButton title="Request Location" :onPress="requestLocation" />
+    <VButton :onPress="requestLocation"><VText>Request Location</VText></VButton>
   </VView>
 </template>
 ```

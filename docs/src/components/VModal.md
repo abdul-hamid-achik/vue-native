@@ -42,7 +42,7 @@ const showModal = ref(false)
 
 <template>
   <VView :style="styles.container">
-    <VButton :style="styles.openButton" @press="showModal = true">
+    <VButton :style="styles.openButton" :onPress="() => showModal = true">
       <VText :style="styles.buttonText">Open Modal</VText>
     </VButton>
 
@@ -52,7 +52,7 @@ const showModal = ref(false)
         <VText :style="styles.body">
           This content is rendered in a full-screen overlay above all other views.
         </VText>
-        <VButton :style="styles.closeButton" @press="showModal = false">
+        <VButton :style="styles.closeButton" :onPress="() => showModal = false">
           <VText :style="styles.buttonText">Close</VText>
         </VButton>
       </VView>

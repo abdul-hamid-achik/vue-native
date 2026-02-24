@@ -39,7 +39,7 @@ watch(taskId, async () => {
         editPriority.value = found.priority
       }
     }
-  } catch (e) {}
+  } catch { /* storage unavailable */ }
 }, { immediate: true })
 
 async function saveTask() {
@@ -58,8 +58,10 @@ async function saveTask() {
     }
     vibrate('success')
     saved.value = true
-    setTimeout(() => { saved.value = false }, 2000)
-  } catch (e) {}
+    setTimeout(() => {
+      saved.value = false
+    }, 2000)
+  } catch { /* storage unavailable */ }
 }
 
 const priorities: Task['priority'][] = ['low', 'medium', 'high']
@@ -152,10 +154,10 @@ const styles = computed(() => createStyleSheet({
 </script>
 
 <template>
-  <VScrollView :style="styles.container" :showsVerticalScrollIndicator="false">
+  <VScrollView :style="styles.container" :shows-vertical-scroll-indicator="false">
     <!-- Nav bar -->
     <VView :style="styles.navBar">
-      <VButton :style="styles.backButton" :onPress="() => router.goBack()">
+      <VButton :style="styles.backButton" :on-press="() => router.goBack()">
         <VText :style="styles.backText">‹ Back</VText>
       </VButton>
       <VText :style="styles.navTitle">Edit Task</VText>
@@ -170,7 +172,7 @@ const styles = computed(() => createStyleSheet({
             v-model="editTitle"
             placeholder="Task title"
             :style="styles.textInput"
-            returnKeyType="next"
+            return-key-type="next"
           />
         </VView>
 
@@ -195,7 +197,7 @@ const styles = computed(() => createStyleSheet({
                 { backgroundColor: editPriority === p ? priorityColor(p) + '22' : 'transparent' },
                 { borderColor: editPriority === p ? priorityColor(p) : '#E5E5EA' },
               ]"
-              :onPress="() => editPriority = p"
+              :on-press="() => editPriority = p"
             >
               <VText :style="[styles.priorityChipText, { color: priorityColor(p) }]">
                 {{ p.charAt(0).toUpperCase() + p.slice(1) }}
@@ -212,7 +214,7 @@ const styles = computed(() => createStyleSheet({
       </VView>
 
       <!-- Save button -->
-      <VButton :style="styles.saveButton" :onPress="saveTask">
+      <VButton :style="styles.saveButton" :on-press="saveTask">
         <VText :style="styles.saveButtonText">Save Changes</VText>
       </VButton>
 

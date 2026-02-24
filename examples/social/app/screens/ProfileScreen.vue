@@ -98,21 +98,21 @@ const styles = createStyleSheet({
 </script>
 
 <template>
-  <VScrollView :style="styles.container" :showsVerticalScrollIndicator="false">
+  <VScrollView :style="styles.container" :shows-vertical-scroll-indicator="false">
     <VView :style="styles.header">
       <VText :style="styles.headerTitle">Profile</VText>
     </VView>
 
     <!-- Profile card -->
     <VView :style="styles.profileCard">
-      <VImage :source="{ uri: profileImageUrl }" :style="styles.avatar" resizeMode="cover" />
+      <VImage :source="{ uri: profileImageUrl }" :style="styles.avatar" resize-mode="cover" />
       <VText :style="styles.name">Alex Johnson</VText>
       <VText :style="styles.handle">@alexj</VText>
       <VText :style="styles.bio">{{ bio }}</VText>
 
       <!-- Stats -->
       <VView :style="styles.statsRow">
-        <VView v-for="(stat, i) in stats" :key="stat.label" :style="styles.statCell">
+        <VView v-for="stat in stats" :key="stat.label" :style="styles.statCell">
           <VText :style="styles.statValue">{{ stat.value.toLocaleString() }}</VText>
           <VText :style="styles.statLabel">{{ stat.label }}</VText>
         </VView>
@@ -121,7 +121,7 @@ const styles = createStyleSheet({
       <!-- Follow button -->
       <VButton
         :style="[styles.followButton, following && styles.followButtonFollowing]"
-        :onPress="() => following = !following"
+        :on-press="() => following = !following"
       >
         <VText :style="[styles.followButtonText, following && styles.followButtonTextFollowing]">
           {{ following ? 'Following' : 'Follow' }}
@@ -141,8 +141,8 @@ const styles = createStyleSheet({
         </VView>
         <VProgressBar
           :progress="skill.progress"
-          progressTintColor="#007AFF"
-          trackTintColor="#F2F2F7"
+          progress-tint-color="#007AFF"
+          track-tint-color="#F2F2F7"
           :style="{ marginTop: 4 }"
         />
       </VView>

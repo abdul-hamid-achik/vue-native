@@ -198,7 +198,7 @@ const styles = createStyleSheet({
   <VView :style="styles.container">
     <!-- Display -->
     <VView :style="styles.displayArea">
-      <VText :style="styles.displayText" :numberOfLines="1">
+      <VText :style="styles.displayText" :number-of-lines="1">
         {{ displayFormatted }}
       </VText>
     </VView>
@@ -214,14 +214,16 @@ const styles = createStyleSheet({
             btn.wide ? styles.buttonWide : styles.buttonNormal,
             { backgroundColor: BG[btn.type] },
           ]"
-          :onPress="btn.action"
+          :on-press="btn.action"
         >
           <VText
             :style="[
               styles.buttonText,
               { color: TEXT[btn.type] },
             ]"
-          >{{ btn.label }}</VText>
+          >
+            {{ btn.label }}
+          </VText>
         </VButton>
       </VView>
     </VView>

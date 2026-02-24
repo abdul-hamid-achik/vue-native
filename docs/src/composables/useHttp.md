@@ -113,7 +113,7 @@ async function createPost() {
       Error: {{ http.error.value }}
     </VText>
 
-    <VButton title="Create Post" :onPress="createPost" />
+    <VButton :onPress="createPost"><VText>Create Post</VText></VButton>
 
     <VView v-for="post in posts" :key="post.id" :style="{ marginTop: 12 }">
       <VText :style="{ fontWeight: 'bold' }">{{ post.title }}</VText>

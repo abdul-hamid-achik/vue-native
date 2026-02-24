@@ -53,6 +53,13 @@ final class ComponentRegistry {
         register("VPicker",            factory: VPickerFactory())
         register("VSegmentedControl",  factory: VSegmentedControlFactory())
         register("VActionSheet",       factory: VActionSheetFactory())
+        register("VRefreshControl",    factory: VRefreshControlFactory())
+        register("VPressable",         factory: VPressableFactory())
+        register("VSectionList",       factory: VSectionListFactory())
+        register("VCheckbox",          factory: VCheckboxFactory())
+        register("VRadio",             factory: VRadioFactory())
+        register("VDropdown",          factory: VDropdownFactory())
+        register("VVideo",            factory: VVideoFactory())
         register("__ROOT__", factory: VRootFactory())
     }
 

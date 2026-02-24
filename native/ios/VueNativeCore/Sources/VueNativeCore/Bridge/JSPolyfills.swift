@@ -323,6 +323,20 @@ enum JSPolyfills {
     // MARK: - fetch
 
     private static func registerFetch(in context: JSContext, runtime: JSRuntime) {
+        // Register __VN_configurePins(pinsJSON) for certificate pinning from JS.
+        // pinsJSON is a JSON string: { "domain": ["sha256/hash1", "sha256/hash2"] }
+        let configurePins: @convention(block) (JSValue) -> Void = { pinsValue in
+            guard let jsonString = pinsValue.toString(),
+                  let data = jsonString.data(using: .utf8),
+                  let pinsDict = try? JSONSerialization.jsonObject(with: data) as? [String: [String]] else {
+                NSLog("[VueNative CertPin] Invalid pins configuration")
+                return
+            }
+            CertificatePinning.shared.configurePins(pinsDict)
+            NSLog("[VueNative CertPin] Configured pins for %d domains", pinsDict.count)
+        }
+        context.setObject(configurePins, forKeyedSubscript: "__VN_configurePins" as NSString)
+
         // fetch(url, options?) -> Promise<Response>
         let fetch: @convention(block) (JSValue, JSValue) -> JSValue = { [weak runtime] urlValue, optionsValue in
             guard let runtime = runtime, let context = runtime.context else {
@@ -376,7 +390,14 @@ enum JSPolyfills {
             let captureBlock = JSValue(object: captureExecutor as AnyObject, in: context)
             let promise = promiseCtor?.call(withArguments: [captureBlock as Any])
 
-            let task = URLSession.shared.dataTask(with: request) { [weak runtime] data, response, error in
+            // Use the pinning session when pins are configured for this host,
+            // otherwise fall back to URLSession.shared for zero overhead.
+            let host = url.host ?? ""
+            let urlSession = CertificatePinning.shared.hasPins(for: host)
+                ? CertificatePinning.shared.session
+                : URLSession.shared
+
+            let task = urlSession.dataTask(with: request) { [weak runtime] data, response, error in
                 guard let runtime = runtime else { return }
                 runtime.jsQueue.async { [weak runtime] in
                     guard runtime != nil, let context = runtime?.context else { return }

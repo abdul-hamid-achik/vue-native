@@ -99,8 +99,8 @@ async function pickFromLibrary() {
       Camera Demo
     </VText>
     <VView :style="{ flexDirection: 'row', gap: 12, marginBottom: 16 }">
-      <VButton title="Take Photo" :onPress="takePhoto" />
-      <VButton title="Pick Image" :onPress="pickFromLibrary" />
+      <VButton :onPress="takePhoto"><VText>Take Photo</VText></VButton>
+      <VButton :onPress="pickFromLibrary"><VText>Pick Image</VText></VButton>
     </VView>
     <VImage
       v-if="image"

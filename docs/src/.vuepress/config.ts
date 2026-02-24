@@ -54,6 +54,13 @@ export default defineUserConfig({
           ],
         },
         {
+          text: 'Tooling',
+          children: [
+            '/guide/managed-workflow.md',
+            '/guide/vscode.md',
+          ],
+        },
+        {
           text: 'Building & Releasing',
           children: [
             '/guide/build.md',

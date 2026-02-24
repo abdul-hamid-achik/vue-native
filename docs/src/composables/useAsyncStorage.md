@@ -73,7 +73,7 @@ async function toggleTheme() {
     <VText :style="{ fontSize: 18, marginBottom: 12 }">
       Current theme: {{ theme }}
     </VText>
-    <VButton title="Toggle Theme" :onPress="toggleTheme" />
+    <VButton :onPress="toggleTheme"><VText>Toggle Theme</VText></VButton>
   </VView>
 </template>
 ```

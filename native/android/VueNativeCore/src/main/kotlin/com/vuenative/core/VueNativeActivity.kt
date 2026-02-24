@@ -1,5 +1,6 @@
 package com.vuenative.core
 
+import android.content.Intent
 import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
@@ -72,6 +73,13 @@ abstract class VueNativeActivity : AppCompatActivity() {
         // Provide Activity reference for modules that need it (e.g. PermissionsModule)
         PermissionsModule.setActivity(this)
 
+        // Capture launch intent deep link URL for the LinkingModule
+        intent?.data?.toString()?.let { url ->
+            val linkingModule = NativeModuleRegistry.getInstance(this)
+                .getModule("Linking") as? LinkingModule
+            linkingModule?.initialURL = url
+        }
+
         // Initialize JS engine then load bundle
         runtime.initialize {
             loadBundle()
@@ -111,6 +119,13 @@ abstract class VueNativeActivity : AppCompatActivity() {
         } catch (e: Exception) {
             Log.e(TAG, "Failed to load bundle from assets: ${e.message}")
             ErrorOverlayView.show(this, "Failed to load bundle: ${e.message}")
+        }
+    }
+
+    override fun onNewIntent(intent: Intent?) {
+        super.onNewIntent(intent)
+        intent?.data?.toString()?.let { url ->
+            runtime.bridge.dispatchGlobalEvent("url", mapOf("url" to url))
         }
     }
 

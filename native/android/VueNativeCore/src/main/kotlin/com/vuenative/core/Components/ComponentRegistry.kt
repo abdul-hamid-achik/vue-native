@@ -45,6 +45,13 @@ class ComponentRegistry private constructor(private val context: Context) {
         register("VPicker",            VPickerFactory())
         register("VSegmentedControl",  VSegmentedControlFactory())
         register("VActionSheet",       VActionSheetFactory())
+        register("VRefreshControl",    VRefreshControlFactory())
+        register("VPressable",         VPressableFactory())
+        register("VSectionList",       VSectionListFactory())
+        register("VCheckbox",          VCheckboxFactory())
+        register("VRadio",             VRadioFactory())
+        register("VDropdown",          VDropdownFactory())
+        register("VVideo",            VVideoFactory())
         register("__ROOT__",           VRootFactory())
     }
 

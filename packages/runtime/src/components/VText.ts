@@ -1,4 +1,5 @@
-import { defineComponent, h } from '@vue/runtime-core'
+import { defineComponent, h, type PropType } from '@vue/runtime-core'
+import type { TextStyle } from '../types/styles'
 
 /**
  * VText — component for displaying text content.
@@ -19,13 +20,16 @@ import { defineComponent, h } from '@vue/runtime-core'
 export const VText = defineComponent({
   name: 'VText',
   props: {
-    style: Object,
+    style: Object as PropType<TextStyle>,
     numberOfLines: Number,
     selectable: {
       type: Boolean,
       default: false,
     },
+    accessibilityLabel: String,
     accessibilityRole: String,
+    accessibilityHint: String,
+    accessibilityState: Object,
   },
   setup(props, { slots }) {
     return () => h('VText', { ...props }, slots.default?.())

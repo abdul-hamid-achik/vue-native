@@ -70,4 +70,7 @@ dependencies {
 
     // Biometry (for BiometryModule)
     implementation("androidx.biometric:biometric:1.1.0")
+
+    // Secure Storage (for SecureStorageModule)
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
 }

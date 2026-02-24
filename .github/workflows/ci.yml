@@ -6,33 +6,36 @@ on:
   pull_request:
     branches: [main]
 
-jobs:
-  build-and-test:
-    runs-on: ubuntu-latest
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
-    strategy:
-      matrix:
-        node-version: [20, 22]
+jobs:
+  ci:
+    runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
 
-      - uses: oven-sh/setup-bun@v2
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ matrix.node-version }}
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Build all packages
-        run: bun run build
+      - name: Lint
+        run: bun run lint
 
-      - name: Typecheck
+      - name: Type check
         run: bun run typecheck
+
+      - name: Build
+        run: bun run build
 
       - name: Test
         run: bun run test
+
+      - name: Dead code check
+        run: bun run knip

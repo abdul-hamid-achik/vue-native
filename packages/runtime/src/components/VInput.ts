@@ -1,4 +1,5 @@
-import { defineComponent, h } from '@vue/runtime-core'
+import { defineComponent, h, type PropType } from '@vue/runtime-core'
+import type { TextStyle } from '../types/styles'
 
 /**
  * VInput — a text input component with v-model support.
@@ -54,7 +55,11 @@ export const VInput = defineComponent({
       type: Boolean,
       default: false,
     },
-    style: Object,
+    style: Object as PropType<TextStyle>,
+    accessibilityLabel: String,
+    accessibilityRole: String,
+    accessibilityHint: String,
+    accessibilityState: Object,
   },
   emits: ['update:modelValue', 'focus', 'blur', 'submit'],
   setup(props, { emit }) {
@@ -87,6 +92,10 @@ export const VInput = defineComponent({
         maxLength: props.maxLength,
         multiline: props.multiline,
         style: props.style,
+        accessibilityLabel: props.accessibilityLabel,
+        accessibilityRole: props.accessibilityRole,
+        accessibilityHint: props.accessibilityHint,
+        accessibilityState: props.accessibilityState,
         onChangetext,
         onFocus,
         onBlur,

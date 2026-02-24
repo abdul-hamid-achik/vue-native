@@ -4,11 +4,11 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import pc from 'picocolors'
 
-function findAppPath(buildDir: string): string | null {
+function findAppPath(_buildDir: string): string | null {
   // Look for .app bundle in DerivedData or build directory
   const derivedDataBase = join(
     process.env.HOME || '~',
-    'Library/Developer/Xcode/DerivedData'
+    'Library/Developer/Xcode/DerivedData',
   )
 
   if (existsSync(derivedDataBase)) {
@@ -19,7 +19,7 @@ function findAppPath(buildDir: string): string | null {
         const productsDir = join(
           derivedDataBase,
           project,
-          'Build/Products/Debug-iphonesimulator'
+          'Build/Products/Debug-iphonesimulator',
         )
         if (existsSync(productsDir)) {
           const entries = readdirSync(productsDir)
@@ -42,7 +42,7 @@ function readBundleId(iosDir: string): string {
     try {
       const content = readFileSync(plistPath, 'utf8')
       const match = content.match(
-        /<key>CFBundleIdentifier<\/key>\s*<string>([^<]+)<\/string>/
+        /<key>CFBundleIdentifier<\/key>\s*<string>([^<]+)<\/string>/,
       )
       if (match) {
         return match[1]
@@ -115,7 +115,7 @@ function runIOS(
     scheme?: string
     simulator: string
     bundleId?: string
-  }
+  },
 ) {
   // Find Xcode project
   let xcodeProject: string | null = null
@@ -160,7 +160,7 @@ function runIOS(
       cwd,
       stdio: 'pipe',
       env: { ...process.env, DEVELOPER_DIR: '/Applications/Xcode.app/Contents/Developer' },
-    }
+    },
   )
 
   xcodebuild.stderr?.on('data', (data: Buffer) => {
@@ -231,7 +231,7 @@ function runAndroid(
   options: {
     package: string
     activity: string
-  }
+  },
 ) {
   const androidDir = join(cwd, 'android')
 
@@ -260,7 +260,7 @@ function runAndroid(
       cwd: androidDir,
       stdio: 'pipe',
       env: { ...process.env },
-    }
+    },
   )
 
   gradle.stdout?.on('data', (data: Buffer) => {

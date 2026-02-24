@@ -13,11 +13,10 @@ import { installMockBridge, nextTick } from './helpers'
 const mockBridge = installMockBridge()
 
 const { NativeBridge } = await import('../bridge')
-const { createNativeNode, createTextNode, createCommentNode, resetNodeId } = await import('../node')
+const { createNativeNode, createTextNode: _createTextNode, createCommentNode: _createCommentNode, resetNodeId } = await import('../node')
 const { nodeOps } = await import('../renderer')
 
 describe('NativeRenderer (nodeOps)', () => {
-
   beforeEach(() => {
     mockBridge.reset()
     NativeBridge.reset()

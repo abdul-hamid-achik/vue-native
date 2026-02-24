@@ -24,7 +24,9 @@ function save() {
   setTimeout(() => {
     isLoading.value = false
     savedMessage.value = 'Preferences saved!'
-    setTimeout(() => { savedMessage.value = '' }, 2000)
+    setTimeout(() => {
+      savedMessage.value = ''
+    }, 2000)
   }, 1200)
 }
 
@@ -178,7 +180,7 @@ const sections: Section[] = [
 <template>
   <VScrollView
     :style="styles.container"
-    :showsVerticalScrollIndicator="false"
+    :shows-vertical-scroll-indicator="false"
   >
     <!-- Header -->
     <VView :style="styles.header">
@@ -213,7 +215,7 @@ const sections: Section[] = [
           <!-- Toggle -->
           <VSwitch
             v-model="item.model.value"
-            :onTintColor="'#34C759'"
+            :on-tint-color="'#34C759'"
           />
         </VView>
       </VView>
@@ -221,7 +223,7 @@ const sections: Section[] = [
 
     <!-- Save button -->
     <VView :style="styles.saveArea">
-      <VButton :style="styles.saveButton" :onPress="save" :disabled="isLoading">
+      <VButton :style="styles.saveButton" :on-press="save" :disabled="isLoading">
         <VActivityIndicator
           v-if="isLoading"
           :animating="true"

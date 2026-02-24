@@ -1,4 +1,5 @@
-import { defineComponent, h } from '@vue/runtime-core'
+import { defineComponent, h, type PropType } from '@vue/runtime-core'
+import type { ViewStyle } from '../types/styles'
 
 /**
  * VSwitch — a boolean toggle switch component.
@@ -23,7 +24,11 @@ export const VSwitch = defineComponent({
     },
     onTintColor: String,
     thumbTintColor: String,
-    style: Object,
+    style: Object as PropType<ViewStyle>,
+    accessibilityLabel: String,
+    accessibilityRole: String,
+    accessibilityHint: String,
+    accessibilityState: Object,
   },
   emits: ['update:modelValue', 'change'],
   setup(props, { emit }) {
@@ -40,6 +45,10 @@ export const VSwitch = defineComponent({
         onTintColor: props.onTintColor,
         thumbTintColor: props.thumbTintColor,
         style: props.style,
+        accessibilityLabel: props.accessibilityLabel,
+        accessibilityRole: props.accessibilityRole,
+        accessibilityHint: props.accessibilityHint,
+        accessibilityState: props.accessibilityState,
         onChange,
       })
   },

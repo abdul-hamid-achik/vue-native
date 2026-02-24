@@ -14,7 +14,7 @@ const count = ref(0)
 <template>
   <VView :style="styles.container">
     <VText :style="styles.title">Count: {{ count }}</VText>
-    <VButton :style="styles.button" @press="count++">
+    <VButton :style="styles.button" :onPress="() => count++">
       <VText>Increment</VText>
     </VButton>
   </VView>

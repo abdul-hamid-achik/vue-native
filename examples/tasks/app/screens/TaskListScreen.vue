@@ -17,7 +17,7 @@ let nextId = 1
 const router = useRouter()
 const { getItem, setItem } = useAsyncStorage()
 const { isDark } = useColorScheme()
-const { timing } = useAnimation()
+const { timing: _timing } = useAnimation()
 
 // --- State ---
 
@@ -55,7 +55,7 @@ onMounted(async () => {
       ]
       await saveTasks()
     }
-  } catch (e) {
+  } catch {
     // Storage unavailable in simulator — use seed data
   }
 })
@@ -63,7 +63,7 @@ onMounted(async () => {
 async function saveTasks() {
   try {
     await setItem('tasks_v1', JSON.stringify(tasks.value))
-  } catch (e) {}
+  } catch { /* storage unavailable */ }
 }
 
 watch(tasks, saveTasks, { deep: true })
@@ -88,7 +88,9 @@ function toggleDone(task: Task) {
   task.done = !task.done
   if (task.done) {
     justCompletedId.value = task.id
-    setTimeout(() => { justCompletedId.value = null }, 800)
+    setTimeout(() => {
+      justCompletedId.value = null
+    }, 800)
   }
 }
 
@@ -230,8 +232,7 @@ const styles = computed(() => createStyleSheet({
 
 <template>
   <VView :style="styles.container">
-    <VScrollView :style="styles.container" :showsVerticalScrollIndicator="false">
-
+    <VScrollView :style="styles.container" :shows-vertical-scroll-indicator="false">
       <!-- Header -->
       <VView :style="styles.header">
         <VView :style="styles.headerTop">
@@ -248,8 +249,8 @@ const styles = computed(() => createStyleSheet({
           <VText :style="styles.progressLabel">{{ Math.round(progress * 100) }}% complete</VText>
           <VProgressBar
             :progress="progress"
-            progressTintColor="#34C759"
-            trackTintColor="#E5E5EA"
+            progress-tint-color="#34C759"
+            track-tint-color="#E5E5EA"
           />
         </VView>
       </VView>
@@ -260,10 +261,10 @@ const styles = computed(() => createStyleSheet({
           v-model="newTaskTitle"
           placeholder="Add a new task…"
           :style="styles.input"
-          returnKeyType="done"
+          return-key-type="done"
           @submit="addTask"
         />
-        <VButton :style="styles.addButton" :onPress="addTask">
+        <VButton :style="styles.addButton" :on-press="addTask">
           <VText :style="styles.addButtonText">+</VText>
         </VButton>
       </VView>
@@ -272,8 +273,8 @@ const styles = computed(() => createStyleSheet({
       <VView :style="styles.filterContainer">
         <VSegmentedControl
           :values="filterValues"
-          :selectedIndex="filterIndex"
-          tintColor="#007AFF"
+          :selected-index="filterIndex"
+          tint-color="#007AFF"
           @change="(e: any) => filterIndex = e.selectedIndex"
         />
       </VView>
@@ -305,17 +306,17 @@ const styles = computed(() => createStyleSheet({
             <!-- Checkbox -->
             <VButton
               :style="[styles.checkButton, task.done && styles.checkButtonDone]"
-              :onPress="() => toggleDone(task)"
+              :on-press="() => toggleDone(task)"
             >
               <VText v-if="task.done" :style="styles.checkmark">✓</VText>
             </VButton>
 
             <!-- Content -->
-            <VButton :style="styles.taskContent" :onPress="() => openDetail(task)">
+            <VButton :style="styles.taskContent" :on-press="() => openDetail(task)">
               <VText :style="[styles.taskTitle, task.done && styles.taskTitleDone]">
                 {{ task.title }}
               </VText>
-              <VText v-if="task.notes" :style="styles.taskNotes" numberOfLines="1">
+              <VText v-if="task.notes" :style="styles.taskNotes" number-of-lines="1">
                 {{ task.notes }}
               </VText>
               <VView :style="styles.taskMeta">
@@ -325,7 +326,7 @@ const styles = computed(() => createStyleSheet({
             </VButton>
 
             <!-- Delete -->
-            <VButton :style="styles.deleteButton" :onPress="() => confirmDelete(task.id)">
+            <VButton :style="styles.deleteButton" :on-press="() => confirmDelete(task.id)">
               <VText :style="styles.deleteButtonText">×</VText>
             </VButton>
           </VView>

@@ -41,6 +41,10 @@ public final class NativeBridge {
     /// Used to look up the parent factory when removing a child.
     private var nodeParent: [Int: Int] = [:]
 
+    /// Reverse index: maps parent node ID to an ordered list of child node IDs.
+    /// Provides O(1) children lookup instead of O(n) scan of nodeParent.
+    private var childrenOf: [Int: [Int]] = [:]
+
     /// The root UIView that contains all rendered native views.
     private weak var rootView: UIView?
 
@@ -140,17 +144,32 @@ public final class NativeBridge {
 
     // MARK: - Operation Processing
 
+    /// Operations that mutate the view tree structure and require a layout pass.
+    private static let treeMutationOps: Set<String> = [
+        "create", "createText", "appendChild", "insertBefore", "removeChild",
+        "setRootView", "setText", "setElementText"
+    ]
+
     /// Process a batch of operations on the main thread.
     /// Each operation has an "op" key and "args" array.
+    /// Only triggers a Yoga layout pass when the batch contains tree mutations
+    /// (create, appendChild, insertBefore, removeChild, etc.). Batches that
+    /// only update props/styles/events skip the expensive layout recalculation.
     private func processOperations(_ operations: [[String: Any]]) {
         dispatchPrecondition(condition: .onQueue(.main))
         NSLog("[VueNative Bridge] Processing %d operations", operations.count)
+
+        var hasMutations = false
 
         for operation in operations {
             guard let op = operation["op"] as? String,
                   let args = operation["args"] as? [Any] else {
                 NSLog("[VueNative Bridge] Warning: Invalid operation format: \(operation)")
                 continue
+            }
+
+            if !hasMutations && NativeBridge.treeMutationOps.contains(op) {
+                hasMutations = true
             }
 
             switch op {
@@ -187,8 +206,10 @@ public final class NativeBridge {
             }
         }
 
-        // After processing all operations, trigger layout recalculation
-        triggerLayout()
+        // Only trigger layout recalculation when the batch mutated the view tree
+        if hasMutations {
+            triggerLayout()
+        }
     }
 
     // MARK: - Operation Handlers
@@ -322,6 +343,7 @@ public final class NativeBridge {
         }
 
         nodeParent[childId] = parentId
+        childrenOf[parentId, default: []].append(childId)
         // For scroll views, children go into the inner content view
         let container = childContainer(for: parentView)
         if let factory = ComponentRegistry.factory(for: parentView) {
@@ -347,6 +369,15 @@ public final class NativeBridge {
         }
 
         nodeParent[childId] = parentId
+        // Insert into childrenOf at the correct position (before beforeId)
+        var siblings = childrenOf[parentId, default: []]
+        if let idx = siblings.firstIndex(of: beforeId) {
+            siblings.insert(childId, at: idx)
+        } else {
+            siblings.append(childId)
+        }
+        childrenOf[parentId] = siblings
+
         let container = childContainer(for: parentView)
         if let factory = ComponentRegistry.factory(for: parentView) {
             factory.insertChild(childView, into: container, before: beforeView)
@@ -376,8 +407,8 @@ public final class NativeBridge {
 
         guard let childView = viewRegistry[childId] else { return }
 
-        // Recursively clean up all descendant views from the registries
-        removeDescendants(of: childView)
+        // Recursively clean up all descendant nodes using the childrenOf index
+        removeDescendantsFromIndex(childId)
 
         // Look up parent factory for custom removal
         if let parentId = nodeParent[childId],
@@ -388,26 +419,34 @@ public final class NativeBridge {
         } else {
             childView.removeFromSuperview()
         }
+
+        // Remove child from parent's childrenOf list
+        if let parentId = nodeParent[childId] {
+            childrenOf[parentId]?.removeAll { $0 == childId }
+        }
+
         nodeParent.removeValue(forKey: childId)
         viewRegistry.removeValue(forKey: childId)
         typeRegistry.removeValue(forKey: childId)
+        childrenOf.removeValue(forKey: childId)
 
         // Clean up any event handlers for this node
         let prefix = "\(childId):"
         eventHandlers = eventHandlers.filter { !$0.key.hasPrefix(prefix) }
     }
 
-    /// Recursively remove all registered descendants of a view from the view/type/event registries.
-    private func removeDescendants(of view: UIView) {
-        for subview in view.subviews {
-            removeDescendants(of: subview)
-            // Find the nodeId for this subview
-            if let nodeId = viewRegistry.first(where: { $0.value === subview })?.key {
-                viewRegistry.removeValue(forKey: nodeId)
-                typeRegistry.removeValue(forKey: nodeId)
-                let prefix = "\(nodeId):"
-                eventHandlers = eventHandlers.filter { !$0.key.hasPrefix(prefix) }
-            }
+    /// Recursively clean up all descendant nodes using the childrenOf reverse index.
+    /// This is O(n) in the subtree size rather than scanning the entire nodeParent dict.
+    private func removeDescendantsFromIndex(_ nodeId: Int) {
+        guard let children = childrenOf[nodeId] else { return }
+        for childId in children {
+            removeDescendantsFromIndex(childId)
+            nodeParent.removeValue(forKey: childId)
+            viewRegistry.removeValue(forKey: childId)
+            typeRegistry.removeValue(forKey: childId)
+            childrenOf.removeValue(forKey: childId)
+            let prefix = "\(childId):"
+            eventHandlers = eventHandlers.filter { !$0.key.hasPrefix(prefix) }
         }
     }
 
@@ -682,6 +721,7 @@ public final class NativeBridge {
         typeRegistry.removeAll()
         eventHandlers.removeAll()
         nodeParent.removeAll()
+        childrenOf.removeAll()
         // Keep rootView reference and rootViewController — we re-use the same container
 
         // Step 2: Re-register bridge functions on the new JSContext after runtime reloads.
@@ -771,6 +811,7 @@ public final class NativeBridge {
             self.typeRegistry.removeAll()
             self.eventHandlers.removeAll()
             self.nodeParent.removeAll()
+            self.childrenOf.removeAll()
             self.rootView = nil
         }
     }

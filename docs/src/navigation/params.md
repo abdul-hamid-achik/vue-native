@@ -8,25 +8,26 @@ router.push('profile', { userId: 123, username: 'alice' })
 
 ## Reading params in the destination screen
 
+`useRoute()` returns a `ComputedRef<RouteLocation>` -- access `.value` for the current route:
+
 ```vue
 <script setup>
 import { useRoute } from '@thelacanians/vue-native-navigation'
 
 const route = useRoute()
-const userId = route.params.userId     // 123
-const username = route.params.username // 'alice'
+// route.value.name    -> 'profile'
+// route.value.params  -> { userId: 123, username: 'alice' }
 </script>
+
+<template>
+  <VView :style="{ padding: 20 }">
+    <VText>User: {{ route.value.params.username }}</VText>
+    <VText>ID: {{ route.value.params.userId }}</VText>
+  </VView>
+</template>
 ```
 
-`useRoute()` is reactive — if params change (e.g. via `router.replace`), the component re-renders.
-
-## Typed params (TypeScript)
-
-You can type your params with a generic:
-
-```ts
-const route = useRoute<{ userId: number; username: string }>()
-```
+`useRoute()` is reactive -- if params change (e.g. via `router.replace`), the component re-renders.
 
 ## Passing complex objects
 
@@ -37,4 +38,14 @@ router.push('checkout', {
   items: [{ id: 1, qty: 2 }, { id: 3, qty: 1 }],
   total: 49.99,
 })
+```
+
+## RouteLocation type
+
+```ts
+interface RouteLocation {
+  name: string
+  params: Record<string, any>
+  options: RouteOptions
+}
 ```

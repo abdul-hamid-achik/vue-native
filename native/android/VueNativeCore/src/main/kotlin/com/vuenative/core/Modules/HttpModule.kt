@@ -1,5 +1,6 @@
 package com.vuenative.core
 
+import okhttp3.CertificatePinner
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -10,16 +11,23 @@ import java.util.concurrent.TimeUnit
 /**
  * HttpModule — backs the useHttp() composable.
  * Provides a request() method that handles arbitrary HTTP calls from JS with
- * support for baseURL, custom headers, and all HTTP methods.
+ * support for baseURL, custom headers, all HTTP methods, and certificate pinning.
  */
 class HttpModule : NativeModule {
     override val moduleName = "Http"
 
-    private val client = OkHttpClient.Builder()
+    /** Default client without certificate pinning. */
+    private val defaultClient = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
         .writeTimeout(30, TimeUnit.SECONDS)
         .build()
+
+    /** Client with certificate pinning — rebuilt when pins are configured. */
+    private var pinnedClient: OkHttpClient? = null
+
+    /** Current certificate pinner, if any. */
+    private var certificatePinner: CertificatePinner? = null
 
     override fun invoke(
         method: String,
@@ -28,6 +36,24 @@ class HttpModule : NativeModule {
         callback: (Any?, String?) -> Unit
     ) {
         when (method) {
+            "configurePins" -> {
+                @Suppress("UNCHECKED_CAST")
+                val pinsMap = args.getOrNull(0) as? Map<String, List<String>>
+                    ?: run { callback(null, "Invalid args — expected pins object"); return }
+
+                val builder = CertificatePinner.Builder()
+                for ((domain, pins) in pinsMap) {
+                    for (pin in pins) {
+                        // OkHttp expects pins in "sha256/base64hash" format
+                        builder.add(domain, pin)
+                    }
+                }
+                certificatePinner = builder.build()
+                pinnedClient = defaultClient.newBuilder()
+                    .certificatePinner(certificatePinner!!)
+                    .build()
+                callback(true, null)
+            }
             "request" -> {
                 val opts = args.getOrNull(0) as? Map<*, *>
                     ?: run { callback(null, "Invalid args — expected options object"); return }
@@ -55,6 +81,9 @@ class HttpModule : NativeModule {
                     else -> null
                 }
                 builder.method(httpMethod, requestBody)
+
+                // Use pinned client when configured, otherwise default
+                val client = pinnedClient ?: defaultClient
 
                 client.newCall(builder.build()).enqueue(object : okhttp3.Callback {
                     override fun onFailure(call: okhttp3.Call, e: IOException) {

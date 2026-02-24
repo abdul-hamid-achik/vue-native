@@ -17,6 +17,12 @@ class NativeBridge(private val context: Context) {
 
     companion object {
         private const val TAG = "VueNative-Bridge"
+
+        /** Operations that mutate the view tree and require a layout pass. */
+        private val treeMutationOps = setOf(
+            "create", "createText", "appendChild", "insertBefore", "removeChild",
+            "setRootView", "setText", "setElementText"
+        )
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -33,6 +39,9 @@ class NativeBridge(private val context: Context) {
 
     /** Maps child nodeId to parent nodeId. Accessed only on main thread. */
     val nodeParents = mutableMapOf<Int, Int>()
+
+    /** Reverse index: maps parent nodeId to ordered list of child nodeIds. O(1) children lookup. */
+    val nodeChildren = mutableMapOf<Int, MutableList<Int>>()
 
     /** The root view of the tree — set when __ROOT__ node is made the root view. */
     var rootView: View? = null
@@ -68,14 +77,22 @@ class NativeBridge(private val context: Context) {
         }
 
         mainHandler.post {
+            var hasMutations = false
             for (op in ops) {
                 try {
+                    val opName = op.optString("op")
+                    if (!hasMutations && opName in treeMutationOps) {
+                        hasMutations = true
+                    }
                     handleOperation(op)
                 } catch (e: Exception) {
                     Log.e(TAG, "Error handling op '${op.optString("op")}': ${e.message}")
                 }
             }
-            triggerLayout()
+            // Only trigger layout when the batch mutated the view tree
+            if (hasMutations) {
+                triggerLayout()
+            }
         }
     }
 
@@ -163,6 +180,7 @@ class NativeBridge(private val context: Context) {
         val parent = nodeViews[parentId] ?: return
         val child = nodeViews[childId] ?: return
         nodeParents[childId] = parentId
+        nodeChildren.getOrPut(parentId) { mutableListOf() }.add(childId)
 
         val factory = componentRegistry.factoryForView(parent)
         if (factory != null) {
@@ -181,6 +199,14 @@ class NativeBridge(private val context: Context) {
         val child = nodeViews[childId] ?: return
         val anchor = nodeViews[anchorId] ?: return
         nodeParents[childId] = parentId
+        // Insert into nodeChildren at the correct position (before anchorId)
+        val siblings = nodeChildren.getOrPut(parentId) { mutableListOf() }
+        val anchorIndex = siblings.indexOf(anchorId)
+        if (anchorIndex >= 0) {
+            siblings.add(anchorIndex, childId)
+        } else {
+            siblings.add(childId)
+        }
 
         val vg = parent as? ViewGroup ?: return
         val anchorIdx = vg.indexOfChild(anchor)
@@ -211,18 +237,22 @@ class NativeBridge(private val context: Context) {
             (child.parent as? ViewGroup)?.removeView(child)
         }
 
+        // Remove child from parent's nodeChildren list
+        if (parentId != null) {
+            nodeChildren[parentId]?.remove(childId)
+        }
+
         // Recursively clean up descendants
         cleanupNode(childId)
     }
 
     private fun cleanupNode(nodeId: Int) {
+        // Recursively clean up children using the reverse index (O(subtree) not O(n))
+        nodeChildren[nodeId]?.toList()?.forEach { cleanupNode(it) }
         nodeParents.remove(nodeId)
         eventHandlers.entries.removeAll { it.key.startsWith("$nodeId:") }
         nodeViews.remove(nodeId)
-        // Find all direct children via the nodeParents map (more reliable than view.parent
-        // because factories like VList store items in a separate array, not as ViewGroup children)
-        val childIds = nodeParents.entries.filter { it.value == nodeId }.map { it.key }
-        childIds.forEach { cleanupNode(it) }
+        nodeChildren.remove(nodeId)
     }
 
     private fun handleSetRootView(args: JSONArray) {

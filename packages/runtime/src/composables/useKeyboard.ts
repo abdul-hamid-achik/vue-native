@@ -27,8 +27,8 @@ export function useKeyboard() {
   /**
    * Get current keyboard height and visibility.
    */
-  async function getHeight(): Promise<{ height: number; isVisible: boolean }> {
-    const result = await NativeBridge.invokeNativeModule('Keyboard', 'getHeight', []) as { height: number; isVisible: boolean }
+  async function getHeight(): Promise<{ height: number, isVisible: boolean }> {
+    const result = await NativeBridge.invokeNativeModule('Keyboard', 'getHeight', []) as { height: number, isVisible: boolean }
     isVisible.value = result.isVisible ?? false
     height.value = result.height ?? 0
     return result

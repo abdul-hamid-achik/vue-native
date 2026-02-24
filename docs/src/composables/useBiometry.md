@@ -86,10 +86,11 @@ async function handleAuth() {
     <VText v-if="status" :style="{ marginTop: 8 }">{{ status }}</VText>
     <VButton
       v-if="available"
-      title="Authenticate"
       :onPress="handleAuth"
       :style="{ marginTop: 16 }"
-    />
+    >
+      <VText>Authenticate</VText>
+    </VButton>
   </VView>
 </template>
 ```

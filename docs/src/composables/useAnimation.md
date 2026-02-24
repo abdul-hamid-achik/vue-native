@@ -209,10 +209,10 @@ async function animateSequence() {
         borderRadius: 8,
       }"
     />
-    <VButton title="Fade In" :onPress="animateFadeIn" />
-    <VButton title="Bounce" :onPress="animateBounce" />
-    <VButton title="Flash" :onPress="animateFlash" />
-    <VButton title="Sequence" :onPress="animateSequence" />
+    <VButton :onPress="animateFadeIn"><VText>Fade In</VText></VButton>
+    <VButton :onPress="animateBounce"><VText>Bounce</VText></VButton>
+    <VButton :onPress="animateFlash"><VText>Flash</VText></VButton>
+    <VButton :onPress="animateSequence"><VText>Sequence</VText></VButton>
   </VView>
 </template>
 ```

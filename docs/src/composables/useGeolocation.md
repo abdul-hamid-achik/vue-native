@@ -112,8 +112,8 @@ async function stopTracking() {
       Waiting for location...
     </VText>
     <VView :style="{ flexDirection: 'row', gap: 12, marginTop: 16 }">
-      <VButton title="Start Tracking" :onPress="startTracking" />
-      <VButton title="Stop Tracking" :onPress="stopTracking" />
+      <VButton :onPress="startTracking"><VText>Start Tracking</VText></VButton>
+      <VButton :onPress="stopTracking"><VText>Stop Tracking</VText></VButton>
     </VView>
   </VView>
 </template>

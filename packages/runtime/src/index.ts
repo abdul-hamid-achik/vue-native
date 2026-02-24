@@ -18,8 +18,12 @@ import {
   VScrollView, VImage, VKeyboardAvoiding, VSafeArea, VSlider,
   VList, VModal, VAlertDialog, VStatusBar, VWebView,
   VProgressBar, VPicker, VSegmentedControl, VActionSheet,
+  VRefreshControl, VPressable, VSectionList,
+  VCheckbox, VRadio, VDropdown,
+  VVideo,
 } from './components'
 import { vShow } from './directives/vShow'
+import { ErrorBoundary } from './errorBoundary'
 
 /**
  * Extended App interface with the .start() method for mounting to native.
@@ -79,6 +83,15 @@ export function createApp(rootComponent: Component, rootProps?: Record<string, a
   app.component('VPicker', VPicker)
   app.component('VSegmentedControl', VSegmentedControl)
   app.component('VActionSheet', VActionSheet)
+  app.component('VRefreshControl', VRefreshControl)
+  app.component('VPressable', VPressable)
+  app.component('VSectionList', VSectionList)
+  app.component('VCheckbox', VCheckbox)
+  app.component('VRadio', VRadio)
+  app.component('VDropdown', VDropdown)
+  app.component('VVideo', VVideo)
+  app.component('ErrorBoundary', ErrorBoundary)
+  app.component('VErrorBoundary', ErrorBoundary)
   app.directive('show', vShow)
 
   // Global error handler — catches unhandled errors in components,
@@ -101,7 +114,7 @@ export function createApp(rootComponent: Component, rootProps?: Record<string, a
 
   // Dev-only warning handler
   if (typeof __DEV__ !== 'undefined' && __DEV__) {
-    app.config.warnHandler = (msg, instance, trace) => {
+    app.config.warnHandler = (msg, instance, _trace) => {
       const componentName = instance?.$options?.name || instance?.$.type?.name || 'Anonymous'
       console.warn(`[VueNative] Warning in ${componentName}: ${msg}`)
     }
@@ -152,7 +165,24 @@ export * from '@vue/runtime-core'
 export { render } from './renderer'
 
 // StyleSheet utility
-export { createStyleSheet, validStyleProperties, type StyleProp, type StyleSheet } from './stylesheet'
+export { createStyleSheet, validStyleProperties, type StyleProp, type StyleSheet, type AnyStyle } from './stylesheet'
+
+// Style and component prop types
+export type {
+  ViewStyle, TextStyle, ImageStyle,
+  FlexDirection, FlexWrap, JustifyContent, AlignItems, AlignSelf, AlignContent,
+  Position, Display, Overflow, Direction, BorderStyle, TextAlign,
+  TextDecorationLine, TextDecorationStyle, TextTransform, FontStyle, FontWeight,
+  ResizeMode, ImportantForAccessibility, ShadowOffset, TransformValue,
+  AccessibilityProps,
+  VViewProps, VTextProps, VButtonProps, VInputProps, VSwitchProps, VImageProps,
+  VScrollViewProps, VActivityIndicatorProps, VSliderProps, VListProps,
+  VModalProps, VAlertDialogProps, VStatusBarProps, VWebViewProps,
+  VProgressBarProps, VPickerProps, VSegmentedControlProps, VActionSheetProps,
+  VKeyboardAvoidingProps, VSafeAreaProps, VRefreshControlProps, VPressableProps,
+  VCheckboxProps, VRadioProps, VDropdownProps, VSectionListProps,
+  VVideoProps,
+} from './types'
 
 // Built-in components (for direct import in render functions)
 export {
@@ -160,8 +190,14 @@ export {
   VScrollView, VImage, VKeyboardAvoiding, VSafeArea, VSlider,
   VList, VModal, VAlertDialog, VStatusBar, VWebView,
   VProgressBar, VPicker, VSegmentedControl, VActionSheet,
+  VRefreshControl, VPressable, VSectionList,
+  VCheckbox, VRadio, VDropdown,
+  VVideo,
 } from './components'
-export type { AlertButton, StatusBarStyle, WebViewSource, ActionSheetAction } from './components'
+export type { AlertButton, StatusBarStyle, WebViewSource, ActionSheetAction, RadioOption, DropdownOption } from './components'
+
+// Error Boundary
+export { ErrorBoundary } from './errorBoundary'
 
 // Directives
 export { vShow } from './directives/vShow'
@@ -171,14 +207,42 @@ export {
   useHaptics, useAsyncStorage, useClipboard, useDeviceInfo, useKeyboard,
   useAnimation, useNetwork, useAppState, useLinking, useShare, usePermissions,
   useGeolocation, useCamera, useNotifications, useBiometry, useHttp,
-  useColorScheme, useBackHandler,
+  useColorScheme, useBackHandler, useSecureStorage, useI18n,
+  usePlatform, useDimensions, useWebSocket, useFileSystem,
+  useAccelerometer, useGyroscope,
+  useAudio,
+  useDatabase,
+  usePerformance,
+  useSharedElementTransition, getSharedElementViewId, getRegisteredSharedElements,
+  clearSharedElementRegistry, measureViewFrame,
+  useIAP,
+  useAppleSignIn,
+  useGoogleSignIn,
+  useBackgroundTask,
+  useOTAUpdate,
+  useBluetooth,
+  useCalendar,
+  useContacts,
 } from './composables'
 export type {
   TimingOptions, SpringOptions, NetworkState, ConnectionType, AppStateStatus,
   ShareContent, ShareResult, Permission, PermissionStatus, GeoCoordinates,
-  CameraOptions, CameraResult, LocalNotification, NotificationPayload,
+  CameraOptions, CameraResult, VideoCaptureOptions, VideoCaptureResult, QRCodeResult,
+  LocalNotification, NotificationPayload, PushNotificationPayload,
   BiometryType, BiometryResult, HttpRequestConfig, HttpResponse,
-  ColorScheme,
+  ColorScheme, Platform, Dimensions, WebSocketStatus, WebSocketOptions,
+  FileStat, SensorOptions, SensorData,
+  AudioPlayOptions, AudioRecordOptions, AudioRecordResult,
+  ExecuteResult, Row, TransactionContext,
+  PerformanceMetrics,
+  SharedElementFrame, SharedElementRegistration,
+  Product, Purchase, TransactionState, TransactionUpdate, ProductType,
+  SocialUser, AuthResult,
+  BackgroundTaskType, BackgroundTaskOptions,
+  UpdateInfo, VersionInfo, UpdateStatus,
+  BLEDevice, BLECharacteristic, BLECharacteristicChange, BLEState,
+  CalendarEvent, Calendar, CreateEventOptions,
+  Contact, ContactField, CreateContactData,
 } from './composables'
 
 // Bridge (for advanced native interop)

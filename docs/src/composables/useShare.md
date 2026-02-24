@@ -81,8 +81,8 @@ async function shareText() {
 
 <template>
   <VView :style="{ padding: 20 }">
-    <VButton title="Share Link" :onPress="shareLink" />
-    <VButton title="Share Text" :onPress="shareText" />
+    <VButton :onPress="shareLink"><VText>Share Link</VText></VButton>
+    <VButton :onPress="shareText"><VText>Share Text</VText></VButton>
     <VText :style="{ marginTop: 16 }">{{ status }}</VText>
   </VView>
 </template>

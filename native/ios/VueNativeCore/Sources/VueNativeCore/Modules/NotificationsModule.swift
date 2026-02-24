@@ -2,7 +2,7 @@
 import UIKit
 import UserNotifications
 
-/// Native module for local (and foreground push) notifications.
+/// Native module for local and remote (push) notifications.
 ///
 /// Methods:
 ///   - requestPermission() -> Bool
@@ -10,12 +10,19 @@ import UserNotifications
 ///   - scheduleLocal(notification: Object) -> notificationId: String
 ///   - cancel(id: String)
 ///   - cancelAll()
+///   - registerForPush() -> Void (registers for APNS remote notifications)
+///   - getToken() -> String? (returns cached APNS device token)
 ///
 /// Global events dispatched on bridge:
 ///   "notification:received" -- when a notification arrives in foreground or is tapped
+///   "push:token"            -- when APNS device token is received { token }
+///   "push:received"         -- when a remote push notification arrives { title, body, data }
 final class NotificationsModule: NativeModule {
     var moduleName: String { "Notifications" }
     private weak var bridge: NativeBridge?
+
+    /// Cached APNS device token (hex string)
+    private var deviceToken: String?
 
     init(bridge: NativeBridge) {
         self.bridge = bridge
@@ -29,6 +36,11 @@ final class NotificationsModule: NativeModule {
         NotificationCenterDelegate.shared.onNotification = { payload in
             DispatchQueue.main.async {
                 weakBridge?.dispatchGlobalEvent("notification:received", payload: payload)
+            }
+        }
+        NotificationCenterDelegate.shared.onPushReceived = { payload in
+            DispatchQueue.main.async {
+                weakBridge?.dispatchGlobalEvent("push:received", payload: payload)
             }
         }
     }
@@ -56,8 +68,35 @@ final class NotificationsModule: NativeModule {
         case "cancelAll":
             UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
             callback(nil, nil)
+        case "registerForPush":
+            DispatchQueue.main.async {
+                UIApplication.shared.registerForRemoteNotifications()
+            }
+            callback(true, nil)
+        case "getToken":
+            callback(deviceToken, nil)
         default:
             callback(nil, "NotificationsModule: Unknown method '\(method)'")
+        }
+    }
+
+    // MARK: - Push token handling (called from AppDelegate)
+
+    /// Call this from your AppDelegate's `application(_:didRegisterForRemoteNotificationsWithDeviceToken:)`
+    func didRegisterForRemoteNotifications(deviceToken data: Data) {
+        let token = data.map { String(format: "%02x", $0) }.joined()
+        self.deviceToken = token
+        DispatchQueue.main.async { [weak self] in
+            self?.bridge?.dispatchGlobalEvent("push:token", payload: ["token": token])
+        }
+    }
+
+    /// Call this from your AppDelegate's `application(_:didFailToRegisterForRemoteNotificationsWithError:)`
+    func didFailToRegisterForRemoteNotifications(error: Error) {
+        DispatchQueue.main.async { [weak self] in
+            self?.bridge?.dispatchGlobalEvent("push:error", payload: [
+                "message": error.localizedDescription
+            ])
         }
     }
 
@@ -112,15 +151,21 @@ final class NotificationsModule: NativeModule {
 /// to whoever has set `onNotification`.
 private final class NotificationCenterDelegate: NSObject, UNUserNotificationCenterDelegate {
     static let shared = NotificationCenterDelegate()
-    /// Called from delegate methods (arbitrary queue). Callers are responsible
-    /// for dispatching to the correct actor/queue before touching UI or bridge.
+    /// Called for local notifications and tapped notifications.
     var onNotification: (([String: Any]) -> Void)?
+    /// Called specifically for remote push notifications arriving in foreground.
+    var onPushReceived: (([String: Any]) -> Void)?
 
     /// Show banners/sounds/badges even when the app is in foreground.
     func userNotificationCenter(_ center: UNUserNotificationCenter,
                                 willPresent notification: UNNotification,
                                 withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
-        onNotification?(makePayload(from: notification.request))
+        let request = notification.request
+        if request.trigger is UNPushNotificationTrigger {
+            onPushReceived?(makePushPayload(from: request))
+        } else {
+            onNotification?(makePayload(from: request))
+        }
         completionHandler([.banner, .sound, .badge])
     }
 
@@ -128,9 +173,16 @@ private final class NotificationCenterDelegate: NSObject, UNUserNotificationCent
     func userNotificationCenter(_ center: UNUserNotificationCenter,
                                 didReceive response: UNNotificationResponse,
                                 withCompletionHandler completionHandler: @escaping () -> Void) {
-        var payload = makePayload(from: response.notification.request)
-        payload["action"] = response.actionIdentifier
-        onNotification?(payload)
+        let request = response.notification.request
+        if request.trigger is UNPushNotificationTrigger {
+            var payload = makePushPayload(from: request)
+            payload["action"] = response.actionIdentifier
+            onPushReceived?(payload)
+        } else {
+            var payload = makePayload(from: request)
+            payload["action"] = response.actionIdentifier
+            onNotification?(payload)
+        }
         completionHandler()
     }
 
@@ -140,6 +192,16 @@ private final class NotificationCenterDelegate: NSObject, UNUserNotificationCent
             "title": request.content.title,
             "body": request.content.body,
             "data": request.content.userInfo
+        ]
+    }
+
+    private func makePushPayload(from request: UNNotificationRequest) -> [String: Any] {
+        [
+            "id": request.identifier,
+            "title": request.content.title,
+            "body": request.content.body,
+            "data": request.content.userInfo,
+            "remote": true
         ]
     }
 }

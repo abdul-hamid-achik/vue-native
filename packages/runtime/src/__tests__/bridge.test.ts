@@ -8,7 +8,6 @@ const mockBridge = installMockBridge()
 const { NativeBridge } = await import('../bridge')
 
 describe('NativeBridge', () => {
-
   beforeEach(() => {
     mockBridge.reset()
     NativeBridge.reset()

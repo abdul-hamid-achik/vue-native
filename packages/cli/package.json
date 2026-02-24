@@ -1,6 +1,6 @@
 {
   "name": "@thelacanians/vue-native-cli",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "CLI for creating and running Vue Native apps",
   "license": "MIT",
   "author": "Vue Native Contributors",
@@ -17,7 +17,8 @@
     "vue-native": "./dist/cli.js"
   },
   "exports": {
-    ".": "./dist/cli.js"
+    ".": "./dist/config.js",
+    "./cli": "./dist/cli.js"
   },
   "files": ["dist", "README.md"],
   "scripts": {

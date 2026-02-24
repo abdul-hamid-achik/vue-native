@@ -74,7 +74,7 @@ function handleCancel() {
 
 <template>
   <VView :style="styles.container">
-    <VButton :style="styles.button" @press="showAlert = true">
+    <VButton :style="styles.button" :onPress="() => showAlert = true">
       <VText :style="styles.buttonText">Show Alert</VText>
     </VButton>
 

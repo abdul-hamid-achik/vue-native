@@ -6,8 +6,8 @@ Intercept the hardware back button press on Android. On iOS this is a no-op (no 
 
 ```vue
 <script setup>
-import { ref } from 'vue-native'
-import { useBackHandler } from 'vue-native'
+import { ref } from '@thelacanians/vue-native-runtime'
+import { useBackHandler } from '@thelacanians/vue-native-runtime'
 
 const hasUnsavedChanges = ref(false)
 

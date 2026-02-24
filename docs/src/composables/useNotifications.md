@@ -127,15 +127,16 @@ async function cancelReminder() {
 <template>
   <VView :style="{ padding: 20 }">
     <VText>Permission granted: {{ isGranted }}</VText>
-    <VButton title="Request Permission" :onPress="requestPermission" />
+    <VButton :onPress="requestPermission"><VText>Request Permission</VText></VButton>
 
     <VButton
-      title="Schedule in 5s"
       :onPress="scheduleReminder"
       :style="{ marginTop: 16 }"
-    />
-    <VButton title="Cancel Scheduled" :onPress="cancelReminder" />
-    <VButton title="Cancel All" :onPress="cancelAll" />
+    >
+      <VText>Schedule in 5s</VText>
+    </VButton>
+    <VButton :onPress="cancelReminder"><VText>Cancel Scheduled</VText></VButton>
+    <VButton :onPress="cancelAll"><VText>Cancel All</VText></VButton>
 
     <VText :style="{ marginTop: 16 }">
       Last received: {{ lastNotification || 'None' }}

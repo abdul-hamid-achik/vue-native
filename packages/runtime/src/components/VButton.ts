@@ -1,4 +1,5 @@
-import { defineComponent, h } from '@vue/runtime-core'
+import { defineComponent, h, type PropType } from '@vue/runtime-core'
+import type { ViewStyle } from '../types/styles'
 
 /**
  * VButton — a pressable button component.
@@ -21,7 +22,7 @@ import { defineComponent, h } from '@vue/runtime-core'
 export const VButton = defineComponent({
   name: 'VButton',
   props: {
-    style: Object,
+    style: Object as PropType<ViewStyle>,
     disabled: {
       type: Boolean,
       default: false,
@@ -30,8 +31,12 @@ export const VButton = defineComponent({
       type: Number,
       default: 0.7,
     },
-    onPress: Function,
-    onLongPress: Function,
+    onPress: Function as PropType<() => void>,
+    onLongPress: Function as PropType<() => void>,
+    accessibilityLabel: String,
+    accessibilityRole: String,
+    accessibilityHint: String,
+    accessibilityState: Object,
   },
   setup(props, { slots }) {
     return () =>

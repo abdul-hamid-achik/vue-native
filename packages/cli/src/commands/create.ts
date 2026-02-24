@@ -3,12 +3,21 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import pc from 'picocolors'
 
+type Template = 'blank' | 'tabs' | 'drawer'
+
 export const createCommand = new Command('create')
   .description('Create a new Vue Native project')
   .argument('<name>', 'project name')
-  .action(async (name: string) => {
+  .option('-t, --template <template>', 'project template (blank, tabs, drawer)', 'blank')
+  .action(async (name: string, options: { template: string }) => {
+    const template = options.template as Template
+    if (!['blank', 'tabs', 'drawer'].includes(template)) {
+      console.error(pc.red(`Invalid template "${template}". Choose: blank, tabs, drawer`))
+      process.exit(1)
+    }
+
     const dir = join(process.cwd(), name)
-    console.log(pc.cyan(`\nCreating Vue Native project: ${pc.bold(name)}\n`))
+    console.log(pc.cyan(`\nCreating Vue Native project: ${pc.bold(name)} (template: ${template})\n`))
 
     try {
       await mkdir(dir, { recursive: true })
@@ -63,84 +72,8 @@ export default defineConfig({
         include: ['app/**/*'],
       }, null, 2))
 
-      // app/main.ts
-      await writeFile(join(dir, 'app', 'main.ts'), `import { createApp } from 'vue'
-import { createRouter } from '@thelacanians/vue-native-navigation'
-import App from './App.vue'
-import Home from './pages/Home.vue'
-
-const router = createRouter([
-  { name: 'Home', component: Home },
-])
-
-const app = createApp(App)
-app.use(router)
-app.start()
-`)
-
-      // app/App.vue
-      await writeFile(join(dir, 'app', 'App.vue'), `<template>
-  <VSafeArea :style="{ flex: 1, backgroundColor: '#ffffff' }">
-    <RouterView />
-  </VSafeArea>
-</template>
-
-<script setup lang="ts">
-import { RouterView } from '@thelacanians/vue-native-navigation'
-</script>
-`)
-
-      // app/pages/Home.vue
-      await writeFile(join(dir, 'app', 'pages', 'Home.vue'), `<template>
-  <VView :style="styles.container">
-    <VText :style="styles.title">Hello, Vue Native! 🎉</VText>
-    <VText :style="styles.subtitle">Edit app/pages/Home.vue to get started.</VText>
-    <VButton :style="styles.button" @press="count++">
-      <VText :style="styles.buttonText">Count: {{ count }}</VText>
-    </VButton>
-  </VView>
-</template>
-
-<script setup lang="ts">
-import { ref } from 'vue'
-import { createStyleSheet } from 'vue'
-
-const count = ref(0)
-
-const styles = createStyleSheet({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#1a1a1a',
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  subtitle: {
-    fontSize: 16,
-    color: '#666',
-    textAlign: 'center',
-    marginBottom: 32,
-  },
-  button: {
-    backgroundColor: '#4f46e5',
-    paddingHorizontal: 32,
-    paddingVertical: 14,
-    borderRadius: 12,
-  },
-  buttonText: {
-    color: '#ffffff',
-    fontSize: 18,
-    fontWeight: '600',
-  },
-})
-</script>
-`)
+      // Generate template-specific files
+      await generateTemplateFiles(dir, name, template)
 
       // ── iOS native project ──────────────────────────────────
       const iosDir = join(dir, 'ios')
@@ -421,17 +354,418 @@ kotlin.code.style=official
 android.nonTransitiveRClass=true
 `)
 
-      console.log(pc.green('✓ Project created successfully!\n'))
-      console.log(pc.white('Next steps:\n'))
-      console.log(pc.white(`  cd ${name}`))
-      console.log(pc.white('  bun install'))
-      console.log(pc.white('  vue-native dev\n'))
-      console.log(pc.white('To run on iOS:'))
-      console.log(pc.white('  vue-native run ios\n'))
-      console.log(pc.white('To run on Android:'))
-      console.log(pc.white('  vue-native run android\n'))
+      // vue-native.config.ts
+      await writeFile(join(dir, 'vue-native.config.ts'), `import { defineConfig } from '@thelacanians/vue-native-cli'
+
+export default defineConfig({
+  name: '${name}',
+  bundleId: '${bundleId}',
+  version: '1.0.0',
+  ios: {
+    deploymentTarget: '16.0',
+  },
+  android: {
+    minSdk: 21,
+    targetSdk: 34,
+  },
+})
+`)
+
+      // env.d.ts
+      await writeFile(join(dir, 'env.d.ts'), `/// <reference types="vite/client" />
+declare module '*.vue' {
+  import type { DefineComponent } from 'vue'
+  const component: DefineComponent<{}, {}, any>
+  export default component
+}
+declare const __DEV__: boolean
+`)
+
+      // .gitignore
+      await writeFile(join(dir, '.gitignore'), `node_modules/
+dist/
+*.xcuserstate
+*.xcuserdatad/
+DerivedData/
+.build/
+build/
+.gradle/
+local.properties
+*.apk
+*.aab
+.DS_Store
+`)
+
+      console.log(pc.green('  Project created successfully!\n'))
+      console.log(pc.white('  Next steps:\n'))
+      console.log(pc.white(`    cd ${name}`))
+      console.log(pc.white('    bun install'))
+      console.log(pc.white('    vue-native dev\n'))
+      console.log(pc.white('  To run on iOS:'))
+      console.log(pc.white('    vue-native run ios\n'))
+      console.log(pc.white('  To run on Android:'))
+      console.log(pc.white('    vue-native run android\n'))
     } catch (err) {
       console.error(pc.red(`Error creating project: ${(err as Error).message}`))
       process.exit(1)
     }
   })
+
+// ---------------------------------------------------------------------------
+// Template generators
+// ---------------------------------------------------------------------------
+
+async function generateTemplateFiles(dir: string, name: string, template: Template) {
+  const pagesDir = join(dir, 'app', 'pages')
+
+  if (template === 'blank') {
+    await generateBlankTemplate(dir, pagesDir)
+  } else if (template === 'tabs') {
+    await generateTabsTemplate(dir, pagesDir)
+  } else if (template === 'drawer') {
+    await generateDrawerTemplate(dir, pagesDir)
+  }
+}
+
+async function generateBlankTemplate(dir: string, pagesDir: string) {
+  // app/main.ts
+  await writeFile(join(dir, 'app', 'main.ts'), `import { createApp } from 'vue'
+import { createRouter } from '@thelacanians/vue-native-navigation'
+import App from './App.vue'
+import Home from './pages/Home.vue'
+
+const router = createRouter([
+  { name: 'Home', component: Home },
+])
+
+const app = createApp(App)
+app.use(router)
+app.start()
+`)
+
+  // app/App.vue
+  await writeFile(join(dir, 'app', 'App.vue'), `<template>
+  <VSafeArea :style="{ flex: 1, backgroundColor: '#ffffff' }">
+    <RouterView />
+  </VSafeArea>
+</template>
+
+<script setup lang="ts">
+import { RouterView } from '@thelacanians/vue-native-navigation'
+</script>
+`)
+
+  // app/pages/Home.vue
+  await writeFile(join(pagesDir, 'Home.vue'), `<script setup lang="ts">
+import { ref } from 'vue'
+import { createStyleSheet } from '@thelacanians/vue-native-runtime'
+
+const count = ref(0)
+
+const styles = createStyleSheet({
+  container: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  title: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: '#1a1a1a',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  subtitle: {
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: 32,
+  },
+  button: {
+    backgroundColor: '#4f46e5',
+    paddingHorizontal: 32,
+    paddingVertical: 14,
+    borderRadius: 12,
+  },
+  buttonText: {
+    color: '#ffffff',
+    fontSize: 18,
+    fontWeight: '600',
+  },
+})
+</script>
+
+<template>
+  <VView :style="styles.container">
+    <VText :style="styles.title">Hello, Vue Native!</VText>
+    <VText :style="styles.subtitle">Edit app/pages/Home.vue to get started.</VText>
+    <VButton :style="styles.button" :onPress="() => count++">
+      <VText :style="styles.buttonText">Count: {{ count }}</VText>
+    </VButton>
+  </VView>
+</template>
+`)
+}
+
+async function generateTabsTemplate(dir: string, pagesDir: string) {
+  // app/main.ts
+  await writeFile(join(dir, 'app', 'main.ts'), `import { createApp } from 'vue'
+import App from './App.vue'
+
+const app = createApp(App)
+app.start()
+`)
+
+  // app/App.vue — uses createTabNavigator
+  await writeFile(join(dir, 'app', 'App.vue'), `<script setup lang="ts">
+import { createTabNavigator } from '@thelacanians/vue-native-navigation'
+import Home from './pages/Home.vue'
+import Settings from './pages/Settings.vue'
+
+const { TabNavigator } = createTabNavigator()
+</script>
+
+<template>
+  <VSafeArea :style="{ flex: 1, backgroundColor: '#ffffff' }">
+    <TabNavigator
+      :screens="[
+        { name: 'home', label: 'Home', icon: 'H', component: Home },
+        { name: 'settings', label: 'Settings', icon: 'S', component: Settings },
+      ]"
+    />
+  </VSafeArea>
+</template>
+`)
+
+  // app/pages/Home.vue
+  await writeFile(join(pagesDir, 'Home.vue'), `<script setup lang="ts">
+import { ref } from 'vue'
+import { createStyleSheet } from '@thelacanians/vue-native-runtime'
+
+const count = ref(0)
+
+const styles = createStyleSheet({
+  container: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  title: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: '#1a1a1a',
+    marginBottom: 16,
+  },
+  button: {
+    backgroundColor: '#4f46e5',
+    paddingHorizontal: 32,
+    paddingVertical: 14,
+    borderRadius: 12,
+    marginTop: 16,
+  },
+  buttonText: {
+    color: '#ffffff',
+    fontSize: 18,
+    fontWeight: '600',
+  },
+})
+</script>
+
+<template>
+  <VView :style="styles.container">
+    <VText :style="styles.title">Home</VText>
+    <VText>Count: {{ count }}</VText>
+    <VButton :style="styles.button" :onPress="() => count++">
+      <VText :style="styles.buttonText">Increment</VText>
+    </VButton>
+  </VView>
+</template>
+`)
+
+  // app/pages/Settings.vue
+  await writeFile(join(pagesDir, 'Settings.vue'), `<script setup lang="ts">
+import { ref } from 'vue'
+import { createStyleSheet } from '@thelacanians/vue-native-runtime'
+
+const darkMode = ref(false)
+
+const styles = createStyleSheet({
+  container: {
+    flex: 1,
+    padding: 24,
+  },
+  title: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: '#1a1a1a',
+    marginBottom: 24,
+  },
+  row: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  label: {
+    fontSize: 16,
+    color: '#333',
+  },
+})
+</script>
+
+<template>
+  <VView :style="styles.container">
+    <VText :style="styles.title">Settings</VText>
+    <VView :style="styles.row">
+      <VText :style="styles.label">Dark Mode</VText>
+      <VSwitch v-model="darkMode" />
+    </VView>
+  </VView>
+</template>
+`)
+}
+
+async function generateDrawerTemplate(dir: string, pagesDir: string) {
+  // app/main.ts
+  await writeFile(join(dir, 'app', 'main.ts'), `import { createApp } from 'vue'
+import App from './App.vue'
+
+const app = createApp(App)
+app.start()
+`)
+
+  // app/App.vue — uses createDrawerNavigator
+  await writeFile(join(dir, 'app', 'App.vue'), `<script setup lang="ts">
+import { createDrawerNavigator } from '@thelacanians/vue-native-navigation'
+import Home from './pages/Home.vue'
+import About from './pages/About.vue'
+
+const { DrawerNavigator } = createDrawerNavigator()
+</script>
+
+<template>
+  <VSafeArea :style="{ flex: 1, backgroundColor: '#ffffff' }">
+    <DrawerNavigator
+      :screens="[
+        { name: 'home', label: 'Home', icon: 'H', component: Home },
+        { name: 'about', label: 'About', icon: 'A', component: About },
+      ]"
+    />
+  </VSafeArea>
+</template>
+`)
+
+  // app/pages/Home.vue
+  await writeFile(join(pagesDir, 'Home.vue'), `<script setup lang="ts">
+import { createStyleSheet } from '@thelacanians/vue-native-runtime'
+import { useDrawer } from '@thelacanians/vue-native-navigation'
+
+const { toggleDrawer } = useDrawer()
+
+const styles = createStyleSheet({
+  container: {
+    flex: 1,
+    padding: 24,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  menuButton: {
+    backgroundColor: '#f0f0f0',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginRight: 16,
+  },
+  menuText: {
+    fontSize: 18,
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#1a1a1a',
+  },
+  body: {
+    fontSize: 16,
+    color: '#666',
+    lineHeight: 24,
+  },
+})
+</script>
+
+<template>
+  <VView :style="styles.container">
+    <VView :style="styles.header">
+      <VButton :style="styles.menuButton" :onPress="toggleDrawer">
+        <VText :style="styles.menuText">Menu</VText>
+      </VButton>
+      <VText :style="styles.title">Home</VText>
+    </VView>
+    <VText :style="styles.body">
+      Swipe from the left or tap Menu to open the drawer.
+    </VText>
+  </VView>
+</template>
+`)
+
+  // app/pages/About.vue
+  await writeFile(join(pagesDir, 'About.vue'), `<script setup lang="ts">
+import { createStyleSheet } from '@thelacanians/vue-native-runtime'
+import { useDrawer } from '@thelacanians/vue-native-navigation'
+
+const { toggleDrawer } = useDrawer()
+
+const styles = createStyleSheet({
+  container: {
+    flex: 1,
+    padding: 24,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  menuButton: {
+    backgroundColor: '#f0f0f0',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginRight: 16,
+  },
+  menuText: {
+    fontSize: 18,
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#1a1a1a',
+  },
+  body: {
+    fontSize: 16,
+    color: '#666',
+    lineHeight: 24,
+  },
+})
+</script>
+
+<template>
+  <VView :style="styles.container">
+    <VView :style="styles.header">
+      <VButton :style="styles.menuButton" :onPress="toggleDrawer">
+        <VText :style="styles.menuText">Menu</VText>
+      </VButton>
+      <VText :style="styles.title">About</VText>
+    </VView>
+    <VText :style="styles.body">
+      Built with Vue Native.
+    </VText>
+  </VView>
+</template>
+`)
+}

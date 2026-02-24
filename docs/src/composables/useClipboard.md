@@ -69,14 +69,13 @@ async function handlePaste() {
 <template>
   <VView :style="{ padding: 20 }">
     <VInput
-      :value="inputText"
-      :onChangeText="(t) => inputText = t"
+      v-model="inputText"
       placeholder="Type text to copy"
       :style="{ borderWidth: 1, borderColor: '#ccc', padding: 10 }"
     />
 
-    <VButton title="Copy to Clipboard" :onPress="handleCopy" />
-    <VButton title="Paste from Clipboard" :onPress="handlePaste" />
+    <VButton :onPress="handleCopy"><VText>Copy to Clipboard</VText></VButton>
+    <VButton :onPress="handlePaste"><VText>Paste from Clipboard</VText></VButton>
 
     <VText :style="{ marginTop: 16 }">
       Clipboard content: {{ content }}

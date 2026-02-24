@@ -37,6 +37,24 @@ final class NativeModuleRegistry {
         register(CameraModule())
         register(NotificationsModule(bridge: bridge))
         register(BiometryModule())
+        register(SecureStorageModule())
+        register(WebSocketModule(bridge: bridge))
+        register(FileSystemModule())
+        register(SensorsModule(bridge: bridge))
+        register(AudioModule())
+        register(DatabaseModule())
+        register(PerformanceModule(bridge: bridge))
+        if #available(iOS 13.0, *) {
+            register(BackgroundTaskModule(bridge: bridge))
+        }
+        register(OTAModule(bridge: bridge))
+        if #available(iOS 15.0, *) {
+            register(IAPModule(bridge: bridge))
+        }
+        register(SocialAuthModule(bridge: bridge))
+        register(BluetoothModule(bridge: bridge))
+        register(CalendarModule())
+        register(ContactsModule())
     }
 
     // MARK: - Invocation

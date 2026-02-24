@@ -7,7 +7,6 @@ installMockBridge()
 const { createNativeNode, createTextNode, createCommentNode, resetNodeId } = await import('../node')
 
 describe('NativeNode', () => {
-
   beforeEach(() => {
     resetNodeId()
   })

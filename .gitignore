@@ -34,3 +34,6 @@ coverage/
 
 # vecgrep
 .vecgrep/
+
+# Lefthook
+.lefthook-local.yml

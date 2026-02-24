@@ -45,7 +45,7 @@ function fetchData() {
       color="#007AFF"
       size="large"
     />
-    <VButton :style="styles.button" @press="fetchData">
+    <VButton :style="styles.button" :onPress="fetchData">
       <VText :style="styles.label">Reload</VText>
     </VButton>
   </VView>

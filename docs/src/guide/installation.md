@@ -15,11 +15,25 @@
 ### Shared
 - Node.js 18+ or [Bun](https://bun.sh)
 
-## Create a new project
+## Create a new project (recommended)
+
+The fastest way to get started is with the managed workflow. The CLI scaffolds a complete project with native projects for both platforms:
 
 ```bash
 npx @thelacanians/vue-native-cli create my-app
 cd my-app
+bun install
+vue-native dev --ios
+```
+
+You can also choose a template:
+
+```bash
+# Tab-based navigation
+vue-native create my-app --template tabs
+
+# Drawer navigation
+vue-native create my-app --template drawer
 ```
 
 The CLI scaffolds a full project with:
@@ -28,6 +42,9 @@ The CLI scaffolds a full project with:
 - iOS Xcode project in `ios/`
 - Android Gradle project in `android/`
 - Vite config with `@thelacanians/vue-native-vite-plugin`
+- `vue-native.config.ts` for app configuration
+
+See the [Managed Workflow](./managed-workflow.md) guide for the full configuration reference and available CLI commands.
 
 ## Manual setup
 

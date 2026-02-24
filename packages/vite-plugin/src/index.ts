@@ -76,9 +76,9 @@ export default function vueNativePlugin(options: VueNativePluginOptions = {}) {
 
         define: {
           // Compile-time flag for development-only code paths
-          __DEV__: JSON.stringify(isDev),
+          '__DEV__': JSON.stringify(isDev),
           // Platform identifier available at compile time
-          __PLATFORM__: JSON.stringify(platform),
+          '__PLATFORM__': JSON.stringify(platform),
           // Replace process.env.NODE_ENV references from @vue/shared and
           // @vue/runtime-core. JavaScriptCore has no `process` global, so
           // leaving these unresolved would crash the bundle on load.

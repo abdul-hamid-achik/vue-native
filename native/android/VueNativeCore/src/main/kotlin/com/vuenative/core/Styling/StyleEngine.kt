@@ -9,6 +9,8 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.ViewOutlineProvider
 import android.widget.TextView
+import androidx.core.view.ViewCompat
+import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
 import com.google.android.flexbox.AlignContent
 import com.google.android.flexbox.AlignItems
 import com.google.android.flexbox.AlignSelf
@@ -26,6 +28,11 @@ import kotlin.math.PI
 object StyleEngine {
 
     fun apply(key: String, value: Any?, view: View) {
+        // Store internal props (prefixed with "__") as view tags
+        if (key.startsWith("__")) {
+            setInternalProp(key, value, view)
+            return
+        }
         val ctx = view.context
         when (key) {
             // --- Background & Visual ---
@@ -292,8 +299,72 @@ object StyleEngine {
                 }
             }
 
+            // --- Direction (RTL/LTR) ---
+            "direction" -> {
+                val dir = when (value?.toString()) {
+                    "rtl" -> View.LAYOUT_DIRECTION_RTL
+                    "ltr" -> View.LAYOUT_DIRECTION_LTR
+                    else -> View.LAYOUT_DIRECTION_INHERIT
+                }
+                view.layoutDirection = dir
+            }
+
             // --- Accessibility ---
-            "accessibilityLabel" -> view.contentDescription = value?.toString()
+            "accessibilityLabel" -> {
+                view.contentDescription = value?.toString()
+                view.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
+            }
+            "accessibilityHint" -> {
+                // Android doesn't have a direct accessibilityHint API like iOS.
+                // We use AccessibilityDelegate to provide the hint via tooltipText (API 28+)
+                // or append it to contentDescription as a fallback.
+                val hint = value?.toString() ?: return
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+                    view.tooltipText = hint
+                }
+                view.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
+            }
+            "accessibilityValue" -> {
+                val stateDesc = value?.toString() ?: return
+                ViewCompat.setStateDescription(view, stateDesc)
+                view.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
+            }
+            "accessibilityRole" -> {
+                val role = value?.toString() ?: return
+                ViewCompat.setAccessibilityDelegate(view, object : androidx.core.view.AccessibilityDelegateCompat() {
+                    override fun onInitializeAccessibilityNodeInfo(host: View, info: AccessibilityNodeInfoCompat) {
+                        super.onInitializeAccessibilityNodeInfo(host, info)
+                        when (role) {
+                            "button"     -> info.className = "android.widget.Button"
+                            "link"       -> info.addAction(AccessibilityNodeInfoCompat.AccessibilityActionCompat.ACTION_CLICK)
+                            "header"     -> info.isHeading = true
+                            "image"      -> info.className = "android.widget.ImageView"
+                            "text"       -> info.className = "android.widget.TextView"
+                            "search"     -> info.className = "android.widget.EditText"
+                            "adjustable" -> info.className = "android.widget.SeekBar"
+                            "tab"        -> info.roleDescription = "tab"
+                            "none"       -> { /* no special role */ }
+                        }
+                    }
+                })
+                view.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
+            }
+            "accessibilityState" -> {
+                if (value is Map<*, *>) {
+                    val disabled = value["disabled"]
+                    val selected = value["selected"]
+                    val checked = value["checked"]
+
+                    if (disabled == true) view.isEnabled = false
+                    if (selected == true) view.isSelected = true
+
+                    if (checked != null) {
+                        val stateDesc = if (checked == true) "checked" else "unchecked"
+                        ViewCompat.setStateDescription(view, stateDesc)
+                    }
+                }
+                view.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
+            }
             "accessible" -> view.importantForAccessibility =
                 if (value == true) View.IMPORTANT_FOR_ACCESSIBILITY_YES
                 else View.IMPORTANT_FOR_ACCESSIBILITY_NO
@@ -710,5 +781,22 @@ object StyleEngine {
         }
         // Fallback: treat as degrees if numeric
         return s.toFloatOrNull() ?: 0f
+    }
+
+    // --- Internal Props ---
+
+    /** Store an internal prop (prefixed with "__") on a view via tags. */
+    private fun setInternalProp(key: String, value: Any?, view: View) {
+        @Suppress("UNCHECKED_CAST")
+        val props = (view.getTag(TAG_INTERNAL_PROPS) as? MutableMap<String, Any?>) ?: mutableMapOf()
+        if (value != null) props[key] = value else props.remove(key)
+        view.setTag(TAG_INTERNAL_PROPS, props)
+    }
+
+    /** Retrieve an internal prop from a view. */
+    fun getInternalProp(key: String, view: View): Any? {
+        @Suppress("UNCHECKED_CAST")
+        val props = view.getTag(TAG_INTERNAL_PROPS) as? Map<String, Any?>
+        return props?.get(key)
     }
 }

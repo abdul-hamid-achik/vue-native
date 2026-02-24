@@ -1,4 +1,5 @@
-import { defineComponent, h } from '@vue/runtime-core'
+import { defineComponent, h, type PropType } from '@vue/runtime-core'
+import type { ViewStyle } from '../types/styles'
 
 /**
  * VScrollView — a scrollable container component.
@@ -43,13 +44,17 @@ export const VScrollView = defineComponent({
       type: Boolean,
       default: false,
     },
-    contentContainerStyle: Object,
+    contentContainerStyle: Object as PropType<ViewStyle>,
     /** Whether the pull-to-refresh indicator is active */
     refreshing: {
       type: Boolean,
       default: false,
     },
-    style: Object,
+    style: Object as PropType<ViewStyle>,
+    accessibilityLabel: String,
+    accessibilityRole: String,
+    accessibilityHint: String,
+    accessibilityState: Object,
   },
   emits: ['scroll', 'refresh'],
   setup(props, { slots, emit }) {
@@ -73,6 +78,10 @@ export const VScrollView = defineComponent({
           contentContainerStyle: props.contentContainerStyle,
           refreshing: props.refreshing,
           style: props.style,
+          accessibilityLabel: props.accessibilityLabel,
+          accessibilityRole: props.accessibilityRole,
+          accessibilityHint: props.accessibilityHint,
+          accessibilityState: props.accessibilityState,
           onScroll,
           onRefresh,
         },

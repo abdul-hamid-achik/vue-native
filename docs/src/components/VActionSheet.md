@@ -69,7 +69,7 @@ function handleAction(e) {
 
 <template>
   <VView :style="styles.container">
-    <VButton :style="styles.button" @press="showSheet = true">
+    <VButton :style="styles.button" :onPress="() => showSheet = true">
       <VText :style="styles.buttonText">Show Options</VText>
     </VButton>
 

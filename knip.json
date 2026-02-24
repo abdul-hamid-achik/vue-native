@@ -1,0 +1,22 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "workspaces": {
+    "packages/runtime": {
+      "ignoreDependencies": ["@vue/shared"]
+    },
+    "packages/navigation": {
+      "ignoreDependencies": ["@thelacanians/vue-native-runtime"]
+    },
+    "packages/vite-plugin": {
+      "ignoreDependencies": ["vite"]
+    },
+    "packages/cli": {},
+    "examples/*": {}
+  },
+  "ignore": [
+    "native/**",
+    "docs/**",
+    "**/*.d.ts"
+  ],
+  "exclude": ["classMembers", "exports", "types"]
+}

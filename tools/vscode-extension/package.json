@@ -1,0 +1,52 @@
+{
+  "name": "vue-native-snippets",
+  "displayName": "Vue Native Snippets",
+  "description": "Snippets and tooling for Vue Native — build native iOS and Android apps with Vue 3",
+  "version": "0.1.0",
+  "publisher": "thelacanians",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/abdul-hamid-achik/vue-native",
+    "directory": "tools/vscode-extension"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Snippets",
+    "Programming Languages"
+  ],
+  "keywords": [
+    "vue",
+    "vue-native",
+    "ios",
+    "android",
+    "native",
+    "mobile",
+    "snippets"
+  ],
+  "activationEvents": [
+    "onLanguage:vue"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "snippets": [
+      {
+        "language": "vue",
+        "path": "./snippets/vue-native.json"
+      }
+    ]
+  },
+  "scripts": {
+    "build": "tsup src/extension.ts --format cjs --out-dir dist --external vscode",
+    "dev": "tsup src/extension.ts --format cjs --out-dir dist --external vscode --watch",
+    "typecheck": "tsc --noEmit",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "tsup": "^8.4.0",
+    "typescript": "^5.7.0"
+  }
+}

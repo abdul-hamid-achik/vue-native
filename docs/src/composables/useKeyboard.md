@@ -64,8 +64,8 @@ async function checkKeyboard() {
     </VText>
     <VText>Keyboard height: {{ height }}</VText>
 
-    <VButton title="Check Keyboard" :onPress="checkKeyboard" />
-    <VButton title="Dismiss Keyboard" :onPress="dismiss" />
+    <VButton :onPress="checkKeyboard"><VText>Check Keyboard</VText></VButton>
+    <VButton :onPress="dismiss"><VText>Dismiss Keyboard</VText></VButton>
   </VView>
 </template>
 ```

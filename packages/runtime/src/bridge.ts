@@ -82,8 +82,8 @@ class NativeBridgeImpl {
       flushFn(json)
     } else if (__DEV__) {
       console.warn(
-        '[VueNative] __VN_flushOperations is not registered. ' +
-        'Make sure the Swift runtime has been initialized.'
+        '[VueNative] __VN_flushOperations is not registered. '
+        + 'Make sure the Swift runtime has been initialized.',
       )
     }
   }
@@ -234,7 +234,7 @@ class NativeBridgeImpl {
       }
     } else if (__DEV__) {
       console.warn(
-        `[VueNative] No handler registered for event "${eventName}" on node ${nodeId}`
+        `[VueNative] No handler registered for event "${eventName}" on node ${nodeId}`,
       )
     }
   }
@@ -271,7 +271,7 @@ class NativeBridgeImpl {
         if (this.pendingCallbacks.has(callbackId)) {
           this.pendingCallbacks.delete(callbackId)
           reject(new Error(
-            `[VueNative] Native module ${moduleName}.${methodName} timed out after ${timeoutMs}ms`
+            `[VueNative] Native module ${moduleName}.${methodName} timed out after ${timeoutMs}ms`,
           ))
         }
       }, timeoutMs)
@@ -299,7 +299,7 @@ class NativeBridgeImpl {
     if (!pending) {
       if (__DEV__) {
         console.warn(
-          `[VueNative] Received callback for unknown callbackId: ${callbackId}`
+          `[VueNative] Received callback for unknown callbackId: ${callbackId}`,
         )
       }
       return
@@ -343,7 +343,7 @@ class NativeBridgeImpl {
     }
     const handlers = this.globalEventHandlers.get(eventName)
     if (handlers) {
-      handlers.forEach(h => {
+      handlers.forEach((h) => {
         try {
           h(payload)
         } catch (err) {

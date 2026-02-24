@@ -11,7 +11,12 @@ final class VImageFactory: NativeComponentFactory {
     // MARK: - Shared image cache
 
     // NSCache is thread-safe, so nonisolated(unsafe) is correct here.
-    nonisolated(unsafe) private static let imageCache = NSCache<NSString, UIImage>()
+    nonisolated(unsafe) private static let imageCache: NSCache<NSString, UIImage> = {
+        let cache = NSCache<NSString, UIImage>()
+        cache.countLimit = 100
+        cache.totalCostLimit = 50 * 1024 * 1024 // 50 MB
+        return cache
+    }()
 
     // MARK: - Associated object keys
 
@@ -119,7 +124,8 @@ final class VImageFactory: NativeComponentFactory {
                 return
             }
 
-            VImageFactory.imageCache.setObject(image, forKey: urlString as NSString)
+            let cost = data.count
+            VImageFactory.imageCache.setObject(image, forKey: urlString as NSString, cost: cost)
 
             DispatchQueue.main.async {
                 // Only update if the URL hasn't changed

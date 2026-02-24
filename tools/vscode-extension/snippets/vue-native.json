@@ -1,0 +1,805 @@
+{
+  "Vue Native App Scaffold": {
+    "prefix": "vn-app",
+    "body": [
+      "<script setup lang=\"ts\">",
+      "import { ref } from 'vue'",
+      "import { createStyleSheet } from '@thelacanians/vue-native-runtime'",
+      "",
+      "${0}",
+      "",
+      "const styles = createStyleSheet({",
+      "  container: {",
+      "    flex: 1,",
+      "    justifyContent: 'center',",
+      "    alignItems: 'center',",
+      "    backgroundColor: '#ffffff',",
+      "  },",
+      "})",
+      "</script>",
+      "",
+      "<template>",
+      "  <VSafeArea :style=\"{ flex: 1, backgroundColor: '#ffffff' }\">",
+      "    <VView :style=\"styles.container\">",
+      "      <VText>Hello, Vue Native!</VText>",
+      "    </VView>",
+      "  </VSafeArea>",
+      "</template>"
+    ],
+    "description": "Full Vue Native app scaffold with SafeArea and styles"
+  },
+  "Vue Native Screen": {
+    "prefix": "vn-screen",
+    "body": [
+      "<script setup lang=\"ts\">",
+      "import { createStyleSheet } from '@thelacanians/vue-native-runtime'",
+      "import { useRoute } from '@thelacanians/vue-native-navigation'",
+      "",
+      "const route = useRoute()",
+      "",
+      "${0}",
+      "",
+      "const styles = createStyleSheet({",
+      "  container: {",
+      "    flex: 1,",
+      "    padding: 16,",
+      "    backgroundColor: '#ffffff',",
+      "  },",
+      "  title: {",
+      "    fontSize: 24,",
+      "    fontWeight: 'bold',",
+      "    color: '#1a1a1a',",
+      "    marginBottom: 16,",
+      "  },",
+      "})",
+      "</script>",
+      "",
+      "<template>",
+      "  <VView :style=\"styles.container\">",
+      "    <VText :style=\"styles.title\">${1:Screen Title}</VText>",
+      "  </VView>",
+      "</template>"
+    ],
+    "description": "Vue Native screen component scaffold"
+  },
+  "Vue Native Main Entry": {
+    "prefix": "vn-main",
+    "body": [
+      "import { createApp } from 'vue'",
+      "import { createRouter } from '@thelacanians/vue-native-navigation'",
+      "import App from './App.vue'",
+      "import ${1:Home} from './pages/${1:Home}.vue'",
+      "",
+      "const router = createRouter([",
+      "  { name: '${1:Home}', component: ${1:Home} },",
+      "])",
+      "",
+      "const app = createApp(App)",
+      "app.use(router)",
+      "app.start()"
+    ],
+    "description": "Vue Native main.ts entry point"
+  },
+  "VView": {
+    "prefix": "vn-view",
+    "body": [
+      "<VView :style=\"${1:styles.container}\">",
+      "  ${0}",
+      "</VView>"
+    ],
+    "description": "VView — flexbox container (maps to UIView / Android View)"
+  },
+  "VText": {
+    "prefix": "vn-text",
+    "body": [
+      "<VText :style=\"${1:styles.text}\">${0:Hello}</VText>"
+    ],
+    "description": "VText — text display (maps to UILabel / TextView)"
+  },
+  "VButton": {
+    "prefix": "vn-button",
+    "body": [
+      "<VButton :style=\"${1:styles.button}\" :onPress=\"${2:handlePress}\">",
+      "  <VText :style=\"${3:styles.buttonText}\">${0:Press Me}</VText>",
+      "</VButton>"
+    ],
+    "description": "VButton with onPress handler"
+  },
+  "VInput": {
+    "prefix": "vn-input",
+    "body": [
+      "<VInput",
+      "  v-model=\"${1:text}\"",
+      "  placeholder=\"${2:Enter text...}\"",
+      "  :style=\"${3:styles.input}\"",
+      "/>"
+    ],
+    "description": "VInput — text input with v-model"
+  },
+  "VImage": {
+    "prefix": "vn-image",
+    "body": [
+      "<VImage",
+      "  :source=\"{ uri: '${1:https://example.com/image.png}' }\"",
+      "  :style=\"{ width: ${2:200}, height: ${3:200} }\"",
+      "  resizeMode=\"${4|cover,contain,stretch,center|}\"",
+      "/>"
+    ],
+    "description": "VImage — image display (maps to UIImageView / ImageView)"
+  },
+  "VScrollView": {
+    "prefix": "vn-scrollview",
+    "body": [
+      "<VScrollView :style=\"{ flex: 1 }\"${1: horizontal}>",
+      "  ${0}",
+      "</VScrollView>"
+    ],
+    "description": "VScrollView — scrollable container"
+  },
+  "VList": {
+    "prefix": "vn-list",
+    "body": [
+      "<VList",
+      "  :data=\"${1:items}\"",
+      "  :renderItem=\"(item) => h(VView, { style: styles.item }, [",
+      "    h(VText, {}, () => item.${2:title})",
+      "  ])\"",
+      "  :keyExtractor=\"(item) => item.${3:id}\"",
+      "/>"
+    ],
+    "description": "VList — virtualized list (maps to UITableView / RecyclerView)"
+  },
+  "VList Template": {
+    "prefix": "vn-list-template",
+    "body": [
+      "<VList",
+      "  :data=\"${1:items}\"",
+      "  :renderItem=\"renderItem\"",
+      "  :keyExtractor=\"(item) => item.${2:id}\"",
+      "/>"
+    ],
+    "description": "VList with external renderItem function"
+  },
+  "VSafeArea": {
+    "prefix": "vn-safearea",
+    "body": [
+      "<VSafeArea :style=\"{ flex: 1, backgroundColor: '${1:#ffffff}' }\">",
+      "  ${0}",
+      "</VSafeArea>"
+    ],
+    "description": "VSafeArea — respects device safe area insets"
+  },
+  "VSwitch": {
+    "prefix": "vn-switch",
+    "body": [
+      "<VSwitch",
+      "  v-model=\"${1:isEnabled}\"",
+      "  trackColor=\"${2:#4f46e5}\"",
+      "/>"
+    ],
+    "description": "VSwitch — toggle switch"
+  },
+  "VSlider": {
+    "prefix": "vn-slider",
+    "body": [
+      "<VSlider",
+      "  v-model=\"${1:value}\"",
+      "  :minimumValue=\"${2:0}\"",
+      "  :maximumValue=\"${3:100}\"",
+      "  minimumTrackTintColor=\"${4:#4f46e5}\"",
+      "/>"
+    ],
+    "description": "VSlider — range slider"
+  },
+  "VActivityIndicator": {
+    "prefix": "vn-activity",
+    "body": [
+      "<VActivityIndicator${1: size=\"large\"}${2: color=\"#4f46e5\"} />"
+    ],
+    "description": "VActivityIndicator — loading spinner"
+  },
+  "VModal": {
+    "prefix": "vn-modal",
+    "body": [
+      "<VModal :visible=\"${1:showModal}\" :onRequestClose=\"() => ${1:showModal} = false\">",
+      "  <VView :style=\"${2:styles.modalContent}\">",
+      "    ${0}",
+      "  </VView>",
+      "</VModal>"
+    ],
+    "description": "VModal — modal overlay"
+  },
+  "VAlertDialog": {
+    "prefix": "vn-alert",
+    "body": [
+      "<VAlertDialog",
+      "  :visible=\"${1:showAlert}\"",
+      "  title=\"${2:Alert}\"",
+      "  message=\"${3:Are you sure?}\"",
+      "  :buttons=\"[",
+      "    { text: 'Cancel', style: 'cancel', onPress: () => ${1:showAlert} = false },",
+      "    { text: 'OK', onPress: () => { ${0}; ${1:showAlert} = false } },",
+      "  ]\"",
+      "/>"
+    ],
+    "description": "VAlertDialog — native alert dialog"
+  },
+  "VActionSheet": {
+    "prefix": "vn-actionsheet",
+    "body": [
+      "<VActionSheet",
+      "  :visible=\"${1:showSheet}\"",
+      "  title=\"${2:Choose an action}\"",
+      "  :actions=\"[",
+      "    { text: '${3:Option 1}', onPress: () => { ${0} } },",
+      "    { text: 'Cancel', style: 'cancel', onPress: () => ${1:showSheet} = false },",
+      "  ]\"",
+      "/>"
+    ],
+    "description": "VActionSheet — native action sheet"
+  },
+  "VStatusBar": {
+    "prefix": "vn-statusbar",
+    "body": [
+      "<VStatusBar barStyle=\"${1|dark-content,light-content|}\" />"
+    ],
+    "description": "VStatusBar — control status bar appearance"
+  },
+  "VWebView": {
+    "prefix": "vn-webview",
+    "body": [
+      "<VWebView",
+      "  :source=\"{ uri: '${1:https://example.com}' }\"",
+      "  :style=\"{ flex: 1 }\"",
+      "/>"
+    ],
+    "description": "VWebView — embedded web browser"
+  },
+  "VProgressBar": {
+    "prefix": "vn-progress",
+    "body": [
+      "<VProgressBar :progress=\"${1:0.5}\" trackColor=\"${2:#e0e0e0}\" progressColor=\"${3:#4f46e5}\" />"
+    ],
+    "description": "VProgressBar — progress indicator"
+  },
+  "VPicker": {
+    "prefix": "vn-picker",
+    "body": [
+      "<VPicker",
+      "  v-model=\"${1:selected}\"",
+      "  :items=\"${2:['Option 1', 'Option 2', 'Option 3']}\"",
+      "/>"
+    ],
+    "description": "VPicker — native picker / dropdown"
+  },
+  "VSegmentedControl": {
+    "prefix": "vn-segmented",
+    "body": [
+      "<VSegmentedControl",
+      "  v-model=\"${1:selectedIndex}\"",
+      "  :values=\"${2:['First', 'Second', 'Third']}\"",
+      "/>"
+    ],
+    "description": "VSegmentedControl — segmented control"
+  },
+  "VKeyboardAvoiding": {
+    "prefix": "vn-keyboard",
+    "body": [
+      "<VKeyboardAvoiding :style=\"{ flex: 1 }\" behavior=\"${1|padding,height|}\">",
+      "  ${0}",
+      "</VKeyboardAvoiding>"
+    ],
+    "description": "VKeyboardAvoiding — adjust layout when keyboard appears"
+  },
+  "VRefreshControl": {
+    "prefix": "vn-refresh",
+    "body": [
+      "<VRefreshControl :refreshing=\"${1:isRefreshing}\" :onRefresh=\"${2:handleRefresh}\" />"
+    ],
+    "description": "VRefreshControl — pull-to-refresh control"
+  },
+  "VPressable": {
+    "prefix": "vn-pressable",
+    "body": [
+      "<VPressable :onPress=\"${1:handlePress}\" :style=\"${2:styles.pressable}\">",
+      "  ${0}",
+      "</VPressable>"
+    ],
+    "description": "VPressable — generic pressable wrapper"
+  },
+  "VCheckbox": {
+    "prefix": "vn-checkbox",
+    "body": [
+      "<VCheckbox v-model=\"${1:isChecked}\" label=\"${2:Accept terms}\" />"
+    ],
+    "description": "VCheckbox — checkbox input"
+  },
+  "VRadio": {
+    "prefix": "vn-radio",
+    "body": [
+      "<VRadio",
+      "  v-model=\"${1:selected}\"",
+      "  :options=\"[",
+      "    { label: '${2:Option A}', value: '${3:a}' },",
+      "    { label: '${4:Option B}', value: '${5:b}' },",
+      "  ]\"",
+      "/>"
+    ],
+    "description": "VRadio — radio button group"
+  },
+  "VDropdown": {
+    "prefix": "vn-dropdown",
+    "body": [
+      "<VDropdown",
+      "  v-model=\"${1:selected}\"",
+      "  :options=\"[",
+      "    { label: '${2:Option 1}', value: '${3:opt1}' },",
+      "    { label: '${4:Option 2}', value: '${5:opt2}' },",
+      "  ]\"",
+      "  placeholder=\"${6:Select an option}\"",
+      "/>"
+    ],
+    "description": "VDropdown — dropdown selector"
+  },
+  "VSectionList": {
+    "prefix": "vn-sectionlist",
+    "body": [
+      "<VSectionList",
+      "  :sections=\"${1:sections}\"",
+      "  :renderItem=\"${2:renderItem}\"",
+      "  :renderSectionHeader=\"${3:renderSectionHeader}\"",
+      "  :keyExtractor=\"(item) => item.${4:id}\"",
+      "/>"
+    ],
+    "description": "VSectionList — grouped list with section headers"
+  },
+  "VVideo": {
+    "prefix": "vn-video",
+    "body": [
+      "<VVideo",
+      "  :source=\"{ uri: '${1:https://example.com/video.mp4}' }\"",
+      "  :style=\"{ width: '100%', height: ${2:200} }\"",
+      "  :controls=\"true\"",
+      "/>"
+    ],
+    "description": "VVideo — video player"
+  },
+  "VErrorBoundary": {
+    "prefix": "vn-errorboundary",
+    "body": [
+      "<VErrorBoundary :fallback=\"${1:ErrorFallback}\">",
+      "  ${0}",
+      "</VErrorBoundary>"
+    ],
+    "description": "VErrorBoundary — catch and display errors"
+  },
+  "RouterView": {
+    "prefix": "vn-routerview",
+    "body": [
+      "<RouterView />"
+    ],
+    "description": "RouterView — renders the current route"
+  },
+  "VNavigationBar": {
+    "prefix": "vn-navbar",
+    "body": [
+      "<VNavigationBar",
+      "  title=\"${1:Title}\"",
+      "  :showBack=\"router.canGoBack.value\"",
+      "  @back=\"router.pop()\"",
+      "/>"
+    ],
+    "description": "VNavigationBar — navigation header bar"
+  },
+  "VTabBar": {
+    "prefix": "vn-tabbar",
+    "body": [
+      "<VTabBar",
+      "  :tabs=\"[",
+      "    { name: '${1:home}', label: '${2:Home}', icon: '${3:H}' },",
+      "    { name: '${4:settings}', label: '${5:Settings}', icon: '${6:S}' },",
+      "  ]\"",
+      "  v-model=\"${7:activeTab}\"",
+      "/>"
+    ],
+    "description": "VTabBar — bottom tab bar"
+  },
+  "createStyleSheet": {
+    "prefix": "vn-styles",
+    "body": [
+      "const styles = createStyleSheet({",
+      "  container: {",
+      "    flex: 1,",
+      "    ${0}",
+      "  },",
+      "})"
+    ],
+    "description": "createStyleSheet — define native styles"
+  },
+  "createRouter": {
+    "prefix": "vn-router",
+    "body": [
+      "const router = createRouter([",
+      "  { name: '${1:Home}', component: ${1:Home} },",
+      "  { name: '${2:Detail}', component: ${2:Detail} },",
+      "])"
+    ],
+    "description": "createRouter — define navigation routes"
+  },
+  "createRouter with options": {
+    "prefix": "vn-router-options",
+    "body": [
+      "const router = createRouter({",
+      "  routes: [",
+      "    { name: '${1:Home}', component: ${1:Home} },",
+      "    { name: '${2:Detail}', component: ${2:Detail} },",
+      "  ],",
+      "  linking: {",
+      "    prefixes: ['${3:myapp://}'],",
+      "    config: {",
+      "      screens: {",
+      "        ${1:Home}: '',",
+      "        ${2:Detail}: '${4:detail/:id}',",
+      "      },",
+      "    },",
+      "  },",
+      "})"
+    ],
+    "description": "createRouter with deep linking configuration"
+  },
+  "createTabNavigator": {
+    "prefix": "vn-tabs",
+    "body": [
+      "const { TabNavigator, activeTab } = createTabNavigator()",
+      "",
+      "// In template:",
+      "// <TabNavigator",
+      "//   :screens=\"[",
+      "//     { name: 'home', label: 'Home', icon: 'H', component: HomeView },",
+      "//     { name: 'settings', label: 'Settings', icon: 'S', component: SettingsView },",
+      "//   ]\"",
+      "// />"
+    ],
+    "description": "createTabNavigator — tab-based navigation setup"
+  },
+  "createDrawerNavigator": {
+    "prefix": "vn-drawer",
+    "body": [
+      "const { DrawerNavigator, useDrawer } = createDrawerNavigator()",
+      "",
+      "// In template:",
+      "// <DrawerNavigator",
+      "//   :screens=\"[",
+      "//     { name: 'home', label: 'Home', icon: 'H', component: HomeView },",
+      "//     { name: 'about', label: 'About', icon: 'A', component: AboutView },",
+      "//   ]\"",
+      "// />"
+    ],
+    "description": "createDrawerNavigator — drawer-based navigation setup"
+  },
+  "useRouter": {
+    "prefix": "vn-userouter",
+    "body": [
+      "const router = useRouter()",
+      "// router.push('${1:ScreenName}', { ${2:id: '123'} })",
+      "// router.pop()",
+      "// router.replace('${1:ScreenName}')",
+      "// router.canGoBack.value"
+    ],
+    "description": "useRouter — access navigation router"
+  },
+  "useRoute": {
+    "prefix": "vn-useroute",
+    "body": [
+      "const route = useRoute()",
+      "// route.value.name",
+      "// route.value.params"
+    ],
+    "description": "useRoute — access current route params"
+  },
+  "useHaptics": {
+    "prefix": "vn-haptics",
+    "body": [
+      "const { impact, notification, selection } = useHaptics()",
+      "// impact('${1|light,medium,heavy|}')",
+      "// notification('${2|success,warning,error|}')",
+      "// selection()"
+    ],
+    "description": "useHaptics — trigger haptic feedback"
+  },
+  "useAsyncStorage": {
+    "prefix": "vn-storage",
+    "body": [
+      "const { getItem, setItem, removeItem } = useAsyncStorage()",
+      "",
+      "// const value = await getItem('${1:key}')",
+      "// await setItem('${1:key}', '${2:value}')",
+      "// await removeItem('${1:key}')"
+    ],
+    "description": "useAsyncStorage — persistent key-value storage"
+  },
+  "useClipboard": {
+    "prefix": "vn-clipboard",
+    "body": [
+      "const { getString, setString } = useClipboard()",
+      "// await setString('${1:text to copy}')",
+      "// const text = await getString()"
+    ],
+    "description": "useClipboard — read/write system clipboard"
+  },
+  "useDeviceInfo": {
+    "prefix": "vn-deviceinfo",
+    "body": [
+      "const { platform, model, osVersion, screenWidth, screenHeight } = useDeviceInfo()"
+    ],
+    "description": "useDeviceInfo — device platform, model, OS version"
+  },
+  "useKeyboard": {
+    "prefix": "vn-usekeyboard",
+    "body": [
+      "const { isVisible, height, dismiss } = useKeyboard()"
+    ],
+    "description": "useKeyboard — keyboard visibility and height"
+  },
+  "useAnimation": {
+    "prefix": "vn-animation",
+    "body": [
+      "const { value: ${1:animValue}, timing, spring } = useAnimation(${2:0})",
+      "",
+      "// timing({ toValue: ${3:1}, duration: ${4:300} })",
+      "// spring({ toValue: ${3:1} })"
+    ],
+    "description": "useAnimation — animated values with timing/spring"
+  },
+  "useNetwork": {
+    "prefix": "vn-network",
+    "body": [
+      "const { isConnected, connectionType } = useNetwork()"
+    ],
+    "description": "useNetwork — network connectivity state"
+  },
+  "useAppState": {
+    "prefix": "vn-appstate",
+    "body": [
+      "const { state } = useAppState()",
+      "// state.value: 'active' | 'inactive' | 'background'"
+    ],
+    "description": "useAppState — app foreground/background state"
+  },
+  "useLinking": {
+    "prefix": "vn-linking",
+    "body": [
+      "const { openURL, canOpenURL, getInitialURL } = useLinking()",
+      "// await openURL('${1:https://example.com}')"
+    ],
+    "description": "useLinking — open URLs and deep links"
+  },
+  "useShare": {
+    "prefix": "vn-share",
+    "body": [
+      "const { share } = useShare()",
+      "// await share({ title: '${1:Title}', message: '${2:Check this out!}', url: '${3:https://example.com}' })"
+    ],
+    "description": "useShare — native share sheet"
+  },
+  "usePermissions": {
+    "prefix": "vn-permissions",
+    "body": [
+      "const { check, request } = usePermissions()",
+      "// const status = await check('${1|camera,photos,location,notifications,microphone|}')",
+      "// const result = await request('${1|camera,photos,location,notifications,microphone|}')"
+    ],
+    "description": "usePermissions — check and request system permissions"
+  },
+  "useGeolocation": {
+    "prefix": "vn-geolocation",
+    "body": [
+      "const { getCurrentPosition } = useGeolocation()",
+      "// const { latitude, longitude } = await getCurrentPosition()"
+    ],
+    "description": "useGeolocation — device location"
+  },
+  "useCamera": {
+    "prefix": "vn-camera",
+    "body": [
+      "const { takePhoto, pickImage } = useCamera()",
+      "// const photo = await takePhoto({ quality: ${1:0.8} })",
+      "// const image = await pickImage()"
+    ],
+    "description": "useCamera — camera and photo picker"
+  },
+  "useNotifications": {
+    "prefix": "vn-notifications",
+    "body": [
+      "const { schedule, requestPermission } = useNotifications()",
+      "// await requestPermission()",
+      "// await schedule({ title: '${1:Title}', body: '${2:Message}', trigger: { seconds: ${3:5} } })"
+    ],
+    "description": "useNotifications — local and push notifications"
+  },
+  "useBiometry": {
+    "prefix": "vn-biometry",
+    "body": [
+      "const { authenticate, biometryType } = useBiometry()",
+      "// const result = await authenticate('${1:Confirm your identity}')"
+    ],
+    "description": "useBiometry — Face ID / Touch ID / fingerprint"
+  },
+  "useHttp": {
+    "prefix": "vn-http",
+    "body": [
+      "const { request, get, post } = useHttp()",
+      "",
+      "// const { data } = await get('${1:https://api.example.com/data}')",
+      "// const { data } = await post('${2:https://api.example.com/submit}', { body: ${3:payload} })"
+    ],
+    "description": "useHttp — HTTP client (fetch wrapper)"
+  },
+  "useColorScheme": {
+    "prefix": "vn-colorscheme",
+    "body": [
+      "const colorScheme = useColorScheme()",
+      "// colorScheme.value: 'light' | 'dark'"
+    ],
+    "description": "useColorScheme — detect light/dark mode"
+  },
+  "useBackHandler": {
+    "prefix": "vn-backhandler",
+    "body": [
+      "useBackHandler(() => {",
+      "  ${0}",
+      "  return true // handled",
+      "})"
+    ],
+    "description": "useBackHandler — intercept Android back button"
+  },
+  "useSecureStorage": {
+    "prefix": "vn-securestorage",
+    "body": [
+      "const { getItem, setItem, removeItem } = useSecureStorage()",
+      "// await setItem('${1:token}', '${2:value}')",
+      "// const value = await getItem('${1:token}')"
+    ],
+    "description": "useSecureStorage — encrypted keychain/keystore storage"
+  },
+  "useWebSocket": {
+    "prefix": "vn-websocket",
+    "body": [
+      "const { status, send, close, data } = useWebSocket('${1:wss://example.com/ws}')"
+    ],
+    "description": "useWebSocket — WebSocket connection"
+  },
+  "usePlatform": {
+    "prefix": "vn-platform",
+    "body": [
+      "const { platform, isIOS, isAndroid } = usePlatform()"
+    ],
+    "description": "usePlatform — detect current platform"
+  },
+  "useDimensions": {
+    "prefix": "vn-dimensions",
+    "body": [
+      "const { width, height, scale } = useDimensions()"
+    ],
+    "description": "useDimensions — screen dimensions"
+  },
+  "useFileSystem": {
+    "prefix": "vn-filesystem",
+    "body": [
+      "const { readFile, writeFile, deleteFile, exists } = useFileSystem()",
+      "// await writeFile('${1:path}', '${2:content}')",
+      "// const content = await readFile('${1:path}')"
+    ],
+    "description": "useFileSystem — file system operations"
+  },
+  "useAccelerometer": {
+    "prefix": "vn-accelerometer",
+    "body": [
+      "const { x, y, z, start, stop } = useAccelerometer()"
+    ],
+    "description": "useAccelerometer — accelerometer sensor data"
+  },
+  "useGyroscope": {
+    "prefix": "vn-gyroscope",
+    "body": [
+      "const { x, y, z, start, stop } = useGyroscope()"
+    ],
+    "description": "useGyroscope — gyroscope sensor data"
+  },
+  "useAudio": {
+    "prefix": "vn-audio",
+    "body": [
+      "const { play, pause, stop, isPlaying } = useAudio()",
+      "// await play({ uri: '${1:https://example.com/audio.mp3}' })"
+    ],
+    "description": "useAudio — audio playback and recording"
+  },
+  "useDatabase": {
+    "prefix": "vn-database",
+    "body": [
+      "const { execute, query, transaction } = useDatabase('${1:mydb.sqlite}')",
+      "// await execute('CREATE TABLE IF NOT EXISTS ${2:items} (id INTEGER PRIMARY KEY, name TEXT)')",
+      "// const rows = await query('SELECT * FROM ${2:items}')"
+    ],
+    "description": "useDatabase — SQLite database operations"
+  },
+  "useI18n": {
+    "prefix": "vn-i18n",
+    "body": [
+      "const { locale, t } = useI18n()"
+    ],
+    "description": "useI18n — internationalization"
+  },
+  "onScreenFocus": {
+    "prefix": "vn-onfocus",
+    "body": [
+      "onScreenFocus(() => {",
+      "  ${0}",
+      "})"
+    ],
+    "description": "onScreenFocus — called when screen gains focus"
+  },
+  "onScreenBlur": {
+    "prefix": "vn-onblur",
+    "body": [
+      "onScreenBlur(() => {",
+      "  ${0}",
+      "})"
+    ],
+    "description": "onScreenBlur — called when screen loses focus"
+  },
+  "v-show directive": {
+    "prefix": "vn-vshow",
+    "body": [
+      "v-show=\"${1:isVisible}\""
+    ],
+    "description": "v-show — conditionally show/hide a native view"
+  },
+  "vue-native.config.ts": {
+    "prefix": "vn-config",
+    "body": [
+      "import { defineConfig } from '@thelacanians/vue-native-cli'",
+      "",
+      "export default defineConfig({",
+      "  name: '${1:MyApp}',",
+      "  bundleId: '${2:com.example.myapp}',",
+      "  version: '${3:1.0.0}',",
+      "  ios: {",
+      "    deploymentTarget: '${4:16.0}',",
+      "  },",
+      "  android: {",
+      "    minSdk: ${5:21},",
+      "    targetSdk: ${6:34},",
+      "  },",
+      "})"
+    ],
+    "description": "vue-native.config.ts — project configuration file"
+  },
+  "Flex Row": {
+    "prefix": "vn-row",
+    "body": [
+      "<VView :style=\"{ flexDirection: 'row', alignItems: '${1|center,flex-start,flex-end,stretch|}', gap: ${2:8} }\">",
+      "  ${0}",
+      "</VView>"
+    ],
+    "description": "Horizontal flex row layout"
+  },
+  "Flex Column": {
+    "prefix": "vn-column",
+    "body": [
+      "<VView :style=\"{ flex: 1, alignItems: '${1|center,flex-start,flex-end,stretch|}', gap: ${2:8} }\">",
+      "  ${0}",
+      "</VView>"
+    ],
+    "description": "Vertical flex column layout"
+  },
+  "Centered View": {
+    "prefix": "vn-center",
+    "body": [
+      "<VView :style=\"{ flex: 1, justifyContent: 'center', alignItems: 'center' }\">",
+      "  ${0}",
+      "</VView>"
+    ],
+    "description": "Centered flex container"
+  }
+}

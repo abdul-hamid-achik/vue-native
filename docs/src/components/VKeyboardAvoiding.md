@@ -8,7 +8,7 @@ A container that adjusts its bottom padding when the software keyboard appears, 
 <template>
   <VKeyboardAvoiding :style="{ flex: 1 }">
     <VInput placeholder="Type here..." />
-    <VButton @press="submit">
+    <VButton :onPress="submit">
       <VText>Send</VText>
     </VButton>
   </VKeyboardAvoiding>
@@ -47,7 +47,7 @@ const send = () => {
           placeholder="Type a message..."
           :style="styles.input"
         />
-        <VButton :style="styles.sendBtn" @press="send">
+        <VButton :style="styles.sendBtn" :onPress="send">
           <VText :style="styles.sendLabel">Send</VText>
         </VButton>
       </VView>

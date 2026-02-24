@@ -12,19 +12,48 @@ import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 
+/**
+ * Native module for local and remote (push) notifications.
+ *
+ * For push notifications, the host app must:
+ * 1. Add Firebase Messaging dependency to their app-level build.gradle
+ * 2. Create a FirebaseMessagingService subclass that calls
+ *    NotificationsModule.onNewToken() and onPushReceived()
+ *
+ * Methods:
+ *   - requestPermission() -> { status: "granted"|"denied" }
+ *   - scheduleLocal(opts) -> { id }
+ *   - cancel(id)
+ *   - cancelAll()
+ *   - registerForPush() -> true (no-op on Android; FCM auto-registers)
+ *   - getToken() -> String? (returns cached FCM token)
+ *
+ * Global events:
+ *   "notification:received" -- local notification tapped
+ *   "push:token"     { token }
+ *   "push:received"  { title, body, data, remote: true }
+ */
 class NotificationsModule : NativeModule {
     override val moduleName = "Notifications"
 
     private var context: Context? = null
+    private var bridge: NativeBridge? = null
     private val handler = Handler(Looper.getMainLooper())
     private var notifIdCounter = 1
 
     companion object {
         private const val CHANNEL_ID = "vue_native_default"
+
+        /** Singleton reference so FirebaseMessagingService can call into this module. */
+        @Volatile
+        var instance: NotificationsModule? = null
+            private set
     }
 
     override fun initialize(context: Context, bridge: NativeBridge) {
         this.context = context
+        this.bridge = bridge
+        instance = this
         createDefaultChannel(context)
     }
 
@@ -41,6 +70,37 @@ class NotificationsModule : NativeModule {
                 ?.createNotificationChannel(channel)
         }
     }
+
+    // -------------------------------------------------------------------------
+    // Push token handling (called from FirebaseMessagingService in host app)
+    // -------------------------------------------------------------------------
+
+    /** Cached FCM token */
+    private var fcmToken: String? = null
+
+    /**
+     * Called by the host app's FirebaseMessagingService.onNewToken().
+     */
+    fun onNewToken(token: String) {
+        fcmToken = token
+        bridge?.dispatchGlobalEvent("push:token", mapOf("token" to token))
+    }
+
+    /**
+     * Called by the host app's FirebaseMessagingService.onMessageReceived().
+     */
+    fun onPushReceived(title: String, body: String, data: Map<String, String>) {
+        bridge?.dispatchGlobalEvent("push:received", mapOf(
+            "title" to title,
+            "body" to body,
+            "data" to data,
+            "remote" to true
+        ))
+    }
+
+    // -------------------------------------------------------------------------
+    // Module invocation
+    // -------------------------------------------------------------------------
 
     override fun invoke(
         method: String,
@@ -105,6 +165,13 @@ class NotificationsModule : NativeModule {
                 val ctx = context ?: run { callback(null, "Not initialized"); return }
                 NotificationManagerCompat.from(ctx).cancelAll()
                 callback(null, null)
+            }
+            "registerForPush" -> {
+                // On Android, FCM auto-registers. This is a no-op for API parity with iOS.
+                callback(true, null)
+            }
+            "getToken" -> {
+                callback(fcmToken, null)
             }
             else -> callback(null, "Unknown method: $method")
         }

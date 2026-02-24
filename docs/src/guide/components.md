@@ -26,7 +26,8 @@ All components are globally registered — no import needed in templates.
 
 | Component | iOS | Android | Description |
 |-----------|-----|---------|-------------|
-| [`<VButton>`](../components/VButton.md) | UIButton / UIControl | Custom TouchDelegate | Pressable view with `@press` |
+| [`<VButton>`](../components/VButton.md) | UIButton / UIControl | Custom TouchDelegate | Pressable container with `:onPress` |
+| [`<VPressable>`](../components/VPressable.md) | Custom TouchableView | Custom TouchableView | Generic pressable wrapper with press-in/out events |
 | [`<VSwitch>`](../components/VSwitch.md) | UISwitch | Switch | Toggle with `v-model` |
 | [`<VSlider>`](../components/VSlider.md) | UISlider | SeekBar | Range slider with `v-model` |
 | [`<VSegmentedControl>`](../components/VSegmentedControl.md) | UISegmentedControl | TabLayout | Tab strip selector |

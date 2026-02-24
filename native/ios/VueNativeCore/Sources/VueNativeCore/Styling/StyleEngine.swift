@@ -1,6 +1,7 @@
 #if canImport(UIKit)
 import UIKit
 import FlexLayout
+import ObjectiveC
 
 /// Static class that applies style properties to UIViews via FlexLayout (Yoga).
 /// Handles both Yoga layout properties (flex, padding, margin, etc.) and
@@ -22,6 +23,13 @@ enum StyleEngine {
     /// Apply a single style property to a view.
     /// Routes to the appropriate handler based on the property key.
     static func apply(key: String, value: Any?, to view: UIView) {
+        // Store internal props (prefixed with "__") as associated objects
+        // so parent factories can inspect them (e.g. VSectionListFactory).
+        if key.hasPrefix("__") {
+            setInternalProp(key, value: value, on: view)
+            return
+        }
+
         // First try layout properties (FlexLayout / Yoga)
         if applyLayoutProp(key: key, value: value, to: view) {
             return
@@ -37,6 +45,27 @@ enum StyleEngine {
         if applyTextProp(key: key, value: value, to: view) {
             return
         }
+    }
+
+    // MARK: - Internal Props
+
+    private static var internalPropsKey: UInt8 = 0
+
+    /// Store an internal prop (prefixed with "__") on a view as an associated object.
+    private static func setInternalProp(_ key: String, value: Any?, on view: UIView) {
+        var props = objc_getAssociatedObject(view, &internalPropsKey) as? [String: Any] ?? [:]
+        if let value = value {
+            props[key] = value
+        } else {
+            props.removeValue(forKey: key)
+        }
+        objc_setAssociatedObject(view, &internalPropsKey, props, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+    }
+
+    /// Retrieve an internal prop from a view.
+    static func getInternalProp(_ key: String, from view: UIView) -> Any? {
+        let props = objc_getAssociatedObject(view, &internalPropsKey) as? [String: Any]
+        return props?[key]
     }
 
     // MARK: - Yoga Value Helpers
@@ -461,6 +490,19 @@ enum StyleEngine {
             }
             return true
 
+        // MARK: Direction (RTL/LTR)
+
+        case "direction":
+            if let str = value as? String {
+                switch str {
+                case "ltr": flex.direction(.LTR)
+                case "rtl": flex.direction(.RTL)
+                case "inherit": flex.direction(.inherit)
+                default: break
+                }
+            }
+            return true
+
         default:
             return false
         }
@@ -636,14 +678,17 @@ enum StyleEngine {
 
         case "accessibilityLabel":
             view.accessibilityLabel = value as? String
+            view.isAccessibilityElement = true
             return true
 
         case "accessibilityHint":
             view.accessibilityHint = value as? String
+            view.isAccessibilityElement = true
             return true
 
         case "accessibilityValue":
             view.accessibilityValue = value as? String
+            view.isAccessibilityElement = true
             return true
 
         case "accessibilityRole":
@@ -661,6 +706,7 @@ enum StyleEngine {
                 case "none":      view.accessibilityTraits = .none
                 default:          break
                 }
+                view.isAccessibilityElement = true
             }
             return true
 
@@ -671,6 +717,7 @@ enum StyleEngine {
                 if let selected = state["selected"] as? Bool, selected { traits.insert(.selected) }
                 if let checked = state["checked"] as? Bool, checked { traits.insert(.selected) }
                 view.accessibilityTraits = traits
+                view.isAccessibilityElement = true
             }
             return true
 

@@ -51,6 +51,7 @@ export const validStyleProperties: ReadonlySet<string> = new Set([
   'gap',
   'rowGap',
   'columnGap',
+  'direction',
   'display',
   'overflow',
   'zIndex',
@@ -105,10 +106,21 @@ export const validStyleProperties: ReadonlySet<string> = new Set([
 
   // Transform
   'transform',
+
+  // Accessibility
+  'accessibilityLabel',
+  'accessibilityRole',
+  'accessibilityHint',
+  'accessibilityState',
+  'accessibilityValue',
+  'accessible',
+  'importantForAccessibility',
 ])
 
 /**
  * A single style declaration — a flat object of style properties.
+ * Can be a ViewStyle, TextStyle, or ImageStyle from the typed interfaces,
+ * or a plain record for backwards compatibility.
  */
 export type StyleProp = Record<string, any>
 
@@ -119,6 +131,11 @@ export type StyleProp = Record<string, any>
 export type StyleSheet<T extends Record<string, StyleProp>> = Readonly<{
   [K in keyof T]: Readonly<T[K]>
 }>
+
+import type { ViewStyle, TextStyle, ImageStyle } from './types/styles'
+
+/** Union of all valid style types for createStyleSheet values */
+export type AnyStyle = ViewStyle | TextStyle | ImageStyle
 
 /**
  * Create a style sheet object. This is the recommended way to define styles
@@ -157,8 +174,8 @@ export function createStyleSheet<T extends Record<string, StyleProp>>(
       for (const prop in styleObj) {
         if (!validStyleProperties.has(prop)) {
           console.warn(
-            `[VueNative] Unknown style property "${prop}" in style "${styleName}". ` +
-            `This property will be ignored by the native renderer.`
+            `[VueNative] Unknown style property "${prop}" in style "${styleName}". `
+            + `This property will be ignored by the native renderer.`,
           )
         }
       }

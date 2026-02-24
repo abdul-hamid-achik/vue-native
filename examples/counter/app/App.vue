@@ -88,14 +88,14 @@ const styles = createStyleSheet({
     <VView :style="styles.buttonRow">
       <VButton
         :style="[styles.button, styles.decrementButton]"
-        :onPress="decrement"
+        :on-press="decrement"
       >
         <VText :style="styles.buttonText">-</VText>
       </VButton>
 
       <VButton
         :style="[styles.button, styles.incrementButton]"
-        :onPress="increment"
+        :on-press="increment"
       >
         <VText :style="styles.buttonText">+</VText>
       </VButton>

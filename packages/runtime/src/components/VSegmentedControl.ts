@@ -1,4 +1,5 @@
-import { defineComponent, h } from '@vue/runtime-core'
+import { defineComponent, h, type PropType } from '@vue/runtime-core'
+import type { ViewStyle } from '../types/styles'
 
 /**
  * Segmented control (tab strip) component.
@@ -17,7 +18,7 @@ export const VSegmentedControl = defineComponent({
     selectedIndex: { type: Number, default: 0 },
     tintColor: { type: String, default: undefined },
     enabled: { type: Boolean, default: true },
-    style: { type: Object, default: () => ({}) },
+    style: { type: Object as PropType<ViewStyle>, default: () => ({}) },
   },
   emits: ['change'],
   setup(props, { emit }) {
@@ -28,7 +29,7 @@ export const VSegmentedControl = defineComponent({
         tintColor: props.tintColor,
         enabled: props.enabled,
         style: props.style,
-        onChange: (e: { selectedIndex: number; value: string }) => emit('change', e),
+        onChange: (e: { selectedIndex: number, value: string }) => emit('change', e),
       })
   },
 })

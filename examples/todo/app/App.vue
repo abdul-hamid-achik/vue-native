@@ -24,8 +24,8 @@ const filter = ref<Filter>('all')
 const filtered = computed(() => {
   switch (filter.value) {
     case 'active': return todos.value.filter(t => !t.done)
-    case 'done':   return todos.value.filter(t => t.done)
-    default:       return todos.value
+    case 'done': return todos.value.filter(t => t.done)
+    default: return todos.value
   }
 })
 
@@ -194,7 +194,7 @@ const styles = createStyleSheet({
 </script>
 
 <template>
-  <VScrollView :style="styles.container" :showsVerticalScrollIndicator="false">
+  <VScrollView :style="styles.container" :shows-vertical-scroll-indicator="false">
     <!-- Header -->
     <VView :style="styles.header">
       <VText :style="styles.title">My Todos</VText>
@@ -207,10 +207,10 @@ const styles = createStyleSheet({
         v-model="newTodo"
         placeholder="What needs to be done?"
         :style="styles.input"
-        returnKeyType="done"
+        return-key-type="done"
         @submit="addTodo"
       />
-      <VButton :style="styles.addButton" :onPress="addTodo">
+      <VButton :style="styles.addButton" :on-press="addTodo">
         <VText :style="styles.addButtonText">+</VText>
       </VButton>
     </VView>
@@ -221,7 +221,7 @@ const styles = createStyleSheet({
         v-for="f in (['all', 'active', 'done'] as const)"
         :key="f"
         :style="[styles.filterButton, filter === f && styles.filterButtonActive]"
-        :onPress="() => setFilter(f)"
+        :on-press="() => setFilter(f)"
       >
         <VText :style="[styles.filterText, filter === f && styles.filterTextActive]">
           {{ f.charAt(0).toUpperCase() + f.slice(1) }}
@@ -243,7 +243,7 @@ const styles = createStyleSheet({
         <!-- Check circle -->
         <VButton
           :style="[styles.checkCircle, todo.done && styles.checkCircleDone]"
-          :onPress="() => toggleTodo(todo.id)"
+          :on-press="() => toggleTodo(todo.id)"
         >
           <VText v-if="todo.done" :style="styles.checkmark">✓</VText>
         </VButton>
@@ -254,7 +254,7 @@ const styles = createStyleSheet({
         </VText>
 
         <!-- Delete -->
-        <VButton :style="styles.deleteButton" :onPress="() => deleteTodo(todo.id)">
+        <VButton :style="styles.deleteButton" :on-press="() => deleteTodo(todo.id)">
           <VText :style="styles.deleteButtonText">×</VText>
         </VButton>
       </VView>
