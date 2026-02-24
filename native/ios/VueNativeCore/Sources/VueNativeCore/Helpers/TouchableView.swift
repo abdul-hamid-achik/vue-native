@@ -3,7 +3,7 @@ import UIKit
 
 /// Custom UIView subclass that provides button-like touch behavior
 /// with configurable active opacity and support for press and long press events.
-final class TouchableView: UIView {
+class TouchableView: UIView {
 
     // MARK: - Public properties
 

@@ -11,8 +11,8 @@ permissions:
   packages: write
 
 jobs:
-  # ── npm packages ────────────────────────────────────────
-  publish-npm:
+  # ── npm packages (TypeScript) ───────────────────────────
+  npm:
     runs-on: ubuntu-latest
 
     steps:
@@ -92,15 +92,15 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   # ── Swift Package (iOS) ────────────────────────────────
-  # SPM packages are resolved directly from the git tag.
-  # This job validates the package builds correctly on macOS.
-  publish-swift:
+  # SPM resolves directly from the git tag — no publish step needed.
+  # This job validates the tagged code builds correctly.
+  swift:
     runs-on: macos-14
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build VueNativeCore Swift Package for iOS Simulator
+      - name: Build VueNativeCore for iOS Simulator
         run: |
           xcodebuild build \
             -scheme VueNativeCore \
@@ -109,7 +109,7 @@ jobs:
             -skipPackagePluginValidation
 
   # ── Maven artifact (Android) ────────────────────────────
-  publish-android:
+  android:
     runs-on: ubuntu-latest
 
     steps:

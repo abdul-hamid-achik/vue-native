@@ -94,9 +94,13 @@ public final class CertificatePinning: NSObject, URLSessionDelegate {
 
         // Check each certificate in the chain against our pins
         let certCount = SecTrustGetCertificateCount(serverTrust)
+        guard let certChain = SecTrustCopyCertificateChain(serverTrust) as? [SecCertificate] else {
+            completionHandler(.cancelAuthenticationChallenge, nil)
+            return
+        }
         for i in 0..<certCount {
-            guard let cert = SecTrustCopyCertificateChain(serverTrust)?[i] else { continue }
-            guard let certificate = cert as? SecCertificate else { continue }
+            guard i < certChain.count else { continue }
+            let certificate = certChain[i]
             let spkiHash = sha256OfSPKI(for: certificate)
             if expectedPins.contains(spkiHash) {
                 completionHandler(.useCredential, URLCredential(trust: serverTrust))

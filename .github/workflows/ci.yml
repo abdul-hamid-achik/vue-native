@@ -11,7 +11,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  ci:
+  # ── TypeScript (lint, typecheck, build, test) ───────────
+  typescript:
     runs-on: ubuntu-latest
 
     steps:
@@ -40,7 +41,7 @@ jobs:
       - name: Dead code check
         run: bun run knip
 
-  # Validate Swift package builds on macOS (iOS target requires xcodebuild)
+  # ── Swift / iOS (build VueNativeCore for iOS Simulator) ─
   swift:
     runs-on: macos-14
 
@@ -53,3 +54,22 @@ jobs:
             -scheme VueNativeCore \
             -destination 'platform=iOS Simulator,name=iPhone 15,OS=latest' \
             -skipPackagePluginValidation
+
+  # ── Kotlin / Android (compile VueNativeCore library) ────
+  kotlin:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Build VueNativeCore
+        run: ./gradlew :VueNativeCore:assembleRelease
+        working-directory: native/android
