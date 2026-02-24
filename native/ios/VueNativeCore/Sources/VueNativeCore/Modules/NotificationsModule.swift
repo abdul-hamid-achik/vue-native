@@ -21,8 +21,15 @@ final class NotificationsModule: NativeModule {
     var moduleName: String { "Notifications" }
     private weak var bridge: NativeBridge?
 
-    /// Cached APNS device token (hex string)
-    private var deviceToken: String?
+    /// Serial queue for thread-safe access to the device token.
+    private let tokenQueue = DispatchQueue(label: "com.vuenative.notifications.token")
+    /// Backing storage for deviceToken. Access only via the computed property.
+    private var _deviceToken: String?
+    /// Cached APNS device token (hex string). Thread-safe.
+    private var deviceToken: String? {
+        get { tokenQueue.sync { _deviceToken } }
+        set { tokenQueue.sync { _deviceToken = newValue } }
+    }
 
     init(bridge: NativeBridge) {
         self.bridge = bridge

@@ -19,17 +19,25 @@ export function useNetwork() {
   const isConnected = ref(true)
   const connectionType = ref<ConnectionType>('unknown')
 
-  // Fetch initial state
-  NativeBridge.invokeNativeModule('Network', 'getStatus').then((status: NetworkState) => {
-    isConnected.value = status.isConnected
-    connectionType.value = status.connectionType
-  }).catch(() => {})
+  // Track when the most recent event update occurred so the initial
+  // async getStatus response does not overwrite a fresher event.
+  let lastEventTime = 0
 
-  // Subscribe to push updates
+  // Subscribe to push updates first so we never miss an event.
   const unsubscribe = NativeBridge.onGlobalEvent('network:change', (payload: NetworkState) => {
+    lastEventTime = Date.now()
     isConnected.value = payload.isConnected
     connectionType.value = payload.connectionType
   })
+
+  // Fetch initial state, but skip if a more recent event already arrived.
+  const initTime = Date.now()
+  NativeBridge.invokeNativeModule('Network', 'getStatus').then((status: NetworkState) => {
+    if (lastEventTime <= initTime) {
+      isConnected.value = status.isConnected
+      connectionType.value = status.connectionType
+    }
+  }).catch(() => {})
 
   onUnmounted(unsubscribe)
 

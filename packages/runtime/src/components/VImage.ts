@@ -1,4 +1,4 @@
-import { defineComponent, h, type PropType } from '@vue/runtime-core'
+import { defineComponent, h, ref, watch, type PropType } from '@vue/runtime-core'
 import type { ImageStyle } from '../types/styles'
 
 /**
@@ -6,6 +6,9 @@ import type { ImageStyle } from '../types/styles'
  *
  * Maps to UIImageView on iOS. Loads images from URIs asynchronously
  * with built-in caching. Supports various resize modes.
+ *
+ * Exposes a reactive `loading` ref (via template ref) that is `true`
+ * while the image is being fetched and `false` once it loads or errors.
  *
  * @example
  * ```vue
@@ -34,14 +37,36 @@ export const VImage = defineComponent({
     accessibilityState: Object,
   },
   emits: ['load', 'error'],
-  setup(props, { emit }) {
+  setup(props, { emit, expose }) {
+    const loading = ref(true)
+
+    // Reset loading state when the source URI changes.
+    watch(
+      () => props.source?.uri,
+      () => {
+        loading.value = true
+      },
+    )
+
+    const onLoad = () => {
+      loading.value = false
+      emit('load')
+    }
+
+    const onError = (e: any) => {
+      loading.value = false
+      emit('error', e)
+    }
+
+    expose({ loading })
+
     return () =>
       h(
         'VImage',
         {
           ...props,
-          onLoad: () => emit('load'),
-          onError: (e: any) => emit('error', e),
+          onLoad,
+          onError,
         },
       )
   },

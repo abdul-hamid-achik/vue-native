@@ -75,24 +75,30 @@ private final class GeolocationManager: NSObject, CLLocationManagerDelegate {
 
     func getCurrentPosition(callback: @escaping (Any?, String?) -> Void) {
         ensureManager()
-        let status = manager!.authorizationStatus
+        guard let manager = manager else {
+            callback(nil, "Failed to initialize location manager"); return
+        }
+        let status = manager.authorizationStatus
         guard status == .authorizedWhenInUse || status == .authorizedAlways else {
             callback(nil, "Location permission not granted"); return
         }
         pendingCallbacks.append(callback)
-        manager?.requestLocation()
+        manager.requestLocation()
     }
 
     func watchPosition(bridge: NativeBridge?) -> Int {
         ensureManager()
-        let status = manager!.authorizationStatus
+        guard let manager = manager else {
+            return -1
+        }
+        let status = manager.authorizationStatus
         guard status == .authorizedWhenInUse || status == .authorizedAlways else {
             // Return a sentinel; caller will get no updates
             return -1
         }
         let watchId = nextWatchId; nextWatchId += 1
         watchCallbacks[watchId] = WeakBridge(bridge: bridge)
-        manager?.startUpdatingLocation()
+        manager.startUpdatingLocation()
         return watchId
     }
 

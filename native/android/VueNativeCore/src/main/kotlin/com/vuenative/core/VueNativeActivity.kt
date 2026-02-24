@@ -93,18 +93,32 @@ abstract class VueNativeActivity : AppCompatActivity() {
                 .trimEnd('/') + "/${getBundleAssetPath()}"
 
             hotReloadManager = HotReloadManager(runtime) { bundleCode ->
-                // Reset polyfill state (timers, RAF) before reloading
-                JSPolyfills.reset()
-                runOnUiThread {
-                    runtime.bridge.nodeViews.clear()
-                    runtime.bridge.nodeTypes.clear()
-                    runtime.bridge.eventHandlers.clear()
-                    runtime.bridge.nodeParents.clear()
-                    runtime.bridge.nodeChildren.clear()
-                    runtime.bridge.rootView = null
-                    rootContainer.removeAllViews()
+                // Properly sequence reload steps to avoid races between threads.
+                // Step 1: Teardown old app and reset polyfills on JS thread
+                runtime.runOnJsThread {
+                    try {
+                        runtime.v8()?.executeVoidScript(
+                            "if(typeof __VN_teardown==='function') __VN_teardown()"
+                        )
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Error calling __VN_teardown: ${e.message}")
+                    }
+                    // Reset polyfill state (timers, RAF) on JS thread where they are used
+                    JSPolyfills.reset()
+
+                    // Step 2: Clear native registries on main thread, THEN load bundle
+                    runtime.runOnMainThread {
+                        runtime.bridge.clearAllRegistries()
+                        rootContainer.removeAllViews()
+
+                        // Step 3: Load new bundle on JS thread (after registries are cleared)
+                        runtime.loadBundle(bundleCode) { success, errorMsg ->
+                            if (!success) {
+                                Log.e(TAG, "Hot reload bundle failed: $errorMsg")
+                            }
+                        }
+                    }
                 }
-                runtime.loadBundle(bundleCode)
             }
             hotReloadManager?.connect(devUrl, bundleHttpUrl)
 

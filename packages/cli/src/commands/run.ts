@@ -263,6 +263,16 @@ function runAndroid(
     },
   )
 
+  // Ensure Gradle process is cleaned up on exit or interruption
+  const cleanupGradle = () => {
+    if (gradle && !gradle.killed) {
+      gradle.kill()
+    }
+  }
+  process.on('exit', cleanupGradle)
+  process.on('SIGINT', cleanupGradle)
+  process.on('SIGTERM', cleanupGradle)
+
   gradle.stdout?.on('data', (data: Buffer) => {
     const text = data.toString().trim()
     if (text) {
@@ -275,6 +285,11 @@ function runAndroid(
     if (text.includes('ERROR') || text.includes('FAILURE')) {
       console.log(pc.red(`  ${text}`))
     }
+  })
+
+  gradle.on('error', (err) => {
+    console.error(pc.red(`  Gradle process error: ${err.message}`))
+    cleanupGradle()
   })
 
   gradle.on('close', (code) => {

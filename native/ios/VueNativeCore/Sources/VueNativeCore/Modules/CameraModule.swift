@@ -19,6 +19,7 @@ final class CameraModule: NativeModule {
     private var qrDelegate: QRScanDelegate?
     private var qrPreviewLayer: AVCaptureVideoPreviewLayer?
     private weak var bridge: NativeBridge?
+    private let qrQueue = DispatchQueue(label: "com.vuenative.camera.qr")
 
     func invoke(method: String, args: [Any], callback: @escaping (Any?, String?) -> Void) {
         let options = args.first as? [String: Any] ?? [:]
@@ -145,12 +146,14 @@ final class CameraModule: NativeModule {
         output.setMetadataObjectsDelegate(delegate, queue: DispatchQueue.main)
         output.metadataObjectTypes = [.qr, .ean8, .ean13, .pdf417, .code128]
 
-        self.qrSession = session
-        self.qrDelegate = delegate
-        self.bridge = bridge
+        qrQueue.sync {
+            self.qrSession = session
+            self.qrDelegate = delegate
+            self.bridge = bridge
+        }
 
         // Start on background queue to avoid blocking main thread
-        DispatchQueue.global(qos: .userInitiated).async {
+        qrQueue.async {
             session.startRunning()
         }
 
@@ -158,13 +161,18 @@ final class CameraModule: NativeModule {
     }
 
     private func stopQRScan() {
-        if let session = qrSession, session.isRunning {
-            DispatchQueue.global(qos: .userInitiated).async {
+        let sessionToStop: AVCaptureSession? = qrQueue.sync {
+            let session = self.qrSession
+            self.qrSession = nil
+            self.qrDelegate = nil
+            self.qrPreviewLayer = nil
+            return session
+        }
+        if let session = sessionToStop, session.isRunning {
+            qrQueue.async {
                 session.stopRunning()
             }
         }
-        qrSession = nil
-        qrDelegate = nil
     }
 
     // MARK: - Helpers

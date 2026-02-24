@@ -18,6 +18,18 @@ final class VImageFactory: NativeComponentFactory {
         return cache
     }()
 
+    /// Observer that clears the image cache on memory pressure.
+    nonisolated(unsafe) private static let memoryWarningObserver: NSObjectProtocol = {
+        NotificationCenter.default.addObserver(
+            forName: UIApplication.didReceiveMemoryWarningNotification,
+            object: nil,
+            queue: nil
+        ) { _ in
+            imageCache.removeAllObjects()
+            NSLog("[VueNative] VImageFactory: cleared image cache due to memory warning")
+        }
+    }()
+
     // MARK: - Associated object keys
 
     private static var onLoadKey: UInt8 = 0
@@ -27,6 +39,9 @@ final class VImageFactory: NativeComponentFactory {
     // MARK: - NativeComponentFactory
 
     func createView() -> UIView {
+        // Ensure the memory warning observer is initialized (static let is lazy)
+        _ = VImageFactory.memoryWarningObserver
+
         let imageView = UIImageView()
         imageView.contentMode = .scaleAspectFill
         imageView.clipsToBounds = true
@@ -95,12 +110,12 @@ final class VImageFactory: NativeComponentFactory {
         // Check cache first
         if let cached = VImageFactory.imageCache.object(forKey: urlString as NSString) {
             imageView.image = cached
-            fireLoadHandler(for: imageView)
+            VImageFactory.fireLoadHandler(for: imageView)
             return
         }
 
         guard let url = URL(string: urlString) else {
-            fireErrorHandler(for: imageView, message: "Invalid URL: \(urlString)")
+            VImageFactory.fireErrorHandler(for: imageView, message: "Invalid URL: \(urlString)")
             return
         }
 
@@ -111,15 +126,17 @@ final class VImageFactory: NativeComponentFactory {
             guard let imageView = imageView else { return }
 
             if let error = error {
-                DispatchQueue.main.async {
-                    self.fireErrorHandler(for: imageView, message: error.localizedDescription)
+                DispatchQueue.main.async { [weak imageView] in
+                    guard let imageView = imageView else { return }
+                    VImageFactory.fireErrorHandler(for: imageView, message: error.localizedDescription)
                 }
                 return
             }
 
             guard let data = data, let image = UIImage(data: data) else {
-                DispatchQueue.main.async {
-                    self.fireErrorHandler(for: imageView, message: "Failed to decode image")
+                DispatchQueue.main.async { [weak imageView] in
+                    guard let imageView = imageView else { return }
+                    VImageFactory.fireErrorHandler(for: imageView, message: "Failed to decode image")
                 }
                 return
             }
@@ -127,25 +144,26 @@ final class VImageFactory: NativeComponentFactory {
             let cost = data.count
             VImageFactory.imageCache.setObject(image, forKey: urlString as NSString, cost: cost)
 
-            DispatchQueue.main.async {
+            DispatchQueue.main.async { [weak imageView] in
+                guard let imageView = imageView else { return }
                 // Only update if the URL hasn't changed
                 let current = objc_getAssociatedObject(imageView, &VImageFactory.currentURLKey) as? NSString
                 if current as String? == urlString {
                     imageView.image = image
                     imageView.flex.markDirty()
-                    self.fireLoadHandler(for: imageView)
+                    VImageFactory.fireLoadHandler(for: imageView)
                 }
             }
         }.resume()
     }
 
-    private func fireLoadHandler(for view: UIView) {
+    private static func fireLoadHandler(for view: UIView) {
         if let handler = objc_getAssociatedObject(view, &VImageFactory.onLoadKey) as? ((Any?) -> Void) {
             handler(nil)
         }
     }
 
-    private func fireErrorHandler(for view: UIView, message: String) {
+    private static func fireErrorHandler(for view: UIView, message: String) {
         if let handler = objc_getAssociatedObject(view, &VImageFactory.onErrorKey) as? ((Any?) -> Void) {
             handler(["message": message])
         }

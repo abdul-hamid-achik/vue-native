@@ -1,5 +1,6 @@
 #if canImport(UIKit)
 import JavaScriptCore
+import Security
 import UIKit
 
 /// Registers browser-like APIs in JSContext that the Vue runtime and application code expect.
@@ -8,8 +9,14 @@ enum JSPolyfills {
 
     // MARK: - Timer storage
 
+    /// Holds a scheduled Timer alongside its JSManagedValue so both can be cleaned up together.
+    private struct TimerEntry {
+        let timer: Timer
+        let callbackRef: JSManagedValue?
+    }
+
     /// Active timers, keyed by string ID. Accessed only from JS queue.
-    private static var timers: [String: Timer] = [:]
+    private static var timers: [String: TimerEntry] = [:]
     /// Next timer ID counter. Accessed only from JS queue.
     private static var nextTimerId: Int = 1
 
@@ -27,9 +34,12 @@ enum JSPolyfills {
     /// Reset all polyfill state. Call before creating a fresh JSContext on hot reload.
     /// MUST be called on the JS queue.
     static func reset() {
-        // Invalidate all active timers
-        for (_, timer) in timers {
-            timer.invalidate()
+        // Invalidate all active timers and remove managed references
+        for (_, entry) in timers {
+            entry.timer.invalidate()
+            // Note: managed references are owned by the old context which is about
+            // to be discarded, so explicit removal is not strictly required here,
+            // but we clear the dict to release our side of the references.
         }
         timers.removeAll()
 
@@ -59,6 +69,10 @@ enum JSPolyfills {
         registerPerformance(in: context, runtime: runtime)
         registerGlobalThis(in: context)
         registerFetch(in: context, runtime: runtime)
+        registerBase64(in: context)
+        registerTextEncoding(in: context)
+        registerURL(in: context)
+        registerCrypto(in: context)
     }
 
     // MARK: - console.log / warn / error
@@ -97,7 +111,10 @@ enum JSPolyfills {
             NSLog("[VueNative INFO] %@", formatArgs())
         }
 
-        let consoleObj = context.objectForKeyedSubscript("console")!
+        guard let consoleObj = context.objectForKeyedSubscript("console") else {
+            NSLog("[VueNative] Warning: failed to get console object")
+            return
+        }
         consoleObj.setObject(consoleLog, forKeyedSubscript: "log" as NSString)
         consoleObj.setObject(consoleWarn, forKeyedSubscript: "warn" as NSString)
         consoleObj.setObject(consoleError, forKeyedSubscript: "error" as NSString)
@@ -123,13 +140,14 @@ enum JSPolyfills {
             let callbackRef = JSManagedValue(value: callback)
             context.virtualMachine.addManagedReference(callbackRef, withOwner: context)
 
-            // Schedule timer on a RunLoop that we pump from the JS queue
-            // We use DispatchQueue.main for the timer, then dispatch callback to JS queue
+            // Schedule timer on the main thread RunLoop, then dispatch callback to JS queue
             DispatchQueue.main.async {
                 let timer = Timer.scheduledTimer(withTimeInterval: max(delayMs / 1000.0, 0.001), repeats: false) { [weak runtime] _ in
                     guard let runtime = runtime else { return }
                     runtime.jsQueue.async { [weak runtime] in
                         guard let runtime = runtime, let context = runtime.context else { return }
+                        // Timer already fired — only invoke if not cleared
+                        guard timers[timerId] != nil else { return }
                         if let cb = callbackRef?.value, !cb.isUndefined {
                             cb.call(withArguments: [])
                             // Drain microtasks after timer callback
@@ -141,7 +159,10 @@ enum JSPolyfills {
                 }
                 RunLoop.main.add(timer, forMode: .common)
                 runtime.jsQueue.async {
-                    timers[timerId] = timer
+                    // Only store if not already cleared before the timer was created
+                    if timers[timerId] == nil {
+                        timers[timerId] = TimerEntry(timer: timer, callbackRef: callbackRef)
+                    }
                 }
             }
 
@@ -149,12 +170,15 @@ enum JSPolyfills {
         }
 
         // clearTimeout(timerId)
-        let clearTimeout: @convention(block) (JSValue) -> Void = { timerId in
+        let clearTimeout: @convention(block) (JSValue) -> Void = { [weak runtime] timerId in
+            guard let runtime = runtime, let context = runtime.context else { return }
             guard let id = timerId.toString() else { return }
-            if let timer = timers.removeValue(forKey: id) {
+            if let entry = timers.removeValue(forKey: id) {
+                // Remove the managed reference so the JSValue can be GC'd
+                context.virtualMachine.removeManagedReference(entry.callbackRef, withOwner: context)
                 // Timer invalidation must happen on the main thread where it was created
                 DispatchQueue.main.async {
-                    timer.invalidate()
+                    entry.timer.invalidate()
                 }
             }
         }
@@ -177,6 +201,8 @@ enum JSPolyfills {
                     guard let runtime = runtime else { return }
                     runtime.jsQueue.async { [weak runtime] in
                         guard let runtime = runtime, let context = runtime.context else { return }
+                        // If the interval was cleared, do not invoke the callback
+                        guard timers[timerId] != nil else { return }
                         if let cb = callbackRef?.value, !cb.isUndefined {
                             cb.call(withArguments: [])
                             context.evaluateScript("void 0;")
@@ -185,7 +211,7 @@ enum JSPolyfills {
                 }
                 RunLoop.main.add(timer, forMode: .common)
                 runtime.jsQueue.async {
-                    timers[timerId] = timer
+                    timers[timerId] = TimerEntry(timer: timer, callbackRef: callbackRef)
                 }
             }
 
@@ -193,13 +219,16 @@ enum JSPolyfills {
         }
 
         // clearInterval(timerId)
-        let clearInterval: @convention(block) (JSValue) -> Void = { timerId in
+        let clearInterval: @convention(block) (JSValue) -> Void = { [weak runtime] timerId in
+            guard let runtime = runtime, let context = runtime.context else { return }
             guard let id = timerId.toString() else { return }
-            if let timer = timers[id] {
+            if let entry = timers.removeValue(forKey: id) {
+                // Remove the managed reference so the JSValue can be GC'd
+                context.virtualMachine.removeManagedReference(entry.callbackRef, withOwner: context)
+                // Invalidate the timer on the main thread where it was scheduled
                 DispatchQueue.main.async {
-                    timer.invalidate()
+                    entry.timer.invalidate()
                 }
-                timers.removeValue(forKey: id)
             }
         }
 
@@ -305,7 +334,10 @@ enum JSPolyfills {
             return (CFAbsoluteTimeGetCurrent() - runtime.startTime) * 1000.0
         }
 
-        let perfObj = context.objectForKeyedSubscript("performance")!
+        guard let perfObj = context.objectForKeyedSubscript("performance") else {
+            NSLog("[VueNative] Warning: failed to get performance object")
+            return
+        }
         perfObj.setObject(performanceNow, forKeyedSubscript: "now" as NSString)
     }
 
@@ -345,7 +377,7 @@ enum JSPolyfills {
 
             let urlString = urlValue.toString() ?? ""
             guard let url = URL(string: urlString) else {
-                return context.evaluateScript("Promise.reject(new TypeError('Invalid URL'))")!
+                return context.evaluateScript("Promise.reject(new TypeError('Invalid URL'))") ?? JSValue(undefinedIn: context)
             }
 
             // Build URLRequest
@@ -427,28 +459,32 @@ enum JSPolyfills {
 
                     // Create response object in JS
                     if let resolve = resolveRef, !resolve.isUndefined {
-                        let responseObj = JSValue(newObjectIn: context)!
+                        guard let responseObj = JSValue(newObjectIn: context) else {
+                            NSLog("[VueNative] Warning: failed to create response object")
+                            return
+                        }
                         responseObj.setObject(status, forKeyedSubscript: "status" as NSString)
                         responseObj.setObject(ok, forKeyedSubscript: "ok" as NSString)
                         responseObj.setObject(bodyString, forKeyedSubscript: "_body" as NSString)
 
                         // headers object
-                        let headersObj = JSValue(newObjectIn: context)!
-                        for (k, v) in headersDict {
-                            headersObj.setObject(v, forKeyedSubscript: k as NSString)
+                        if let headersObj = JSValue(newObjectIn: context) {
+                            for (k, v) in headersDict {
+                                headersObj.setObject(v, forKeyedSubscript: k as NSString)
+                            }
+                            responseObj.setObject(headersObj, forKeyedSubscript: "headers" as NSString)
                         }
-                        responseObj.setObject(headersObj, forKeyedSubscript: "headers" as NSString)
 
                         // .text() method
                         let bodyStringCopy = bodyString
                         let textMethod: @convention(block) () -> JSValue = {
-                            return context.evaluateScript("Promise.resolve(\(JSPolyfillsJSON.encode(bodyStringCopy)))")!
+                            return context.evaluateScript("Promise.resolve(\(JSPolyfillsJSON.encode(bodyStringCopy)))") ?? JSValue(undefinedIn: context)
                         }
                         responseObj.setObject(textMethod, forKeyedSubscript: "text" as NSString)
 
                         // .json() method
                         let jsonMethod: @convention(block) () -> JSValue = {
-                            return context.evaluateScript("(function(s){ try { return Promise.resolve(JSON.parse(s)); } catch(e) { return Promise.reject(e); } })(\(JSPolyfillsJSON.encode(bodyStringCopy)))")!
+                            return context.evaluateScript("(function(s){ try { return Promise.resolve(JSON.parse(s)); } catch(e) { return Promise.reject(e); } })(\(JSPolyfillsJSON.encode(bodyStringCopy)))") ?? JSValue(undefinedIn: context)
                         }
                         responseObj.setObject(jsonMethod, forKeyedSubscript: "json" as NSString)
 
@@ -462,6 +498,149 @@ enum JSPolyfills {
         }
 
         context.setObject(fetch, forKeyedSubscript: "fetch" as NSString)
+    }
+
+    // MARK: - atob / btoa (Base64)
+
+    private static func registerBase64(in context: JSContext) {
+        // atob — decode a base64-encoded string
+        let atob: @convention(block) (String) -> String = { encoded in
+            guard let data = Data(base64Encoded: encoded) else { return "" }
+            return String(data: data, encoding: .utf8) ?? ""
+        }
+        context.setObject(atob, forKeyedSubscript: "atob" as NSString)
+
+        // btoa — encode a string to base64
+        let btoa: @convention(block) (String) -> String = { str in
+            guard let data = str.data(using: .utf8) else { return "" }
+            return data.base64EncodedString()
+        }
+        context.setObject(btoa, forKeyedSubscript: "btoa" as NSString)
+    }
+
+    // MARK: - TextEncoder / TextDecoder
+
+    private static func registerTextEncoding(in context: JSContext) {
+        context.evaluateScript("""
+            class TextEncoder {
+                constructor(encoding = 'utf-8') { this.encoding = encoding; }
+                encode(str) {
+                    const arr = [];
+                    for (let i = 0; i < str.length; i++) {
+                        let c = str.charCodeAt(i);
+                        if (c < 0x80) { arr.push(c); }
+                        else if (c < 0x800) { arr.push(0xc0 | (c >> 6), 0x80 | (c & 0x3f)); }
+                        else if (c < 0xd800 || c >= 0xe000) { arr.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 0x3f), 0x80 | (c & 0x3f)); }
+                        else { i++; c = 0x10000 + (((c & 0x3ff) << 10) | (str.charCodeAt(i) & 0x3ff)); arr.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 0x3f), 0x80 | ((c >> 6) & 0x3f), 0x80 | (c & 0x3f)); }
+                    }
+                    return new Uint8Array(arr);
+                }
+            }
+            class TextDecoder {
+                constructor(encoding = 'utf-8') { this.encoding = encoding; }
+                decode(buffer) {
+                    const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+                    let result = '';
+                    for (let i = 0; i < bytes.length;) {
+                        let c = bytes[i++];
+                        if (c < 0x80) { result += String.fromCharCode(c); }
+                        else if (c < 0xe0) { result += String.fromCharCode(((c & 0x1f) << 6) | (bytes[i++] & 0x3f)); }
+                        else if (c < 0xf0) { result += String.fromCharCode(((c & 0x0f) << 12) | ((bytes[i++] & 0x3f) << 6) | (bytes[i++] & 0x3f)); }
+                        else { const cp = ((c & 0x07) << 18) | ((bytes[i++] & 0x3f) << 12) | ((bytes[i++] & 0x3f) << 6) | (bytes[i++] & 0x3f); result += String.fromCodePoint(cp); }
+                    }
+                    return result;
+                }
+            }
+            globalThis.TextEncoder = TextEncoder;
+            globalThis.TextDecoder = TextDecoder;
+        """)
+    }
+
+    // MARK: - URL / URLSearchParams
+
+    private static func registerURL(in context: JSContext) {
+        context.evaluateScript("""
+            if (typeof URL === 'undefined') {
+                class URL {
+                    constructor(url, base) {
+                        if (base) {
+                            if (!url.match(/^[a-zA-Z]+:/)) {
+                                const b = new URL(base);
+                                url = b.origin + (url.startsWith('/') ? '' : '/') + url;
+                            }
+                        }
+                        const match = url.match(/^([a-zA-Z]+:)\\/\\/([^/:]+)(:\\d+)?(\\/[^?#]*)?(\\?[^#]*)?(#.*)?$/);
+                        if (!match) { this.href = url; this.protocol = ''; this.host = ''; this.hostname = ''; this.port = ''; this.pathname = '/'; this.search = ''; this.hash = ''; this.origin = ''; this.searchParams = new URLSearchParams(''); return; }
+                        this.protocol = match[1] || '';
+                        this.hostname = match[2] || '';
+                        this.port = (match[3] || '').slice(1);
+                        this.host = this.hostname + (this.port ? ':' + this.port : '');
+                        this.pathname = match[4] || '/';
+                        this.search = match[5] || '';
+                        this.hash = match[6] || '';
+                        this.origin = this.protocol + '//' + this.host;
+                        this.href = url;
+                        this.searchParams = new URLSearchParams(this.search);
+                    }
+                    toString() { return this.href; }
+                }
+                globalThis.URL = URL;
+            }
+            if (typeof URLSearchParams === 'undefined') {
+                class URLSearchParams {
+                    constructor(init) {
+                        this._params = [];
+                        if (typeof init === 'string') {
+                            init.replace(/^\\?/, '').split('&').filter(Boolean).forEach(p => {
+                                const [k, ...v] = p.split('=');
+                                this._params.push([decodeURIComponent(k), decodeURIComponent(v.join('='))]);
+                            });
+                        }
+                    }
+                    get(name) { const p = this._params.find(([k]) => k === name); return p ? p[1] : null; }
+                    getAll(name) { return this._params.filter(([k]) => k === name).map(([,v]) => v); }
+                    has(name) { return this._params.some(([k]) => k === name); }
+                    set(name, value) { this.delete(name); this._params.push([name, String(value)]); }
+                    append(name, value) { this._params.push([name, String(value)]); }
+                    delete(name) { this._params = this._params.filter(([k]) => k !== name); }
+                    toString() { return this._params.map(([k, v]) => encodeURIComponent(k) + '=' + encodeURIComponent(v)).join('&'); }
+                    forEach(cb) { this._params.forEach(([k, v]) => cb(v, k, this)); }
+                    entries() { return this._params[Symbol.iterator](); }
+                    keys() { return this._params.map(([k]) => k)[Symbol.iterator](); }
+                    values() { return this._params.map(([,v]) => v)[Symbol.iterator](); }
+                    [Symbol.iterator]() { return this.entries(); }
+                }
+                globalThis.URLSearchParams = URLSearchParams;
+            }
+        """)
+    }
+
+    // MARK: - crypto.getRandomValues
+
+    private static func registerCrypto(in context: JSContext) {
+        // Native callback using SecRandomCopyBytes for cryptographic randomness
+        let cryptoGetRandomValues: @convention(block) (JSValue) -> JSValue = { typedArray in
+            let length = typedArray.forProperty("length").toInt32()
+            if length > 0 {
+                var bytes = [UInt8](repeating: 0, count: Int(length))
+                _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
+                for i in 0..<Int(length) {
+                    typedArray.setValue(bytes[i], at: i)
+                }
+            }
+            return typedArray
+        }
+
+        // Ensure the crypto global object exists
+        context.evaluateScript("""
+            if (typeof crypto === 'undefined') {
+                globalThis.crypto = {};
+            }
+        """)
+
+        if let cryptoObj = context.objectForKeyedSubscript("crypto") {
+            cryptoObj.setObject(cryptoGetRandomValues, forKeyedSubscript: "getRandomValues" as NSString)
+        }
     }
 }
 

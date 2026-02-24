@@ -1,4 +1,4 @@
-import { defineComponent, h } from '@vue/runtime-core'
+import { defineComponent, h, ref, watch, onUnmounted } from '@vue/runtime-core'
 
 export interface AlertButton {
   label: string
@@ -28,9 +28,27 @@ export const VAlertDialog = defineComponent({
   },
   emits: ['confirm', 'cancel', 'action'],
   setup(props, { emit }) {
+    // Debounce visible prop to prevent animation jank from rapid toggles
+    const debouncedVisible = ref(props.visible)
+    let visibleTimer: ReturnType<typeof setTimeout> | undefined
+
+    watch(
+      () => props.visible,
+      (val) => {
+        if (visibleTimer) clearTimeout(visibleTimer)
+        visibleTimer = setTimeout(() => {
+          debouncedVisible.value = val
+        }, 50)
+      },
+    )
+
+    onUnmounted(() => {
+      if (visibleTimer) clearTimeout(visibleTimer)
+    })
+
     return () =>
       h('VAlertDialog', {
-        visible: props.visible,
+        visible: debouncedVisible.value,
         title: props.title,
         message: props.message,
         buttons: props.buttons,

@@ -65,30 +65,25 @@ export function useDatabase(name: string = 'default') {
   async function transaction(callback: (ctx: TransactionContext) => Promise<void>): Promise<void> {
     await ensureOpen()
 
-    // Collect all statements from the callback into a batch
-    const statements: Array<{ sql: string, params: any[] }> = []
+    // Use explicit SQL transaction control so ALL operations (reads and writes)
+    // run within the same database transaction, ensuring proper isolation.
+    await NativeBridge.invokeNativeModule('Database', 'execute', [name, 'BEGIN TRANSACTION', []])
+    try {
+      const ctx: TransactionContext = {
+        execute: async (sql: string, params?: any[]): Promise<ExecuteResult> => {
+          return NativeBridge.invokeNativeModule('Database', 'execute', [name, sql, params ?? []])
+        },
+        query: async <T extends Row = Row>(sql: string, params?: any[]): Promise<T[]> => {
+          return NativeBridge.invokeNativeModule('Database', 'query', [name, sql, params ?? []])
+        },
+      }
 
-    const ctx: TransactionContext = {
-      execute: async (sql: string, params?: any[]) => {
-        statements.push({ sql, params: params ?? [] })
-        // Return a placeholder - actual results come from the batch
-        return { rowsAffected: 0 }
-      },
-      query: async <T extends Row = Row>(sql: string, params?: any[]): Promise<T[]> => {
-        // Queries inside transactions are not batched - they need immediate results.
-        // Execute pending writes first, then run the query.
-        if (statements.length > 0) {
-          await NativeBridge.invokeNativeModule('Database', 'executeTransaction', [name, statements.splice(0)])
-        }
-        return NativeBridge.invokeNativeModule('Database', 'query', [name, sql, params ?? []])
-      },
-    }
-
-    await callback(ctx)
-
-    // Flush any remaining statements as a transaction
-    if (statements.length > 0) {
-      await NativeBridge.invokeNativeModule('Database', 'executeTransaction', [name, statements])
+      await callback(ctx)
+      await NativeBridge.invokeNativeModule('Database', 'execute', [name, 'COMMIT', []])
+    } catch (err) {
+      // Best-effort rollback; suppress rollback errors to surface the original failure
+      await NativeBridge.invokeNativeModule('Database', 'execute', [name, 'ROLLBACK', []]).catch(() => {})
+      throw err
     }
   }
 

@@ -120,17 +120,20 @@ class JSRuntime(private val context: Context) {
         }
     }
 
-    /** Load and execute a JavaScript bundle. Must be called after initialize(). */
-    fun loadBundle(bundleCode: String) {
+    /** Load and execute a JavaScript bundle. Must be called after initialize().
+     *  @param onComplete Optional callback invoked on main thread: (success, errorMessage). */
+    fun loadBundle(bundleCode: String, onComplete: ((Boolean, String?) -> Unit)? = null) {
         jsHandler.post {
             try {
                 v8?.executeVoidScript(bundleCode)
                 Log.d(TAG, "Bundle loaded successfully")
+                mainHandler.post { onComplete?.invoke(true, null) }
             } catch (e: Exception) {
                 Log.e(TAG, "Error loading bundle", e)
                 val msg = e.message ?: "Unknown error"
                 mainHandler.post {
                     ErrorOverlayView.show(context, msg)
+                    onComplete?.invoke(false, msg)
                 }
             }
         }

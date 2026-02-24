@@ -20,6 +20,7 @@ import { NativeBridge } from '@thelacanians/vue-native-runtime'
 declare const console: { warn(...args: any[]): void, error(...args: any[]): void }
 declare function setTimeout(cb: () => void, ms: number): number
 declare function clearTimeout(id: number): void
+declare const __DEV__: boolean
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -259,6 +260,12 @@ export function createRouter(optionsOrRoutes: RouterOptions | RouteConfig[]): Ro
               called = true
               resolve(undefined)
             }
+          }).catch((err) => {
+            if (!called) {
+              called = true
+              console.error('[VueNative] Navigation guard error:', err)
+              resolve(false)
+            }
           })
         }
       })
@@ -287,16 +294,14 @@ export function createRouter(optionsOrRoutes: RouterOptions | RouteConfig[]): Ro
     const beforeResult = await runGuards(beforeGuards, to, from)
     if (beforeResult === false) return
     if (typeof beforeResult === 'string') {
-      navigate(beforeResult)
-      return
+      return navigate(beforeResult)
     }
 
     // Run beforeResolve guards
     const resolveResult = await runGuards(resolveGuards, to, from)
     if (resolveResult === false) return
     if (typeof resolveResult === 'string') {
-      navigate(resolveResult)
-      return
+      return navigate(resolveResult)
     }
 
     // Commit navigation
@@ -326,15 +331,13 @@ export function createRouter(optionsOrRoutes: RouterOptions | RouteConfig[]): Ro
     const beforeResult = await runGuards(beforeGuards, to, from)
     if (beforeResult === false) return
     if (typeof beforeResult === 'string') {
-      navigate(beforeResult)
-      return
+      return navigate(beforeResult)
     }
 
     const resolveResult = await runGuards(resolveGuards, to, from)
     if (resolveResult === false) return
     if (typeof resolveResult === 'string') {
-      navigate(resolveResult)
-      return
+      return navigate(resolveResult)
     }
 
     stack.value = [...stack.value.slice(0, -1), to]
@@ -355,15 +358,13 @@ export function createRouter(optionsOrRoutes: RouterOptions | RouteConfig[]): Ro
     const beforeResult = await runGuards(beforeGuards, to, from)
     if (beforeResult === false) return
     if (typeof beforeResult === 'string') {
-      navigate(beforeResult)
-      return
+      return navigate(beforeResult)
     }
 
     const resolveResult = await runGuards(resolveGuards, to, from)
     if (resolveResult === false) return
     if (typeof resolveResult === 'string') {
-      navigate(resolveResult)
-      return
+      return navigate(resolveResult)
     }
 
     stack.value = [to]
@@ -392,6 +393,11 @@ export function createRouter(optionsOrRoutes: RouterOptions | RouteConfig[]): Ro
   function handleURL(url: string): boolean {
     if (!linkingConfig) return false
 
+    if (url.length > 2048) {
+      console.warn('[VueNative] URL too long, ignoring:', url.slice(0, 100) + '...')
+      return false
+    }
+
     // Strip prefix
     let path = url
     for (const prefix of linkingConfig.prefixes) {
@@ -418,6 +424,21 @@ export function createRouter(optionsOrRoutes: RouterOptions | RouteConfig[]): Ro
   // ── State Persistence ──────────────────────────────────────────────────────
 
   function getState(): NavigationState {
+    if (typeof __DEV__ !== 'undefined' && __DEV__) {
+      for (const entry of stack.value) {
+        if (entry.params) {
+          for (const [key, val] of Object.entries(entry.params)) {
+            if (typeof val === 'function' || typeof val === 'symbol') {
+              console.warn(
+                `[vue-native/navigation] Route "${entry.config.name}" has non-serializable param "${key}" (${typeof val}). `
+                + 'This value will be lost during state persistence.',
+              )
+            }
+          }
+        }
+      }
+    }
+
     return {
       stack: stack.value.map(entry => ({
         name: entry.config.name,

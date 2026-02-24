@@ -36,12 +36,12 @@ export const createCommand = new Command('create')
           typecheck: 'tsc --noEmit',
         },
         dependencies: {
-          '@thelacanians/vue-native-runtime': '^0.3.0',
-          '@thelacanians/vue-native-navigation': '^0.3.0',
+          '@thelacanians/vue-native-runtime': '^0.4.0',
+          '@thelacanians/vue-native-navigation': '^0.4.0',
           'vue': '^3.5.0',
         },
         devDependencies: {
-          '@thelacanians/vue-native-vite-plugin': '^0.3.0',
+          '@thelacanians/vue-native-vite-plugin': '^0.4.0',
           '@vitejs/plugin-vue': '^5.0.0',
           'vite': '^6.1.0',
           'typescript': '^5.7.0',
@@ -163,6 +163,15 @@ targets:
     <string>UIInterfaceOrientationLandscapeLeft</string>
     <string>UIInterfaceOrientationLandscapeRight</string>
   </array>
+  <!-- Uncomment the privacy descriptions for features your app uses -->
+  <!-- <key>NSCameraUsageDescription</key><string>This app needs camera access</string> -->
+  <!-- <key>NSMicrophoneUsageDescription</key><string>This app needs microphone access</string> -->
+  <!-- <key>NSLocationWhenInUseUsageDescription</key><string>This app needs your location</string> -->
+  <!-- <key>NSPhotoLibraryUsageDescription</key><string>This app needs photo library access</string> -->
+  <!-- <key>NSContactsUsageDescription</key><string>This app needs contacts access</string> -->
+  <!-- <key>NSCalendarsUsageDescription</key><string>This app needs calendar access</string> -->
+  <!-- <key>NSBluetoothAlwaysUsageDescription</key><string>This app needs Bluetooth access</string> -->
+  <!-- <key>NSFaceIDUsageDescription</key><string>This app uses Face ID for authentication</string> -->
 </dict>
 </plist>
 `)
@@ -317,7 +326,7 @@ dependencies {
         android:label="${name}"
         android:supportsRtl="true"
         android:theme="@style/Theme.AppCompat.Light.NoActionBar"
-        android:usesCleartextTraffic="true">
+        android:networkSecurityConfig="@xml/network_security_config">
         <activity
             android:name=".MainActivity"
             android:exported="true">
@@ -328,6 +337,19 @@ dependencies {
         </activity>
     </application>
 </manifest>
+`)
+
+      // android/app/src/main/res/xml/network_security_config.xml
+      const androidResXmlDir = join(androidSrcDir, 'res', 'xml')
+      await mkdir(androidResXmlDir, { recursive: true })
+      await writeFile(join(androidResXmlDir, 'network_security_config.xml'), `<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">localhost</domain>
+        <domain includeSubdomains="true">127.0.0.1</domain>
+        <domain includeSubdomains="true">10.0.2.2</domain>
+    </domain-config>
+</network-security-config>
 `)
 
       // android/app/src/main/kotlin/.../MainActivity.kt
@@ -394,6 +416,15 @@ local.properties
 *.apk
 *.aab
 .DS_Store
+
+# Environment & secrets
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+*.keystore
+*.jks
 `)
 
       console.log(pc.green('  Project created successfully!\n'))

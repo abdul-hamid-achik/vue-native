@@ -1,4 +1,4 @@
-import { defineComponent, h, type PropType } from '@vue/runtime-core'
+import { defineComponent, h, ref, type PropType } from '@vue/runtime-core'
 import type { TextStyle } from '../types/styles'
 
 /**
@@ -10,6 +10,10 @@ import type { TextStyle } from '../types/styles'
  *
  * The component maps `modelValue` to the native `text` prop and listens
  * for `changetext` events from the native side to update the model.
+ *
+ * Handles CJK IME composition correctly: during composition, model updates
+ * are deferred until the user commits the composed character to avoid
+ * v-model desync.
  *
  * @example
  * ```vue
@@ -63,7 +67,23 @@ export const VInput = defineComponent({
   },
   emits: ['update:modelValue', 'focus', 'blur', 'submit'],
   setup(props, { emit }) {
+    // Track IME composition state to avoid emitting intermediate values
+    // during CJK input. Without this, every keystroke during composition
+    // triggers update:modelValue, causing v-model desync.
+    const isComposing = ref(false)
+
+    const onCompositionstart = () => {
+      isComposing.value = true
+    }
+
+    const onCompositionend = (payload: any) => {
+      isComposing.value = false
+      const text = typeof payload === 'string' ? payload : payload?.text ?? ''
+      emit('update:modelValue', text)
+    }
+
     const onChangetext = (payload: any) => {
+      if (isComposing.value) return // Skip during IME composition
       const text = typeof payload === 'string' ? payload : payload?.text ?? ''
       emit('update:modelValue', text)
     }
@@ -97,6 +117,8 @@ export const VInput = defineComponent({
         accessibilityHint: props.accessibilityHint,
         accessibilityState: props.accessibilityState,
         onChangetext,
+        onCompositionstart,
+        onCompositionend,
         onFocus,
         onBlur,
         onSubmit,

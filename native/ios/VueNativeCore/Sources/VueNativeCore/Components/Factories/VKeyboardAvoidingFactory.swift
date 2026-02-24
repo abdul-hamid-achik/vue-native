@@ -77,6 +77,7 @@ private final class KeyboardAvoidingView: UIView {
             return
         }
         let keyboardHeight = keyboardFrame.height
+        guard keyboardHeight > 0 else { return }
         flex.paddingBottom(keyboardHeight)
         triggerLayout()
     }

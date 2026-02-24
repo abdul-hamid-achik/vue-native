@@ -1,6 +1,6 @@
 {
   "name": "@thelacanians/vue-native-vite-plugin",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Vite plugin for Vue Native — builds IIFE bundles for native runtimes",
   "license": "MIT",
   "author": "Vue Native Contributors",
@@ -27,6 +27,8 @@
   "scripts": {
     "build": "tsup src/index.ts --format esm,cjs --dts",
     "dev": "tsup src/index.ts --format esm,cjs --dts --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "clean": "rm -rf dist"
   },
   "peerDependencies": {
@@ -36,6 +38,7 @@
   "devDependencies": {
     "tsup": "^8.4.0",
     "typescript": "^5.7.0",
-    "vite": "^6.1.0"
+    "vite": "^6.1.0",
+    "vitest": "^4.0.18"
   }
 }

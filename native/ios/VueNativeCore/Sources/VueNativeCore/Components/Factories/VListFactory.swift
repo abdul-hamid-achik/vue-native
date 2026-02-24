@@ -120,6 +120,10 @@ final class VListContainerView: UIView {
         tableView.register(VListCell.self, forCellReuseIdentifier: "VListCell")
         // Add tableView as a real subview of self
         super.addSubview(tableView)
+
+        // Accessibility: let VoiceOver navigate to individual children within the list
+        isAccessibilityElement = false
+        shouldGroupAccessibilityChildren = true
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -214,6 +218,15 @@ private final class VListInternalDelegate: NSObject,
 private final class VListCell: UITableViewCell {
 
     private var currentView: UIView?
+
+    override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
+        super.init(style: style, reuseIdentifier: reuseIdentifier)
+        // Accessibility: cells are containers — VoiceOver should navigate to children inside
+        isAccessibilityElement = false
+        accessibilityTraits = .none
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
 
     func setItemView(_ view: UIView) {
         guard currentView !== view else { return }

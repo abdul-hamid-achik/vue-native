@@ -752,12 +752,19 @@ describe('Composables', () => {
     it('applyUpdate calls OTA.applyUpdate and refreshes version', async () => {
       invokeModuleSpy
         .mockResolvedValueOnce({ version: '1', isUsingOTA: false, bundlePath: '' }) // getCurrentVersion on init
+        .mockResolvedValueOnce({ updateAvailable: true, version: '2', downloadUrl: 'https://example.com/bundle.js', hash: 'abc123', size: 1024, releaseNotes: '' }) // checkForUpdate
+        .mockResolvedValueOnce(undefined) // downloadUpdate
+        .mockResolvedValueOnce(undefined) // verifyBundle
         .mockResolvedValueOnce({ applied: true }) // applyUpdate
         .mockResolvedValueOnce({ version: '2', isUsingOTA: true, bundlePath: '/path' }) // getCurrentVersion after apply
       const { useOTAUpdate } = await import('../composables/useOTAUpdate')
-      const { applyUpdate, currentVersion } = useOTAUpdate('https://updates.example.com/check')
+      const { applyUpdate, currentVersion, checkForUpdate, downloadUpdate } = useOTAUpdate('https://updates.example.com/check')
 
+      // Must go through check -> download -> apply flow so status reaches 'ready'
+      await checkForUpdate()
+      await downloadUpdate()
       await applyUpdate()
+      expect(invokeModuleSpy).toHaveBeenCalledWith('OTA', 'verifyBundle', [])
       expect(invokeModuleSpy).toHaveBeenCalledWith('OTA', 'applyUpdate', [])
       expect(currentVersion.value).toBe('2')
     })

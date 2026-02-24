@@ -75,7 +75,9 @@ class NotificationsModule : NativeModule {
     // Push token handling (called from FirebaseMessagingService in host app)
     // -------------------------------------------------------------------------
 
-    /** Cached FCM token */
+    /** Cached FCM token. Volatile because onNewToken() is called from FCM background thread
+     *  while getToken() may be called from the module invocation thread. */
+    @Volatile
     private var fcmToken: String? = null
 
     /**

@@ -1,4 +1,4 @@
-import { ref } from '@vue/runtime-core'
+import { ref, onUnmounted } from '@vue/runtime-core'
 import { NativeBridge } from '../bridge'
 
 // fetch and RequestInit are not in ES2020 lib (no DOM). Declare them here so
@@ -63,6 +63,12 @@ export function useHttp(config: HttpRequestConfig = {}) {
   const loading = ref(false)
   const error = ref<string | null>(null)
 
+  // Guard against updating reactive state after the owning component unmounts.
+  let isMounted = true
+  onUnmounted(() => {
+    isMounted = false
+  })
+
   async function request<T = any>(
     method: string,
     url: string,
@@ -91,6 +97,10 @@ export function useHttp(config: HttpRequestConfig = {}) {
       const response = await fetch(fullUrl, fetchOptions)
       const data: T = await response.json()
 
+      if (!isMounted) {
+        return { data, status: response.status, ok: response.ok, headers: {} }
+      }
+
       return {
         data,
         status: response.status,
@@ -99,10 +109,14 @@ export function useHttp(config: HttpRequestConfig = {}) {
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
-      error.value = msg
+      if (isMounted) {
+        error.value = msg
+      }
       throw e
     } finally {
-      loading.value = false
+      if (isMounted) {
+        loading.value = false
+      }
     }
   }
 

@@ -123,6 +123,8 @@ export function useOTAUpdate(serverUrl: string) {
       await NativeBridge.invokeNativeModule('OTA', 'downloadUpdate', [downloadUrl, expectedHash || ''])
       status.value = 'ready'
     } catch (err: any) {
+      // Clean up partial download to prevent corrupted bundles from being applied later
+      await NativeBridge.invokeNativeModule('OTA', 'cleanupPartialDownload', []).catch(() => {})
       error.value = err?.message || String(err)
       status.value = 'error'
       throw err
@@ -132,7 +134,21 @@ export function useOTAUpdate(serverUrl: string) {
   }
 
   async function applyUpdate(): Promise<void> {
+    if (status.value !== 'ready') {
+      throw new Error('No update ready to apply. Call downloadUpdate() first.')
+    }
+
     error.value = null
+
+    // Verify bundle integrity before applying to prevent corrupted bundles
+    try {
+      await NativeBridge.invokeNativeModule('OTA', 'verifyBundle', [])
+    } catch (err: any) {
+      status.value = 'error'
+      error.value = 'Bundle verification failed: ' + (err?.message || String(err))
+      throw err
+    }
+
     try {
       await NativeBridge.invokeNativeModule('OTA', 'applyUpdate', [])
       // Refresh current version

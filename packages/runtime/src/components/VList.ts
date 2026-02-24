@@ -64,8 +64,34 @@ export const VList = defineComponent({
   emits: ['scroll', 'endReached'],
 
   setup(props, { slots, emit }) {
+    let lastScrollEmit = 0
+
+    const onScroll = (e: { x: number, y: number }) => {
+      const now = Date.now()
+      if (now - lastScrollEmit >= 16) {
+        lastScrollEmit = now
+        emit('scroll', e)
+      }
+    }
+
     return () => {
       const items = props.data ?? []
+
+      // Dev-only: warn about duplicate keys which break Vue reconciliation
+      if (typeof __DEV__ !== 'undefined' && __DEV__ && items.length > 0) {
+        const keys = new Set<string>()
+        for (let index = 0; index < items.length; index++) {
+          const key = props.keyExtractor(items[index], index)
+          if (keys.has(key)) {
+            console.warn(
+              `[VueNative] VList: Duplicate key "${key}" at index ${index}. `
+              + 'Each item must have a unique key for correct reconciliation.',
+            )
+            break // Only warn once
+          }
+          keys.add(key)
+        }
+      }
 
       const children: any[] = []
 
@@ -113,7 +139,7 @@ export const VList = defineComponent({
           showsScrollIndicator: props.showsScrollIndicator,
           bounces: props.bounces,
           horizontal: props.horizontal,
-          onScroll: (e: { x: number, y: number }) => emit('scroll', e),
+          onScroll,
           onEndReached: () => emit('endReached'),
         },
         children,

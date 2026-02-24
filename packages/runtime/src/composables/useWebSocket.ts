@@ -45,6 +45,10 @@ export function useWebSocket(url: string, options: WebSocketOptions = {}) {
   let reconnectAttempts = 0
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 
+  /** Messages queued while the connection was not OPEN. Capped to prevent unbounded growth. */
+  const MAX_PENDING_MESSAGES = 100
+  const pendingMessages: string[] = []
+
   const unsubscribers: (() => void)[] = []
 
   // Subscribe to native WebSocket events for this connection
@@ -54,6 +58,14 @@ export function useWebSocket(url: string, options: WebSocketOptions = {}) {
       status.value = 'OPEN'
       error.value = null
       reconnectAttempts = 0
+
+      // Flush any messages queued while disconnected
+      while (pendingMessages.length > 0) {
+        const msg = pendingMessages.shift()!
+        NativeBridge.invokeNativeModule('WebSocket', 'send', [connectionId, msg]).catch((err: Error) => {
+          error.value = err.message
+        })
+      }
     }),
   )
 
@@ -69,12 +81,13 @@ export function useWebSocket(url: string, options: WebSocketOptions = {}) {
       if (payload.connectionId !== connectionId) return
       status.value = 'CLOSED'
 
-      // Try reconnect if enabled and wasn't a deliberate close
+      // Try reconnect if enabled and wasn't a deliberate close (exponential backoff)
       if (autoReconnect && reconnectAttempts < maxReconnectAttempts && payload.code !== 1000) {
         reconnectAttempts++
+        const backoffMs = reconnectInterval * Math.pow(2, reconnectAttempts - 1)
         reconnectTimer = setTimeout(() => {
           open()
-        }, reconnectInterval)
+        }, backoffMs)
       }
     }),
   )
@@ -97,8 +110,20 @@ export function useWebSocket(url: string, options: WebSocketOptions = {}) {
   }
 
   function send(data: string | object): void {
-    if (status.value !== 'OPEN') return
     const message = typeof data === 'string' ? data : JSON.stringify(data)
+
+    if (status.value !== 'OPEN') {
+      // Buffer messages while disconnected; drop oldest if queue is full
+      if (pendingMessages.length >= MAX_PENDING_MESSAGES) {
+        pendingMessages.shift()
+        if (__DEV__) {
+          console.warn('[VueNative] WebSocket pending message queue full, dropping oldest message')
+        }
+      }
+      pendingMessages.push(message)
+      return
+    }
+
     NativeBridge.invokeNativeModule('WebSocket', 'send', [connectionId, message]).catch((err: Error) => {
       error.value = err.message
     })

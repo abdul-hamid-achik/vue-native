@@ -26,7 +26,11 @@ export function useBackHandler(handler: () => boolean): void {
 
   onMounted(() => {
     unsubscribe = NativeBridge.onGlobalEvent('hardware:backPress', () => {
-      handler()
+      const handled = handler()
+      if (!handled) {
+        // Handler did not consume the back press — invoke default native back behavior
+        NativeBridge.invokeNativeModule('BackHandler', 'exitApp', []).catch(() => {})
+      }
     })
   })
 

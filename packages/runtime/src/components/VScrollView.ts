@@ -45,6 +45,11 @@ export const VScrollView = defineComponent({
       default: false,
     },
     contentContainerStyle: Object as PropType<ViewStyle>,
+    /** Minimum interval in ms between scroll event emissions. Default: 16 (~60fps) */
+    scrollEventThrottle: {
+      type: Number,
+      default: 16,
+    },
     /** Whether the pull-to-refresh indicator is active */
     refreshing: {
       type: Boolean,
@@ -58,8 +63,14 @@ export const VScrollView = defineComponent({
   },
   emits: ['scroll', 'refresh'],
   setup(props, { slots, emit }) {
+    let lastScrollEmit = 0
+
     const onScroll = (payload: any) => {
-      emit('scroll', payload)
+      const now = Date.now()
+      if (now - lastScrollEmit >= props.scrollEventThrottle) {
+        lastScrollEmit = now
+        emit('scroll', payload)
+      }
     }
     const onRefresh = () => {
       emit('refresh')

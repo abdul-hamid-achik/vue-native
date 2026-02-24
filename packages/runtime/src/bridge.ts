@@ -49,6 +49,9 @@ class NativeBridgeImpl {
   /** Maximum callback ID before wraparound (safe for 32-bit signed int) */
   private static readonly MAX_CALLBACK_ID = 2_147_483_647
 
+  /** Maximum number of pending callbacks before evicting the oldest */
+  private static readonly MAX_PENDING_CALLBACKS = 1000
+
   /** Global event listeners: eventName -> Set of callbacks */
   private globalEventHandlers = new Map<string, Set<(payload: any) => void>>()
 
@@ -290,6 +293,19 @@ class NativeBridgeImpl {
         }
       }, timeoutMs)
 
+      // Evict oldest callback if queue is at capacity to prevent unbounded growth
+      if (this.pendingCallbacks.size >= NativeBridgeImpl.MAX_PENDING_CALLBACKS) {
+        const oldestKey = this.pendingCallbacks.keys().next().value
+        if (oldestKey !== undefined) {
+          const oldest = this.pendingCallbacks.get(oldestKey)
+          if (oldest) {
+            clearTimeout(oldest.timeoutId)
+            oldest.reject(new Error('Callback queue full, evicting oldest pending callback'))
+            this.pendingCallbacks.delete(oldestKey)
+          }
+        }
+      }
+
       this.pendingCallbacks.set(callbackId, { resolve, reject, timeoutId })
       this.enqueue('invokeNativeModule', [moduleName, methodName, args, callbackId])
     })
@@ -311,11 +327,11 @@ class NativeBridgeImpl {
   resolveCallback(callbackId: number, result: any, error: any): void {
     const pending = this.pendingCallbacks.get(callbackId)
     if (!pending) {
-      if (__DEV__) {
-        console.warn(
-          `[VueNative] Received callback for unknown callbackId: ${callbackId}`,
-        )
-      }
+      console.warn(
+        `[VueNative] Received callback for unknown callbackId: ${callbackId}. `
+        + 'This likely means the callback already timed out or was evicted. '
+        + 'The late response has been discarded.',
+      )
       return
     }
     clearTimeout(pending.timeoutId)

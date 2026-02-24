@@ -59,6 +59,17 @@ export default defineUserConfig({
             '/guide/error-handling.md',
             '/guide/accessibility.md',
             '/guide/typescript.md',
+            '/guide/performance.md',
+            '/guide/shared-transitions.md',
+          ],
+        },
+        {
+          text: 'Integration Guides',
+          children: [
+            '/guide/deep-linking.md',
+            '/guide/state-persistence.md',
+            '/guide/push-notifications.md',
+            '/guide/error-reporting.md',
           ],
         },
         {
@@ -73,6 +84,13 @@ export default defineUserConfig({
           text: 'Building & Releasing',
           children: [
             '/guide/build.md',
+            '/guide/deployment.md',
+          ],
+        },
+        {
+          text: 'Reference',
+          children: [
+            '/guide/troubleshooting.md',
           ],
         },
       ],
@@ -97,12 +115,14 @@ export default defineUserConfig({
           text: 'Interactive',
           children: [
             '/components/VButton.md',
+            '/components/VPressable.md',
             '/components/VSwitch.md',
             '/components/VSlider.md',
             '/components/VSegmentedControl.md',
             '/components/VCheckbox.md',
             '/components/VRadio.md',
             '/components/VDropdown.md',
+            '/components/VRefreshControl.md',
           ],
         },
         {
@@ -155,6 +175,7 @@ export default defineUserConfig({
           text: 'Storage & Files',
           children: [
             '/composables/useAsyncStorage.md',
+            '/composables/useSecureStorage.md',
             '/composables/useFileSystem.md',
           ],
         },
@@ -165,6 +186,7 @@ export default defineUserConfig({
             '/composables/useBiometry.md',
             '/composables/useHaptics.md',
             '/composables/useSensors.md',
+            '/composables/useBluetooth.md',
           ],
         },
         {
@@ -172,6 +194,8 @@ export default defineUserConfig({
           children: [
             '/composables/useCamera.md',
             '/composables/useAudio.md',
+            '/composables/useCalendar.md',
+            '/composables/useContacts.md',
           ],
         },
         {
@@ -203,6 +227,23 @@ export default defineUserConfig({
             '/composables/useLinking.md',
             '/composables/useAnimation.md',
             '/composables/useNotifications.md',
+            '/composables/useI18n.md',
+            '/composables/usePerformance.md',
+          ],
+        },
+        {
+          text: 'Authentication',
+          children: [
+            '/composables/useAppleSignIn.md',
+            '/composables/useGoogleSignIn.md',
+          ],
+        },
+        {
+          text: 'Monetization & Updates',
+          children: [
+            '/composables/useIAP.md',
+            '/composables/useOTAUpdate.md',
+            '/composables/useBackgroundTask.md',
           ],
         },
       ],

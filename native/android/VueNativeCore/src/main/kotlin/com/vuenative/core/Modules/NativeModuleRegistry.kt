@@ -1,6 +1,7 @@
 package com.vuenative.core
 
 import android.content.Context
+import android.util.Log
 
 class NativeModuleRegistry private constructor(private val context: Context) {
     companion object {
@@ -11,7 +12,10 @@ class NativeModuleRegistry private constructor(private val context: Context) {
             }
     }
 
-    private val modules = mutableMapOf<String, NativeModule>()
+    /** Thread-safe module map. Registration happens on the main thread during onCreate,
+     *  but invoke can be called from the bridge's operation processing which also runs on main.
+     *  Using ConcurrentHashMap guards against any future multi-thread access patterns. */
+    private val modules = java.util.concurrent.ConcurrentHashMap<String, NativeModule>()
 
     fun register(module: NativeModule) {
         modules[module.moduleName] = module
@@ -78,6 +82,11 @@ class NativeModuleRegistry private constructor(private val context: Context) {
     }
 
     fun invokeSync(moduleName: String, methodName: String, args: List<Any?>, bridge: NativeBridge): Any? {
-        return modules[moduleName]?.invokeSync(methodName, args, bridge)
+        val module = modules[moduleName]
+        if (module == null) {
+            Log.w("NativeModuleRegistry", "invokeSync: No module registered: $moduleName")
+            return null
+        }
+        return module.invokeSync(methodName, args, bridge)
     }
 }

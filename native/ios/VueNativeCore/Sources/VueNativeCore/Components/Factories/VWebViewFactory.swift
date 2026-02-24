@@ -16,6 +16,7 @@ final class VWebViewFactory: NativeComponentFactory {
     fileprivate static var onErrorKey:   UInt8 = 1
     fileprivate static var onMessageKey: UInt8 = 2
     fileprivate static var delegateKey:  UInt8 = 3
+    fileprivate static var msgHandlerKey: UInt8 = 4
 
     // MARK: - NativeComponentFactory
 
@@ -74,9 +75,17 @@ final class VWebViewFactory: NativeComponentFactory {
                 handler as AnyObject,
                 .OBJC_ASSOCIATION_RETAIN_NONATOMIC
             )
-            // WKScriptMessageHandler requires a name registered on the content controller
+            // Remove any previously registered handler to avoid accumulating duplicates
+            // and to break the retain cycle (userContentController -> handler).
+            webView.configuration.userContentController.removeScriptMessageHandler(forName: "vueNative")
             let msgHandler = WebViewMessageHandler(view: view)
             webView.configuration.userContentController.add(msgHandler, name: "vueNative")
+            // Store the handler via associated object so it can be referenced for cleanup
+            objc_setAssociatedObject(
+                view, &VWebViewFactory.msgHandlerKey,
+                msgHandler,
+                .OBJC_ASSOCIATION_RETAIN_NONATOMIC
+            )
         default:
             break
         }
@@ -90,6 +99,12 @@ final class VWebViewFactory: NativeComponentFactory {
             objc_setAssociatedObject(view, &VWebViewFactory.onErrorKey,   nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
         case "message":
             objc_setAssociatedObject(view, &VWebViewFactory.onMessageKey, nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+            // Remove the script message handler from WKUserContentController to break
+            // the strong reference it holds to WebViewMessageHandler.
+            if let webView = view as? WKWebView {
+                webView.configuration.userContentController.removeScriptMessageHandler(forName: "vueNative")
+            }
+            objc_setAssociatedObject(view, &VWebViewFactory.msgHandlerKey, nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
         default:
             break
         }

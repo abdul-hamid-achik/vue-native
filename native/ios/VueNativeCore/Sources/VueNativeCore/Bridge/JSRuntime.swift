@@ -392,6 +392,12 @@ public final class JSRuntime: @unchecked Sendable {
 
             NSLog("[VueNative] Hot reload: evaluating new bundle (\(bundle.count) bytes)...")
             self.context.evaluateScript(bundle)
+            if let exception = self.context.exception {
+                NSLog("[VueNative] Hot reload bundle error: %@", exception.toString() ?? "unknown")
+                self.context.exception = nil
+                completion?(false)
+                return
+            }
             self.context.evaluateScript("void 0;")
             NSLog("[VueNative] Hot reload: complete")
 

@@ -16,6 +16,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import org.json.JSONObject
 import java.io.IOException
+import java.security.SecureRandom
 
 /**
  * Registers browser-like APIs in the V8 context.
@@ -46,6 +47,10 @@ object JSPolyfills {
             registerPerformance(runtime)
             registerGlobalThis(runtime)
             registerFetch(runtime)
+            registerBase64(runtime)
+            registerTextEncoding(runtime)
+            registerURL(runtime)
+            registerCrypto(runtime)
         }
     }
 
@@ -431,6 +436,216 @@ object JSPolyfills {
                     delete __vnFetchCallbacks[id];
                     cb.reject(new Error(msg));
                 }
+            """)
+        }
+    }
+
+    // -- atob / btoa (Base64) -----------------------------------------------------
+
+    private fun registerBase64(runtime: JSRuntime) {
+        runtime.runOnJsThread {
+            val v8 = runtime.v8() ?: return@runOnJsThread
+
+            // atob — decode base64 string to plain text
+            v8.registerJavaMethod(JavaCallback { _, params ->
+                try {
+                    val encoded = params.getString(0)
+                    val decoded = android.util.Base64.decode(encoded, android.util.Base64.DEFAULT)
+                    return@JavaCallback String(decoded, Charsets.UTF_8)
+                } catch (e: Exception) {
+                    Log.e(TAG, "atob error", e)
+                    return@JavaCallback ""
+                } finally {
+                    params.close()
+                }
+            }, "__vnAtob")
+
+            // btoa — encode plain text to base64 string
+            v8.registerJavaMethod(JavaCallback { _, params ->
+                try {
+                    val str = params.getString(0)
+                    val encoded = android.util.Base64.encodeToString(
+                        str.toByteArray(Charsets.UTF_8),
+                        android.util.Base64.NO_WRAP
+                    )
+                    return@JavaCallback encoded
+                } catch (e: Exception) {
+                    Log.e(TAG, "btoa error", e)
+                    return@JavaCallback ""
+                } finally {
+                    params.close()
+                }
+            }, "__vnBtoa")
+
+            v8.executeVoidScript("""
+                function atob(encoded) { return __vnAtob(encoded); }
+                function btoa(str) { return __vnBtoa(str); }
+            """)
+        }
+    }
+
+    // -- TextEncoder / TextDecoder ------------------------------------------------
+
+    private fun registerTextEncoding(runtime: JSRuntime) {
+        runtime.runOnJsThread {
+            val v8 = runtime.v8() ?: return@runOnJsThread
+            v8.executeVoidScript("""
+                class TextEncoder {
+                    constructor(encoding) { this.encoding = encoding || 'utf-8'; }
+                    encode(str) {
+                        var arr = [];
+                        for (var i = 0; i < str.length; i++) {
+                            var c = str.charCodeAt(i);
+                            if (c < 0x80) { arr.push(c); }
+                            else if (c < 0x800) { arr.push(0xc0 | (c >> 6), 0x80 | (c & 0x3f)); }
+                            else if (c < 0xd800 || c >= 0xe000) { arr.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 0x3f), 0x80 | (c & 0x3f)); }
+                            else { i++; c = 0x10000 + (((c & 0x3ff) << 10) | (str.charCodeAt(i) & 0x3ff)); arr.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 0x3f), 0x80 | ((c >> 6) & 0x3f), 0x80 | (c & 0x3f)); }
+                        }
+                        return new Uint8Array(arr);
+                    }
+                }
+                class TextDecoder {
+                    constructor(encoding) { this.encoding = encoding || 'utf-8'; }
+                    decode(buffer) {
+                        var bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+                        var result = '';
+                        for (var i = 0; i < bytes.length;) {
+                            var c = bytes[i++];
+                            if (c < 0x80) { result += String.fromCharCode(c); }
+                            else if (c < 0xe0) { result += String.fromCharCode(((c & 0x1f) << 6) | (bytes[i++] & 0x3f)); }
+                            else if (c < 0xf0) { result += String.fromCharCode(((c & 0x0f) << 12) | ((bytes[i++] & 0x3f) << 6) | (bytes[i++] & 0x3f)); }
+                            else { var cp = ((c & 0x07) << 18) | ((bytes[i++] & 0x3f) << 12) | ((bytes[i++] & 0x3f) << 6) | (bytes[i++] & 0x3f); result += String.fromCodePoint(cp); }
+                        }
+                        return result;
+                    }
+                }
+                if (typeof globalThis !== 'undefined') {
+                    globalThis.TextEncoder = TextEncoder;
+                    globalThis.TextDecoder = TextDecoder;
+                }
+            """)
+        }
+    }
+
+    // -- URL / URLSearchParams ----------------------------------------------------
+
+    private fun registerURL(runtime: JSRuntime) {
+        runtime.runOnJsThread {
+            val v8 = runtime.v8() ?: return@runOnJsThread
+            v8.executeVoidScript("""
+                if (typeof URL === 'undefined') {
+                    var URL = (function() {
+                        function URL(url, base) {
+                            if (base) {
+                                if (!url.match(/^[a-zA-Z]+:/)) {
+                                    var b = new URL(base);
+                                    url = b.origin + (url.charAt(0) === '/' ? '' : '/') + url;
+                                }
+                            }
+                            var match = url.match(/^([a-zA-Z]+:)\/\/([^\/:]+)(:\d+)?(\/[^?#]*)?(\?[^#]*)?(#.*)?$/);
+                            if (!match) { this.href = url; this.protocol = ''; this.host = ''; this.hostname = ''; this.port = ''; this.pathname = '/'; this.search = ''; this.hash = ''; this.origin = ''; this.searchParams = new URLSearchParams(''); return; }
+                            this.protocol = match[1] || '';
+                            this.hostname = match[2] || '';
+                            this.port = (match[3] || '').slice(1);
+                            this.host = this.hostname + (this.port ? ':' + this.port : '');
+                            this.pathname = match[4] || '/';
+                            this.search = match[5] || '';
+                            this.hash = match[6] || '';
+                            this.origin = this.protocol + '//' + this.host;
+                            this.href = url;
+                            this.searchParams = new URLSearchParams(this.search);
+                        }
+                        URL.prototype.toString = function() { return this.href; };
+                        return URL;
+                    })();
+                    if (typeof globalThis !== 'undefined') globalThis.URL = URL;
+                }
+                if (typeof URLSearchParams === 'undefined') {
+                    var URLSearchParams = (function() {
+                        function URLSearchParams(init) {
+                            this._params = [];
+                            if (typeof init === 'string') {
+                                var parts = init.replace(/^\?/, '').split('&');
+                                for (var i = 0; i < parts.length; i++) {
+                                    if (!parts[i]) continue;
+                                    var eq = parts[i].indexOf('=');
+                                    if (eq === -1) { this._params.push([decodeURIComponent(parts[i]), '']); }
+                                    else { this._params.push([decodeURIComponent(parts[i].slice(0, eq)), decodeURIComponent(parts[i].slice(eq + 1))]); }
+                                }
+                            }
+                        }
+                        URLSearchParams.prototype.get = function(name) {
+                            for (var i = 0; i < this._params.length; i++) { if (this._params[i][0] === name) return this._params[i][1]; }
+                            return null;
+                        };
+                        URLSearchParams.prototype.getAll = function(name) {
+                            var r = [];
+                            for (var i = 0; i < this._params.length; i++) { if (this._params[i][0] === name) r.push(this._params[i][1]); }
+                            return r;
+                        };
+                        URLSearchParams.prototype.has = function(name) {
+                            for (var i = 0; i < this._params.length; i++) { if (this._params[i][0] === name) return true; }
+                            return false;
+                        };
+                        URLSearchParams.prototype.set = function(name, value) { this.delete(name); this._params.push([name, String(value)]); };
+                        URLSearchParams.prototype.append = function(name, value) { this._params.push([name, String(value)]); };
+                        URLSearchParams.prototype.delete = function(name) {
+                            this._params = this._params.filter(function(p) { return p[0] !== name; });
+                        };
+                        URLSearchParams.prototype.toString = function() {
+                            return this._params.map(function(p) { return encodeURIComponent(p[0]) + '=' + encodeURIComponent(p[1]); }).join('&');
+                        };
+                        URLSearchParams.prototype.forEach = function(cb) {
+                            for (var i = 0; i < this._params.length; i++) { cb(this._params[i][1], this._params[i][0], this); }
+                        };
+                        return URLSearchParams;
+                    })();
+                    if (typeof globalThis !== 'undefined') globalThis.URLSearchParams = URLSearchParams;
+                }
+            """)
+        }
+    }
+
+    // -- crypto.getRandomValues ---------------------------------------------------
+
+    private fun registerCrypto(runtime: JSRuntime) {
+        runtime.runOnJsThread {
+            val v8 = runtime.v8() ?: return@runOnJsThread
+
+            // Native method: __vnGetRandomValues(length) -> comma-separated byte string
+            v8.registerJavaMethod(JavaCallback { _, params ->
+                try {
+                    val length = params.getInteger(0)
+                    if (length <= 0) return@JavaCallback ""
+                    val bytes = ByteArray(length)
+                    SecureRandom().nextBytes(bytes)
+                    return@JavaCallback bytes.joinToString(",") { (it.toInt() and 0xFF).toString() }
+                } catch (e: Exception) {
+                    Log.e(TAG, "crypto.getRandomValues error", e)
+                    return@JavaCallback ""
+                } finally {
+                    params.close()
+                }
+            }, "__vnGetRandomValues")
+
+            v8.executeVoidScript("""
+                if (typeof crypto === 'undefined') {
+                    var crypto = {};
+                    if (typeof globalThis !== 'undefined') globalThis.crypto = crypto;
+                }
+                crypto.getRandomValues = function(typedArray) {
+                    var len = typedArray.length;
+                    if (len > 0) {
+                        var csv = __vnGetRandomValues(len);
+                        if (csv) {
+                            var vals = csv.split(',');
+                            for (var i = 0; i < len; i++) {
+                                typedArray[i] = parseInt(vals[i], 10);
+                            }
+                        }
+                    }
+                    return typedArray;
+                };
             """)
         }
     }

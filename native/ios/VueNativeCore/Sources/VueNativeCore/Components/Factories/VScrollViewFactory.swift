@@ -152,6 +152,28 @@ final class VScrollViewFactory: NativeComponentFactory {
         )
     }
 
+    // MARK: - Child management
+
+    func insertChild(_ child: UIView, into parent: UIView, before anchor: UIView?) {
+        if let anchor = anchor, let idx = parent.subviews.firstIndex(of: anchor) {
+            parent.insertSubview(child, at: idx)
+        } else {
+            parent.addSubview(child)
+        }
+        // Ensure content size is recalculated after child insertion
+        if let scrollView = parent.superview as? UIScrollView {
+            scrollView.setNeedsLayout()
+        }
+    }
+
+    func removeChild(_ child: UIView, from parent: UIView) {
+        child.removeFromSuperview()
+        // Ensure content size is recalculated after child removal
+        if let scrollView = parent.superview as? UIScrollView {
+            scrollView.setNeedsLayout()
+        }
+    }
+
     // MARK: - Static helpers
 
     /// Retrieve the inner content UIView for a scroll view.

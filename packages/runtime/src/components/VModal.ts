@@ -1,4 +1,4 @@
-import { defineComponent, h, type PropType } from '@vue/runtime-core'
+import { defineComponent, h, ref, watch, onUnmounted, type PropType } from '@vue/runtime-core'
 import type { ViewStyle } from '../types/styles'
 
 /**
@@ -27,11 +27,29 @@ export const VModal = defineComponent({
   emits: ['dismiss'],
 
   setup(props, { slots, emit }) {
+    // Debounce visible prop to prevent animation jank from rapid toggles
+    const debouncedVisible = ref(props.visible)
+    let visibleTimer: ReturnType<typeof setTimeout> | undefined
+
+    watch(
+      () => props.visible,
+      (val) => {
+        if (visibleTimer) clearTimeout(visibleTimer)
+        visibleTimer = setTimeout(() => {
+          debouncedVisible.value = val
+        }, 50)
+      },
+    )
+
+    onUnmounted(() => {
+      if (visibleTimer) clearTimeout(visibleTimer)
+    })
+
     return () =>
       h(
         'VModal',
         {
-          visible: props.visible,
+          visible: debouncedVisible.value,
           style: props.style,
           onDismiss: () => emit('dismiss'),
         },

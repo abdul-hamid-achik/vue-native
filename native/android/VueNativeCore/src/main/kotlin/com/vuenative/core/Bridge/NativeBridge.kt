@@ -37,6 +37,10 @@ class NativeBridge(private val context: Context) {
     /** Maps "nodeId:eventName" to handler. Accessed only on main thread. */
     val eventHandlers = mutableMapOf<String, (Any?) -> Unit>()
 
+    /** Reverse index: maps nodeId to the set of event keys registered for that node.
+     *  Enables O(k) cleanup where k = handlers per node, instead of O(n) full scan. */
+    private val eventKeysPerNode = mutableMapOf<Int, MutableSet<String>>()
+
     /** Maps child nodeId to parent nodeId. Accessed only on main thread. */
     val nodeParents = mutableMapOf<Int, Int>()
 
@@ -250,7 +254,10 @@ class NativeBridge(private val context: Context) {
         // Recursively clean up children using the reverse index (O(subtree) not O(n))
         nodeChildren[nodeId]?.toList()?.forEach { cleanupNode(it) }
         nodeParents.remove(nodeId)
-        eventHandlers.entries.removeAll { it.key.startsWith("$nodeId:") }
+        // O(k) event cleanup via reverse index instead of O(n) full scan
+        eventKeysPerNode.remove(nodeId)?.forEach { key ->
+            eventHandlers.remove(key)
+        }
         // Call destroyView on the factory to clean up factory-level state (e.g. VListFactory maps)
         val view = nodeViews[nodeId]
         if (view != null) {
@@ -283,7 +290,16 @@ class NativeBridge(private val context: Context) {
         val eventName = args.getString(1)
         val view = nodeViews[nodeId] ?: return
         val factory = componentRegistry.factoryForView(view) ?: return
-        factory.addEventListener(view, eventName) { payload ->
+
+        val key = "$nodeId:$eventName"
+
+        // Remove old handler first to prevent duplicate event firing (e.g. recycled node IDs)
+        if (eventHandlers.containsKey(key)) {
+            factory.removeEventListener(view, eventName)
+            eventHandlers.remove(key)
+        }
+
+        val handler: (Any?) -> Unit = { payload ->
             val payloadJson = when (payload) {
                 null -> "null"
                 is Map<*, *> -> JSONObject(payload).toString()
@@ -292,6 +308,10 @@ class NativeBridge(private val context: Context) {
             }
             onFireEvent?.invoke(nodeId, eventName, payloadJson)
         }
+
+        factory.addEventListener(view, eventName, handler)
+        eventHandlers[key] = handler
+        eventKeysPerNode.getOrPut(nodeId) { mutableSetOf() }.add(key)
     }
 
     private fun handleRemoveEventListener(args: JSONArray) {
@@ -300,6 +320,10 @@ class NativeBridge(private val context: Context) {
         val view = nodeViews[nodeId] ?: return
         val factory = componentRegistry.factoryForView(view) ?: return
         factory.removeEventListener(view, eventName)
+
+        val key = "$nodeId:$eventName"
+        eventHandlers.remove(key)
+        eventKeysPerNode[nodeId]?.remove(key)
     }
 
     private fun handleInvokeNativeModule(args: JSONArray) {
@@ -331,7 +355,11 @@ class NativeBridge(private val context: Context) {
         val moduleName = args.getString(0)
         val methodName = args.getString(1)
         val moduleArgs = buildArgsList(args.optJSONArray(2))
-        NativeModuleRegistry.getInstance(context).invokeSync(moduleName, methodName, moduleArgs, this)
+        try {
+            NativeModuleRegistry.getInstance(context).invokeSync(moduleName, methodName, moduleArgs, this)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error in sync module invoke $moduleName.$methodName: ${e.message}")
+        }
     }
 
     private fun resolveCallbackInJs(callbackId: Int, resultJson: String, errorJson: String) {
@@ -344,6 +372,21 @@ class NativeBridge(private val context: Context) {
         return (0 until arr.length()).map { i ->
             if (arr.isNull(i)) null else arr.get(i)
         }
+    }
+
+    // -------------------------------------------------------------------------
+    // Registry management
+    // -------------------------------------------------------------------------
+
+    /** Clear all registries. Called during hot reload after JS teardown. Must run on main thread. */
+    fun clearAllRegistries() {
+        nodeViews.clear()
+        nodeTypes.clear()
+        eventHandlers.clear()
+        eventKeysPerNode.clear()
+        nodeParents.clear()
+        nodeChildren.clear()
+        rootView = null
     }
 
     // -------------------------------------------------------------------------

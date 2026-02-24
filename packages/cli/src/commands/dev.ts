@@ -125,7 +125,13 @@ export const devCommand = new Command('dev')
     }
 
     // ── WebSocket server for hot reload ────────────────────────────────────
-    const wss = new WebSocketServer({ port })
+    const wss = new WebSocketServer({
+      port,
+      verifyClient: (info: { req: { socket: { remoteAddress?: string } } }) => {
+        const addr = info.req.socket.remoteAddress
+        return addr === '127.0.0.1' || addr === '::1' || addr === '::ffff:127.0.0.1'
+      },
+    })
     const clients = new Set<WebSocket>()
 
     wss.on('connection', (ws) => {

@@ -140,10 +140,9 @@ public final class NativeBridge {
             context.setObject(handleError, forKeyedSubscript: "__VN_handleError" as NSString)
         }
 
-        // Register all native modules
-        DispatchQueue.main.async {
-            NativeModuleRegistry.shared.registerDefaults()
-        }
+        // Register all native modules synchronously so they are available
+        // before any JS bundle evaluation that may invoke them.
+        NativeModuleRegistry.shared.registerDefaults()
     }
 
     // MARK: - Operation Processing
@@ -721,6 +720,22 @@ public final class NativeBridge {
     /// 3. Evaluates the new bundle via JSRuntime.reload(bundle:).
     public func reloadWithBundle(_ bundle: String) {
         dispatchPrecondition(condition: .onQueue(.main))
+        NSLog("[VueNative Bridge] reloadWithBundle: calling __VN_teardown on old context...")
+
+        // Step 0: Call __VN_teardown on the old JS context so the Vue app can clean up
+        // (cancel timers, remove listeners, unmount components) before we destroy state.
+        // This is a synchronous dispatch to the JS queue to ensure teardown completes
+        // before we clear the native registries.
+        runtime.jsQueue.sync {
+            if let context = runtime.context,
+               let teardown = context.objectForKeyedSubscript("__VN_teardown"),
+               !teardown.isUndefined {
+                teardown.call(withArguments: [])
+                // Drain microtasks so any cleanup promises resolve
+                context.evaluateScript("void 0;")
+            }
+        }
+
         NSLog("[VueNative Bridge] reloadWithBundle: clearing view hierarchy...")
 
         // Step 1: Remove all subviews from root and clear registries on main thread
