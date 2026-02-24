@@ -178,14 +178,14 @@ class IAPModule : NativeModule, PurchasesUpdatedListener {
                     acknowledgePurchase(purchase)
                     val info = mapOf(
                         "productId" to (purchase.products.firstOrNull() ?: ""),
-                        "transactionId" to purchase.orderId,
+                        "transactionId" to (purchase.orderId ?: ""),
                         "purchaseDate" to purchase.purchaseTime.toString(),
                     )
                     callback?.invoke(info, null)
                     bridge?.dispatchGlobalEvent("iap:transactionUpdate", mapOf(
                         "productId" to (purchase.products.firstOrNull() ?: ""),
                         "state" to "purchased",
-                        "transactionId" to purchase.orderId,
+                        "transactionId" to (purchase.orderId ?: ""),
                     ))
                 } else {
                     callback?.invoke(null, "purchase: no purchase returned")
@@ -291,7 +291,7 @@ class IAPModule : NativeModule, PurchasesUpdatedListener {
 
     private fun purchaseToMap(purchase: Purchase): Map<String, Any?> = mapOf(
         "productId" to (purchase.products.firstOrNull() ?: ""),
-        "transactionId" to purchase.orderId,
+        "transactionId" to (purchase.orderId ?: ""),
         "purchaseDate" to purchase.purchaseTime.toString(),
     )
 

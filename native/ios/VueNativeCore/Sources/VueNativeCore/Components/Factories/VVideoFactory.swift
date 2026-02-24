@@ -18,9 +18,9 @@ final class VVideoFactory: NativeComponentFactory {
     private static var onErrorKey: UInt8 = 4
     private static var onProgressKey: UInt8 = 5
     private static var playerKey: UInt8 = 6
-    private static var timeObserverKey: UInt8 = 7
+    fileprivate static var timeObserverKey: UInt8 = 7
     private static var statusObserverKey: UInt8 = 8
-    private static var endObserverKey: UInt8 = 9
+    fileprivate static var endObserverKey: UInt8 = 9
 
     // MARK: - NativeComponentFactory
 
@@ -173,7 +173,7 @@ final class VVideoFactory: NativeComponentFactory {
 
         // End observer
         let endObserver = NotificationCenter.default.addObserver(
-            forName: .AVPlayerItemDidPlayToEndOfTime,
+            forName: .AVPlayerItemDidPlayToEndTime,
             object: playerItem,
             queue: .main
         ) { [weak container] _ in

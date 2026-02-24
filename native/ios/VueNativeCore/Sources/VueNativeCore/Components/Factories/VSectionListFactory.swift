@@ -221,7 +221,7 @@ private final class VSectionListInternalDelegate: NSObject,
             return container?.estimatedItemHeight ?? 44
         }
         let h = container.sections[indexPath.section].itemViews[indexPath.row].frame.size.height
-        return h > 1 ? h : (container?.estimatedItemHeight ?? 44)
+        return h > 1 ? h : container.estimatedItemHeight
     }
 
     func scrollViewDidScroll(_ scrollView: UIScrollView) {

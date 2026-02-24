@@ -215,7 +215,7 @@ private final class VListInternalDelegate: NSObject,
 
 // MARK: - VListCell
 
-private final class VListCell: UITableViewCell {
+final class VListCell: UITableViewCell {
 
     private var currentView: UIView?
 
