@@ -5,6 +5,13 @@ All notable changes to Vue Native are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.2] - 2026-02-24
+
+### Fixed
+
+- **Double shebang in CLI**: `dist/cli.js` had two `#!/usr/bin/env node` lines (one from source, one from tsup banner), causing Node/Bun to reject the script as a syntax error. Removed the shebang from source since tsup injects it via banner config.
+- **workspace:* in published navigation package**: `@thelacanians/vue-native-navigation` was published with `"@thelacanians/vue-native-runtime": "workspace:*"` which npm/bun cannot resolve. Replaced with `"^0.4.1"` semver range.
+
 ## [0.4.1] - 2026-02-24
 
 ### Added
