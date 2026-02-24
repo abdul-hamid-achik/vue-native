@@ -192,17 +192,14 @@ object StyleEngine {
             "gap" -> {
                 val px = dpToPx(ctx, toFloat(value, 0f)).toInt()
                 view.setTag(TAG_GAP, px)
-                (view as? FlexboxLayout)?.gap = px
             }
             "rowGap" -> {
                 val px = dpToPx(ctx, toFloat(value, 0f)).toInt()
                 view.setTag(TAG_GAP, px)
-                (view as? FlexboxLayout)?.rowGap = px
             }
             "columnGap" -> {
                 val px = dpToPx(ctx, toFloat(value, 0f)).toInt()
                 view.setTag(TAG_GAP, px)
-                (view as? FlexboxLayout)?.columnGap = px
             }
 
             // --- Position (absolute) ---
@@ -505,9 +502,8 @@ object StyleEngine {
             minHeight = fp.minHeight
             maxWidth = fp.maxWidth
             maxHeight = fp.maxHeight
-            // Apply percentage dimensions when set (FlexboxLayout 3.x widthPercent/heightPercent)
-            if (fp.widthPercent >= 0f) widthPercent = fp.widthPercent
-            if (fp.heightPercent >= 0f) heightPercent = fp.heightPercent
+            // Percentage dimensions stored as tags for custom layout logic
+            // (FlexboxLayout.LayoutParams does not have widthPercent/heightPercent)
         }
     }
 
@@ -606,7 +602,7 @@ object StyleEngine {
     private fun parseFlexWrap(value: Any?) = when (value) {
         "wrap"         -> FlexWrap.WRAP
         "wrap-reverse" -> FlexWrap.WRAP_REVERSE
-        else           -> FlexWrap.NO_WRAP
+        else           -> FlexWrap.NOWRAP
     }
 
     private fun parseAlignItems(value: Any?) = when (value) {

@@ -10,6 +10,9 @@ import androidx.credentials.*
 import androidx.credentials.exceptions.GetCredentialCancellationException
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
 
 /**
  * Native module for social authentication (Google Sign In on Android).
@@ -81,7 +84,7 @@ class SocialAuthModule : NativeModule {
             .build()
 
         mainHandler.post {
-            kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.Main) {
+            GlobalScope.launch(Dispatchers.Main) {
                 try {
                     val result = credentialManager.getCredential(activity, request)
                     val credential = result.credential

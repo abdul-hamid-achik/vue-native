@@ -104,7 +104,8 @@ jobs:
         run: |
           xcodebuild build \
             -scheme VueNativeCore \
-            -destination 'platform=iOS Simulator,name=iPhone 15,OS=latest' \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
             -configuration Release \
             -skipPackagePluginValidation
 

@@ -148,9 +148,9 @@ class IAPModule : NativeModule, PurchasesUpdatedListener {
         if (offerToken != null) {
             productBuilder.setOfferToken(offerToken)
         }
-        flowParamsBuilder.setProductList(listOf(productBuilder.build()))
+        flowParamsBuilder.setProductDetailsParamsList(listOf(productBuilder.build()))
 
-        val activity = bridge.activity ?: run {
+        val activity = (context as? android.app.Activity) ?: run {
             callback(null, "purchase: no activity available")
             pendingPurchaseCallback = null
             return
@@ -182,7 +182,7 @@ class IAPModule : NativeModule, PurchasesUpdatedListener {
                         "purchaseDate" to purchase.purchaseTime.toString(),
                     )
                     callback?.invoke(info, null)
-                    bridge?.emitGlobalEvent("iap:transactionUpdate", mapOf(
+                    bridge?.dispatchGlobalEvent("iap:transactionUpdate", mapOf(
                         "productId" to (purchase.products.firstOrNull() ?: ""),
                         "state" to "purchased",
                         "transactionId" to purchase.orderId,
@@ -193,7 +193,7 @@ class IAPModule : NativeModule, PurchasesUpdatedListener {
             }
             BillingClient.BillingResponseCode.USER_CANCELED -> {
                 callback?.invoke(null, "purchase: user cancelled")
-                bridge?.emitGlobalEvent("iap:transactionUpdate", mapOf(
+                bridge?.dispatchGlobalEvent("iap:transactionUpdate", mapOf(
                     "productId" to "",
                     "state" to "failed",
                     "error" to "user cancelled",
@@ -202,7 +202,7 @@ class IAPModule : NativeModule, PurchasesUpdatedListener {
             else -> {
                 val error = "purchase failed: ${result.debugMessage}"
                 callback?.invoke(null, error)
-                bridge?.emitGlobalEvent("iap:transactionUpdate", mapOf(
+                bridge?.dispatchGlobalEvent("iap:transactionUpdate", mapOf(
                     "productId" to "",
                     "state" to "failed",
                     "error" to error,
