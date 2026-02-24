@@ -540,14 +540,10 @@ public final class NativeBridge {
 
         // Perform FlexLayout on the next run loop tick.
         // By then AutoLayout has fully resolved all frames including safe area insets.
-        // We also retry once more after 100 ms to handle edge cases where the window
-        // has not yet been presented (e.g., first launch before viewDidAppear).
+        // Retry up to 3 times with 100ms intervals to handle edge cases where the
+        // window has not yet been presented (e.g., first launch before viewDidAppear).
         DispatchQueue.main.async { [weak self] in
-            self?.triggerLayout()
-            // Second pass for cases where the first pass still sees zero bounds
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
-                self?.triggerLayout()
-            }
+            self?.triggerLayoutWithRetries(remaining: 3)
         }
 
         // Monitor trait changes (dark mode) via a lightweight observer view
@@ -642,6 +638,26 @@ public final class NativeBridge {
 
         // After the main layout pass, recompute content sizes for all scroll views.
         updateScrollViewContentSizes()
+    }
+
+    /// Attempt layout, retrying up to `remaining` times with 100ms delays if bounds are zero.
+    /// Prevents unbounded retries when the root view never receives a valid frame.
+    private func triggerLayoutWithRetries(remaining: Int) {
+        dispatchPrecondition(condition: .onQueue(.main))
+        guard let rootView = rootView else { return }
+
+        rootView.layoutIfNeeded()
+        let bounds = rootView.bounds
+
+        if bounds.width > 0 && bounds.height > 0 {
+            triggerLayout()
+        } else if remaining > 0 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+                self?.triggerLayoutWithRetries(remaining: remaining - 1)
+            }
+        } else {
+            NSLog("[VueNative Bridge] triggerLayoutWithRetries exhausted — root view bounds still zero")
+        }
     }
 
     /// After the main layout pass, iterate registered scroll views and update their contentSize.

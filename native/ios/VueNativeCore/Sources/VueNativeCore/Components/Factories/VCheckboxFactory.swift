@@ -85,6 +85,12 @@ final class VCheckboxFactory: NativeComponentFactory {
     func removeEventListener(view: UIView, event: String) {
         if event == "change" {
             objc_setAssociatedObject(view, &checkboxOnChangeKey, nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+            // Remove tap gesture recognizers to prevent accumulation on re-add
+            view.gestureRecognizers?.forEach { recognizer in
+                if recognizer is UITapGestureRecognizer {
+                    view.removeGestureRecognizer(recognizer)
+                }
+            }
         }
     }
 

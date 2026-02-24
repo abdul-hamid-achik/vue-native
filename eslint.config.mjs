@@ -109,4 +109,12 @@ export default tseslint.config(
       globals: globals.node,
     },
   },
+
+  // CLI legitimately needs console.log for user-facing output
+  {
+    files: ['packages/cli/**/*.ts'],
+    rules: {
+      'no-console': 'off',
+    },
+  },
 )

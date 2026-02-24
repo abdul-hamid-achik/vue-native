@@ -224,6 +224,17 @@ final class VTextFactory: NativeComponentFactory {
         }
     }
 
+    func removeEventListener(view: UIView, event: String) {
+        if event == "press" {
+            GestureStorage.remove(for: view, event: event)
+            view.gestureRecognizers?.forEach { recognizer in
+                if recognizer is UITapGestureRecognizer {
+                    view.removeGestureRecognizer(recognizer)
+                }
+            }
+        }
+    }
+
     // MARK: - Font rebuilding
 
     /// Rebuild the UIFont from stored fontSize, fontWeight, and fontFamily.

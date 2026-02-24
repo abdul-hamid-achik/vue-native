@@ -5,6 +5,28 @@ All notable changes to Vue Native are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] - 2026-02-24
+
+### Added
+
+- **Security guide** (`docs/src/guide/security.md`): Certificate pinning, secure storage, network security, auth best practices, bundle verification
+- **Testing guide** (`docs/src/guide/testing.md`): Unit testing setup, mocking the native bridge, testing components/composables/navigation, snapshot testing, E2E overview
+- **Limitations guide** (`docs/src/guide/limitations.md`): No DOM, CSS subset, JS environment constraints, third-party library compatibility, platform differences, performance boundaries
+- **Migration guide** (`docs/src/guide/migration.md`): Upgrade procedures for all versions, native dependency updates, troubleshooting upgrades
+
+### Fixed
+
+- **Thread safety (iOS)**: Timer and RAF polyfill state (`timers`, `rafCallbacks`, counters) is now synchronized via a dedicated serial `DispatchQueue`, preventing data races between the JS queue and main thread during hot reload or rapid setTimeout/clearTimeout cycles
+- **Layout retry limit (iOS)**: `triggerLayout` retries capped at 3 attempts (100ms apart) instead of unbounded retries, preventing main thread spam when root view bounds remain zero
+- **Gesture recognizer leaks (iOS)**: `VCheckboxFactory`, `VRadioFactory`, `VTextFactory`, and `VSegmentedControlFactory` now properly remove gesture recognizers and UIControl targets in `removeEventListener`, preventing accumulation on event re-registration
+- **Navigation state restoration race**: Persistence watcher is now gated behind a `restoreComplete` flag, preventing early navigation from overwriting persisted state before async restore completes
+
+### Changed
+
+- ESLint config whitelists `console.log` in `packages/cli/` (CLI legitimately needs console output for user feedback)
+- Documentation sidebar updated with 4 new pages in Advanced and Reference sections
+- Test count increased from 424 to 465
+
 ## [0.3.0] - 2026-02-23
 
 ### Added

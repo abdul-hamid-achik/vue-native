@@ -1,6 +1,6 @@
 {
   "name": "@thelacanians/vue-native-navigation",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Stack navigation for Vue Native apps",
   "license": "MIT",
   "author": "Vue Native Contributors",

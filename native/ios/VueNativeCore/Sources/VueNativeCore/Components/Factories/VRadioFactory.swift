@@ -81,6 +81,16 @@ final class VRadioFactory: NativeComponentFactory {
     func removeEventListener(view: UIView, event: String) {
         if event == "change" {
             objc_setAssociatedObject(view, &radioOnChangeKey, nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+            // Remove RadioTapGesture recognizers from all radio row subviews
+            if let stack = view as? UIStackView {
+                for row in stack.arrangedSubviews {
+                    row.gestureRecognizers?.forEach { recognizer in
+                        if recognizer is RadioTapGesture {
+                            row.removeGestureRecognizer(recognizer)
+                        }
+                    }
+                }
+            }
         }
     }
 

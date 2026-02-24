@@ -61,6 +61,8 @@ export default defineUserConfig({
             '/guide/typescript.md',
             '/guide/performance.md',
             '/guide/shared-transitions.md',
+            '/guide/testing.md',
+            '/guide/security.md',
           ],
         },
         {
@@ -90,6 +92,8 @@ export default defineUserConfig({
         {
           text: 'Reference',
           children: [
+            '/guide/migration.md',
+            '/guide/limitations.md',
             '/guide/troubleshooting.md',
           ],
         },

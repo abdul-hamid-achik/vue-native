@@ -485,9 +485,16 @@ export function createRouter(optionsOrRoutes: RouterOptions | RouteConfig[]): Ro
     }, 300)
   }
 
-  // Watch for navigation changes to auto-persist
+  // Watch for navigation changes to auto-persist.
+  // The `restoreComplete` flag prevents the watcher from persisting stale state
+  // before the async restore from storage has finished — avoiding a race where
+  // an early navigation overwrites the persisted state before it's been read.
   if (_persistState) {
-    watch(() => stack.value, () => schedulePersist(), { deep: true })
+    let restoreComplete = false
+
+    watch(() => stack.value, () => {
+      if (restoreComplete) schedulePersist()
+    }, { deep: true })
 
     // Restore state on creation
     NativeBridge.invokeNativeModule('AsyncStorage', 'getItem', [persistKey])
@@ -502,6 +509,7 @@ export function createRouter(optionsOrRoutes: RouterOptions | RouteConfig[]): Ro
         }
       })
       .catch(() => {})
+      .finally(() => { restoreComplete = true })
   }
 
   // ── Router instance ────────────────────────────────────────────────────────

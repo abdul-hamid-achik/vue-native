@@ -48,7 +48,13 @@ final class VSegmentedControlFactory: NativeComponentFactory {
 
     func removeEventListener(view: UIView, event: String) {
         if event == "change" {
+            // Remove the UIControl target before clearing the reference
+            if let target = objc_getAssociatedObject(view, &segTargetKey) as? SegmentedTarget,
+               let seg = view as? UISegmentedControl {
+                seg.removeTarget(target, action: #selector(SegmentedTarget.handleChange(_:)), for: .valueChanged)
+            }
             objc_setAssociatedObject(view, &segOnChangeKey, nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+            objc_setAssociatedObject(view, &segTargetKey, nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
         }
     }
 }

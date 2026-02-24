@@ -15,44 +15,50 @@ enum JSPolyfills {
         let callbackRef: JSManagedValue?
     }
 
-    /// Active timers, keyed by string ID. Accessed only from JS queue.
+    /// Serial queue that guards all mutable timer/RAF state.
+    /// Timer callbacks fire on the main thread and clear/read `timers`;
+    /// JS queue closures also mutate `timers` (via setTimeout/clearTimeout).
+    /// This queue serializes all access to prevent data races.
+    private static let stateQueue = DispatchQueue(label: "com.vuenative.polyfills.state")
+
+    /// Active timers, keyed by string ID. Access ONLY via `stateQueue`.
     private static var timers: [String: TimerEntry] = [:]
-    /// Next timer ID counter. Accessed only from JS queue.
+    /// Next timer ID counter. Access ONLY via `stateQueue`.
     private static var nextTimerId: Int = 1
 
     // MARK: - RAF storage
 
     /// Active display link for requestAnimationFrame. Accessed only from main thread.
     private static var displayLink: CADisplayLink?
-    /// Pending requestAnimationFrame callbacks. Accessed only from JS queue.
+    /// Pending requestAnimationFrame callbacks. Access ONLY via `stateQueue`.
     private static var rafCallbacks: [String: JSValue] = [:]
-    /// Next RAF ID counter. Accessed only from JS queue.
+    /// Next RAF ID counter. Access ONLY via `stateQueue`.
     private static var nextRafId: Int = 1
 
     // MARK: - Reset
 
     /// Reset all polyfill state. Call before creating a fresh JSContext on hot reload.
-    /// MUST be called on the JS queue.
+    /// Safe to call from any thread — synchronizes internally via `stateQueue`.
     static func reset() {
-        // Invalidate all active timers and remove managed references
-        for (_, entry) in timers {
-            entry.timer.invalidate()
-            // Note: managed references are owned by the old context which is about
-            // to be discarded, so explicit removal is not strictly required here,
-            // but we clear the dict to release our side of the references.
+        // Snapshot and clear timer/RAF state under the lock
+        let oldTimers: [String: TimerEntry] = stateQueue.sync {
+            let snapshot = timers
+            timers.removeAll()
+            rafCallbacks.removeAll()
+            nextTimerId = 1
+            nextRafId = 1
+            return snapshot
         }
-        timers.removeAll()
 
-        // Clear RAF callbacks
-        rafCallbacks.removeAll()
-
-        // Reset counters
-        nextTimerId = 1
-        nextRafId = 1
-
-        // Stop the display link
-        displayLink?.invalidate()
-        displayLink = nil
+        // Invalidate timers on the main thread (where they were scheduled)
+        DispatchQueue.main.async {
+            for (_, entry) in oldTimers {
+                entry.timer.invalidate()
+            }
+            // Stop the display link
+            displayLink?.invalidate()
+            displayLink = nil
+        }
     }
 
     // MARK: - Registration
@@ -133,8 +139,11 @@ enum JSPolyfills {
             }
 
             let delayMs = delay.isUndefined ? 0.0 : delay.toDouble()
-            let timerId = String(nextTimerId)
-            nextTimerId += 1
+            let timerId: String = stateQueue.sync {
+                let id = String(nextTimerId)
+                nextTimerId += 1
+                return id
+            }
 
             // Protect callback from GC by storing in the context
             let callbackRef = JSManagedValue(value: callback)
@@ -147,18 +156,22 @@ enum JSPolyfills {
                     runtime.jsQueue.async { [weak runtime] in
                         guard let runtime = runtime, let context = runtime.context else { return }
                         // Timer already fired — only invoke if not cleared
-                        guard timers[timerId] != nil else { return }
+                        let stillActive: Bool = stateQueue.sync {
+                            guard timers[timerId] != nil else { return false }
+                            timers.removeValue(forKey: timerId)
+                            return true
+                        }
+                        guard stillActive else { return }
                         if let cb = callbackRef?.value, !cb.isUndefined {
                             cb.call(withArguments: [])
                             // Drain microtasks after timer callback
                             context.evaluateScript("void 0;")
                         }
                         context.virtualMachine.removeManagedReference(callbackRef, withOwner: context)
-                        timers.removeValue(forKey: timerId)
                     }
                 }
                 RunLoop.main.add(timer, forMode: .common)
-                runtime.jsQueue.async {
+                stateQueue.async {
                     // Only store if not already cleared before the timer was created
                     if timers[timerId] == nil {
                         timers[timerId] = TimerEntry(timer: timer, callbackRef: callbackRef)
@@ -173,7 +186,10 @@ enum JSPolyfills {
         let clearTimeout: @convention(block) (JSValue) -> Void = { [weak runtime] timerId in
             guard let runtime = runtime, let context = runtime.context else { return }
             guard let id = timerId.toString() else { return }
-            if let entry = timers.removeValue(forKey: id) {
+            let entry: TimerEntry? = stateQueue.sync {
+                return timers.removeValue(forKey: id)
+            }
+            if let entry = entry {
                 // Remove the managed reference so the JSValue can be GC'd
                 context.virtualMachine.removeManagedReference(entry.callbackRef, withOwner: context)
                 // Timer invalidation must happen on the main thread where it was created
@@ -190,8 +206,11 @@ enum JSPolyfills {
             }
 
             let delayMs = delay.isUndefined ? 0.0 : delay.toDouble()
-            let timerId = String(nextTimerId)
-            nextTimerId += 1
+            let timerId: String = stateQueue.sync {
+                let id = String(nextTimerId)
+                nextTimerId += 1
+                return id
+            }
 
             let callbackRef = JSManagedValue(value: callback)
             context.virtualMachine.addManagedReference(callbackRef, withOwner: context)
@@ -202,7 +221,8 @@ enum JSPolyfills {
                     runtime.jsQueue.async { [weak runtime] in
                         guard let runtime = runtime, let context = runtime.context else { return }
                         // If the interval was cleared, do not invoke the callback
-                        guard timers[timerId] != nil else { return }
+                        let stillActive: Bool = stateQueue.sync { timers[timerId] != nil }
+                        guard stillActive else { return }
                         if let cb = callbackRef?.value, !cb.isUndefined {
                             cb.call(withArguments: [])
                             context.evaluateScript("void 0;")
@@ -210,7 +230,7 @@ enum JSPolyfills {
                     }
                 }
                 RunLoop.main.add(timer, forMode: .common)
-                runtime.jsQueue.async {
+                stateQueue.async {
                     timers[timerId] = TimerEntry(timer: timer, callbackRef: callbackRef)
                 }
             }
@@ -222,7 +242,10 @@ enum JSPolyfills {
         let clearInterval: @convention(block) (JSValue) -> Void = { [weak runtime] timerId in
             guard let runtime = runtime, let context = runtime.context else { return }
             guard let id = timerId.toString() else { return }
-            if let entry = timers.removeValue(forKey: id) {
+            let entry: TimerEntry? = stateQueue.sync {
+                return timers.removeValue(forKey: id)
+            }
+            if let entry = entry {
                 // Remove the managed reference so the JSValue can be GC'd
                 context.virtualMachine.removeManagedReference(entry.callbackRef, withOwner: context)
                 // Invalidate the timer on the main thread where it was scheduled
@@ -260,12 +283,14 @@ enum JSPolyfills {
                 return JSValue(nullIn: JSContext.current())
             }
 
-            let rafId = String(nextRafId)
-            nextRafId += 1
-
-            // Store the callback in our dictionary. The strong reference from Swift
-            // prevents JSC from garbage collecting it until we remove it.
-            rafCallbacks[rafId] = callback
+            let rafId: String = stateQueue.sync {
+                let id = String(nextRafId)
+                nextRafId += 1
+                // Store the callback in our dictionary. The strong reference from Swift
+                // prevents JSC from garbage collecting it until we remove it.
+                rafCallbacks[id] = callback
+                return id
+            }
 
             // Ensure display link is running
             DispatchQueue.main.async {
@@ -285,7 +310,7 @@ enum JSPolyfills {
             _ = runtime
             guard let id = rafId.toString() else { return }
             // Simply remove the callback; it won't fire on the next display link cycle
-            rafCallbacks.removeValue(forKey: id)
+            stateQueue.async { rafCallbacks.removeValue(forKey: id) }
         }
 
         context.setObject(requestAnimationFrame, forKeyedSubscript: "requestAnimationFrame" as NSString)
@@ -295,12 +320,22 @@ enum JSPolyfills {
     /// Called from the display link target on every frame.
     /// Dispatches all pending RAF callbacks to the JS queue.
     fileprivate static func fireRAFCallbacks(runtime: JSRuntime, timestamp: Double) {
+        // Snapshot and clear callbacks under the lock (RAF is one-shot)
+        let callbacks: [String: JSValue] = stateQueue.sync {
+            let snapshot = rafCallbacks
+            rafCallbacks.removeAll()
+            return snapshot
+        }
+
+        guard !callbacks.isEmpty else {
+            // No pending callbacks — stop the display link
+            displayLink?.invalidate()
+            displayLink = nil
+            return
+        }
+
         runtime.jsQueue.async { [weak runtime] in
             guard let runtime = runtime, let context = runtime.context else { return }
-
-            // Snapshot and clear callbacks (RAF is one-shot)
-            let callbacks = rafCallbacks
-            rafCallbacks.removeAll()
 
             for (_, callback) in callbacks {
                 if !callback.isUndefined {
@@ -309,12 +344,11 @@ enum JSPolyfills {
             }
 
             // Drain microtasks after all RAF callbacks
-            if !callbacks.isEmpty {
-                context.evaluateScript("void 0;")
-            }
+            context.evaluateScript("void 0;")
 
             // If no more callbacks pending, stop the display link
-            if rafCallbacks.isEmpty {
+            let isEmpty: Bool = stateQueue.sync { rafCallbacks.isEmpty }
+            if isEmpty {
                 DispatchQueue.main.async {
                     displayLink?.invalidate()
                     displayLink = nil
