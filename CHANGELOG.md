@@ -5,6 +5,14 @@ All notable changes to Vue Native are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.3] - 2026-02-24
+
+### Fixed
+
+- **TypeScript path mapping in scaffolded projects**: `tsconfig.json` now includes `"paths": { "vue": [...] }` pointing to `@thelacanians/vue-native-runtime` types, so `tsc` resolves `.vue` files and `NativeApp.start()` correctly.
+- **`env.d.ts` type source**: Scaffolded `env.d.ts` now imports `DefineComponent` from `@thelacanians/vue-native-runtime` instead of `vue`, matching the runtime's type exports.
+- **`createApp` import in scaffolded templates**: All three template generators (blank, tabs, drawer) now emit `import { createApp } from '@thelacanians/vue-native-runtime'` instead of `from 'vue'`, which returned a standard `App<Element>` lacking the `.start()` method.
+
 ## [0.4.2] - 2026-02-24
 
 ### Fixed

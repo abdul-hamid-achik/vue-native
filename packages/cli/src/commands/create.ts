@@ -68,8 +68,11 @@ export default defineConfig({
           jsx: 'preserve',
           lib: ['ES2020'],
           types: [],
+          paths: {
+            vue: ['./node_modules/@thelacanians/vue-native-runtime/dist/index.d.ts'],
+          },
         },
-        include: ['app/**/*'],
+        include: ['app/**/*', 'env.d.ts'],
       }, null, 2))
 
       // Generate template-specific files
@@ -396,7 +399,7 @@ export default defineConfig({
       // env.d.ts
       await writeFile(join(dir, 'env.d.ts'), `/// <reference types="vite/client" />
 declare module '*.vue' {
-  import type { DefineComponent } from 'vue'
+  import type { DefineComponent } from '@thelacanians/vue-native-runtime'
   const component: DefineComponent<{}, {}, any>
   export default component
 }
@@ -460,7 +463,7 @@ async function generateTemplateFiles(dir: string, name: string, template: Templa
 
 async function generateBlankTemplate(dir: string, pagesDir: string) {
   // app/main.ts
-  await writeFile(join(dir, 'app', 'main.ts'), `import { createApp } from 'vue'
+  await writeFile(join(dir, 'app', 'main.ts'), `import { createApp } from '@thelacanians/vue-native-runtime'
 import { createRouter } from '@thelacanians/vue-native-navigation'
 import App from './App.vue'
 import Home from './pages/Home.vue'
@@ -541,7 +544,7 @@ const styles = createStyleSheet({
 
 async function generateTabsTemplate(dir: string, pagesDir: string) {
   // app/main.ts
-  await writeFile(join(dir, 'app', 'main.ts'), `import { createApp } from 'vue'
+  await writeFile(join(dir, 'app', 'main.ts'), `import { createApp } from '@thelacanians/vue-native-runtime'
 import App from './App.vue'
 
 const app = createApp(App)
@@ -662,7 +665,7 @@ const styles = createStyleSheet({
 
 async function generateDrawerTemplate(dir: string, pagesDir: string) {
   // app/main.ts
-  await writeFile(join(dir, 'app', 'main.ts'), `import { createApp } from 'vue'
+  await writeFile(join(dir, 'app', 'main.ts'), `import { createApp } from '@thelacanians/vue-native-runtime'
 import App from './App.vue'
 
 const app = createApp(App)
