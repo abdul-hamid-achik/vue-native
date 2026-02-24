@@ -115,14 +115,6 @@ final class BluetoothModule: NativeModule {
     func invokeSync(method: String, args: [Any]) -> Any? { nil }
 }
 
-// MARK: - Safe array subscript
-
-private extension Array {
-    subscript(safe index: Int) -> Element? {
-        indices.contains(index) ? self[index] : nil
-    }
-}
-
 // MARK: - BLE Manager
 
 @MainActor

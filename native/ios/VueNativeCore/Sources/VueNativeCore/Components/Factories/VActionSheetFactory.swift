@@ -58,8 +58,7 @@ final class VActionSheetFactory: NativeComponentFactory {
             })
         }
 
-        guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-              let rootVC = scene.windows.first?.rootViewController else { return }
+        guard let rootVC = UIApplication.shared.vn_keyWindow?.rootViewController else { return }
         var top = rootVC
         while let p = top.presentedViewController { top = p }
 

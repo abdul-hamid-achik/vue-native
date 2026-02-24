@@ -1,43 +1,37 @@
 #if canImport(UIKit)
 import UIKit
 
-final class AppStateModule: NativeModule {
+final class AppStateModule: NSObject, NativeModule {
     var moduleName: String { "AppState" }
     private weak var bridge: NativeBridge?
+    private var observers: [NSObjectProtocol] = []
 
     init(bridge: NativeBridge) {
         self.bridge = bridge
+        super.init()
         setupObservers()
     }
 
     private func setupObservers() {
-        NotificationCenter.default.addObserver(self, selector: #selector(didBecomeActive),
-            name: UIApplication.didBecomeActiveNotification, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(willResignActive),
-            name: UIApplication.willResignActiveNotification, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(didEnterBackground),
-            name: UIApplication.didEnterBackgroundNotification, object: nil)
+        observers.append(NotificationCenter.default.addObserver(
+            forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            self?.bridge?.dispatchGlobalEvent("appState:change", payload: ["state": "active"])
+        })
+        observers.append(NotificationCenter.default.addObserver(
+            forName: UIApplication.willResignActiveNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            self?.bridge?.dispatchGlobalEvent("appState:change", payload: ["state": "inactive"])
+        })
+        observers.append(NotificationCenter.default.addObserver(
+            forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            self?.bridge?.dispatchGlobalEvent("appState:change", payload: ["state": "background"])
+        })
     }
 
-    @objc private func didBecomeActive() {
-        let bridge = bridge
-        DispatchQueue.main.async {
-            bridge?.dispatchGlobalEvent("appState:change", payload: ["state": "active"])
-        }
-    }
-
-    @objc private func willResignActive() {
-        let bridge = bridge
-        DispatchQueue.main.async {
-            bridge?.dispatchGlobalEvent("appState:change", payload: ["state": "inactive"])
-        }
-    }
-
-    @objc private func didEnterBackground() {
-        let bridge = bridge
-        DispatchQueue.main.async {
-            bridge?.dispatchGlobalEvent("appState:change", payload: ["state": "background"])
-        }
+    deinit {
+        observers.forEach { NotificationCenter.default.removeObserver($0) }
     }
 
     func invoke(method: String, args: [Any], callback: @escaping (Any?, String?) -> Void) {

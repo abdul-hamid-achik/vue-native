@@ -114,9 +114,7 @@ final class SocialAuthModule: NSObject, NativeModule, ASAuthorizationControllerD
     }
 
     func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
-        return UIApplication.shared.connectedScenes
-            .compactMap { $0 as? UIWindowScene }
-            .first?.windows.first { $0.isKeyWindow } ?? UIWindow()
+        return UIApplication.shared.vn_keyWindow ?? UIWindow()
     }
 
     // MARK: - Google Sign In (URL-based OAuth)
@@ -164,10 +162,11 @@ final class SocialAuthModule: NSObject, NativeModule, ASAuthorizationControllerD
 
             session.prefersEphemeralWebBrowserSession = false
 
-            // Find the presentation anchor
-            if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-               let window = windowScene.windows.first {
-                session.presentationContextProvider = window.rootViewController as? ASWebAuthenticationPresentationContextProviding
+            // Provide a proper presentation context for the auth session
+            if let window = UIApplication.shared.vn_keyWindow {
+                let provider = WebAuthContextProvider(window: window)
+                objc_setAssociatedObject(session, &SocialAuthModule.webAuthProviderKey, provider, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+                session.presentationContextProvider = provider
             }
 
             session.start()
@@ -231,10 +230,27 @@ final class SocialAuthModule: NSObject, NativeModule, ASAuthorizationControllerD
         }
     }
 
+    private static var webAuthProviderKey: UInt8 = 0
+
     deinit {
         if let observer = credentialObserver {
             NotificationCenter.default.removeObserver(observer)
         }
+    }
+}
+
+// MARK: - ASWebAuthenticationSession presentation context
+
+private final class WebAuthContextProvider: NSObject, ASWebAuthenticationPresentationContextProviding {
+    private let window: UIWindow
+
+    init(window: UIWindow) {
+        self.window = window
+        super.init()
+    }
+
+    func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
+        return window
     }
 }
 #endif

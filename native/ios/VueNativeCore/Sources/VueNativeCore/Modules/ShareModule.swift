@@ -18,8 +18,7 @@ final class ShareModule: NativeModule {
 
             DispatchQueue.main.async {
                 let vc = UIActivityViewController(activityItems: items, applicationActivities: nil)
-                if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-                   let rootVC = windowScene.windows.first?.rootViewController {
+                if let rootVC = UIApplication.shared.vn_keyWindow?.rootViewController {
                     // iPad popover support
                     if let popover = vc.popoverPresentationController {
                         popover.sourceView = rootVC.view

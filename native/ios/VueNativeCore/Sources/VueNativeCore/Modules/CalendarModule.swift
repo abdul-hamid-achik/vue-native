@@ -151,11 +151,4 @@ final class CalendarModule: NativeModule {
     }
 }
 
-// MARK: - Safe array subscript (shared)
-
-private extension Array {
-    subscript(safe index: Int) -> Element? {
-        indices.contains(index) ? self[index] : nil
-    }
-}
 #endif

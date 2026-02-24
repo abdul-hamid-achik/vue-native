@@ -140,8 +140,7 @@ final class VAlertDialogFactory: NativeComponentFactory {
         }
 
         // Find the topmost presented view controller to present from
-        guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-              let rootVC = scene.windows.first?.rootViewController else { return }
+        guard let rootVC = UIApplication.shared.vn_keyWindow?.rootViewController else { return }
         var topVC = rootVC
         while let presented = topVC.presentedViewController { topVC = presented }
         topVC.present(alert, animated: true)

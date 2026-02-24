@@ -879,8 +879,23 @@ public final class NativeBridge {
 private final class TraitObserverView: UIView {
     var onChange: ((Bool) -> Void)?
 
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        if #available(iOS 17.0, *) {
+            registerForTraitChanges([UITraitUserInterfaceStyle.self]) { [weak self] (view: TraitObserverView, _: UITraitCollection) in
+                self?.onChange?(view.traitCollection.userInterfaceStyle == .dark)
+            }
+        }
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+    }
+
+    // Fallback for iOS 16
     override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
         super.traitCollectionDidChange(previousTraitCollection)
+        if #available(iOS 17.0, *) { return }
         if traitCollection.hasDifferentColorAppearance(comparedTo: previousTraitCollection) {
             onChange?(traitCollection.userInterfaceStyle == .dark)
         }

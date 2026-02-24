@@ -90,7 +90,7 @@ class BluetoothModule : NativeModule {
             "getState" -> {
                 val state = when {
                     bluetoothAdapter == null -> "unsupported"
-                    !bluetoothAdapter!!.isEnabled -> "poweredOff"
+                    bluetoothAdapter?.isEnabled != true -> "poweredOff"
                     else -> "poweredOn"
                 }
                 callback(state, null)

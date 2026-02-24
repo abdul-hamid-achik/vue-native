@@ -21,7 +21,7 @@ import AVFoundation
 ///   - audio:progress { currentTime, duration }
 ///   - audio:complete {}
 ///   - audio:error { message }
-final class AudioModule: NativeModule {
+final class AudioModule: NSObject, NativeModule {
     let moduleName = "Audio"
 
     private var player: AVAudioPlayer?

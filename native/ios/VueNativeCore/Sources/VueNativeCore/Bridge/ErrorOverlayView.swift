@@ -76,10 +76,7 @@ final class ErrorOverlayView: UIView {
 
     static func show(error: String) {
         DispatchQueue.main.async {
-            guard let window = UIApplication.shared.connectedScenes
-                .compactMap({ $0 as? UIWindowScene })
-                .flatMap({ $0.windows })
-                .first(where: { $0.isKeyWindow }) else { return }
+            guard let window = UIApplication.shared.vn_keyWindow else { return }
 
             // Remove any existing overlay
             window.subviews.compactMap { $0 as? ErrorOverlayView }.forEach { $0.removeFromSuperview() }

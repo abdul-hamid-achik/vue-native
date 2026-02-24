@@ -39,10 +39,7 @@ final class VModalFactory: NativeComponentFactory {
     }
 
     private func showOverlay(for placeholder: UIView) {
-        guard let window = UIApplication.shared.connectedScenes
-            .compactMap({ $0 as? UIWindowScene })
-            .flatMap({ $0.windows })
-            .first(where: { $0.isKeyWindow }) else { return }
+        guard let window = UIApplication.shared.vn_keyWindow else { return }
 
         // Get or create overlay
         let overlay: UIView

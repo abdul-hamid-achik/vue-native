@@ -4,7 +4,7 @@ import UIKit
 /// Native module for performance profiling.
 /// Tracks FPS via CADisplayLink, memory usage via task_info, and bridge operation counts.
 /// Dispatches `perf:metrics` global events every 1 second while profiling is active.
-final class PerformanceModule: NativeModule {
+final class PerformanceModule: NSObject, NativeModule {
 
     let moduleName = "Performance"
 
@@ -25,6 +25,7 @@ final class PerformanceModule: NativeModule {
 
     init(bridge: NativeBridge) {
         self.bridge = bridge
+        super.init()
     }
 
     func invoke(method: String, args: [Any], callback: @escaping (Any?, String?) -> Void) {
