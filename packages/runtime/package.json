@@ -1,6 +1,6 @@
 {
   "name": "@thelacanians/vue-native-runtime",
-  "version": "0.4.10",
+  "version": "0.4.11",
   "description": "Vue 3 custom renderer for native iOS and Android apps",
   "license": "MIT",
   "author": "Vue Native Contributors",

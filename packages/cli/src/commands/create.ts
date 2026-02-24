@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { existsSync } from 'node:fs'
 import pc from 'picocolors'
 
-const VERSION = '0.4.10'
+const VERSION = '0.4.11'
 
 type Template = 'blank' | 'tabs' | 'drawer'
 

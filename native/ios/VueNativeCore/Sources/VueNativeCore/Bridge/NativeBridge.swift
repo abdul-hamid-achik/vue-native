@@ -352,7 +352,7 @@ public final class NativeBridge {
         if let factory = ComponentRegistry.factory(for: parentView) {
             factory.insertChild(childView, into: container, before: nil)
         } else {
-            container.addSubview(childView)
+            container.flex.addItem(childView)
         }
     }
 
@@ -385,9 +385,10 @@ public final class NativeBridge {
         if let factory = ComponentRegistry.factory(for: parentView) {
             factory.insertChild(childView, into: container, before: beforeView)
         } else if let index = container.subviews.firstIndex(of: beforeView) {
+            container.flex.addItem(childView)
             container.insertSubview(childView, at: index)
         } else {
-            container.addSubview(childView)
+            container.flex.addItem(childView)
         }
     }
 

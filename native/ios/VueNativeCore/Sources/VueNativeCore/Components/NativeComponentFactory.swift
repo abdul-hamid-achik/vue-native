@@ -1,5 +1,6 @@
 #if canImport(UIKit)
 import UIKit
+import FlexLayout
 
 /// Protocol that all native component factories must implement.
 /// Each factory knows how to create a UIView, update its properties,
@@ -40,9 +41,11 @@ extension NativeComponentFactory {
 
     func insertChild(_ child: UIView, into parent: UIView, before anchor: UIView?) {
         if let anchor = anchor, let idx = parent.subviews.firstIndex(of: anchor) {
+            parent.flex.addItem(child)
+            // Move to correct position after adding
             parent.insertSubview(child, at: idx)
         } else {
-            parent.addSubview(child)
+            parent.flex.addItem(child)
         }
     }
 
