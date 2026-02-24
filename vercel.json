@@ -1,0 +1,4 @@
+{
+  "buildCommand": "bun run --filter @thelacanians/vue-native-docs build",
+  "outputDirectory": "docs/src/.vuepress/dist"
+}
