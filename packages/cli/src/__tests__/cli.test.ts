@@ -9,11 +9,13 @@ import type { VueNativeConfig, ResolvedConfig } from '../config'
 const mockMkdir = vi.fn().mockResolvedValue(undefined)
 const mockWriteFile = vi.fn().mockResolvedValue(undefined)
 const mockReadFile = vi.fn().mockResolvedValue('')
+const mockCp = vi.fn().mockResolvedValue(undefined)
 
 vi.mock('node:fs/promises', () => ({
   mkdir: (...args: unknown[]) => mockMkdir(...args),
   writeFile: (...args: unknown[]) => mockWriteFile(...args),
   readFile: (...args: unknown[]) => mockReadFile(...args),
+  cp: (...args: unknown[]) => mockCp(...args),
 }))
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -641,11 +643,11 @@ describe('create command', () => {
       expect(content).toContain('include(":app")')
     })
 
-    it('creates AndroidManifest.xml with INTERNET permission', async () => {
+    it('creates AndroidManifest.xml with INTERNET permission and activity config', async () => {
       await runCreate('my-app')
 
       const manifestCall = mockWriteFile.mock.calls.find(
-        ([path]: any[]) => path.endsWith('AndroidManifest.xml'),
+        ([path]: any[]) => path.endsWith('main/AndroidManifest.xml'),
       )
       expect(manifestCall).toBeDefined()
 
@@ -653,9 +655,13 @@ describe('create command', () => {
       expect(content).toContain('android.permission.INTERNET')
       expect(content).toContain('networkSecurityConfig')
       expect(content).toContain('.MainActivity')
+      expect(content).toContain('android:configChanges')
+      expect(content).toContain('android:windowSoftInputMode="adjustResize"')
+      expect(content).toContain('@style/Theme.VueNative')
+      expect(content).toContain('@string/app_name')
     })
 
-    it('creates MainActivity.kt extending VueNativeActivity', async () => {
+    it('creates MainActivity.kt with BuildConfig-guarded dev server', async () => {
       await runCreate('my-app')
 
       const mainActivityCall = mockWriteFile.mock.calls.find(
@@ -668,6 +674,73 @@ describe('create command', () => {
       expect(content).toContain('getBundleAssetPath')
       expect(content).toContain('getDevServerUrl')
       expect(content).toContain('vue-native-bundle.js')
+      expect(content).toContain('BuildConfig.DEBUG')
+    })
+
+    it('creates proguard-rules.pro', async () => {
+      await runCreate('my-app')
+
+      const proguardCall = mockWriteFile.mock.calls.find(
+        ([path]: any[]) => path.endsWith('proguard-rules.pro'),
+      )
+      expect(proguardCall).toBeDefined()
+      const content = proguardCall![1] as string
+      expect(content).toContain('com.vuenative')
+    })
+
+    it('creates res/values/strings.xml and themes.xml', async () => {
+      await runCreate('my-app')
+
+      const stringsCall = mockWriteFile.mock.calls.find(
+        ([path]: any[]) => path.endsWith('values/strings.xml'),
+      )
+      const themesCall = mockWriteFile.mock.calls.find(
+        ([path]: any[]) => path.endsWith('values/themes.xml'),
+      )
+      expect(stringsCall).toBeDefined()
+      expect(themesCall).toBeDefined()
+      expect((stringsCall![1] as string)).toContain('app_name')
+      expect((themesCall![1] as string)).toContain('Theme.VueNative')
+    })
+
+    it('creates debug and release network security configs', async () => {
+      await runCreate('my-app')
+
+      const debugNetCall = mockWriteFile.mock.calls.find(
+        ([path]: any[]) => (path as string).includes('debug') && (path as string).endsWith('network_security_config.xml'),
+      )
+      const releaseNetCall = mockWriteFile.mock.calls.find(
+        ([path]: any[]) => (path as string).includes('main/res') && !(path as string).includes('debug') && (path as string).endsWith('network_security_config.xml'),
+      )
+      expect(debugNetCall).toBeDefined()
+      expect(releaseNetCall).toBeDefined()
+      expect((debugNetCall![1] as string)).toContain('cleartextTrafficPermitted="true"')
+      expect((releaseNetCall![1] as string)).toContain('cleartextTrafficPermitted="false"')
+    })
+
+    it('creates gradle-wrapper.properties', async () => {
+      await runCreate('my-app')
+
+      const wrapperCall = mockWriteFile.mock.calls.find(
+        ([path]: any[]) => path.endsWith('gradle-wrapper.properties'),
+      )
+      expect(wrapperCall).toBeDefined()
+      expect((wrapperCall![1] as string)).toContain('gradle-8.11.1-bin.zip')
+    })
+
+    it('uses compileSdk 35 and targetSdk 35', async () => {
+      await runCreate('my-app')
+
+      const appGradleCall = mockWriteFile.mock.calls.find(
+        ([path]: any[]) => path.endsWith('app/build.gradle.kts'),
+      )
+      expect(appGradleCall).toBeDefined()
+      const content = appGradleCall![1] as string
+      expect(content).toContain('compileSdk = 35')
+      expect(content).toContain('targetSdk = 35')
+      expect(content).toContain('appcompat')
+      expect(content).toContain('material')
+      expect(content).toContain('buildConfig = true')
     })
 
     it('creates gradle.properties with AndroidX enabled', async () => {

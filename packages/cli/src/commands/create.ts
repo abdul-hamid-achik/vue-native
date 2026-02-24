@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { existsSync } from 'node:fs'
 import pc from 'picocolors'
 
-const VERSION = '0.4.4'
+const VERSION = '0.4.5'
 
 type Template = 'blank' | 'tabs' | 'drawer'
 
@@ -248,14 +248,22 @@ class AppViewController: VueNativeViewController {
       const androidPkgPath = androidPkg.replace(/\./g, '/')
       const androidSrcDir = join(androidAppDir, 'src', 'main')
       const androidKotlinDir = join(androidSrcDir, 'kotlin', androidPkgPath)
+      const androidResValuesDir = join(androidSrcDir, 'res', 'values')
+      const androidResXmlDir = join(androidSrcDir, 'res', 'xml')
+      const androidDebugResXmlDir = join(androidAppDir, 'src', 'debug', 'res', 'xml')
+      const androidGradleWrapperDir = join(androidDir, 'gradle', 'wrapper')
       await mkdir(androidKotlinDir, { recursive: true })
+      await mkdir(androidResValuesDir, { recursive: true })
+      await mkdir(androidResXmlDir, { recursive: true })
+      await mkdir(androidDebugResXmlDir, { recursive: true })
+      await mkdir(androidGradleWrapperDir, { recursive: true })
 
-      // android/build.gradle.kts
+      // android/build.gradle.kts (top-level)
       await writeFile(join(androidDir, 'build.gradle.kts'), `// Top-level build file
 plugins {
-    id("com.android.application") version "8.2.2" apply false
-    id("com.android.library") version "8.2.2" apply false
-    id("org.jetbrains.kotlin.android") version "1.9.22" apply false
+    id("com.android.application") version "8.7.3" apply false
+    id("com.android.library") version "8.7.3" apply false
+    id("org.jetbrains.kotlin.android") version "2.0.21" apply false
 }
 `)
 
@@ -276,8 +284,8 @@ dependencyResolutionManagement {
         maven {
             url = uri("https://maven.pkg.github.com/abdul-hamid-achik/vue-native")
             credentials {
-                username = providers.gradleProperty("gpr.user").orNull ?: System.getenv("GITHUB_ACTOR")
-                password = providers.gradleProperty("gpr.key").orNull ?: System.getenv("GITHUB_TOKEN")
+                username = providers.gradleProperty("gpr.user").orNull ?: System.getenv("GITHUB_ACTOR") ?: ""
+                password = providers.gradleProperty("gpr.key").orNull ?: System.getenv("GITHUB_TOKEN") ?: ""
             }
         }
     }
@@ -295,24 +303,28 @@ include(":app")
 
 android {
     namespace = "${androidPkg}"
-    compileSdk = 34
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "${androidPkg}"
-        minSdk = 21
-        targetSdk = 34
+        minSdk = 24
+        targetSdk = 35
         versionCode = 1
         versionName = "1.0"
     }
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
         }
+    }
+
+    buildFeatures {
+        buildConfig = true
     }
 
     compileOptions {
@@ -327,7 +339,18 @@ android {
 
 dependencies {
     implementation("com.vuenative:core:${VERSION}")
+    implementation("androidx.appcompat:appcompat:1.7.0")
+    implementation("com.google.android.material:material:1.12.0")
+    implementation("androidx.core:core-ktx:1.15.0")
 }
+`)
+
+      // android/app/proguard-rules.pro
+      await writeFile(join(androidAppDir, 'proguard-rules.pro'), `# Vue Native
+-keep class com.vuenative.** { *; }
+
+# J2V8
+-keep class com.eclipsesource.v8.** { *; }
 `)
 
       // android/app/src/main/AndroidManifest.xml
@@ -337,13 +360,15 @@ dependencies {
 
     <application
         android:allowBackup="true"
-        android:label="${name}"
+        android:label="@string/app_name"
         android:supportsRtl="true"
-        android:theme="@style/Theme.AppCompat.Light.NoActionBar"
+        android:theme="@style/Theme.VueNative"
         android:networkSecurityConfig="@xml/network_security_config">
         <activity
             android:name=".MainActivity"
-            android:exported="true">
+            android:exported="true"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|keyboard|locale|layoutDirection|fontScale|uiMode|density"
+            android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -353,10 +378,37 @@ dependencies {
 </manifest>
 `)
 
-      // android/app/src/main/res/xml/network_security_config.xml
-      const androidResXmlDir = join(androidSrcDir, 'res', 'xml')
-      await mkdir(androidResXmlDir, { recursive: true })
+      // android/app/src/main/res/values/strings.xml
+      await writeFile(join(androidResValuesDir, 'strings.xml'), `<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">${name}</string>
+</resources>
+`)
+
+      // android/app/src/main/res/values/themes.xml
+      await writeFile(join(androidResValuesDir, 'themes.xml'), `<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.VueNative" parent="Theme.MaterialComponents.Light.NoActionBar">
+        <item name="colorPrimary">#4F46E5</item>
+        <item name="colorPrimaryVariant">#3730A3</item>
+        <item name="colorOnPrimary">#FFFFFF</item>
+        <item name="colorSecondary">#10B981</item>
+        <item name="colorSecondaryVariant">#059669</item>
+        <item name="colorOnSecondary">#FFFFFF</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+    </style>
+</resources>
+`)
+
+      // android/app/src/main/res/xml/network_security_config.xml (release: no cleartext)
       await writeFile(join(androidResXmlDir, 'network_security_config.xml'), `<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+</network-security-config>
+`)
+
+      // android/app/src/debug/res/xml/network_security_config.xml (debug: allow dev server)
+      await writeFile(join(androidDebugResXmlDir, 'network_security_config.xml'), `<?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
     <domain-config cleartextTrafficPermitted="true">
         <domain includeSubdomains="true">localhost</domain>
@@ -377,7 +429,7 @@ class MainActivity : VueNativeActivity() {
     }
 
     override fun getDevServerUrl(): String? {
-        return "ws://10.0.2.2:8174"
+        return if (BuildConfig.DEBUG) "ws://10.0.2.2:8174" else null
     }
 }
 `)
@@ -388,6 +440,15 @@ org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
 android.useAndroidX=true
 kotlin.code.style=official
 android.nonTransitiveRClass=true
+`)
+
+      // android/gradle/wrapper/gradle-wrapper.properties
+      await writeFile(join(androidGradleWrapperDir, 'gradle-wrapper.properties'), `distributionBase=GRADLE_USER_HOME
+distributionPath=wrapper/dists
+distributionUrl=https\\://services.gradle.org/distributions/gradle-8.11.1-bin.zip
+networkTimeout=10000
+zipStoreBase=GRADLE_USER_HOME
+zipStorePath=wrapper/dists
 `)
 
       // vue-native.config.ts
@@ -401,8 +462,8 @@ export default defineConfig({
     deploymentTarget: '16.0',
   },
   android: {
-    minSdk: 21,
-    targetSdk: 34,
+    minSdk: 24,
+    targetSdk: 35,
   },
 })
 `)
@@ -460,6 +521,8 @@ local.properties
       console.log(pc.white('  To run on iOS:'))
       console.log(pc.white('    vue-native run ios\n'))
       console.log(pc.white('  To run on Android:'))
+      console.log(pc.dim('    Open android/ in Android Studio, or run:'))
+      console.log(pc.dim('    cd android && gradle wrapper && cd ..'))
       console.log(pc.white('    vue-native run android\n'))
     } catch (err) {
       console.error(pc.red(`Error creating project: ${(err as Error).message}`))
