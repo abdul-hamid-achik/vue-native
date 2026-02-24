@@ -44,9 +44,23 @@ createApp(App).start()
 ## Start development
 
 ```bash
-bun run dev
+# Build and run on iOS Simulator
+vue-native run ios
+
+# Or build and run on Android Emulator
+vue-native run android
 ```
 
-This starts Vite in watch mode. Open `ios/` in Xcode (or `android/` in Android Studio) and run on a simulator or device.
+For hot reload (live updates on save):
 
-Changes to your `.vue` files are hot-reloaded instantly without restarting the app.
+```bash
+# Terminal 1: start dev server with Vite watcher + WebSocket
+bun run dev
+
+# Terminal 2: build and run on simulator (first time only)
+vue-native run ios
+```
+
+Changes to your `.vue` files are hot-reloaded instantly without rebuilding the native app.
+
+For detailed step-by-step instructions, see the [iOS Setup](/ios/setup.md) and [Android Setup](/android/setup.md) guides.

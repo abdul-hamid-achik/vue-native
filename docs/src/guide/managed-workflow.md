@@ -56,8 +56,8 @@ export default defineConfig({
     deploymentTarget: '16.0',
   },
   android: {
-    minSdk: 21,
-    targetSdk: 34,
+    minSdk: 24,
+    targetSdk: 35,
   },
 })
 ```
@@ -71,8 +71,8 @@ export default defineConfig({
 | `version` | `string` | Yes | Semantic version string |
 | `ios.deploymentTarget` | `string` | No | Minimum iOS version (default: `"16.0"`) |
 | `ios.scheme` | `string` | No | Xcode scheme name (defaults to sanitized `name`) |
-| `android.minSdk` | `number` | No | Minimum Android SDK (default: `21`) |
-| `android.targetSdk` | `number` | No | Target Android SDK (default: `34`) |
+| `android.minSdk` | `number` | No | Minimum Android SDK (default: `24`) |
+| `android.targetSdk` | `number` | No | Target Android SDK (default: `35`) |
 | `android.packageName` | `string` | No | Android package (defaults to `bundleId`) |
 | `plugins` | `string[]` | No | Vue Native plugins to include |
 

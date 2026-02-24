@@ -1,12 +1,14 @@
 # Android Guide
 
-Vue Native targets **Android 5.0+ (API 21)** using Android Views, V8/J2V8, and FlexboxLayout.
+Vue Native targets **Android 7.0+ (API 24)** using Android Views, V8/J2V8, and FlexboxLayout.
 
 ## Requirements
 
-- Android 5.0+ (API 21+)
-- Android Studio Hedgehog+
-- Kotlin 1.9+
+- Android 7.0+ (API 24+), targeting API 35
+- Android Studio Ladybug+
+- JDK 17 (bundled with Android Studio)
+
+For the full step-by-step guide to getting an emulator running, see [Android Setup](./setup.md).
 
 ## Native library
 

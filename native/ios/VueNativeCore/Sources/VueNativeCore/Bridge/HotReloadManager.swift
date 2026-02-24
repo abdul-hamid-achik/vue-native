@@ -19,6 +19,8 @@ public final class HotReloadManager: NSObject, URLSessionWebSocketDelegate {
     private var session: URLSession?
     private var serverURL: URL?
     private var isConnecting = false
+    private var reconnectAttempts = 0
+    private let maxReconnectAttempts = 10
 
     private override init() {
         super.init()
@@ -29,6 +31,7 @@ public final class HotReloadManager: NSObject, URLSessionWebSocketDelegate {
     /// Connect to the dev server. Safe to call multiple times.
     public func connect(to url: URL) {
         serverURL = url
+        reconnectAttempts = 0
         scheduleConnect(delay: 0)
     }
 
@@ -103,6 +106,7 @@ public final class HotReloadManager: NSObject, URLSessionWebSocketDelegate {
         switch type {
         case "connected":
             isConnecting = false
+            reconnectAttempts = 0
             NSLog("[VueNative HotReload] Connected — hot reload active")
 
         case "bundle":
@@ -126,8 +130,14 @@ public final class HotReloadManager: NSObject, URLSessionWebSocketDelegate {
 
     private func scheduleReconnect() {
         guard serverURL != nil else { return }
+        reconnectAttempts += 1
+        if reconnectAttempts > maxReconnectAttempts {
+            NSLog("[VueNative HotReload] Giving up after %d attempts — start `bun run dev` and relaunch the app", maxReconnectAttempts)
+            disconnect()
+            return
+        }
         isConnecting = false
-        NSLog("[VueNative HotReload] Reconnecting in 2s...")
+        NSLog("[VueNative HotReload] Reconnecting in 2s... (attempt %d/%d)", reconnectAttempts, maxReconnectAttempts)
         scheduleConnect(delay: 2.0)
     }
 

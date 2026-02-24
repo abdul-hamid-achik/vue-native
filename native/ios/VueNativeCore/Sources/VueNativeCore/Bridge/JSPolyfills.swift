@@ -79,6 +79,27 @@ enum JSPolyfills {
         registerTextEncoding(in: context)
         registerURL(in: context)
         registerCrypto(in: context)
+        registerBridgeStubs(in: context)
+    }
+
+    // MARK: - Bridge callback stubs
+
+    /// Register no-op stubs for global functions that the bundle will overwrite.
+    /// Native modules may call dispatchGlobalEvent() before the JS bundle has
+    /// loaded and registered the real handlers — these stubs prevent the
+    /// "JS function 'X' not found" warnings during that window.
+    private static func registerBridgeStubs(in context: JSContext) {
+        context.evaluateScript("""
+            if (typeof __VN_handleGlobalEvent === 'undefined') {
+                globalThis.__VN_handleGlobalEvent = function() {};
+            }
+            if (typeof __VN_handleEvent === 'undefined') {
+                globalThis.__VN_handleEvent = function() {};
+            }
+            if (typeof __VN_resolveCallback === 'undefined') {
+                globalThis.__VN_resolveCallback = function() {};
+            }
+        """)
     }
 
     // MARK: - console.log / warn / error

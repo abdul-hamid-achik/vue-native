@@ -6,14 +6,18 @@
 - iOS 16.0+
 - Xcode 15+
 - Swift 5.9+
+- [XcodeGen](https://github.com/yonaskolb/XcodeGen): `brew install xcodegen`
 
 ### Android
-- Android 5.0+ (API 21+)
-- Android Studio Hedgehog+
-- Kotlin 1.9+
+- Android 7.0+ (API 24+)
+- Android Studio Ladybug+
+- Android SDK API 35
+- JDK 17 (bundled with Android Studio)
 
 ### Shared
 - Node.js 18+ or [Bun](https://bun.sh)
+
+For full platform setup instructions (emulator/simulator configuration, environment variables, etc.), see the [iOS Setup](/ios/setup.md) and [Android Setup](/android/setup.md) guides.
 
 ## Create a new project (recommended)
 

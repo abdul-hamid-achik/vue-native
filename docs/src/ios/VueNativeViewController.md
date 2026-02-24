@@ -41,10 +41,14 @@ Default: `nil`
 `VueNativeViewController` handles:
 
 1. Sets `view.backgroundColor = .systemBackground`
-2. Calls `NativeBridge.shared.initialize(rootViewController: self)` — registers `__VN_flushOperations` in the JSContext
-3. Calls `JSRuntime.shared.initialize` — creates the JSContext and registers polyfills
+2. Calls `JSRuntime.shared.initialize` — creates the JSContext and registers polyfills
+3. Inside the runtime callback, calls `NativeBridge.shared.initialize(rootViewController: self)` — registers `__VN_flushOperations` on the now-existing JSContext
 4. Loads the JS bundle from the embedded resource (or dev server)
 5. Optionally connects hot reload via `HotReloadManager.shared`
+
+::: warning Init order matters
+The bridge **must** be initialized after the runtime creates the JSContext. If `bridge.initialize()` runs first, it tries to register `__VN_flushOperations` on a nil context — the registration is silently dropped, and the app renders a white screen. This was fixed in v0.4.7.
+:::
 
 ## Manual setup
 
@@ -65,9 +69,11 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         window.makeKeyAndVisible()
         self.window = window
 
+        // Runtime MUST initialize first (creates JSContext).
+        // Bridge init goes inside the callback so the context exists.
         JSRuntime.shared.initialize {
+            NativeBridge.shared.initialize(rootViewController: rootVC)
             DispatchQueue.main.async {
-                NativeBridge.shared.initialize(rootViewController: rootVC)
                 JSRuntime.shared.loadBundle(source: .embedded(name: "vue-native-bundle")) { _ in }
             }
         }

@@ -78,15 +78,15 @@ repositories {
 }
 ```
 
-**"Minimum SDK version 21 required"**
+**"Minimum SDK version 24 required"**
 
-Vue Native Android requires API level 21 (Android 5.0) or higher. Check your `build.gradle`:
+Vue Native Android requires API level 24 (Android 7.0) or higher. Check your `build.gradle.kts`:
 
-```groovy
+```kotlin
 android {
     defaultConfig {
-        minSdk 21
-        targetSdk 34
+        minSdk = 24
+        targetSdk = 35
     }
 }
 ```

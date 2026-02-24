@@ -72,14 +72,14 @@ open class VueNativeViewController: UIViewController {
     // MARK: - Bundle loading
 
     private func loadBundle() {
+        #if DEBUG
         if let wsURL = devServerURL {
             // Connect hot reload manager; it will also do the initial HTTP fetch
             HotReloadManager.shared.connect(to: wsURL)
-            // Also load from the embedded bundle immediately as a fallback
-            loadEmbeddedBundle()
-        } else {
-            loadEmbeddedBundle()
         }
+        #endif
+        // Always load from the embedded bundle (serves as fallback in dev, sole source in release)
+        loadEmbeddedBundle()
     }
 
     private func loadEmbeddedBundle() {
