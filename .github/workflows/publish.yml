@@ -125,7 +125,14 @@ jobs:
         uses: gradle/actions/setup-gradle@v3
 
       - name: Publish VueNativeCore to GitHub Packages
-        run: ./gradlew :VueNativeCore:publishReleasePublicationToGitHubPackagesRepository
+        run: |
+          OUTPUT=$(./gradlew :VueNativeCore:publishReleasePublicationToGitHubPackagesRepository 2>&1) && exit 0
+          if echo "$OUTPUT" | grep -q "status code 409"; then
+            echo "::warning::Version already published to GitHub Packages, skipping"
+          else
+            echo "$OUTPUT" >&2
+            exit 1
+          fi
         working-directory: native/android
         env:
           GITHUB_ACTOR: ${{ github.actor }}
