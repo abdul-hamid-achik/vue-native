@@ -45,9 +45,11 @@ final class SafeAreaView: UIView {
         }
     }
 
+    /// Walk up to the topmost Yoga-managed view (__ROOT__), stopping before
+    /// we reach vc.view or UIWindow which are NOT part of the Yoga tree.
     private func findFlexRoot() -> UIView? {
         var v: UIView? = self
-        while let parent = v?.superview {
+        while let parent = v?.superview, parent.flex.isEnabled {
             v = parent
         }
         return v
