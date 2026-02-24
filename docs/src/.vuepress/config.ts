@@ -54,10 +54,19 @@ export default defineUserConfig({
           ],
         },
         {
+          text: 'Advanced',
+          children: [
+            '/guide/error-handling.md',
+            '/guide/accessibility.md',
+            '/guide/typescript.md',
+          ],
+        },
+        {
           text: 'Tooling',
           children: [
             '/guide/managed-workflow.md',
             '/guide/vscode.md',
+            '/guide/neovim.md',
           ],
         },
         {
@@ -91,6 +100,9 @@ export default defineUserConfig({
             '/components/VSwitch.md',
             '/components/VSlider.md',
             '/components/VSegmentedControl.md',
+            '/components/VCheckbox.md',
+            '/components/VRadio.md',
+            '/components/VDropdown.md',
           ],
         },
         {
@@ -98,12 +110,14 @@ export default defineUserConfig({
           children: [
             '/components/VImage.md',
             '/components/VWebView.md',
+            '/components/VVideo.md',
           ],
         },
         {
           text: 'Lists',
           children: [
             '/components/VList.md',
+            '/components/VSectionList.md',
           ],
         },
         {
@@ -114,6 +128,7 @@ export default defineUserConfig({
             '/components/VAlertDialog.md',
             '/components/VActionSheet.md',
             '/components/VModal.md',
+            '/components/VErrorBoundary.md',
           ],
         },
         {
@@ -132,12 +147,15 @@ export default defineUserConfig({
             '/composables/useAppState.md',
             '/composables/useColorScheme.md',
             '/composables/useDeviceInfo.md',
+            '/composables/useDimensions.md',
+            '/composables/usePlatform.md',
           ],
         },
         {
-          text: 'Storage',
+          text: 'Storage & Files',
           children: [
             '/composables/useAsyncStorage.md',
+            '/composables/useFileSystem.md',
           ],
         },
         {
@@ -146,12 +164,21 @@ export default defineUserConfig({
             '/composables/useGeolocation.md',
             '/composables/useBiometry.md',
             '/composables/useHaptics.md',
+            '/composables/useSensors.md',
           ],
         },
         {
           text: 'Media',
           children: [
             '/composables/useCamera.md',
+            '/composables/useAudio.md',
+          ],
+        },
+        {
+          text: 'Networking',
+          children: [
+            '/composables/useHttp.md',
+            '/composables/useWebSocket.md',
           ],
         },
         {
@@ -164,6 +191,7 @@ export default defineUserConfig({
           text: 'Navigation',
           children: [
             '/composables/useBackHandler.md',
+            '/composables/useSharedElementTransition.md',
           ],
         },
         {
@@ -174,7 +202,6 @@ export default defineUserConfig({
             '/composables/useShare.md',
             '/composables/useLinking.md',
             '/composables/useAnimation.md',
-            '/composables/useHttp.md',
             '/composables/useNotifications.md',
           ],
         },
@@ -183,6 +210,10 @@ export default defineUserConfig({
         '/navigation/README.md',
         '/navigation/stack.md',
         '/navigation/params.md',
+        '/navigation/guards.md',
+        '/navigation/screen-lifecycle.md',
+        '/navigation/tabs.md',
+        '/navigation/drawer.md',
       ],
       '/ios/': [
         '/ios/README.md',

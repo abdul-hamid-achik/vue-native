@@ -75,63 +75,15 @@ const router = createRouter([
 
 ## Navigation guards
 
-Guards let you control navigation globally -- for authentication, analytics, or confirmation dialogs.
+Guards let you control navigation globally — for authentication, analytics, or confirmation dialogs. Vue Native supports `beforeEach`, `beforeResolve`, and `afterEach` hooks.
 
-### beforeEach
-
-Runs before every navigation. Call `next()` to proceed, `next(false)` to cancel, or `next('routeName')` to redirect.
-
-```ts
-const unsubscribe = router.beforeEach((to, from, next) => {
-  if (to.config.name === 'profile' && !isLoggedIn.value) {
-    next('login')
-  } else {
-    next()
-  }
-})
-```
-
-### beforeResolve
-
-Same as `beforeEach` but runs after all `beforeEach` guards have passed.
-
-```ts
-router.beforeResolve((to, from, next) => {
-  next()
-})
-```
-
-### afterEach
-
-Runs after navigation completes. Cannot cancel navigation.
-
-```ts
-router.afterEach((to, from) => {
-  analytics.track('screen_view', { screen: to.config.name })
-})
-```
-
-All guard registration functions return an unsubscribe function.
+See the full [Navigation Guards](./guards.md) guide for details, examples, and patterns.
 
 ## Screen lifecycle
 
-Use `onScreenFocus` and `onScreenBlur` inside components rendered by `RouterView` to respond to screen visibility changes:
+Use `onScreenFocus` and `onScreenBlur` inside components rendered by `RouterView` to respond to screen visibility changes — refresh data, start/stop timers, pause media, and more.
 
-```vue
-<script setup>
-import { onScreenFocus, onScreenBlur } from '@thelacanians/vue-native-navigation'
-
-onScreenFocus(() => {
-  console.log('Screen is now visible')
-  // Refresh data, start timers, etc.
-})
-
-onScreenBlur(() => {
-  console.log('Screen is no longer visible')
-  // Pause timers, save state, etc.
-})
-</script>
-```
+See the full [Screen Lifecycle](./screen-lifecycle.md) guide for details and patterns.
 
 ## Deep linking
 
@@ -164,3 +116,7 @@ The router handles both cold-start URLs (via `Linking.getInitialURL()`) and URLs
 
 - [Stack navigation](./stack.md)
 - [Passing params](./params.md)
+- [Navigation guards](./guards.md)
+- [Screen lifecycle](./screen-lifecycle.md)
+- [Tab navigation](./tabs.md)
+- [Drawer navigation](./drawer.md)
