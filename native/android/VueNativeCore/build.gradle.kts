@@ -1,6 +1,7 @@
 plugins {
     id("com.android.library")
     id("org.jetbrains.kotlin.android")
+    id("maven-publish")
 }
 
 android {
@@ -73,4 +74,27 @@ dependencies {
 
     // Secure Storage (for SecureStorageModule)
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
+}
+
+afterEvaluate {
+    publishing {
+        publications {
+            create<MavenPublication>("release") {
+                groupId = "com.vuenative"
+                artifactId = "core"
+                version = "0.4.4"
+                from(components["release"])
+            }
+        }
+        repositories {
+            maven {
+                name = "GitHubPackages"
+                url = uri("https://maven.pkg.github.com/abdul-hamid-achik/vue-native")
+                credentials {
+                    username = System.getenv("GITHUB_ACTOR")
+                    password = System.getenv("GITHUB_TOKEN")
+                }
+            }
+        }
+    }
 }

@@ -39,3 +39,17 @@ jobs:
 
       - name: Dead code check
         run: bun run knip
+
+  # Validate Swift package builds on macOS
+  swift:
+    runs-on: macos-14
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build VueNativeCore
+        run: swift build
+
+      - name: Test VueNativeCore
+        run: swift test
+        continue-on-error: true

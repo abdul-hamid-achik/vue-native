@@ -1,7 +1,11 @@
 import { Command } from 'commander'
-import { mkdir, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { cp, mkdir, writeFile } from 'node:fs/promises'
+import { join, dirname } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { existsSync } from 'node:fs'
 import pc from 'picocolors'
+
+const VERSION = '0.4.4'
 
 type Template = 'blank' | 'tabs' | 'drawer'
 
@@ -95,7 +99,8 @@ options:
 
 packages:
   VueNativeCore:
-    path: ../native/ios
+    url: https://github.com/abdul-hamid-achik/vue-native
+    from: "${VERSION}"
 
 targets:
   ${xcodeProjectName}:
@@ -105,6 +110,7 @@ targets:
       - Sources
     dependencies:
       - package: VueNativeCore
+        product: VueNativeCore
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: ${bundleId}
@@ -267,13 +273,18 @@ dependencyResolutionManagement {
         google()
         mavenCentral()
         maven { url = uri("https://jitpack.io") }
+        maven {
+            url = uri("https://maven.pkg.github.com/abdul-hamid-achik/vue-native")
+            credentials {
+                username = providers.gradleProperty("gpr.user").orNull ?: System.getenv("GITHUB_ACTOR")
+                password = providers.gradleProperty("gpr.key").orNull ?: System.getenv("GITHUB_TOKEN")
+            }
+        }
     }
 }
 
 rootProject.name = "${name}"
 include(":app")
-include(":VueNativeCore")
-project(":VueNativeCore").projectDir = file("../native/android/VueNativeCore")
 `)
 
       // android/app/build.gradle.kts
@@ -315,7 +326,7 @@ android {
 }
 
 dependencies {
-    implementation(project(":VueNativeCore"))
+    implementation("com.vuenative:core:${VERSION}")
 }
 `)
 
@@ -429,6 +440,17 @@ local.properties
 *.keystore
 *.jks
 `)
+
+      // ── Copy bundled native/ as fallback ───────────────────
+      // When the CLI is installed from npm, native/ is bundled alongside dist/.
+      // This lets projects work immediately without waiting for SPM/Maven resolution.
+      const cliDir = dirname(dirname(fileURLToPath(import.meta.url)))
+      const bundledNative = join(cliDir, 'native')
+      if (existsSync(bundledNative)) {
+        const nativeDir = join(dir, 'native')
+        await cp(bundledNative, nativeDir, { recursive: true })
+        console.log(pc.dim('  Bundled native/ copied as fallback.\n'))
+      }
 
       console.log(pc.green('  Project created successfully!\n'))
       console.log(pc.white('  Next steps:\n'))

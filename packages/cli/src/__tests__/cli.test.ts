@@ -627,7 +627,7 @@ describe('create command', () => {
       expect(content).toContain('org.jetbrains.kotlin.android')
     })
 
-    it('creates android/settings.gradle.kts with VueNativeCore reference', async () => {
+    it('creates android/settings.gradle.kts with Maven repo', async () => {
       await runCreate('my-app')
 
       const settingsCall = mockWriteFile.mock.calls.find(
@@ -636,7 +636,7 @@ describe('create command', () => {
       expect(settingsCall).toBeDefined()
 
       const content = settingsCall![1] as string
-      expect(content).toContain('VueNativeCore')
+      expect(content).toContain('maven.pkg.github.com/abdul-hamid-achik/vue-native')
       expect(content).toContain('jitpack.io')
       expect(content).toContain('include(":app")')
     })
