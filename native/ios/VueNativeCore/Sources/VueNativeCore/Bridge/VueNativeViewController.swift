@@ -52,12 +52,14 @@ open class VueNativeViewController: UIViewController {
         super.viewDidLoad()
         view.backgroundColor = .systemBackground
 
-        // Initialize bridge (registers __VN_flushOperations and sets the root VC)
-        bridge.initialize(rootViewController: self)
-
-        // Initialize JS engine (creates JSContext, registers polyfills)
+        // Initialize JS engine first (creates JSContext, registers polyfills).
+        // Bridge init MUST happen inside this callback so the JSContext exists
+        // when __VN_flushOperations is registered. Calling bridge.initialize()
+        // before this creates a nil-context registration that silently drops,
+        // causing a white screen.
         runtime.initialize { [weak self] in
             guard let self else { return }
+            self.bridge.initialize(rootViewController: self)
             DispatchQueue.main.async {
                 self.loadBundle()
             }
