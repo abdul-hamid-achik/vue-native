@@ -38,25 +38,53 @@ jobs:
         run: bun run test
 
       - name: Publish @thelacanians/vue-native-runtime
-        run: npm publish --access public --provenance
+        run: |
+          OUTPUT=$(npm publish --access public --provenance 2>&1) && exit 0
+          if echo "$OUTPUT" | grep -q "You cannot publish over the previously published"; then
+            echo "::warning::Version already published, skipping"
+          else
+            echo "$OUTPUT" >&2
+            exit 1
+          fi
         working-directory: packages/runtime
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish @thelacanians/vue-native-navigation
-        run: npm publish --access public --provenance
+        run: |
+          OUTPUT=$(npm publish --access public --provenance 2>&1) && exit 0
+          if echo "$OUTPUT" | grep -q "You cannot publish over the previously published"; then
+            echo "::warning::Version already published, skipping"
+          else
+            echo "$OUTPUT" >&2
+            exit 1
+          fi
         working-directory: packages/navigation
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish @thelacanians/vue-native-vite-plugin
-        run: npm publish --access public --provenance
+        run: |
+          OUTPUT=$(npm publish --access public --provenance 2>&1) && exit 0
+          if echo "$OUTPUT" | grep -q "You cannot publish over the previously published"; then
+            echo "::warning::Version already published, skipping"
+          else
+            echo "$OUTPUT" >&2
+            exit 1
+          fi
         working-directory: packages/vite-plugin
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish @thelacanians/vue-native-cli
-        run: npm publish --access public --provenance
+        run: |
+          OUTPUT=$(npm publish --access public --provenance 2>&1) && exit 0
+          if echo "$OUTPUT" | grep -q "You cannot publish over the previously published"; then
+            echo "::warning::Version already published, skipping"
+          else
+            echo "$OUTPUT" >&2
+            exit 1
+          fi
         working-directory: packages/cli
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
