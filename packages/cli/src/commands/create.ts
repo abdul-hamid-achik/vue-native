@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { existsSync } from 'node:fs'
 import pc from 'picocolors'
 
-const VERSION = '0.4.13'
+const VERSION = '0.4.14'
 
 type Template = 'blank' | 'tabs' | 'drawer'
 
@@ -172,6 +172,11 @@ targets:
     <string>UIInterfaceOrientationLandscapeLeft</string>
     <string>UIInterfaceOrientationLandscapeRight</string>
   </array>
+  <key>NSAppTransportSecurity</key>
+  <dict>
+    <key>NSAllowsLocalNetworking</key>
+    <true/>
+  </dict>
   <!-- Uncomment the privacy descriptions for features your app uses -->
   <!-- <key>NSCameraUsageDescription</key><string>This app needs camera access</string> -->
   <!-- <key>NSMicrophoneUsageDescription</key><string>This app needs microphone access</string> -->

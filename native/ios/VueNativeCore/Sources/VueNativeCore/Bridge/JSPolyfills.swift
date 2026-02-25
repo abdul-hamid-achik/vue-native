@@ -704,8 +704,21 @@ enum JSPolyfills {
 /// Produce a JSON-safe string literal (with quotes) for embedding in JS eval strings.
 private enum JSPolyfillsJSON {
     static func encode(_ str: String) -> String {
-        let data = (try? JSONSerialization.data(withJSONObject: str)) ?? Data()
-        return String(data: data, encoding: .utf8) ?? "\"\""
+        // Wrap in array so JSONSerialization gets a valid top-level type.
+        // String alone causes an NSException that try? cannot catch.
+        if let data = try? JSONSerialization.data(withJSONObject: [str]),
+           let json = String(data: data, encoding: .utf8),
+           json.count >= 2 {
+            return String(json.dropFirst().dropLast())
+        }
+        // Fallback: manual escaping
+        let escaped = str
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+            .replacingOccurrences(of: "\n", with: "\\n")
+            .replacingOccurrences(of: "\r", with: "\\r")
+            .replacingOccurrences(of: "\t", with: "\\t")
+        return "\"\(escaped)\""
     }
 }
 

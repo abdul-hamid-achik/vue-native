@@ -1,6 +1,6 @@
 {
   "name": "@thelacanians/vue-native-navigation",
-  "version": "0.4.13",
+  "version": "0.4.14",
   "description": "Stack navigation for Vue Native apps",
   "license": "MIT",
   "author": "Vue Native Contributors",
@@ -33,7 +33,7 @@
   },
   "dependencies": {
     "@vue/runtime-core": "^3.5.0",
-    "@thelacanians/vue-native-runtime": "^0.4.13"
+    "@thelacanians/vue-native-runtime": "^0.4.14"
   },
   "devDependencies": {
     "tsup": "^8.4.0",
