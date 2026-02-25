@@ -8,6 +8,8 @@ Thank you for your interest in contributing! This guide covers everything you ne
 - [Xcode](https://developer.apple.com/xcode/) 15+ (for iOS work)
 - [Android Studio](https://developer.android.com/studio) Hedgehog+ (for Android work)
 - Node.js 18+ (for CLI and tooling)
+- [asdf](https://asdf-vm.com/) (recommended) — Java 17 is specified in `.tool-versions`
+- [SwiftLint](https://github.com/realm/SwiftLint) (`brew install swiftlint`) — for iOS lint
 
 ## Repository Setup
 
@@ -50,9 +52,38 @@ Open `native/ios/VueNativeCore/` as a Swift Package in Xcode, or build with:
 swift build --package-path native/ios/VueNativeCore/
 ```
 
+Lint and test:
+```bash
+# Lint
+cd native/ios && swiftlint lint
+
+# Test (requires iOS Simulator)
+xcodebuild test \
+  -scheme VueNativeCore \
+  -sdk iphonesimulator \
+  -destination 'platform=iOS Simulator,name=iPhone 16,OS=18.0' \
+  -skipPackagePluginValidation
+```
+
 ### Android native
 
 Open `native/android/` in Android Studio.
+
+If you use `asdf`, Java 17 is configured in `.tool-versions`:
+```bash
+asdf install   # installs Java temurin-17
+```
+
+Lint and test:
+```bash
+cd native/android
+
+# Lint
+./gradlew :VueNativeCore:ktlintCheck
+
+# Test (runs on JVM via Robolectric, no emulator needed)
+./gradlew :VueNativeCore:testReleaseUnitTest
+```
 
 ### Running an example
 
@@ -88,20 +119,25 @@ cd examples/counter && bun run dev
 
 ### Code Style
 
-- **TypeScript:** Follow existing conventions. `bun run typecheck` must pass.
-- **Swift:** Standard Swift style. No force-unwraps in production paths.
-- **Kotlin:** Standard Kotlin style. Prefer `?.` safe calls over `!!`.
+- **TypeScript:** Follow existing conventions. `bun run typecheck` and `bun run lint` must pass.
+- **Swift:** [SwiftLint](https://github.com/realm/SwiftLint) enforced in CI. Config: `native/ios/.swiftlint.yml`. No force-unwraps in production paths.
+- **Kotlin:** [ktlint](https://pinterest.github.io/ktlint/) enforced in CI. Config: `native/android/.editorconfig`. Prefer `?.` safe calls over `!!`.
 
 ### Tests
 
-- Unit tests for the runtime live in `packages/runtime/src/__tests__/`
-- Run with: `bun run test`
-- New bridge functionality should include tests
+- **TypeScript:** Unit tests live in `packages/runtime/src/__tests__/`. Run with: `bun run test`
+- **iOS (Swift):** XCTest suite in `native/ios/VueNativeCore/Tests/VueNativeCoreTests/` (114 tests)
+- **Android (Kotlin):** JUnit + Robolectric in `native/android/VueNativeCore/src/test/kotlin/` (83 tests)
+- New bridge functionality should include tests on all three layers
+- CI runs all test suites automatically (TypeScript, Swift, Kotlin)
 
 ### Pull Requests
 
 1. Fork the repo and create a feature branch: `git checkout -b feat/my-feature`
-2. Make your changes and ensure `bun run build && bun run test && bun run typecheck` all pass
+2. Make your changes and ensure all checks pass:
+   - `bun run build && bun run test && bun run typecheck` (TypeScript)
+   - `cd native/ios && swiftlint lint` (Swift lint)
+   - `cd native/android && ./gradlew :VueNativeCore:ktlintCheck :VueNativeCore:testReleaseUnitTest` (Kotlin lint + test)
 3. Keep commits focused — one logical change per commit
 4. Open a PR with a clear description of what and why
 5. Link any related issues

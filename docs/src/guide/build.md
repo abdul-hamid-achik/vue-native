@@ -36,3 +36,40 @@ tasks.register<Copy>("copyJsBundle") {
 tasks.named("preBuild") { dependsOn("copyJsBundle") }
 ```
 :::
+
+## CI Pipeline
+
+Every push to `main` and every pull request runs three parallel jobs in [GitHub Actions](https://github.com/abdul-hamid-achik/vue-native/actions):
+
+| Job | Runner | Steps |
+|-----|--------|-------|
+| **TypeScript** | ubuntu-latest | lint → typecheck → build → test → dead code check (knip) |
+| **Swift** | macos-14 | SwiftLint → build VueNativeCore → XCTest (114 tests on iPhone simulator) |
+| **Kotlin** | ubuntu-latest | ktlint → build VueNativeCore → JUnit + Robolectric (83 tests) |
+
+### Running the full pipeline locally
+
+```bash
+# TypeScript
+bun run lint && bun run typecheck && bun run build && bun run test
+
+# iOS
+cd native/ios && swiftlint lint
+xcodebuild test \
+  -scheme VueNativeCore \
+  -sdk iphonesimulator \
+  -destination 'platform=iOS Simulator,name=iPhone 16,OS=18.0' \
+  -skipPackagePluginValidation
+
+# Android
+cd native/android
+./gradlew :VueNativeCore:ktlintCheck :VueNativeCore:testReleaseUnitTest
+```
+
+### Publishing
+
+Pushing a git tag matching `v*` (e.g., `v0.4.13`) triggers the publish workflow:
+
+1. **npm** — publishes `@thelacanians/vue-native-runtime`, `@thelacanians/vue-native-navigation`, `@thelacanians/vue-native-vite-plugin`, and `@thelacanians/vue-native-cli` to npm
+2. **Swift Package** — validated via xcodebuild (SPM resolves directly from the git tag)
+3. **Android Maven** — publishes `com.vuenative:core` to GitHub Packages

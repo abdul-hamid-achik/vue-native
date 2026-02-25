@@ -287,9 +287,77 @@ Bridge operation snapshots are a useful regression tool. If a component silently
 Reset `NativeBridge` and `mockBridge` in `beforeEach` and call `resetNodeId()` (exported from the runtime) to ensure deterministic node IDs across test runs.
 :::
 
+## Native Unit Tests
+
+In addition to JavaScript-side tests, the VueNativeCore libraries on both platforms have their own native test suites that verify bridge operations, style engine behavior, component registration, and module invocation at the native layer.
+
+### iOS (XCTest)
+
+Tests live in `native/ios/VueNativeCore/Tests/VueNativeCoreTests/`. Run them with:
+
+```bash
+xcodebuild test \
+  -scheme VueNativeCore \
+  -sdk iphonesimulator \
+  -destination 'platform=iOS Simulator,name=iPhone 16,OS=18.0' \
+  -skipPackagePluginValidation
+```
+
+The test suite covers:
+
+| File | Tests | What it covers |
+|------|-------|---------------|
+| `NativeBridgeOperationTests.swift` | 24 | create, appendChild, removeChild, insertBefore, updateProp, updateStyle, setText, events, batch ops, reset |
+| `StyleEngineTests.swift` | 49 | yogaValue, isAuto, asPercent, backgroundColor, opacity, border, shadow, transforms, text props, a11y |
+| `ComponentRegistryTests.swift` | 16 | All 28 component types, factory storage, view type validation, prop/event dispatch |
+| `NativeModuleRegistryTests.swift` | 8 | Register, invoke, invokeSync, unknown module errors, module overwrite |
+
+::: tip
+`NativeBridge.processOperations` is `internal` (not `private`) so that `@testable import VueNativeCore` can call it directly without going through JSContext.
+:::
+
+### Android (JUnit + Robolectric)
+
+Tests live in `native/android/VueNativeCore/src/test/kotlin/com/vuenative/core/`. Run them with:
+
+```bash
+cd native/android
+./gradlew :VueNativeCore:testReleaseUnitTest
+```
+
+[Robolectric](http://robolectric.org/) shadows the Android framework so tests run on the JVM without an emulator.
+
+| File | Tests | What it covers |
+|------|-------|---------------|
+| `NativeBridgeTest.kt` | 17 | create, createText, appendChild, removeChild, insertBefore, updateProp/Style, setText, events, cleanup |
+| `StyleEngineTest.kt` | 46 | backgroundColor, opacity, border, padding, margin, flex props, text color/size, a11y, parseColor, unit conversion |
+| `ComponentRegistryTest.kt` | 10 | All 28 types, factory storage, view type checks |
+| `NativeModuleRegistryTest.kt` | 10 | Register, invoke, mock modules, registerDefaults |
+
+::: tip
+Robolectric tests use `Shadows.shadowOf(Looper.getMainLooper()).idle()` to execute posted messages, since `NativeBridge.processOperations` dispatches to the main thread via a Handler.
+:::
+
+### Linting
+
+Both native codebases are linted in CI:
+
+- **Swift:** [SwiftLint](https://github.com/realm/SwiftLint) — config at `native/ios/.swiftlint.yml`
+- **Kotlin:** [ktlint](https://pinterest.github.io/ktlint/) via Gradle plugin — config at `native/android/.editorconfig`
+
+Run linters locally:
+
+```bash
+# Swift
+cd native/ios && swiftlint lint
+
+# Kotlin
+cd native/android && ./gradlew :VueNativeCore:ktlintCheck
+```
+
 ## End-to-End Testing
 
-Unit tests cover your JavaScript logic. For full integration testing against real native views, use platform-specific tools:
+Unit tests cover your JavaScript logic. Native unit tests verify the bridge and style engine. For full integration testing against real native views, use platform-specific tools:
 
 | Platform | Tool | Notes |
 |----------|------|-------|
