@@ -120,6 +120,10 @@ export interface VAlertDialogProps {
     label: string
     style?: 'default' | 'cancel' | 'destructive'
   }>
+  /** Shorthand: confirm button label. Used when `buttons` is empty. */
+  confirmText?: string
+  /** Shorthand: cancel button label. Used when `buttons` is empty. */
+  cancelText?: string
 }
 
 export interface VStatusBarProps {

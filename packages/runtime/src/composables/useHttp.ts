@@ -120,18 +120,37 @@ export function useHttp(config: HttpRequestConfig = {}) {
     }
   }
 
+  function buildUrl(url: string, params?: Record<string, string>): string {
+    if (!params || Object.keys(params).length === 0) return url
+    const qs = Object.entries(params)
+      .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+      .join('&')
+    return url.includes('?') ? `${url}&${qs}` : `${url}?${qs}`
+  }
+
   return {
     loading,
     error,
-    get: <T = any>(url: string, headers?: Record<string, string>) =>
-      request<T>('GET', url, { headers }),
+    get: <T = any>(url: string, options?: { params?: Record<string, string>, headers?: Record<string, string> } | Record<string, string>) => {
+      // Backward compat: if second arg looks like plain headers (no params/headers keys), treat as headers
+      if (options && !('params' in options) && !('headers' in options)) {
+        return request<T>('GET', url, { headers: options as Record<string, string> })
+      }
+      const opts = options as { params?: Record<string, string>, headers?: Record<string, string> } | undefined
+      return request<T>('GET', buildUrl(url, opts?.params), { headers: opts?.headers })
+    },
     post: <T = any>(url: string, body?: any, headers?: Record<string, string>) =>
       request<T>('POST', url, { body, headers }),
     put: <T = any>(url: string, body?: any, headers?: Record<string, string>) =>
       request<T>('PUT', url, { body, headers }),
     patch: <T = any>(url: string, body?: any, headers?: Record<string, string>) =>
       request<T>('PATCH', url, { body, headers }),
-    delete: <T = any>(url: string, headers?: Record<string, string>) =>
-      request<T>('DELETE', url, { headers }),
+    delete: <T = any>(url: string, options?: { params?: Record<string, string>, headers?: Record<string, string> } | Record<string, string>) => {
+      if (options && !('params' in options) && !('headers' in options)) {
+        return request<T>('DELETE', url, { headers: options as Record<string, string> })
+      }
+      const opts = options as { params?: Record<string, string>, headers?: Record<string, string> } | undefined
+      return request<T>('DELETE', buildUrl(url, opts?.params), { headers: opts?.headers })
+    },
   }
 }

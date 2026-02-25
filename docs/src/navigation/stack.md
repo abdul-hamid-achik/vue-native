@@ -68,3 +68,28 @@ Screen transitions use a horizontal slide animation (`translateX`). The new scre
 ```
 
 All screens in the stack are mounted simultaneously (so back navigation is instant -- no remounting). Only the top screen is visible.
+
+## Android Back Button
+
+On iOS, the swipe-from-edge gesture automatically navigates back. On Android, the hardware back button/gesture does **nothing** by default -- you must handle it explicitly with `useBackHandler`:
+
+```vue
+<script setup>
+import { useRouter } from '@thelacanians/vue-native-navigation'
+import { useBackHandler } from '@thelacanians/vue-native-runtime'
+
+const router = useRouter()
+
+useBackHandler(() => {
+  if (router.canGoBack.value) {
+    router.pop()
+    return true // handled
+  }
+  return false // let the system handle it (exit app)
+})
+</script>
+```
+
+::: tip
+Add `useBackHandler` in your root `App.vue` or in each screen that needs custom back behavior. Return `true` to consume the event, or `false` to let the system handle it (which typically exits the app on the root screen).
+:::

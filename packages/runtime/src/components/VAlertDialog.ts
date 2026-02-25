@@ -25,6 +25,8 @@ export const VAlertDialog = defineComponent({
     title: { type: String, default: '' },
     message: { type: String, default: '' },
     buttons: { type: Array as () => AlertButton[], default: () => [] },
+    confirmText: { type: String, default: '' },
+    cancelText: { type: String, default: '' },
   },
   emits: ['confirm', 'cancel', 'action'],
   setup(props, { emit }) {
@@ -46,15 +48,28 @@ export const VAlertDialog = defineComponent({
       if (visibleTimer) clearTimeout(visibleTimer)
     })
 
-    return () =>
-      h('VAlertDialog', {
+    return () => {
+      // Build buttons from confirmText/cancelText when buttons array is empty
+      let resolvedButtons = props.buttons
+      if (resolvedButtons.length === 0 && (props.confirmText || props.cancelText)) {
+        resolvedButtons = []
+        if (props.cancelText) {
+          resolvedButtons.push({ label: props.cancelText, style: 'cancel' })
+        }
+        if (props.confirmText) {
+          resolvedButtons.push({ label: props.confirmText, style: 'default' })
+        }
+      }
+
+      return h('VAlertDialog', {
         visible: debouncedVisible.value,
         title: props.title,
         message: props.message,
-        buttons: props.buttons,
+        buttons: resolvedButtons,
         onConfirm: (e: any) => emit('confirm', e),
         onCancel: () => emit('cancel'),
         onAction: (e: any) => emit('action', e),
       })
+    }
   },
 })

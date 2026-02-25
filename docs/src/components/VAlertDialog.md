@@ -28,6 +28,8 @@ VAlertDialog is a non-visual component -- it renders a zero-size hidden placehol
 | `title` | `string` | `''` | Alert title text |
 | `message` | `string` | `''` | Alert message body |
 | `buttons` | `AlertButton[]` | `[]` | Array of button configurations |
+| `confirmText` | `string` | `''` | Shorthand: sets the confirm button label. Used when `buttons` is empty. |
+| `cancelText` | `string` | `''` | Shorthand: sets the cancel button label. Used when `buttons` is empty. |
 
 ### AlertButton
 
@@ -43,6 +45,24 @@ interface AlertButton {
 - `'destructive'` -- red/destructive appearance
 
 If no buttons are provided, a single "OK" button is shown by default.
+
+### Shorthand: confirmText / cancelText
+
+For simple confirm/cancel dialogs, use `confirmText` and `cancelText` instead of building a `buttons` array:
+
+```vue
+<VAlertDialog
+  :visible="showAlert"
+  title="Delete Item"
+  message="This action cannot be undone."
+  confirmText="Delete"
+  cancelText="Cancel"
+  @confirm="handleDelete"
+  @cancel="showAlert = false"
+/>
+```
+
+This is equivalent to passing `buttons` with `[{ label: 'Cancel', style: 'cancel' }, { label: 'Delete', style: 'default' }]`. If both `buttons` and `confirmText`/`cancelText` are provided, the `buttons` array takes precedence.
 
 ## Events
 
