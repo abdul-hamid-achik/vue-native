@@ -1,6 +1,6 @@
 {
   "name": "@thelacanians/vue-native-vite-plugin",
-  "version": "0.4.11",
+  "version": "0.4.12",
   "description": "Vite plugin for Vue Native — builds IIFE bundles for native runtimes",
   "license": "MIT",
   "author": "Vue Native Contributors",
