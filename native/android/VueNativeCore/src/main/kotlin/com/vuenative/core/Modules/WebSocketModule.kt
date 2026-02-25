@@ -1,13 +1,13 @@
 package com.vuenative.core
 
 import android.content.Context
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.TimeUnit
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.TimeUnit
 
 /**
  * Native module for WebSocket connections using OkHttp.
@@ -47,21 +47,36 @@ class WebSocketModule : NativeModule {
         when (method) {
             "connect" -> {
                 val url = args.getOrNull(0) as? String
-                    ?: run { callback(null, "WebSocketModule: expected url"); return }
+                    ?: run {
+                        callback(null, "WebSocketModule: expected url")
+                        return
+                    }
                 val connectionId = args.getOrNull(1) as? String
-                    ?: run { callback(null, "WebSocketModule: expected connectionId"); return }
+                    ?: run {
+                        callback(null, "WebSocketModule: expected connectionId")
+                        return
+                    }
                 connect(url, connectionId, bridge, callback)
             }
             "send" -> {
                 val connectionId = args.getOrNull(0) as? String
-                    ?: run { callback(null, "WebSocketModule: expected connectionId"); return }
+                    ?: run {
+                        callback(null, "WebSocketModule: expected connectionId")
+                        return
+                    }
                 val data = args.getOrNull(1) as? String
-                    ?: run { callback(null, "WebSocketModule: expected data"); return }
+                    ?: run {
+                        callback(null, "WebSocketModule: expected data")
+                        return
+                    }
                 send(connectionId, data, callback)
             }
             "close" -> {
                 val connectionId = args.getOrNull(0) as? String
-                    ?: run { callback(null, "WebSocketModule: expected connectionId"); return }
+                    ?: run {
+                        callback(null, "WebSocketModule: expected connectionId")
+                        return
+                    }
                 val code = (args.getOrNull(1) as? Number)?.toInt() ?: 1000
                 val reason = args.getOrNull(2) as? String ?: ""
                 close(connectionId, code, reason, bridge, callback)
@@ -125,7 +140,10 @@ class WebSocketModule : NativeModule {
 
     private fun send(connectionId: String, data: String, callback: (Any?, String?) -> Unit) {
         val ws = connections[connectionId]
-            ?: run { callback(null, "WebSocketModule: no connection '$connectionId'"); return }
+            ?: run {
+                callback(null, "WebSocketModule: no connection '$connectionId'")
+                return
+            }
         val sent = ws.send(data)
         if (sent) {
             callback(true, null)

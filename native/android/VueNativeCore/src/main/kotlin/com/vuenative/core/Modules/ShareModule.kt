@@ -12,13 +12,16 @@ class ShareModule : NativeModule {
     }
 
     override fun invoke(method: String, args: List<Any?>, bridge: NativeBridge, callback: (Any?, String?) -> Unit) {
-        val ctx = context ?: run { callback(null, "Not initialized"); return }
+        val ctx = context ?: run {
+            callback(null, "Not initialized")
+            return
+        }
         when (method) {
             "share" -> {
                 val content = args.getOrNull(0) as? Map<*, *>
                 val message = content?.get("message")?.toString() ?: ""
-                val url     = content?.get("url")?.toString() ?: ""
-                val text    = if (url.isNotEmpty()) "$message\n$url" else message
+                val url = content?.get("url")?.toString() ?: ""
+                val text = if (url.isNotEmpty()) "$message\n$url" else message
 
                 val intent = Intent(Intent.ACTION_SEND).apply {
                     type = "text/plain"

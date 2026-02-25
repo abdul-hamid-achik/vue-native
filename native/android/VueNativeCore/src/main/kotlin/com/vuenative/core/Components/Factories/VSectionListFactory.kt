@@ -36,8 +36,11 @@ class VSectionListFactory : NativeComponentFactory {
         val rv = view as? RecyclerView ?: return
         when (key) {
             "bounces" -> {
-                rv.overScrollMode = if (value == false || value == "false")
-                    View.OVER_SCROLL_NEVER else View.OVER_SCROLL_ALWAYS
+                rv.overScrollMode = if (value == false || value == "false") {
+                    View.OVER_SCROLL_NEVER
+                } else {
+                    View.OVER_SCROLL_ALWAYS
+                }
             }
             "showsScrollIndicator" -> {
                 val show = value != false && value != "false"

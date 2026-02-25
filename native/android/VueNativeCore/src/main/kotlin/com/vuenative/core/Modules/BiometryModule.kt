@@ -27,12 +27,15 @@ class BiometryModule : NativeModule {
     ) {
         when (method) {
             "getSupportedBiometry" -> {
-                val ctx = context ?: run { callback("none", null); return }
+                val ctx = context ?: run {
+                    callback("none", null)
+                    return
+                }
                 val biometricManager = BiometricManager.from(ctx)
                 val result = when (biometricManager.canAuthenticate(
                     BiometricManager.Authenticators.BIOMETRIC_STRONG
                 )) {
-                    BiometricManager.BIOMETRIC_SUCCESS -> "faceID"   // Android doesn't distinguish
+                    BiometricManager.BIOMETRIC_SUCCESS -> "faceID" // Android doesn't distinguish
                     BiometricManager.BIOMETRIC_ERROR_NO_HARDWARE -> "none"
                     BiometricManager.BIOMETRIC_ERROR_HW_UNAVAILABLE -> "none"
                     BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED -> "biometric" // HW present, not enrolled

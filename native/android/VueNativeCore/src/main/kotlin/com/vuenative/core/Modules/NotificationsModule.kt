@@ -115,7 +115,10 @@ class NotificationsModule : NativeModule {
                 // Android <13: no runtime permission needed for notifications
                 // Android 13+: POST_NOTIFICATIONS must be granted via PermissionsModule
                 val granted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    val ctx = context ?: run { callback(null, "Not initialized"); return }
+                    val ctx = context ?: run {
+                        callback(null, "Not initialized")
+                        return
+                    }
                     ActivityCompat.checkSelfPermission(ctx, Manifest.permission.POST_NOTIFICATIONS) ==
                             PackageManager.PERMISSION_GRANTED
                 } else {
@@ -124,9 +127,15 @@ class NotificationsModule : NativeModule {
                 callback(mapOf("status" to if (granted) "granted" else "denied"), null)
             }
             "scheduleLocal" -> {
-                val ctx = context ?: run { callback(null, "Not initialized"); return }
+                val ctx = context ?: run {
+                    callback(null, "Not initialized")
+                    return
+                }
                 val opts = args.getOrNull(0) as? Map<*, *>
-                    ?: run { callback(null, "Invalid args — expected options object"); return }
+                    ?: run {
+                        callback(null, "Invalid args — expected options object")
+                        return
+                    }
 
                 val title = opts["title"]?.toString() ?: ""
                 val body = opts["body"]?.toString() ?: ""
@@ -157,14 +166,23 @@ class NotificationsModule : NativeModule {
                 callback(mapOf("id" to notifId), null)
             }
             "cancel" -> {
-                val ctx = context ?: run { callback(null, "Not initialized"); return }
+                val ctx = context ?: run {
+                    callback(null, "Not initialized")
+                    return
+                }
                 val id = (args.getOrNull(0) as? Number)?.toInt()
-                    ?: run { callback(null, "Invalid args — expected notification id"); return }
+                    ?: run {
+                        callback(null, "Invalid args — expected notification id")
+                        return
+                    }
                 NotificationManagerCompat.from(ctx).cancel(id)
                 callback(null, null)
             }
             "cancelAll" -> {
-                val ctx = context ?: run { callback(null, "Not initialized"); return }
+                val ctx = context ?: run {
+                    callback(null, "Not initialized")
+                    return
+                }
                 NotificationManagerCompat.from(ctx).cancelAll()
                 callback(null, null)
             }

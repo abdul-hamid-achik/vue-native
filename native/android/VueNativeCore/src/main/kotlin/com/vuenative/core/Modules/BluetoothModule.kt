@@ -52,39 +52,80 @@ class BluetoothModule : NativeModule {
             }
             "connect" -> {
                 val deviceId = args.getOrNull(0)?.toString() ?: run {
-                    callback(null, "Missing deviceId"); return
+                    callback(null, "Missing deviceId")
+                    return
                 }
                 connect(deviceId, callback)
             }
             "disconnect" -> {
                 val deviceId = args.getOrNull(0)?.toString() ?: run {
-                    callback(null, "Missing deviceId"); return
+                    callback(null, "Missing deviceId")
+                    return
                 }
                 disconnect(deviceId, callback)
             }
             "readCharacteristic" -> {
-                val deviceId = args.getOrNull(0)?.toString() ?: run { callback(null, "Missing deviceId"); return }
-                val serviceUUID = args.getOrNull(1)?.toString() ?: run { callback(null, "Missing serviceUUID"); return }
-                val charUUID = args.getOrNull(2)?.toString() ?: run { callback(null, "Missing charUUID"); return }
+                val deviceId = args.getOrNull(0)?.toString() ?: run {
+                    callback(null, "Missing deviceId")
+                    return
+                }
+                val serviceUUID = args.getOrNull(1)?.toString() ?: run {
+                    callback(null, "Missing serviceUUID")
+                    return
+                }
+                val charUUID = args.getOrNull(2)?.toString() ?: run {
+                    callback(null, "Missing charUUID")
+                    return
+                }
                 readCharacteristic(deviceId, serviceUUID, charUUID, callback)
             }
             "writeCharacteristic" -> {
-                val deviceId = args.getOrNull(0)?.toString() ?: run { callback(null, "Missing deviceId"); return }
-                val serviceUUID = args.getOrNull(1)?.toString() ?: run { callback(null, "Missing serviceUUID"); return }
-                val charUUID = args.getOrNull(2)?.toString() ?: run { callback(null, "Missing charUUID"); return }
-                val dataBase64 = args.getOrNull(3)?.toString() ?: run { callback(null, "Missing data"); return }
+                val deviceId = args.getOrNull(0)?.toString() ?: run {
+                    callback(null, "Missing deviceId")
+                    return
+                }
+                val serviceUUID = args.getOrNull(1)?.toString() ?: run {
+                    callback(null, "Missing serviceUUID")
+                    return
+                }
+                val charUUID = args.getOrNull(2)?.toString() ?: run {
+                    callback(null, "Missing charUUID")
+                    return
+                }
+                val dataBase64 = args.getOrNull(3)?.toString() ?: run {
+                    callback(null, "Missing data")
+                    return
+                }
                 writeCharacteristic(deviceId, serviceUUID, charUUID, dataBase64, callback)
             }
             "subscribeToCharacteristic" -> {
-                val deviceId = args.getOrNull(0)?.toString() ?: run { callback(null, "Missing deviceId"); return }
-                val serviceUUID = args.getOrNull(1)?.toString() ?: run { callback(null, "Missing serviceUUID"); return }
-                val charUUID = args.getOrNull(2)?.toString() ?: run { callback(null, "Missing charUUID"); return }
+                val deviceId = args.getOrNull(0)?.toString() ?: run {
+                    callback(null, "Missing deviceId")
+                    return
+                }
+                val serviceUUID = args.getOrNull(1)?.toString() ?: run {
+                    callback(null, "Missing serviceUUID")
+                    return
+                }
+                val charUUID = args.getOrNull(2)?.toString() ?: run {
+                    callback(null, "Missing charUUID")
+                    return
+                }
                 subscribeToCharacteristic(deviceId, serviceUUID, charUUID, callback)
             }
             "unsubscribeFromCharacteristic" -> {
-                val deviceId = args.getOrNull(0)?.toString() ?: run { callback(null, "Missing deviceId"); return }
-                val serviceUUID = args.getOrNull(1)?.toString() ?: run { callback(null, "Missing serviceUUID"); return }
-                val charUUID = args.getOrNull(2)?.toString() ?: run { callback(null, "Missing charUUID"); return }
+                val deviceId = args.getOrNull(0)?.toString() ?: run {
+                    callback(null, "Missing deviceId")
+                    return
+                }
+                val serviceUUID = args.getOrNull(1)?.toString() ?: run {
+                    callback(null, "Missing serviceUUID")
+                    return
+                }
+                val charUUID = args.getOrNull(2)?.toString() ?: run {
+                    callback(null, "Missing charUUID")
+                    return
+                }
                 unsubscribeFromCharacteristic(deviceId, serviceUUID, charUUID, callback)
             }
             "getState" -> {
@@ -151,8 +192,14 @@ class BluetoothModule : NativeModule {
 
     @Suppress("MissingPermission")
     private fun readCharacteristic(deviceId: String, serviceUUID: String, charUUID: String, callback: (Any?, String?) -> Unit) {
-        val gatt = gattConnections[deviceId] ?: run { callback(null, "Device not connected"); return }
-        val char = findCharacteristic(gatt, serviceUUID, charUUID) ?: run { callback(null, "Characteristic not found"); return }
+        val gatt = gattConnections[deviceId] ?: run {
+            callback(null, "Device not connected")
+            return
+        }
+        val char = findCharacteristic(gatt, serviceUUID, charUUID) ?: run {
+            callback(null, "Characteristic not found")
+            return
+        }
         val key = "$deviceId:$serviceUUID:$charUUID"
         readCallbacks[key] = callback
         gatt.readCharacteristic(char)
@@ -160,8 +207,14 @@ class BluetoothModule : NativeModule {
 
     @Suppress("MissingPermission")
     private fun writeCharacteristic(deviceId: String, serviceUUID: String, charUUID: String, dataBase64: String, callback: (Any?, String?) -> Unit) {
-        val gatt = gattConnections[deviceId] ?: run { callback(null, "Device not connected"); return }
-        val char = findCharacteristic(gatt, serviceUUID, charUUID) ?: run { callback(null, "Characteristic not found"); return }
+        val gatt = gattConnections[deviceId] ?: run {
+            callback(null, "Device not connected")
+            return
+        }
+        val char = findCharacteristic(gatt, serviceUUID, charUUID) ?: run {
+            callback(null, "Characteristic not found")
+            return
+        }
         val data = Base64.decode(dataBase64, Base64.DEFAULT)
         val key = "$deviceId:$serviceUUID:$charUUID"
         writeCallbacks[key] = callback
@@ -171,8 +224,14 @@ class BluetoothModule : NativeModule {
 
     @Suppress("MissingPermission")
     private fun subscribeToCharacteristic(deviceId: String, serviceUUID: String, charUUID: String, callback: (Any?, String?) -> Unit) {
-        val gatt = gattConnections[deviceId] ?: run { callback(null, "Device not connected"); return }
-        val char = findCharacteristic(gatt, serviceUUID, charUUID) ?: run { callback(null, "Characteristic not found"); return }
+        val gatt = gattConnections[deviceId] ?: run {
+            callback(null, "Device not connected")
+            return
+        }
+        val char = findCharacteristic(gatt, serviceUUID, charUUID) ?: run {
+            callback(null, "Characteristic not found")
+            return
+        }
         gatt.setCharacteristicNotification(char, true)
         val descriptor = char.getDescriptor(UUID.fromString("00002902-0000-1000-8000-00805f9b34fb"))
         descriptor?.let {
@@ -184,8 +243,14 @@ class BluetoothModule : NativeModule {
 
     @Suppress("MissingPermission")
     private fun unsubscribeFromCharacteristic(deviceId: String, serviceUUID: String, charUUID: String, callback: (Any?, String?) -> Unit) {
-        val gatt = gattConnections[deviceId] ?: run { callback(null, "Device not connected"); return }
-        val char = findCharacteristic(gatt, serviceUUID, charUUID) ?: run { callback(null, "Characteristic not found"); return }
+        val gatt = gattConnections[deviceId] ?: run {
+            callback(null, "Device not connected")
+            return
+        }
+        val char = findCharacteristic(gatt, serviceUUID, charUUID) ?: run {
+            callback(null, "Characteristic not found")
+            return
+        }
         gatt.setCharacteristicNotification(char, false)
         callback(null, null)
     }

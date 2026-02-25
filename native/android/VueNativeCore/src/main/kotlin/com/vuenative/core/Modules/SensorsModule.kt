@@ -59,9 +59,15 @@ class SensorsModule : NativeModule {
     // -- Accelerometer --
 
     private fun startAccelerometer(delay: Int, callback: (Any?, String?) -> Unit) {
-        val sm = sensorManager ?: run { callback(null, "SensorManager not available"); return }
+        val sm = sensorManager ?: run {
+            callback(null, "SensorManager not available")
+            return
+        }
         val sensor = sm.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
-            ?: run { callback(null, "Accelerometer not available on this device"); return }
+            ?: run {
+                callback(null, "Accelerometer not available on this device")
+                return
+            }
 
         // Stop previous if running
         stopAccelerometer()
@@ -90,9 +96,15 @@ class SensorsModule : NativeModule {
     // -- Gyroscope --
 
     private fun startGyroscope(delay: Int, callback: (Any?, String?) -> Unit) {
-        val sm = sensorManager ?: run { callback(null, "SensorManager not available"); return }
+        val sm = sensorManager ?: run {
+            callback(null, "SensorManager not available")
+            return
+        }
         val sensor = sm.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
-            ?: run { callback(null, "Gyroscope not available on this device"); return }
+            ?: run {
+                callback(null, "Gyroscope not available on this device")
+                return
+            }
 
         // Stop previous if running
         stopGyroscope()

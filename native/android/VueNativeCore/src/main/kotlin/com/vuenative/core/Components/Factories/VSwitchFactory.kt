@@ -3,7 +3,6 @@ package com.vuenative.core
 import android.content.Context
 import android.view.View
 import android.view.ViewGroup
-import android.widget.Switch
 import androidx.appcompat.widget.SwitchCompat
 
 class VSwitchFactory : NativeComponentFactory {

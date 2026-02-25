@@ -20,8 +20,11 @@ interface NativeComponentFactory {
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
             )
-            if (index >= vg.childCount) vg.addView(child, lp)
-            else vg.addView(child, index, lp)
+            if (index >= vg.childCount) {
+                vg.addView(child, lp)
+            } else {
+                vg.addView(child, index, lp)
+            }
         }
     }
 

@@ -63,8 +63,11 @@ class VButtonFactory : NativeComponentFactory {
     override fun insertChild(parent: View, child: View, index: Int) {
         val flex = parent as? FlexboxLayout ?: return
         val lp = StyleEngine.buildFlexLayoutParams(child)
-        if (index >= flex.childCount) flex.addView(child, lp)
-        else flex.addView(child, index, lp)
+        if (index >= flex.childCount) {
+            flex.addView(child, lp)
+        } else {
+            flex.addView(child, index, lp)
+        }
     }
 
     override fun removeChild(parent: View, child: View) {

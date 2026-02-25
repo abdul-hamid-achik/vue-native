@@ -24,7 +24,10 @@ class VViewFactory : NativeComponentFactory {
     override fun addEventListener(view: View, event: String, handler: (Any?) -> Unit) {
         when (event) {
             "press" -> view.setOnClickListener { handler(null) }
-            "longPress" -> view.setOnLongClickListener { handler(null); true }
+            "longPress" -> view.setOnLongClickListener {
+                handler(null)
+                true
+            }
         }
     }
 
@@ -38,8 +41,11 @@ class VViewFactory : NativeComponentFactory {
     override fun insertChild(parent: View, child: View, index: Int) {
         val flex = parent as? FlexboxLayout ?: return
         val lp = StyleEngine.buildFlexLayoutParams(child)
-        if (index >= flex.childCount) flex.addView(child, lp)
-        else flex.addView(child, index, lp)
+        if (index >= flex.childCount) {
+            flex.addView(child, lp)
+        } else {
+            flex.addView(child, index, lp)
+        }
     }
 
     override fun removeChild(parent: View, child: View) {

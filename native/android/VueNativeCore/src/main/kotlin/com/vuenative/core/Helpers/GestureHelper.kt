@@ -11,6 +11,9 @@ object GestureHelper {
     }
 
     fun attachLongPress(view: View, handler: (Any?) -> Unit) {
-        view.setOnLongClickListener { handler(null); true }
+        view.setOnLongClickListener {
+            handler(null)
+            true
+        }
     }
 }

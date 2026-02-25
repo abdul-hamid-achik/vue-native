@@ -1,10 +1,10 @@
 package com.vuenative.core
 
+import android.content.Context
 import android.os.Build
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowInsetsController
-import android.content.Context
 
 class VStatusBarFactory : NativeComponentFactory {
     override fun createView(context: Context): View = View(context).apply {
@@ -21,13 +21,13 @@ class VStatusBarFactory : NativeComponentFactory {
                     val controller = window.insetsController
                     when (value) {
                         "light-content" -> controller?.setSystemBarsAppearance(0, WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS)
-                        "dark-content"  -> controller?.setSystemBarsAppearance(WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS, WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS)
+                        "dark-content" -> controller?.setSystemBarsAppearance(WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS, WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS)
                     }
                 } else {
                     @Suppress("DEPRECATION")
                     val flags = window.decorView.systemUiVisibility
                     window.decorView.systemUiVisibility = when (value) {
-                        "dark-content"  -> flags or View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+                        "dark-content" -> flags or View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
                         "light-content" -> flags and View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR.inv()
                         else -> flags
                     }

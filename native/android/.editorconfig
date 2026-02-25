@@ -1,0 +1,25 @@
+[*.{kt,kts}]
+# ktlint settings
+ktlint_code_style = android_studio
+
+# Relaxed rules for a library project
+max_line_length = 150
+indent_size = 4
+insert_final_newline = true
+
+# Disable rules that are too strict for our codebase
+ktlint_standard_no-wildcard-imports = disabled
+ktlint_standard_max-line-length = disabled
+ktlint_standard_function-naming = disabled
+ktlint_standard_package-name = disabled
+ktlint_standard_filename = disabled
+ktlint_standard_wrapping = disabled
+ktlint_standard_argument-list-wrapping = disabled
+ktlint_standard_function-signature = disabled
+ktlint_standard_indent = disabled
+ktlint_standard_spacing-between-declarations-with-annotations = disabled
+ktlint_standard_parameter-list-wrapping = disabled
+ktlint_standard_trailing-comma-on-call-site = disabled
+ktlint_standard_trailing-comma-on-declaration-site = disabled
+ktlint_standard_property-naming = disabled
+ktlint_standard_discouraged-comment-location = disabled

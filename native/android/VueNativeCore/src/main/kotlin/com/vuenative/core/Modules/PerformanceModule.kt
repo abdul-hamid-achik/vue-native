@@ -52,7 +52,10 @@ class PerformanceModule : NativeModule {
     // ── Start / Stop ──────────────────────────────────────────────────────
 
     private fun startProfiling(callback: (Any?, String?) -> Unit) {
-        if (isProfiling) { callback(true, null); return }
+        if (isProfiling) {
+            callback(true, null)
+            return
+        }
         isProfiling = true
         frameCount = 0
         lastFrameTimeNanos = 0
@@ -101,7 +104,10 @@ class PerformanceModule : NativeModule {
     }
 
     private fun stopProfiling(callback: (Any?, String?) -> Unit) {
-        if (!isProfiling) { callback(true, null); return }
+        if (!isProfiling) {
+            callback(true, null)
+            return
+        }
         isProfiling = false
 
         mainHandler.post {

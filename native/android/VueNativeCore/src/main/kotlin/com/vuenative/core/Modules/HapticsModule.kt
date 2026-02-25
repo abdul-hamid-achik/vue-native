@@ -44,13 +44,13 @@ class HapticsModule : NativeModule {
         val vib = vibrator ?: return
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val effect = when (style) {
-                "light"   -> VibrationEffect.createOneShot(30, 80)
-                "medium"  -> VibrationEffect.createOneShot(50, 150)
-                "heavy"   -> VibrationEffect.createOneShot(80, 200)
+                "light" -> VibrationEffect.createOneShot(30, 80)
+                "medium" -> VibrationEffect.createOneShot(50, 150)
+                "heavy" -> VibrationEffect.createOneShot(80, 200)
                 "success" -> VibrationEffect.createWaveform(longArrayOf(0, 50, 50, 50), intArrayOf(0, 180, 0, 100), -1)
                 "warning" -> VibrationEffect.createOneShot(100, 200)
-                "error"   -> VibrationEffect.createWaveform(longArrayOf(0, 100, 50, 100), intArrayOf(0, 255, 0, 255), -1)
-                else      -> VibrationEffect.createOneShot(50, 150)
+                "error" -> VibrationEffect.createWaveform(longArrayOf(0, 100, 50, 100), intArrayOf(0, 255, 0, 255), -1)
+                else -> VibrationEffect.createOneShot(50, 150)
             }
             vib.vibrate(effect)
         } else {

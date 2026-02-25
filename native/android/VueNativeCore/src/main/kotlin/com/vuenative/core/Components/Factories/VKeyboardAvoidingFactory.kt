@@ -3,7 +3,6 @@ package com.vuenative.core
 import android.content.Context
 import android.view.View
 import android.view.ViewGroup
-import android.view.ViewTreeObserver
 import com.google.android.flexbox.FlexDirection
 import com.google.android.flexbox.FlexboxLayout
 

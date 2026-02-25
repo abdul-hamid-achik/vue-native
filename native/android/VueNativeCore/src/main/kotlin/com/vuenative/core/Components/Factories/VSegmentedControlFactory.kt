@@ -9,7 +9,7 @@ import org.json.JSONArray
 
 class VSegmentedControlFactory : NativeComponentFactory {
     private val changeHandlers = mutableMapOf<RadioGroup, (Any?) -> Unit>()
-    private val segmentValues  = mutableMapOf<RadioGroup, List<String>>()
+    private val segmentValues = mutableMapOf<RadioGroup, List<String>>()
 
     override fun createView(context: Context): View {
         return RadioGroup(context).apply {
@@ -27,8 +27,8 @@ class VSegmentedControlFactory : NativeComponentFactory {
             "values" -> {
                 val labels = when (value) {
                     is JSONArray -> (0 until value.length()).map { value.getString(it) }
-                    is List<*>   -> value.map { it?.toString() ?: "" }
-                    else         -> emptyList()
+                    is List<*> -> value.map { it?.toString() ?: "" }
+                    else -> emptyList()
                 }
                 segmentValues[rg] = labels
                 rg.removeAllViews()

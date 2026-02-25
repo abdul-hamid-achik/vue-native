@@ -35,5 +35,15 @@ coverage/
 # vecgrep
 .vecgrep/
 
+# Android
+local.properties
+*.aar
+native/android/.gradle/
+native/android/**/build/
+native/android/build-tools/
+native/android/licenses/
+native/android/platform-tools/
+native/android/platforms/
+
 # Lefthook
 .lefthook-local.yml

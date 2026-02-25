@@ -31,19 +31,28 @@ class BackgroundTaskModule : NativeModule {
     }
 
     override fun invoke(method: String, args: List<Any?>, bridge: NativeBridge, callback: (Any?, String?) -> Unit) {
-        val ctx = appContext ?: run { callback(null, "BackgroundTask not initialized"); return }
+        val ctx = appContext ?: run {
+            callback(null, "BackgroundTask not initialized")
+            return
+        }
 
         when (method) {
             "scheduleTask" -> {
                 val taskId = args.getOrNull(0)?.toString()
-                    ?: run { callback(null, "scheduleTask: missing taskId"); return }
+                    ?: run {
+                        callback(null, "scheduleTask: missing taskId")
+                        return
+                    }
                 val type = args.getOrNull(1)?.toString() ?: "refresh"
                 val options = args.getOrNull(2) as? Map<*, *> ?: emptyMap<String, Any>()
                 scheduleTask(ctx, taskId, type, options, callback)
             }
             "cancelTask" -> {
                 val taskId = args.getOrNull(0)?.toString()
-                    ?: run { callback(null, "cancelTask: missing taskId"); return }
+                    ?: run {
+                        callback(null, "cancelTask: missing taskId")
+                        return
+                    }
                 WorkManager.getInstance(ctx).cancelUniqueWork(taskId)
                 callback(null, null)
             }

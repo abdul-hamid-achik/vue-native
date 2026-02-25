@@ -1,0 +1,62 @@
+# SwiftLint Configuration for VueNativeCore
+
+included:
+  - VueNativeCore/Sources
+  - VueNativeCore/Tests
+
+excluded:
+  - VueNativeCore/.build
+
+# Rules
+disabled_rules:
+  - trailing_whitespace
+  - line_length
+  - type_body_length
+  - file_length
+  - function_body_length
+  - cyclomatic_complexity
+  - force_cast
+  - force_try
+  - trailing_comma
+
+opt_in_rules:
+  - closure_spacing
+  - contains_over_filter_count
+  - contains_over_first_not_nil
+  - discouraged_object_literal
+  - empty_string
+  - first_where
+  - modifier_order
+  - overridden_super_call
+  - redundant_nil_coalescing
+  - toggle_bool
+  - unavailable_function
+  - unneeded_parentheses_in_closure_argument
+
+# Config
+identifier_name:
+  min_length:
+    warning: 1
+  allowed_symbols:
+    - _
+  excluded:
+    - id
+    - x
+    - y
+    - w
+    - h
+    - i
+    - j
+    - k
+    - n
+    - vc
+
+type_name:
+  min_length: 2
+  max_length: 60
+
+nesting:
+  type_level: 3
+  function_level: 5
+
+reporter: xcode

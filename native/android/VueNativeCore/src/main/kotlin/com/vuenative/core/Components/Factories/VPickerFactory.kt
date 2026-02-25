@@ -4,7 +4,6 @@ import android.content.Context
 import android.view.View
 import android.view.ViewGroup
 import android.widget.DatePicker
-import android.widget.TimePicker
 import java.util.Calendar
 
 class VPickerFactory : NativeComponentFactory {
@@ -53,5 +52,7 @@ class VPickerFactory : NativeComponentFactory {
         }
     }
 
-    override fun removeEventListener(view: View, event: String) { changeHandlers.remove(view) }
+    override fun removeEventListener(view: View, event: String) {
+        changeHandlers.remove(view)
+    }
 }

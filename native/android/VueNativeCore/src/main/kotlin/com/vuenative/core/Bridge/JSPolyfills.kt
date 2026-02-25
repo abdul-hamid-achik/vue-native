@@ -5,8 +5,8 @@ import android.os.Looper
 import android.util.Log
 import com.eclipsesource.v8.JavaCallback
 import com.eclipsesource.v8.JavaVoidCallback
-import com.eclipsesource.v8.V8Array
-import com.eclipsesource.v8.V8Object
+import java.io.IOException
+import java.security.SecureRandom
 import okhttp3.Call
 import okhttp3.Callback
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
@@ -15,8 +15,6 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import org.json.JSONObject
-import java.io.IOException
-import java.security.SecureRandom
 
 /**
  * Registers browser-like APIs in the V8 context.
@@ -81,12 +79,15 @@ object JSPolyfills {
             listOf("log", "warn", "error", "debug", "info").forEach { level ->
                 v8.registerJavaMethod(JavaVoidCallback { _, params ->
                     try {
-                        val msg = if (params.length() == 0) "undefined"
-                                  else params.get(0)?.toString() ?: "null"
+                        val msg = if (params.length() == 0) {
+                            "undefined"
+                        } else {
+                            params.get(0)?.toString() ?: "null"
+                        }
                         when (level) {
                             "error" -> Log.e("VueNative JS", msg)
-                            "warn"  -> Log.w("VueNative JS", msg)
-                            else    -> Log.d("VueNative JS", msg)
+                            "warn" -> Log.w("VueNative JS", msg)
+                            else -> Log.d("VueNative JS", msg)
                         }
                     } finally {
                         params.close()
@@ -356,7 +357,11 @@ object JSPolyfills {
                 } finally {
                     params.close()
                 }
-                val opts = try { JSONObject(optsJson) } catch (e: Exception) { JSONObject() }
+                val opts = try {
+                    JSONObject(optsJson)
+                } catch (e: Exception) {
+                    JSONObject()
+                }
 
                 val method = opts.optString("method", "GET").uppercase()
                 val bodyStr = opts.optString("body", "")
@@ -370,7 +375,9 @@ object JSPolyfills {
                     bodyStr.toRequestBody(ct.toMediaTypeOrNull())
                 } else if (method != "GET" && method != "HEAD") {
                     "".toRequestBody()
-                } else null
+                } else {
+                    null
+                }
 
                 builder.method(method, requestBody)
 

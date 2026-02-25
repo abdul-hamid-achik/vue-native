@@ -13,24 +13,27 @@ class DeviceInfoModule : NativeModule {
     }
 
     override fun invoke(method: String, args: List<Any?>, bridge: NativeBridge, callback: (Any?, String?) -> Unit) {
-        val ctx = context ?: run { callback(null, "Not initialized"); return }
+        val ctx = context ?: run {
+            callback(null, "Not initialized")
+            return
+        }
         when (method) {
             "getDeviceInfo", "getInfo" -> {
                 val dm = ctx.resources.displayMetrics
                 callback(mapOf(
-                    "model"         to "${Build.MANUFACTURER} ${Build.MODEL}",
-                    "brand"         to Build.MANUFACTURER,
-                    "deviceName"    to Build.MODEL,
-                    "systemName"    to "Android",
+                    "model" to "${Build.MANUFACTURER} ${Build.MODEL}",
+                    "brand" to Build.MANUFACTURER,
+                    "deviceName" to Build.MODEL,
+                    "systemName" to "Android",
                     "systemVersion" to Build.VERSION.RELEASE,
-                    "screenWidth"   to (dm.widthPixels / dm.density).toDouble(),
-                    "screenHeight"  to (dm.heightPixels / dm.density).toDouble(),
-                    "screenScale"   to dm.density.toDouble(),
-                    "isTablet"      to (ctx.resources.configuration.screenLayout and
+                    "screenWidth" to (dm.widthPixels / dm.density).toDouble(),
+                    "screenHeight" to (dm.heightPixels / dm.density).toDouble(),
+                    "screenScale" to dm.density.toDouble(),
+                    "isTablet" to (ctx.resources.configuration.screenLayout and
                                        Configuration.SCREENLAYOUT_SIZE_MASK >=
                                        Configuration.SCREENLAYOUT_SIZE_LARGE),
-                    "platform"      to "android",
-                    "bundleId"      to ctx.packageName,
+                    "platform" to "android",
+                    "bundleId" to ctx.packageName,
                 ), null)
             }
             else -> callback(null, "Unknown method: $method")

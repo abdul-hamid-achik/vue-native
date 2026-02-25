@@ -5,8 +5,8 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.os.Looper
 import android.util.Log
-import com.eclipsesource.v8.V8
 import com.eclipsesource.v8.JavaVoidCallback
+import com.eclipsesource.v8.V8
 
 /**
  * Core JavaScript runtime. Wraps J2V8's V8 engine on a dedicated HandlerThread.
@@ -167,10 +167,10 @@ class JSRuntime(private val context: Context) {
                 try {
                     val args = Array<Any?>(params.length()) { i ->
                         when {
-                            params.getType(i) == 1 -> params.getInteger(i)  // INT
-                            params.getType(i) == 2 -> params.getDouble(i)   // DOUBLE
-                            params.getType(i) == 3 -> params.getBoolean(i)  // BOOLEAN
-                            params.getType(i) == 4 -> params.getString(i)   // STRING
+                            params.getType(i) == 1 -> params.getInteger(i) // INT
+                            params.getType(i) == 2 -> params.getDouble(i) // DOUBLE
+                            params.getType(i) == 3 -> params.getBoolean(i) // BOOLEAN
+                            params.getType(i) == 4 -> params.getString(i) // STRING
                             else -> null
                         }
                     }

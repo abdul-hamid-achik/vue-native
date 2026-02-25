@@ -12,7 +12,7 @@ class VActionSheetFactory : NativeComponentFactory {
         var message: String = "",
         var actions: List<Map<String, String>> = emptyList()
     )
-    private val props         = mutableMapOf<View, SheetProps>()
+    private val props = mutableMapOf<View, SheetProps>()
     private val actionHandlers = mutableMapOf<View, (Any?) -> Unit>()
     private val cancelHandlers = mutableMapOf<View, (Any?) -> Unit>()
 
@@ -24,14 +24,16 @@ class VActionSheetFactory : NativeComponentFactory {
     override fun updateProp(view: View, key: String, value: Any?) {
         val p = props.getOrPut(view) { SheetProps() }
         when (key) {
-            "visible" -> { if (value == true || value == "true") showSheet(view, p) }
-            "title"   -> p.title = value?.toString() ?: ""
+            "visible" -> {
+                if (value == true || value == "true") showSheet(view, p)
+            }
+            "title" -> p.title = value?.toString() ?: ""
             "message" -> p.message = value?.toString() ?: ""
             "actions" -> {
                 p.actions = when (value) {
                     is JSONArray -> (0 until value.length()).map { i ->
                         val a = value.getJSONObject(i)
-                        mapOf("label" to a.optString("label",""), "style" to a.optString("style","default"))
+                        mapOf("label" to a.optString("label", ""), "style" to a.optString("style", "default"))
                     }
                     is List<*> -> value.filterIsInstance<Map<String, String>>()
                     else -> emptyList()

@@ -9,7 +9,7 @@ import coil.request.CachePolicy
 import org.json.JSONObject
 
 class VImageFactory : NativeComponentFactory {
-    private val loadHandlers  = mutableMapOf<ImageView, (Any?) -> Unit>()
+    private val loadHandlers = mutableMapOf<ImageView, (Any?) -> Unit>()
     private val errorHandlers = mutableMapOf<ImageView, (Any?) -> Unit>()
 
     override fun createView(context: Context): View {
@@ -40,17 +40,17 @@ class VImageFactory : NativeComponentFactory {
                     diskCachePolicy(CachePolicy.ENABLED)
                     listener(
                         onSuccess = { _, _ -> loadHandlers[iv]?.invoke(null) },
-                        onError   = { _, err -> errorHandlers[iv]?.invoke(mapOf("message" to (err.throwable.message ?: "Load failed"))) }
+                        onError = { _, err -> errorHandlers[iv]?.invoke(mapOf("message" to (err.throwable.message ?: "Load failed"))) }
                     )
                 }
             }
             "resizeMode" -> {
                 iv.scaleType = when (value) {
-                    "cover"   -> ImageView.ScaleType.CENTER_CROP
+                    "cover" -> ImageView.ScaleType.CENTER_CROP
                     "contain" -> ImageView.ScaleType.FIT_CENTER
                     "stretch" -> ImageView.ScaleType.FIT_XY
-                    "center"  -> ImageView.ScaleType.CENTER
-                    else      -> ImageView.ScaleType.CENTER_CROP
+                    "center" -> ImageView.ScaleType.CENTER
+                    else -> ImageView.ScaleType.CENTER_CROP
                 }
             }
             else -> StyleEngine.apply(key, value, view)
@@ -60,7 +60,7 @@ class VImageFactory : NativeComponentFactory {
     override fun addEventListener(view: View, event: String, handler: (Any?) -> Unit) {
         val iv = view as? ImageView ?: return
         when (event) {
-            "load"  -> loadHandlers[iv] = handler
+            "load" -> loadHandlers[iv] = handler
             "error" -> errorHandlers[iv] = handler
         }
     }
@@ -68,7 +68,7 @@ class VImageFactory : NativeComponentFactory {
     override fun removeEventListener(view: View, event: String) {
         val iv = view as? ImageView ?: return
         when (event) {
-            "load"  -> loadHandlers.remove(iv)
+            "load" -> loadHandlers.remove(iv)
             "error" -> errorHandlers.remove(iv)
         }
     }

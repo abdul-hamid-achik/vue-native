@@ -24,20 +24,35 @@ class SecureStorageModule : NativeModule {
     }
 
     override fun invoke(method: String, args: List<Any?>, bridge: NativeBridge, callback: (Any?, String?) -> Unit) {
-        val p = prefs ?: run { callback(null, "SecureStorage not initialized"); return }
+        val p = prefs ?: run {
+            callback(null, "SecureStorage not initialized")
+            return
+        }
         when (method) {
             "get" -> {
-                val key = args.getOrNull(0)?.toString() ?: run { callback(null, "Missing key"); return }
+                val key = args.getOrNull(0)?.toString() ?: run {
+                    callback(null, "Missing key")
+                    return
+                }
                 callback(p.getString(key, null), null)
             }
             "set" -> {
-                val key = args.getOrNull(0)?.toString() ?: run { callback(null, "Missing key"); return }
-                val value = args.getOrNull(1)?.toString() ?: run { callback(null, "Missing value"); return }
+                val key = args.getOrNull(0)?.toString() ?: run {
+                    callback(null, "Missing key")
+                    return
+                }
+                val value = args.getOrNull(1)?.toString() ?: run {
+                    callback(null, "Missing value")
+                    return
+                }
                 p.edit().putString(key, value).apply()
                 callback(null, null)
             }
             "remove" -> {
-                val key = args.getOrNull(0)?.toString() ?: run { callback(null, "Missing key"); return }
+                val key = args.getOrNull(0)?.toString() ?: run {
+                    callback(null, "Missing key")
+                    return
+                }
                 p.edit().remove(key).apply()
                 callback(null, null)
             }

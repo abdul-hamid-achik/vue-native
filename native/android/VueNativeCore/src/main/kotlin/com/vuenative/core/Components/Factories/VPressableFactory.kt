@@ -3,7 +3,6 @@ package com.vuenative.core
 import android.content.Context
 import android.view.MotionEvent
 import android.view.View
-import android.view.ViewGroup
 import com.google.android.flexbox.FlexboxLayout
 
 /**
@@ -68,8 +67,11 @@ class VPressableFactory : NativeComponentFactory {
     override fun insertChild(parent: View, child: View, index: Int) {
         val flex = parent as? FlexboxLayout ?: return
         val lp = StyleEngine.buildFlexLayoutParams(child)
-        if (index >= flex.childCount) flex.addView(child, lp)
-        else flex.addView(child, index, lp)
+        if (index >= flex.childCount) {
+            flex.addView(child, lp)
+        } else {
+            flex.addView(child, index, lp)
+        }
     }
 
     override fun removeChild(parent: View, child: View) {

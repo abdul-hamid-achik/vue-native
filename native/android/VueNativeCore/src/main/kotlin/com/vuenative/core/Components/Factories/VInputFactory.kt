@@ -71,12 +71,12 @@ class VInputFactory : NativeComponentFactory {
             }
             "returnKeyType" -> {
                 et.imeOptions = when (value) {
-                    "done"   -> EditorInfo.IME_ACTION_DONE
-                    "go"     -> EditorInfo.IME_ACTION_GO
-                    "next"   -> EditorInfo.IME_ACTION_NEXT
+                    "done" -> EditorInfo.IME_ACTION_DONE
+                    "go" -> EditorInfo.IME_ACTION_GO
+                    "next" -> EditorInfo.IME_ACTION_NEXT
                     "search" -> EditorInfo.IME_ACTION_SEARCH
-                    "send"   -> EditorInfo.IME_ACTION_SEND
-                    else     -> EditorInfo.IME_ACTION_DONE
+                    "send" -> EditorInfo.IME_ACTION_SEND
+                    else -> EditorInfo.IME_ACTION_DONE
                 }
             }
             "maxLength" -> {
@@ -96,10 +96,10 @@ class VInputFactory : NativeComponentFactory {
                      InputType.TYPE_TEXT_FLAG_CAP_SENTENCES).inv()
                 et.inputType = when (value) {
                     "characters", "allCharacters" -> baseType or InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS
-                    "words"      -> baseType or InputType.TYPE_TEXT_FLAG_CAP_WORDS
-                    "sentences"  -> baseType or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
-                    "none"       -> baseType
-                    else         -> baseType or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+                    "words" -> baseType or InputType.TYPE_TEXT_FLAG_CAP_WORDS
+                    "sentences" -> baseType or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+                    "none" -> baseType
+                    else -> baseType or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
                 }
             }
             "autoCorrect", "autocorrect" -> {
@@ -111,10 +111,10 @@ class VInputFactory : NativeComponentFactory {
             }
             "textAlign", "textAlignment" -> {
                 et.textAlignment = when (value) {
-                    "left"   -> View.TEXT_ALIGNMENT_TEXT_START
+                    "left" -> View.TEXT_ALIGNMENT_TEXT_START
                     "center" -> View.TEXT_ALIGNMENT_CENTER
-                    "right"  -> View.TEXT_ALIGNMENT_TEXT_END
-                    else     -> View.TEXT_ALIGNMENT_TEXT_START
+                    "right" -> View.TEXT_ALIGNMENT_TEXT_END
+                    else -> View.TEXT_ALIGNMENT_TEXT_START
                 }
             }
             "color" -> {

@@ -1,12 +1,12 @@
 package com.vuenative.core
 
+import java.io.IOException
+import java.util.concurrent.TimeUnit
 import okhttp3.CertificatePinner
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
-import java.io.IOException
-import java.util.concurrent.TimeUnit
 
 /**
  * HttpModule — backs the useHttp() composable.
@@ -39,7 +39,10 @@ class HttpModule : NativeModule {
             "configurePins" -> {
                 @Suppress("UNCHECKED_CAST")
                 val pinsMap = args.getOrNull(0) as? Map<String, List<String>>
-                    ?: run { callback(null, "Invalid args — expected pins object"); return }
+                    ?: run {
+                        callback(null, "Invalid args — expected pins object")
+                        return
+                    }
 
                 val builder = CertificatePinner.Builder()
                 for ((domain, pins) in pinsMap) {
@@ -56,10 +59,16 @@ class HttpModule : NativeModule {
             }
             "request" -> {
                 val opts = args.getOrNull(0) as? Map<*, *>
-                    ?: run { callback(null, "Invalid args — expected options object"); return }
+                    ?: run {
+                        callback(null, "Invalid args — expected options object")
+                        return
+                    }
 
                 val url = opts["url"]?.toString()
-                    ?: run { callback(null, "Missing required field: url"); return }
+                    ?: run {
+                        callback(null, "Missing required field: url")
+                        return
+                    }
                 val baseURL = opts["baseURL"]?.toString() ?: ""
                 val httpMethod = opts["method"]?.toString()?.uppercase() ?: "GET"
                 val body = opts["body"]?.toString() ?: ""
@@ -96,9 +105,9 @@ class HttpModule : NativeModule {
                         response.headers.forEach { (k, v) -> responseHeaders[k] = v }
                         callback(
                             mapOf(
-                                "status"  to response.code,
-                                "ok"      to (response.code in 200..299),
-                                "data"    to responseBody,
+                                "status" to response.code,
+                                "ok" to (response.code in 200..299),
+                                "data" to responseBody,
                                 "headers" to responseHeaders
                             ), null
                         )

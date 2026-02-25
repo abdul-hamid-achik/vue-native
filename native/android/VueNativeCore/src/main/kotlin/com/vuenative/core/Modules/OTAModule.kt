@@ -2,12 +2,11 @@ package com.vuenative.core
 
 import android.content.Context
 import android.content.SharedPreferences
-import android.util.Log
-import okhttp3.*
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
 import java.security.MessageDigest
+import okhttp3.*
 
 /**
  * Native module for Over-The-Air (OTA) JS bundle updates.
@@ -43,17 +42,26 @@ class OTAModule : NativeModule {
     }
 
     override fun invoke(method: String, args: List<Any?>, bridge: NativeBridge, callback: (Any?, String?) -> Unit) {
-        val p = prefs ?: run { callback(null, "OTA not initialized"); return }
+        val p = prefs ?: run {
+            callback(null, "OTA not initialized")
+            return
+        }
 
         when (method) {
             "checkForUpdate" -> {
                 val serverUrl = args.getOrNull(0)?.toString()
-                    ?: run { callback(null, "checkForUpdate: missing serverUrl"); return }
+                    ?: run {
+                        callback(null, "checkForUpdate: missing serverUrl")
+                        return
+                    }
                 checkForUpdate(serverUrl, p, callback)
             }
             "downloadUpdate" -> {
                 val url = args.getOrNull(0)?.toString()
-                    ?: run { callback(null, "downloadUpdate: missing url"); return }
+                    ?: run {
+                        callback(null, "downloadUpdate: missing url")
+                        return
+                    }
                 val expectedHash = args.getOrNull(1)?.toString()
                 downloadUpdate(url, expectedHash, p, callback)
             }

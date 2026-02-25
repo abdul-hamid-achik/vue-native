@@ -22,7 +22,8 @@ class AnimationModule : NativeModule {
     private val mainHandler = Handler(Looper.getMainLooper())
 
     override fun initialize(context: Context, bridge: NativeBridge) {
-        this.context = context; this.bridge = bridge
+        this.context = context
+        this.bridge = bridge
     }
 
     override fun invoke(method: String, args: List<Any?>, bridge: NativeBridge, callback: (Any?, String?) -> Unit) {
@@ -34,15 +35,22 @@ class AnimationModule : NativeModule {
             "parallel" -> handleParallel(args, bridge, callback)
             "fadeIn" -> {
                 val nodeId = StyleEngine.toInt(args.getOrNull(0), -1)
-                val view = bridge.nodeViews[nodeId] ?: run { callback(null, null); return }
+                val view = bridge.nodeViews[nodeId] ?: run {
+                    callback(null, null)
+                    return
+                }
                 mainHandler.post {
-                    view.alpha = 0f; view.visibility = View.VISIBLE
+                    view.alpha = 0f
+                    view.visibility = View.VISIBLE
                     view.animate().alpha(1f).setDuration(300).withEndAction { callback(null, null) }.start()
                 }
             }
             "fadeOut" -> {
                 val nodeId = StyleEngine.toInt(args.getOrNull(0), -1)
-                val view = bridge.nodeViews[nodeId] ?: run { callback(null, null); return }
+                val view = bridge.nodeViews[nodeId] ?: run {
+                    callback(null, null)
+                    return
+                }
                 mainHandler.post {
                     view.animate().alpha(0f).setDuration(300).withEndAction {
                         view.visibility = View.INVISIBLE
@@ -68,11 +76,17 @@ class AnimationModule : NativeModule {
         val delay = StyleEngine.toInt(options["delay"], 0).toLong()
         val easing = options["easing"]?.toString() ?: "easeInOut"
 
-        val view = bridge.nodeViews[nodeId] ?: run { callback(null, "timing: view $nodeId not found"); return }
+        val view = bridge.nodeViews[nodeId] ?: run {
+            callback(null, "timing: view $nodeId not found")
+            return
+        }
 
         mainHandler.post {
             val animators = buildPropertyAnimators(view, toStyles)
-            if (animators.isEmpty()) { callback(true, null); return@post }
+            if (animators.isEmpty()) {
+                callback(true, null)
+                return@post
+            }
 
             val interpolator = resolveInterpolator(easing)
             val set = AnimatorSet()
@@ -81,7 +95,9 @@ class AnimationModule : NativeModule {
             set.startDelay = delay
             set.interpolator = interpolator
             set.addListener(object : AnimatorListenerAdapter() {
-                override fun onAnimationEnd(a: Animator) { callback(true, null) }
+                override fun onAnimationEnd(a: Animator) {
+                    callback(true, null)
+                }
             })
             set.start()
         }
@@ -100,11 +116,17 @@ class AnimationModule : NativeModule {
         val duration = StyleEngine.toInt(options["duration"], 500).toLong()
         val delay = StyleEngine.toInt(options["delay"], 0).toLong()
 
-        val view = bridge.nodeViews[nodeId] ?: run { callback(null, "spring: view $nodeId not found"); return }
+        val view = bridge.nodeViews[nodeId] ?: run {
+            callback(null, "spring: view $nodeId not found")
+            return
+        }
 
         mainHandler.post {
             val animators = buildPropertyAnimators(view, toStyles)
-            if (animators.isEmpty()) { callback(true, null); return@post }
+            if (animators.isEmpty()) {
+                callback(true, null)
+                return@post
+            }
 
             // Android doesn't have built-in spring for ObjectAnimator pre-API 23 DynamicAnimation.
             // Use overshoot interpolator to approximate spring feel.
@@ -114,7 +136,9 @@ class AnimationModule : NativeModule {
             set.startDelay = delay
             set.interpolator = android.view.animation.OvershootInterpolator(1.5f)
             set.addListener(object : AnimatorListenerAdapter() {
-                override fun onAnimationEnd(a: Animator) { callback(true, null) }
+                override fun onAnimationEnd(a: Animator) {
+                    callback(true, null)
+                }
             })
             set.start()
         }
@@ -127,11 +151,17 @@ class AnimationModule : NativeModule {
 
     private fun handleKeyframe(args: List<Any?>, bridge: NativeBridge, callback: (Any?, String?) -> Unit) {
         val nodeId = StyleEngine.toInt(args.getOrNull(0), -1)
-        val stepsRaw = args.getOrNull(1) as? List<*> ?: run { callback(null, "keyframe: invalid keyframes"); return }
+        val stepsRaw = args.getOrNull(1) as? List<*> ?: run {
+            callback(null, "keyframe: invalid keyframes")
+            return
+        }
         val options = toStringKeyMap(args.getOrNull(2)) ?: emptyMap()
         val duration = StyleEngine.toInt(options["duration"], 300).toLong()
 
-        val view = bridge.nodeViews[nodeId] ?: run { callback(null, "keyframe: view $nodeId not found"); return }
+        val view = bridge.nodeViews[nodeId] ?: run {
+            callback(null, "keyframe: view $nodeId not found")
+            return
+        }
 
         // Parse keyframe steps into Map<String, List<Pair<Float, Float>>> (property -> [(offset, value)])
         val propertyKeyframes = mutableMapOf<String, MutableList<Pair<Float, Float>>>()
@@ -146,7 +176,10 @@ class AnimationModule : NativeModule {
             }
         }
 
-        if (propertyKeyframes.isEmpty()) { callback(null, null); return }
+        if (propertyKeyframes.isEmpty()) {
+            callback(null, null)
+            return
+        }
 
         mainHandler.post {
             val animators = mutableListOf<Animator>()
@@ -164,12 +197,17 @@ class AnimationModule : NativeModule {
                 }
             }
 
-            if (animators.isEmpty()) { callback(null, null); return@post }
+            if (animators.isEmpty()) {
+                callback(null, null)
+                return@post
+            }
 
             val set = AnimatorSet()
             set.playTogether(animators)
             set.addListener(object : AnimatorListenerAdapter() {
-                override fun onAnimationEnd(a: Animator) { callback(null, null) }
+                override fun onAnimationEnd(a: Animator) {
+                    callback(null, null)
+                }
             })
             set.start()
         }
@@ -179,9 +217,15 @@ class AnimationModule : NativeModule {
     // args[0]: List<Map> animations [{ type, viewId, toStyles, options }, ...]
 
     private fun handleSequence(args: List<Any?>, bridge: NativeBridge, callback: (Any?, String?) -> Unit) {
-        val animationsRaw = args.getOrNull(0) as? List<*> ?: run { callback(null, "sequence: invalid args"); return }
+        val animationsRaw = args.getOrNull(0) as? List<*> ?: run {
+            callback(null, "sequence: invalid args")
+            return
+        }
         val animations = animationsRaw.mapNotNull { toStringKeyMap(it) }
-        if (animations.isEmpty()) { callback(null, null); return }
+        if (animations.isEmpty()) {
+            callback(null, null)
+            return
+        }
 
         runSequenceStep(animations, 0, bridge, callback)
     }
@@ -192,7 +236,10 @@ class AnimationModule : NativeModule {
         bridge: NativeBridge,
         callback: (Any?, String?) -> Unit
     ) {
-        if (index >= animations.size) { callback(null, null); return }
+        if (index >= animations.size) {
+            callback(null, null)
+            return
+        }
 
         val animData = animations[index]
         val method = animData["type"]?.toString() ?: "timing"
@@ -202,7 +249,10 @@ class AnimationModule : NativeModule {
 
         val subArgs: List<Any?> = listOf(viewId, toStyles, options)
         invoke(method, subArgs, bridge) { _, error ->
-            if (error != null) { callback(null, error); return@invoke }
+            if (error != null) {
+                callback(null, error)
+                return@invoke
+            }
             runSequenceStep(animations, index + 1, bridge, callback)
         }
     }
@@ -211,9 +261,15 @@ class AnimationModule : NativeModule {
     // args[0]: List<Map> animations [{ type, viewId, toStyles, options }, ...]
 
     private fun handleParallel(args: List<Any?>, bridge: NativeBridge, callback: (Any?, String?) -> Unit) {
-        val animationsRaw = args.getOrNull(0) as? List<*> ?: run { callback(null, "parallel: invalid args"); return }
+        val animationsRaw = args.getOrNull(0) as? List<*> ?: run {
+            callback(null, "parallel: invalid args")
+            return
+        }
         val animations = animationsRaw.mapNotNull { toStringKeyMap(it) }
-        if (animations.isEmpty()) { callback(null, null); return }
+        if (animations.isEmpty()) {
+            callback(null, null)
+            return
+        }
 
         val total = animations.size
         var completed = 0

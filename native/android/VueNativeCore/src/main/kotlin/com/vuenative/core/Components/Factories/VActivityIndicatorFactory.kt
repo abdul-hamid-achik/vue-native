@@ -25,7 +25,7 @@ class VActivityIndicatorFactory : NativeComponentFactory {
                 val sizePx = when (value) {
                     "small" -> (20 * view.context.resources.displayMetrics.density).toInt()
                     "large" -> (48 * view.context.resources.displayMetrics.density).toInt()
-                    else    -> (32 * view.context.resources.displayMetrics.density).toInt()
+                    else -> (32 * view.context.resources.displayMetrics.density).toInt()
                 }
                 pb.layoutParams?.also { lp ->
                     lp.width = sizePx

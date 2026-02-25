@@ -1,10 +1,8 @@
 package com.vuenative.core
 
 import android.Manifest
-import android.content.ContentValues
 import android.content.Context
 import android.content.pm.PackageManager
-import android.net.Uri
 import android.provider.ContactsContract
 import androidx.core.content.ContextCompat
 
@@ -18,7 +16,10 @@ class ContactsModule : NativeModule {
     }
 
     override fun invoke(method: String, args: List<Any?>, bridge: NativeBridge, callback: (Any?, String?) -> Unit) {
-        val ctx = context ?: run { callback(null, "Not initialized"); return }
+        val ctx = context ?: run {
+            callback(null, "Not initialized")
+            return
+        }
 
         when (method) {
             "requestAccess" -> {
@@ -31,17 +32,22 @@ class ContactsModule : NativeModule {
                 val query = args.getOrNull(0)?.toString()
 
                 if (!hasReadPermission(ctx)) {
-                    callback(null, "Contacts read permission not granted"); return
+                    callback(null, "Contacts read permission not granted")
+                    return
                 }
 
                 try {
                     val contacts = mutableListOf<Map<String, Any?>>()
                     val selection = if (!query.isNullOrEmpty()) {
                         "${ContactsContract.Contacts.DISPLAY_NAME} LIKE ?"
-                    } else null
+                    } else {
+                        null
+                    }
                     val selectionArgs = if (!query.isNullOrEmpty()) {
                         arrayOf("%$query%")
-                    } else null
+                    } else {
+                        null
+                    }
 
                     ctx.contentResolver.query(
                         ContactsContract.Contacts.CONTENT_URI,
@@ -88,11 +94,13 @@ class ContactsModule : NativeModule {
 
             "getContact" -> {
                 val contactId = args.getOrNull(0)?.toString() ?: run {
-                    callback(null, "Missing contactId"); return
+                    callback(null, "Missing contactId")
+                    return
                 }
 
                 if (!hasReadPermission(ctx)) {
-                    callback(null, "Contacts read permission not granted"); return
+                    callback(null, "Contacts read permission not granted")
+                    return
                 }
 
                 try {
@@ -136,11 +144,13 @@ class ContactsModule : NativeModule {
             "createContact" -> {
                 @Suppress("UNCHECKED_CAST")
                 val data = args.getOrNull(0) as? Map<String, Any?> ?: run {
-                    callback(null, "Missing contact data"); return
+                    callback(null, "Missing contact data")
+                    return
                 }
 
                 if (!hasWritePermission(ctx)) {
-                    callback(null, "Contacts write permission not granted"); return
+                    callback(null, "Contacts write permission not granted")
+                    return
                 }
 
                 try {
@@ -205,11 +215,13 @@ class ContactsModule : NativeModule {
 
             "deleteContact" -> {
                 val contactId = args.getOrNull(0)?.toString() ?: run {
-                    callback(null, "Missing contactId"); return
+                    callback(null, "Missing contactId")
+                    return
                 }
 
                 if (!hasWritePermission(ctx)) {
-                    callback(null, "Contacts write permission not granted"); return
+                    callback(null, "Contacts write permission not granted")
+                    return
                 }
 
                 try {

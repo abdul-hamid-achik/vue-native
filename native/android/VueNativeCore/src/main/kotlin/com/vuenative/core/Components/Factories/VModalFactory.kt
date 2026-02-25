@@ -81,8 +81,11 @@ class VModalFactory : NativeComponentFactory {
             }
         }
         val lp = StyleEngine.buildFlexLayoutParams(child)
-        if (index >= container.childCount) container.addView(child, lp)
-        else container.addView(child, index, lp)
+        if (index >= container.childCount) {
+            container.addView(child, lp)
+        } else {
+            container.addView(child, index, lp)
+        }
     }
 
     override fun removeChild(parent: View, child: View) {

@@ -158,7 +158,10 @@ public final class NativeBridge {
     /// Only triggers a Yoga layout pass when the batch contains tree mutations
     /// (create, appendChild, insertBefore, removeChild, etc.). Batches that
     /// only update props/styles/events skip the expensive layout recalculation.
-    private func processOperations(_ operations: [[String: Any]]) {
+    ///
+    /// Access: internal (not private) so that `@testable import` can exercise
+    /// operation handling without going through JSContext.
+    func processOperations(_ operations: [[String: Any]]) {
         dispatchPrecondition(condition: .onQueue(.main))
         NSLog("[VueNative Bridge] Processing %d operations", operations.count)
 

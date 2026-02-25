@@ -94,8 +94,11 @@ class VScrollViewFactory : NativeComponentFactory {
         val srf = parent as? SwipeRefreshLayout ?: return
         val content = states[srf]?.content ?: return
         val lp = StyleEngine.buildFlexLayoutParams(child)
-        if (index >= content.childCount) content.addView(child, lp)
-        else content.addView(child, index, lp)
+        if (index >= content.childCount) {
+            content.addView(child, lp)
+        } else {
+            content.addView(child, index, lp)
+        }
     }
 
     override fun removeChild(parent: View, child: View) {

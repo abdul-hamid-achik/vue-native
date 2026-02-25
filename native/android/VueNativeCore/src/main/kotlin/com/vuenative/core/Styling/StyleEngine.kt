@@ -62,10 +62,22 @@ object StyleEngine {
                 val bg = ensureBackground(view)
                 val radii = bg.cornerRadii ?: FloatArray(8) { 0f }
                 when (key) {
-                    "borderTopLeftRadius"     -> { radii[0] = px; radii[1] = px }
-                    "borderTopRightRadius"    -> { radii[2] = px; radii[3] = px }
-                    "borderBottomRightRadius" -> { radii[4] = px; radii[5] = px }
-                    "borderBottomLeftRadius"  -> { radii[6] = px; radii[7] = px }
+                    "borderTopLeftRadius" -> {
+                        radii[0] = px
+                        radii[1] = px
+                    }
+                    "borderTopRightRadius" -> {
+                        radii[2] = px
+                        radii[3] = px
+                    }
+                    "borderBottomRightRadius" -> {
+                        radii[4] = px
+                        radii[5] = px
+                    }
+                    "borderBottomLeftRadius" -> {
+                        radii[6] = px
+                        radii[7] = px
+                    }
                 }
                 bg.cornerRadii = radii
                 view.background = view.background
@@ -124,37 +136,52 @@ object StyleEngine {
             }
 
             // --- Margin (stored in FlexProps, applied when inserted into parent) ---
-            "margin" -> updateFlexProps(view) { fp -> val px = dpToPx(ctx, toFloat(value, 0f)).toInt(); fp.copy(marginLeft = px, marginTop = px, marginRight = px, marginBottom = px) }
-            "marginHorizontal" -> updateFlexProps(view) { fp -> val px = dpToPx(ctx, toFloat(value, 0f)).toInt(); fp.copy(marginLeft = px, marginRight = px) }
-            "marginVertical"   -> updateFlexProps(view) { fp -> val px = dpToPx(ctx, toFloat(value, 0f)).toInt(); fp.copy(marginTop = px, marginBottom = px) }
-            "marginLeft"       -> updateFlexProps(view) { fp -> fp.copy(marginLeft = dpToPx(ctx, toFloat(value, 0f)).toInt()) }
-            "marginRight"      -> updateFlexProps(view) { fp -> fp.copy(marginRight = dpToPx(ctx, toFloat(value, 0f)).toInt()) }
-            "marginTop"        -> updateFlexProps(view) { fp -> fp.copy(marginTop = dpToPx(ctx, toFloat(value, 0f)).toInt()) }
-            "marginBottom"     -> updateFlexProps(view) { fp -> fp.copy(marginBottom = dpToPx(ctx, toFloat(value, 0f)).toInt()) }
-            "marginStart"      -> updateFlexProps(view) { fp -> fp.copy(marginStart = dpToPx(ctx, toFloat(value, 0f)).toInt()) }
-            "marginEnd"        -> updateFlexProps(view) { fp -> fp.copy(marginEnd = dpToPx(ctx, toFloat(value, 0f)).toInt()) }
+            "margin" -> updateFlexProps(view) { fp ->
+                val px = dpToPx(ctx, toFloat(value, 0f)).toInt()
+                fp.copy(marginLeft = px, marginTop = px, marginRight = px, marginBottom = px)
+            }
+            "marginHorizontal" -> updateFlexProps(view) { fp ->
+                val px = dpToPx(ctx, toFloat(value, 0f)).toInt()
+                fp.copy(marginLeft = px, marginRight = px)
+            }
+            "marginVertical" -> updateFlexProps(view) { fp ->
+                val px = dpToPx(ctx, toFloat(value, 0f)).toInt()
+                fp.copy(marginTop = px, marginBottom = px)
+            }
+            "marginLeft" -> updateFlexProps(view) { fp -> fp.copy(marginLeft = dpToPx(ctx, toFloat(value, 0f)).toInt()) }
+            "marginRight" -> updateFlexProps(view) { fp -> fp.copy(marginRight = dpToPx(ctx, toFloat(value, 0f)).toInt()) }
+            "marginTop" -> updateFlexProps(view) { fp -> fp.copy(marginTop = dpToPx(ctx, toFloat(value, 0f)).toInt()) }
+            "marginBottom" -> updateFlexProps(view) { fp -> fp.copy(marginBottom = dpToPx(ctx, toFloat(value, 0f)).toInt()) }
+            "marginStart" -> updateFlexProps(view) { fp -> fp.copy(marginStart = dpToPx(ctx, toFloat(value, 0f)).toInt()) }
+            "marginEnd" -> updateFlexProps(view) { fp -> fp.copy(marginEnd = dpToPx(ctx, toFloat(value, 0f)).toInt()) }
 
             // --- Dimensions ---
             "width" -> {
                 val pct = parsePercent(value)
-                if (pct != null) updateFlexProps(view) { fp -> fp.copy(width = ViewGroup.LayoutParams.WRAP_CONTENT, widthPercent = pct) }
-                else updateFlexProps(view) { fp -> fp.copy(width = parseDimension(ctx, value), widthPercent = -1f) }
+                if (pct != null) {
+                    updateFlexProps(view) { fp -> fp.copy(width = ViewGroup.LayoutParams.WRAP_CONTENT, widthPercent = pct) }
+                } else {
+                    updateFlexProps(view) { fp -> fp.copy(width = parseDimension(ctx, value), widthPercent = -1f) }
+                }
             }
             "height" -> {
                 val pct = parsePercent(value)
-                if (pct != null) updateFlexProps(view) { fp -> fp.copy(height = ViewGroup.LayoutParams.WRAP_CONTENT, heightPercent = pct) }
-                else updateFlexProps(view) { fp -> fp.copy(height = parseDimension(ctx, value), heightPercent = -1f) }
+                if (pct != null) {
+                    updateFlexProps(view) { fp -> fp.copy(height = ViewGroup.LayoutParams.WRAP_CONTENT, heightPercent = pct) }
+                } else {
+                    updateFlexProps(view) { fp -> fp.copy(height = parseDimension(ctx, value), heightPercent = -1f) }
+                }
             }
-            "minWidth"  -> updateFlexProps(view) { fp -> fp.copy(minWidth = dpToPx(ctx, toFloat(value, 0f)).toInt()) }
+            "minWidth" -> updateFlexProps(view) { fp -> fp.copy(minWidth = dpToPx(ctx, toFloat(value, 0f)).toInt()) }
             "minHeight" -> updateFlexProps(view) { fp -> fp.copy(minHeight = dpToPx(ctx, toFloat(value, 0f)).toInt()) }
-            "maxWidth"  -> updateFlexProps(view) { fp -> fp.copy(maxWidth = dpToPx(ctx, toFloat(value, 0f)).toInt()) }
+            "maxWidth" -> updateFlexProps(view) { fp -> fp.copy(maxWidth = dpToPx(ctx, toFloat(value, 0f)).toInt()) }
 
             // --- Flex props (stored in FlexProps, applied when inserted) ---
             "flex" -> {
                 val f = toFloat(value, 0f)
                 updateFlexProps(view) { fp -> fp.copy(flexGrow = f, flexShrink = 1f, width = 0, height = 0) }
             }
-            "flexGrow"   -> updateFlexProps(view) { fp -> fp.copy(flexGrow = toFloat(value, 0f)) }
+            "flexGrow" -> updateFlexProps(view) { fp -> fp.copy(flexGrow = toFloat(value, 0f)) }
             "flexShrink" -> updateFlexProps(view) { fp -> fp.copy(flexShrink = toFloat(value, 1f)) }
             "flexBasis" -> {
                 if (value == "auto" || value == null) {
@@ -170,8 +197,8 @@ object StyleEngine {
                     }
                 }
             }
-            "alignSelf"  -> updateFlexProps(view) { fp -> fp.copy(alignSelf = parseAlignSelf(value)) }
-            "order"      -> updateFlexProps(view) { fp -> fp.copy(order = toInt(value, 1)) }
+            "alignSelf" -> updateFlexProps(view) { fp -> fp.copy(alignSelf = parseAlignSelf(value)) }
+            "order" -> updateFlexProps(view) { fp -> fp.copy(order = toInt(value, 1)) }
 
             // --- Parent Flex props (applied to FlexboxLayout itself) ---
             "flexDirection" -> {
@@ -281,8 +308,11 @@ object StyleEngine {
                 view.visibility = if (value == "none") View.GONE else View.VISIBLE
             }
             "visible" -> {
-                if (value == false || value == "false") view.visibility = View.INVISIBLE
-                else view.visibility = View.VISIBLE
+                if (value == false || value == "false") {
+                    view.visibility = View.INVISIBLE
+                } else {
+                    view.visibility = View.VISIBLE
+                }
             }
             "hidden" -> {
                 view.visibility = if (value == true || value == "true") View.INVISIBLE else View.VISIBLE
@@ -332,15 +362,15 @@ object StyleEngine {
                     override fun onInitializeAccessibilityNodeInfo(host: View, info: AccessibilityNodeInfoCompat) {
                         super.onInitializeAccessibilityNodeInfo(host, info)
                         when (role) {
-                            "button"     -> info.className = "android.widget.Button"
-                            "link"       -> info.addAction(AccessibilityNodeInfoCompat.AccessibilityActionCompat.ACTION_CLICK)
-                            "header"     -> info.isHeading = true
-                            "image"      -> info.className = "android.widget.ImageView"
-                            "text"       -> info.className = "android.widget.TextView"
-                            "search"     -> info.className = "android.widget.EditText"
+                            "button" -> info.className = "android.widget.Button"
+                            "link" -> info.addAction(AccessibilityNodeInfoCompat.AccessibilityActionCompat.ACTION_CLICK)
+                            "header" -> info.isHeading = true
+                            "image" -> info.className = "android.widget.ImageView"
+                            "text" -> info.className = "android.widget.TextView"
+                            "search" -> info.className = "android.widget.EditText"
                             "adjustable" -> info.className = "android.widget.SeekBar"
-                            "tab"        -> info.roleDescription = "tab"
-                            "none"       -> { /* no special role */ }
+                            "tab" -> info.roleDescription = "tab"
+                            "none" -> { /* no special role */ }
                         }
                     }
                 })
@@ -363,13 +393,16 @@ object StyleEngine {
                 view.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
             }
             "accessible" -> view.importantForAccessibility =
-                if (value == true) View.IMPORTANT_FOR_ACCESSIBILITY_YES
-                else View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                if (value == true) {
+                    View.IMPORTANT_FOR_ACCESSIBILITY_YES
+                } else {
+                    View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                }
             "importantForAccessibility" -> {
                 view.importantForAccessibility = when (value) {
                     "auto" -> View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
-                    "yes"  -> View.IMPORTANT_FOR_ACCESSIBILITY_YES
-                    "no"   -> View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                    "yes" -> View.IMPORTANT_FOR_ACCESSIBILITY_YES
+                    "no" -> View.IMPORTANT_FOR_ACCESSIBILITY_NO
                     "no-hide-descendants" -> View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
                     else -> View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
                 }
@@ -390,23 +423,28 @@ object StyleEngine {
             "fontWeight" -> {
                 val current = tv.typeface ?: android.graphics.Typeface.DEFAULT
                 tv.setTypeface(current,
-                    if (value == "bold" || (value as? Number)?.toInt() ?: 0 >= 600)
+                    if (value == "bold" || (value as? Number)?.toInt() ?: 0 >= 600) {
                         android.graphics.Typeface.BOLD
-                    else android.graphics.Typeface.NORMAL
+                    } else {
+                        android.graphics.Typeface.NORMAL
+                    }
                 )
             }
             "fontStyle" -> {
                 val current = tv.typeface ?: android.graphics.Typeface.DEFAULT
                 tv.setTypeface(current,
-                    if (value == "italic") android.graphics.Typeface.ITALIC
-                    else android.graphics.Typeface.NORMAL
+                    if (value == "italic") {
+                        android.graphics.Typeface.ITALIC
+                    } else {
+                        android.graphics.Typeface.NORMAL
+                    }
                 )
             }
             "textAlign" -> tv.textAlignment = when (value) {
                 "center" -> View.TEXT_ALIGNMENT_CENTER
-                "right"  -> View.TEXT_ALIGNMENT_VIEW_END
-                "left"   -> View.TEXT_ALIGNMENT_VIEW_START
-                else     -> View.TEXT_ALIGNMENT_INHERIT
+                "right" -> View.TEXT_ALIGNMENT_VIEW_END
+                "left" -> View.TEXT_ALIGNMENT_VIEW_START
+                else -> View.TEXT_ALIGNMENT_INHERIT
             }
             "lineHeight" -> {
                 val px = dpToPx(ctx, toFloat(value, 0f))
@@ -419,20 +457,20 @@ object StyleEngine {
             }
             "textDecorationLine" -> {
                 tv.paintFlags = when (value) {
-                    "underline"    -> tv.paintFlags or android.graphics.Paint.UNDERLINE_TEXT_FLAG
+                    "underline" -> tv.paintFlags or android.graphics.Paint.UNDERLINE_TEXT_FLAG
                     "line-through" -> tv.paintFlags or android.graphics.Paint.STRIKE_THRU_TEXT_FLAG
-                    "none"         -> (tv.paintFlags and android.graphics.Paint.UNDERLINE_TEXT_FLAG.inv()
+                    "none" -> (tv.paintFlags and android.graphics.Paint.UNDERLINE_TEXT_FLAG.inv()
                                                and android.graphics.Paint.STRIKE_THRU_TEXT_FLAG.inv())
-                    else           -> tv.paintFlags
+                    else -> tv.paintFlags
                 }
             }
             "textTransform" -> {
                 val t = tv.text?.toString() ?: ""
                 tv.text = when (value) {
-                    "uppercase"  -> t.uppercase()
-                    "lowercase"  -> t.lowercase()
+                    "uppercase" -> t.uppercase()
+                    "lowercase" -> t.lowercase()
                     "capitalize" -> t.split(" ").joinToString(" ") { it.replaceFirstChar(Char::uppercase) }
-                    else         -> t
+                    else -> t
                 }
             }
             "numberOfLines" -> {
@@ -528,7 +566,9 @@ object StyleEngine {
                 s == "gray" || s == "grey" -> Color.GRAY
                 else -> Color.parseColor(s)
             }
-        } catch (e: Exception) { null }
+        } catch (e: Exception) {
+            null
+        }
     }
 
     // -- Dimension helpers --------------------------------------------------------
@@ -546,8 +586,11 @@ object StyleEngine {
             value is String && value.endsWith("%") -> {
                 // 100% maps to MATCH_PARENT; other percentages are handled via widthPercent/heightPercent
                 // in the "width"/"height" cases above — this fallback covers minWidth/minHeight
-                if (value == "100%") ViewGroup.LayoutParams.MATCH_PARENT
-                else ViewGroup.LayoutParams.WRAP_CONTENT
+                if (value == "100%") {
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                } else {
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                }
             }
             value == "auto" || value == null -> ViewGroup.LayoutParams.WRAP_CONTENT
             else -> dpToPx(context, toFloat(value, 0f)).toInt()
@@ -564,20 +607,20 @@ object StyleEngine {
 
     fun toFloat(value: Any?, default: Float): Float = when (value) {
         is Double -> value.toFloat()
-        is Float  -> value
-        is Int    -> value.toFloat()
-        is Long   -> value.toFloat()
+        is Float -> value
+        is Int -> value.toFloat()
+        is Long -> value.toFloat()
         is String -> value.toFloatOrNull() ?: default
-        else      -> default
+        else -> default
     }
 
     fun toInt(value: Any?, default: Int): Int = when (value) {
-        is Int    -> value
+        is Int -> value
         is Double -> value.toInt()
-        is Float  -> value.toInt()
-        is Long   -> value.toInt()
+        is Float -> value.toInt()
+        is Long -> value.toInt()
         is String -> value.toIntOrNull() ?: default
-        else      -> default
+        else -> default
     }
 
     // -- GradientDrawable management ----------------------------------------------
@@ -593,51 +636,51 @@ object StyleEngine {
     // -- Flex enum parsing --------------------------------------------------------
 
     private fun parseFlexDirection(value: Any?) = when (value) {
-        "row"            -> FlexDirection.ROW
-        "row-reverse"    -> FlexDirection.ROW_REVERSE
+        "row" -> FlexDirection.ROW
+        "row-reverse" -> FlexDirection.ROW_REVERSE
         "column-reverse" -> FlexDirection.COLUMN_REVERSE
-        else             -> FlexDirection.COLUMN
+        else -> FlexDirection.COLUMN
     }
 
     private fun parseFlexWrap(value: Any?) = when (value) {
-        "wrap"         -> FlexWrap.WRAP
+        "wrap" -> FlexWrap.WRAP
         "wrap-reverse" -> FlexWrap.WRAP_REVERSE
-        else           -> FlexWrap.NOWRAP
+        else -> FlexWrap.NOWRAP
     }
 
     private fun parseAlignItems(value: Any?) = when (value) {
         "flex-start" -> AlignItems.FLEX_START
-        "flex-end"   -> AlignItems.FLEX_END
-        "center"     -> AlignItems.CENTER
-        "baseline"   -> AlignItems.BASELINE
-        else         -> AlignItems.STRETCH
+        "flex-end" -> AlignItems.FLEX_END
+        "center" -> AlignItems.CENTER
+        "baseline" -> AlignItems.BASELINE
+        else -> AlignItems.STRETCH
     }
 
     private fun parseAlignContent(value: Any?) = when (value) {
-        "flex-start"    -> AlignContent.FLEX_START
-        "flex-end"      -> AlignContent.FLEX_END
-        "center"        -> AlignContent.CENTER
+        "flex-start" -> AlignContent.FLEX_START
+        "flex-end" -> AlignContent.FLEX_END
+        "center" -> AlignContent.CENTER
         "space-between" -> AlignContent.SPACE_BETWEEN
-        "space-around"  -> AlignContent.SPACE_AROUND
-        else            -> AlignContent.STRETCH
+        "space-around" -> AlignContent.SPACE_AROUND
+        else -> AlignContent.STRETCH
     }
 
     private fun parseJustifyContent(value: Any?) = when (value) {
-        "flex-end"      -> JustifyContent.FLEX_END
-        "center"        -> JustifyContent.CENTER
+        "flex-end" -> JustifyContent.FLEX_END
+        "center" -> JustifyContent.CENTER
         "space-between" -> JustifyContent.SPACE_BETWEEN
-        "space-around"  -> JustifyContent.SPACE_AROUND
-        "space-evenly"  -> JustifyContent.SPACE_EVENLY
-        else            -> JustifyContent.FLEX_START
+        "space-around" -> JustifyContent.SPACE_AROUND
+        "space-evenly" -> JustifyContent.SPACE_EVENLY
+        else -> JustifyContent.FLEX_START
     }
 
     private fun parseAlignSelf(value: Any?) = when (value) {
         "flex-start" -> AlignSelf.FLEX_START
-        "flex-end"   -> AlignSelf.FLEX_END
-        "center"     -> AlignSelf.CENTER
-        "baseline"   -> AlignSelf.BASELINE
-        "stretch"    -> AlignSelf.STRETCH
-        else         -> AlignSelf.AUTO
+        "flex-end" -> AlignSelf.FLEX_END
+        "center" -> AlignSelf.CENTER
+        "baseline" -> AlignSelf.BASELINE
+        "stretch" -> AlignSelf.STRETCH
+        else -> AlignSelf.AUTO
     }
 
     private val FLEX_LAYOUT_KEYS = setOf(

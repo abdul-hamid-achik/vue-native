@@ -12,8 +12,8 @@ import android.webkit.WebViewClient
 import org.json.JSONObject
 
 class VWebViewFactory : NativeComponentFactory {
-    private val loadHandlers    = mutableMapOf<WebView, (Any?) -> Unit>()
-    private val errorHandlers   = mutableMapOf<WebView, (Any?) -> Unit>()
+    private val loadHandlers = mutableMapOf<WebView, (Any?) -> Unit>()
+    private val errorHandlers = mutableMapOf<WebView, (Any?) -> Unit>()
     private val messageHandlers = mutableMapOf<WebView, (Any?) -> Unit>()
 
     override fun createView(context: Context): View {
@@ -77,14 +77,16 @@ class VWebViewFactory : NativeComponentFactory {
     override fun addEventListener(view: View, event: String, handler: (Any?) -> Unit) {
         val wv = view as? WebView ?: return
         when (event) {
-            "load"    -> loadHandlers[wv]    = handler
-            "error"   -> errorHandlers[wv]   = handler
+            "load" -> loadHandlers[wv] = handler
+            "error" -> errorHandlers[wv] = handler
             "message" -> messageHandlers[wv] = handler
         }
     }
 
     override fun removeEventListener(view: View, event: String) {
         val wv = view as? WebView ?: return
-        loadHandlers.remove(wv); errorHandlers.remove(wv); messageHandlers.remove(wv)
+        loadHandlers.remove(wv)
+        errorHandlers.remove(wv)
+        messageHandlers.remove(wv)
     }
 }

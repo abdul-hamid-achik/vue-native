@@ -4,8 +4,8 @@ import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
 import androidx.core.content.ContextCompat
-import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.FusedLocationProviderClient
+import com.google.android.gms.location.LocationServices
 
 class GeolocationModule : NativeModule {
     override val moduleName = "Geolocation"
@@ -26,7 +26,10 @@ class GeolocationModule : NativeModule {
     ) {
         when (method) {
             "getCurrentPosition" -> {
-                val ctx = context ?: run { callback(null, "Not initialized"); return }
+                val ctx = context ?: run {
+                    callback(null, "Not initialized")
+                    return
+                }
                 if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.ACCESS_FINE_LOCATION)
                     != PackageManager.PERMISSION_GRANTED
                 ) {
@@ -39,12 +42,12 @@ class GeolocationModule : NativeModule {
                             callback(
                                 mapOf(
                                     "coords" to mapOf(
-                                        "latitude"  to location.latitude,
+                                        "latitude" to location.latitude,
                                         "longitude" to location.longitude,
-                                        "accuracy"  to location.accuracy.toDouble(),
-                                        "altitude"  to location.altitude,
-                                        "speed"     to location.speed.toDouble(),
-                                        "heading"   to location.bearing.toDouble()
+                                        "accuracy" to location.accuracy.toDouble(),
+                                        "altitude" to location.altitude,
+                                        "speed" to location.speed.toDouble(),
+                                        "heading" to location.bearing.toDouble()
                                     ),
                                     "timestamp" to location.time
                                 ), null

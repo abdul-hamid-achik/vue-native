@@ -16,10 +16,16 @@ class LinkingModule : NativeModule {
     }
 
     override fun invoke(method: String, args: List<Any?>, bridge: NativeBridge, callback: (Any?, String?) -> Unit) {
-        val ctx = context ?: run { callback(null, "Not initialized"); return }
+        val ctx = context ?: run {
+            callback(null, "Not initialized")
+            return
+        }
         when (method) {
             "openURL" -> {
-                val url = args.getOrNull(0)?.toString() ?: run { callback(null, "Missing URL"); return }
+                val url = args.getOrNull(0)?.toString() ?: run {
+                    callback(null, "Missing URL")
+                    return
+                }
                 try {
                     val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
                         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -31,7 +37,10 @@ class LinkingModule : NativeModule {
                 }
             }
             "canOpenURL" -> {
-                val url = args.getOrNull(0)?.toString() ?: run { callback(false, null); return }
+                val url = args.getOrNull(0)?.toString() ?: run {
+                    callback(false, null)
+                    return
+                }
                 val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
                 val canOpen = ctx.packageManager.resolveActivity(intent, 0) != null
                 callback(canOpen, null)

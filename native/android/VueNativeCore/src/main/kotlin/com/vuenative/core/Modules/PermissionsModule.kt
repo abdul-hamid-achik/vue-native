@@ -50,10 +50,16 @@ class PermissionsModule : NativeModule {
     }
 
     override fun invoke(method: String, args: List<Any?>, bridge: NativeBridge, callback: (Any?, String?) -> Unit) {
-        val ctx = context ?: run { callback(null, "Not initialized"); return }
+        val ctx = context ?: run {
+            callback(null, "Not initialized")
+            return
+        }
         when (method) {
             "check" -> {
-                val permission = args.getOrNull(0)?.toString() ?: run { callback("denied", null); return }
+                val permission = args.getOrNull(0)?.toString() ?: run {
+                    callback("denied", null)
+                    return
+                }
                 val androidPerm = mapPermission(permission)
                 if (androidPerm == null) {
                     callback("denied", null)
@@ -62,7 +68,10 @@ class PermissionsModule : NativeModule {
                 callback(checkStatus(ctx, androidPerm), null)
             }
             "request" -> {
-                val permission = args.getOrNull(0)?.toString() ?: run { callback("denied", null); return }
+                val permission = args.getOrNull(0)?.toString() ?: run {
+                    callback("denied", null)
+                    return
+                }
                 val androidPerm = mapPermission(permission)
                 if (androidPerm == null) {
                     callback("denied", null)
@@ -115,12 +124,12 @@ class PermissionsModule : NativeModule {
     }
 
     private fun mapPermission(name: String): String? = when (name) {
-        "camera"         -> Manifest.permission.CAMERA
-        "microphone"     -> Manifest.permission.RECORD_AUDIO
-        "photos"         -> if (android.os.Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_IMAGES else Manifest.permission.READ_EXTERNAL_STORAGE
-        "location"       -> Manifest.permission.ACCESS_FINE_LOCATION
+        "camera" -> Manifest.permission.CAMERA
+        "microphone" -> Manifest.permission.RECORD_AUDIO
+        "photos" -> if (android.os.Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_IMAGES else Manifest.permission.READ_EXTERNAL_STORAGE
+        "location" -> Manifest.permission.ACCESS_FINE_LOCATION
         "locationAlways" -> Manifest.permission.ACCESS_BACKGROUND_LOCATION
-        "notifications"  -> if (android.os.Build.VERSION.SDK_INT >= 33) Manifest.permission.POST_NOTIFICATIONS else null
+        "notifications" -> if (android.os.Build.VERSION.SDK_INT >= 33) Manifest.permission.POST_NOTIFICATIONS else null
         else -> null
     }
 }

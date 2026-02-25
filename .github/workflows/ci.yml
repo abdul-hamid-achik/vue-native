@@ -41,12 +41,20 @@ jobs:
       - name: Dead code check
         run: bun run knip
 
-  # ── Swift / iOS (build VueNativeCore for iOS Simulator) ─
+  # ── Swift / iOS (lint, build, test VueNativeCore) ───────
   swift:
     runs-on: macos-14
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Install SwiftLint
+        run: brew install swiftlint
+
+      - name: Lint Swift
+        run: |
+          cd native/ios
+          swiftlint lint --reporter github-actions-logging
 
       - name: Build VueNativeCore for iOS Simulator
         run: |
@@ -56,7 +64,16 @@ jobs:
             -destination 'generic/platform=iOS Simulator' \
             -skipPackagePluginValidation
 
-  # ── Kotlin / Android (compile VueNativeCore library) ────
+      - name: Test VueNativeCore
+        run: |
+          xcodebuild test \
+            -scheme VueNativeCore \
+            -sdk iphonesimulator \
+            -destination 'platform=iOS Simulator,name=iPhone 15,OS=17.2' \
+            -skipPackagePluginValidation \
+            -resultBundlePath TestResults.xcresult
+
+  # ── Kotlin / Android (lint, build, test VueNativeCore) ──
   kotlin:
     runs-on: ubuntu-latest
 
@@ -71,6 +88,14 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
 
+      - name: Lint Kotlin
+        run: ./gradlew :VueNativeCore:ktlintCheck
+        working-directory: native/android
+
       - name: Build VueNativeCore
         run: ./gradlew :VueNativeCore:assembleRelease
+        working-directory: native/android
+
+      - name: Test VueNativeCore
+        run: ./gradlew :VueNativeCore:testReleaseUnitTest
         working-directory: native/android

@@ -2,7 +2,6 @@ package com.vuenative.core
 
 import android.app.Activity
 import android.content.Context
-import android.content.Intent
 import android.content.SharedPreferences
 import android.os.Handler
 import android.os.Looper
@@ -64,7 +63,10 @@ class SocialAuthModule : NativeModule {
     // ── Google Sign In via Credential Manager ───────────────────────────────
 
     private fun handleGoogleSignIn(clientId: String, callback: (Any?, String?) -> Unit) {
-        val ctx = context ?: run { callback(null, "SocialAuth: no context"); return }
+        val ctx = context ?: run {
+            callback(null, "SocialAuth: no context")
+            return
+        }
         val activity = ctx as? Activity
 
         if (activity == null) {

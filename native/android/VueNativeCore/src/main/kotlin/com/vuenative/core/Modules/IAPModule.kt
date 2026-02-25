@@ -59,7 +59,10 @@ class IAPModule : NativeModule, PurchasesUpdatedListener {
     // ── Initialize ──────────────────────────────────────────────────────────
 
     private fun handleInitialize(callback: (Any?, String?) -> Unit) {
-        val ctx = context ?: run { callback(null, "IAP: no context"); return }
+        val ctx = context ?: run {
+            callback(null, "IAP: no context")
+            return
+        }
 
         billingClient = BillingClient.newBuilder(ctx)
             .setListener(this)
@@ -84,7 +87,10 @@ class IAPModule : NativeModule, PurchasesUpdatedListener {
     // ── Get Products ────────────────────────────────────────────────────────
 
     private fun handleGetProducts(skus: List<String>, callback: (Any?, String?) -> Unit) {
-        val client = billingClient ?: run { callback(null, "IAP: not initialized"); return }
+        val client = billingClient ?: run {
+            callback(null, "IAP: not initialized")
+            return
+        }
 
         // Query both INAPP and SUBS
         val inappParams = QueryProductDetailsParams.newBuilder()
@@ -131,7 +137,10 @@ class IAPModule : NativeModule, PurchasesUpdatedListener {
     // ── Purchase ────────────────────────────────────────────────────────────
 
     private fun handlePurchase(sku: String, bridge: NativeBridge, callback: (Any?, String?) -> Unit) {
-        val client = billingClient ?: run { callback(null, "IAP: not initialized"); return }
+        val client = billingClient ?: run {
+            callback(null, "IAP: not initialized")
+            return
+        }
         val productDetails = cachedProducts[sku] ?: run {
             callback(null, "purchase: product '$sku' not found. Call getProducts first.")
             return
@@ -214,7 +223,10 @@ class IAPModule : NativeModule, PurchasesUpdatedListener {
     // ── Restore Purchases ───────────────────────────────────────────────────
 
     private fun handleRestorePurchases(callback: (Any?, String?) -> Unit) {
-        val client = billingClient ?: run { callback(null, "IAP: not initialized"); return }
+        val client = billingClient ?: run {
+            callback(null, "IAP: not initialized")
+            return
+        }
 
         val params = QueryPurchasesParams.newBuilder()
             .setProductType(BillingClient.ProductType.INAPP)
@@ -246,7 +258,10 @@ class IAPModule : NativeModule, PurchasesUpdatedListener {
     // ── Active Subscriptions ────────────────────────────────────────────────
 
     private fun handleGetActiveSubscriptions(callback: (Any?, String?) -> Unit) {
-        val client = billingClient ?: run { callback(null, "IAP: not initialized"); return }
+        val client = billingClient ?: run {
+            callback(null, "IAP: not initialized")
+            return
+        }
 
         val params = QueryPurchasesParams.newBuilder()
             .setProductType(BillingClient.ProductType.SUBS)

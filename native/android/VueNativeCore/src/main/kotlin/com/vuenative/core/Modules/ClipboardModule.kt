@@ -13,7 +13,10 @@ class ClipboardModule : NativeModule {
     }
 
     override fun invoke(method: String, args: List<Any?>, bridge: NativeBridge, callback: (Any?, String?) -> Unit) {
-        val cb = clipboard ?: run { callback(null, "Clipboard not available"); return }
+        val cb = clipboard ?: run {
+            callback(null, "Clipboard not available")
+            return
+        }
         when (method) {
             "setString", "setContent" -> {
                 val text = args.getOrNull(0)?.toString() ?: ""
@@ -24,7 +27,9 @@ class ClipboardModule : NativeModule {
                 val clip = cb.primaryClip
                 val text = if (clip != null && clip.itemCount > 0) {
                     clip.getItemAt(0)?.text?.toString()
-                } else null
+                } else {
+                    null
+                }
                 callback(text, null)
             }
             "hasString" -> {

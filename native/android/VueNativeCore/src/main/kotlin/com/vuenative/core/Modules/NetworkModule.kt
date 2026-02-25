@@ -62,7 +62,10 @@ class NetworkModule : NativeModule {
     }
 
     override fun invoke(method: String, args: List<Any?>, bridge: NativeBridge, callback: (Any?, String?) -> Unit) {
-        val cm = connectivityManager ?: run { callback(mapOf("isConnected" to false, "connectionType" to "none"), null); return }
+        val cm = connectivityManager ?: run {
+            callback(mapOf("isConnected" to false, "connectionType" to "none"), null)
+            return
+        }
         when (method) {
             "getStatus" -> callback(getStatus(cm), null)
             else -> callback(null, "Unknown method: $method")

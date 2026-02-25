@@ -18,7 +18,10 @@ class CalendarModule : NativeModule {
     }
 
     override fun invoke(method: String, args: List<Any?>, bridge: NativeBridge, callback: (Any?, String?) -> Unit) {
-        val ctx = context ?: run { callback(null, "Not initialized"); return }
+        val ctx = context ?: run {
+            callback(null, "Not initialized")
+            return
+        }
 
         when (method) {
             "requestAccess" -> {
@@ -29,14 +32,17 @@ class CalendarModule : NativeModule {
 
             "getEvents" -> {
                 val startMs = (args.getOrNull(0) as? Number)?.toLong() ?: run {
-                    callback(null, "Missing startDate"); return
+                    callback(null, "Missing startDate")
+                    return
                 }
                 val endMs = (args.getOrNull(1) as? Number)?.toLong() ?: run {
-                    callback(null, "Missing endDate"); return
+                    callback(null, "Missing endDate")
+                    return
                 }
 
                 if (!hasCalendarReadPermission(ctx)) {
-                    callback(null, "Calendar read permission not granted"); return
+                    callback(null, "Calendar read permission not granted")
+                    return
                 }
 
                 try {
@@ -79,19 +85,23 @@ class CalendarModule : NativeModule {
 
             "createEvent" -> {
                 val title = args.getOrNull(0)?.toString() ?: run {
-                    callback(null, "Missing title"); return
+                    callback(null, "Missing title")
+                    return
                 }
                 val startMs = (args.getOrNull(1) as? Number)?.toLong() ?: run {
-                    callback(null, "Missing startDate"); return
+                    callback(null, "Missing startDate")
+                    return
                 }
                 val endMs = (args.getOrNull(2) as? Number)?.toLong() ?: run {
-                    callback(null, "Missing endDate"); return
+                    callback(null, "Missing endDate")
+                    return
                 }
                 val notes = args.getOrNull(3)?.toString()
                 val calendarId = args.getOrNull(4)?.toString()
 
                 if (!hasCalendarWritePermission(ctx)) {
-                    callback(null, "Calendar write permission not granted"); return
+                    callback(null, "Calendar write permission not granted")
+                    return
                 }
 
                 try {
@@ -117,11 +127,13 @@ class CalendarModule : NativeModule {
 
             "deleteEvent" -> {
                 val eventId = args.getOrNull(0)?.toString() ?: run {
-                    callback(null, "Missing eventId"); return
+                    callback(null, "Missing eventId")
+                    return
                 }
 
                 if (!hasCalendarWritePermission(ctx)) {
-                    callback(null, "Calendar write permission not granted"); return
+                    callback(null, "Calendar write permission not granted")
+                    return
                 }
 
                 try {
@@ -135,7 +147,8 @@ class CalendarModule : NativeModule {
 
             "getCalendars" -> {
                 if (!hasCalendarReadPermission(ctx)) {
-                    callback(null, "Calendar read permission not granted"); return
+                    callback(null, "Calendar read permission not granted")
+                    return
                 }
 
                 try {
