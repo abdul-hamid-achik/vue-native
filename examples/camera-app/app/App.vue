@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { createStyleSheet, useCamera, usePermissions } from '@thelacanians/vue-native-runtime'
 
 interface Photo {
@@ -99,7 +99,9 @@ function formatDate(ts: number): string {
 }
 
 // Check permission on mount
-checkPermission()
+onMounted(() => {
+  checkPermission()
+})
 
 const styles = createStyleSheet({
   container: {

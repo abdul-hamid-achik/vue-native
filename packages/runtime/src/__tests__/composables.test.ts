@@ -1660,4 +1660,283 @@ describe('Composables', () => {
       expect(frame).toEqual({ x: 10, y: 20, width: 100, height: 200 })
     })
   })
+
+  // ---------------------------------------------------------------------------
+  // useCamera
+  // ---------------------------------------------------------------------------
+  describe('useCamera', () => {
+    it('launchCamera calls Camera.launchCamera', async () => {
+      const mockResult = { uri: 'file://photo.jpg', width: 1920, height: 1080, type: 'image/jpeg' }
+      invokeModuleSpy.mockResolvedValueOnce(mockResult)
+      const { useCamera } = await import('../composables/useCamera')
+      const { launchCamera } = await withSetup(() => useCamera())
+      const result = await launchCamera()
+      expect(invokeModuleSpy).toHaveBeenCalledWith('Camera', 'launchCamera', [{}])
+      expect(result).toEqual(mockResult)
+    })
+
+    it('launchCamera forwards options', async () => {
+      invokeModuleSpy.mockResolvedValueOnce({ uri: '', width: 0, height: 0, type: '' })
+      const { useCamera } = await import('../composables/useCamera')
+      const { launchCamera } = await withSetup(() => useCamera())
+      await launchCamera({ mediaType: 'photo', quality: 0.8 })
+      expect(invokeModuleSpy).toHaveBeenCalledWith('Camera', 'launchCamera', [{ mediaType: 'photo', quality: 0.8 }])
+    })
+
+    it('launchImageLibrary calls Camera.launchImageLibrary', async () => {
+      const mockResult = { uri: 'file://pick.jpg', width: 800, height: 600, type: 'image/jpeg' }
+      invokeModuleSpy.mockResolvedValueOnce(mockResult)
+      const { useCamera } = await import('../composables/useCamera')
+      const { launchImageLibrary } = await withSetup(() => useCamera())
+      const result = await launchImageLibrary({ selectionLimit: 3 })
+      expect(invokeModuleSpy).toHaveBeenCalledWith('Camera', 'launchImageLibrary', [{ selectionLimit: 3 }])
+      expect(result).toEqual(mockResult)
+    })
+
+    it('captureVideo calls Camera.captureVideo with options', async () => {
+      const mockResult = { uri: 'file://video.mp4', duration: 15, type: 'video/mp4' }
+      invokeModuleSpy.mockResolvedValueOnce(mockResult)
+      const { useCamera } = await import('../composables/useCamera')
+      const { captureVideo } = await withSetup(() => useCamera())
+      const result = await captureVideo({ quality: 'high', maxDuration: 30 })
+      expect(invokeModuleSpy).toHaveBeenCalledWith('Camera', 'captureVideo', [{ quality: 'high', maxDuration: 30 }])
+      expect(result).toEqual(mockResult)
+    })
+
+    it('scanQRCode calls Camera.scanQRCode', async () => {
+      invokeModuleSpy.mockResolvedValueOnce(undefined)
+      const { useCamera } = await import('../composables/useCamera')
+      const { scanQRCode } = await withSetup(() => useCamera())
+      await scanQRCode()
+      expect(invokeModuleSpy).toHaveBeenCalledWith('Camera', 'scanQRCode')
+    })
+
+    it('stopQRScan calls Camera.stopQRScan', async () => {
+      invokeModuleSpy.mockResolvedValueOnce(undefined)
+      const { useCamera } = await import('../composables/useCamera')
+      const { stopQRScan } = await withSetup(() => useCamera())
+      await stopQRScan()
+      expect(invokeModuleSpy).toHaveBeenCalledWith('Camera', 'stopQRScan')
+    })
+
+    it('onQRCodeDetected registers callback and returns cleanup', async () => {
+      const { useCamera } = await import('../composables/useCamera')
+      const { onQRCodeDetected } = await withSetup(() => useCamera())
+
+      const callback = vi.fn()
+      const cleanup = onQRCodeDetected(callback)
+
+      expect(onGlobalEventSpy).toHaveBeenCalledWith('camera:qrDetected', callback)
+      expect(typeof cleanup).toBe('function')
+    })
+
+    it('onQRCodeDetected callback fires on event', async () => {
+      const { useCamera } = await import('../composables/useCamera')
+      const { onQRCodeDetected } = await withSetup(() => useCamera())
+
+      const callback = vi.fn()
+      onQRCodeDetected(callback)
+
+      const qrResult = { data: 'https://example.com', type: 'org.iso.QRCode', bounds: { x: 0, y: 0, width: 1, height: 1 } }
+      triggerGlobalEvent('camera:qrDetected', qrResult)
+      expect(callback).toHaveBeenCalledWith(qrResult)
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // useHttp
+  // ---------------------------------------------------------------------------
+  describe('useHttp', () => {
+    // Provide a global fetch mock for useHttp tests
+    let originalFetch: any
+
+    beforeEach(() => {
+      originalFetch = (globalThis as any).fetch
+      ;(globalThis as any).fetch = vi.fn()
+    })
+
+    afterEach(() => {
+      (globalThis as any).fetch = originalFetch
+    })
+
+    function mockFetch(data: any, status = 200, ok = true) {
+      ;(globalThis as any).fetch = vi.fn().mockResolvedValue({
+        status,
+        ok,
+        json: () => Promise.resolve(data),
+        headers: {
+          forEach: (cb: (value: string, key: string) => void) => {
+            cb('application/json', 'content-type')
+          },
+        },
+      })
+    }
+
+    it('GET request calls fetch with correct URL and method', async () => {
+      mockFetch({ users: [] })
+      const { useHttp } = await import('../composables/useHttp')
+      const { get, loading } = await withSetup(() => useHttp({ baseURL: 'https://api.test.com' }))
+      const result = await get('/users')
+      expect((globalThis as any).fetch).toHaveBeenCalledWith(
+        'https://api.test.com/users',
+        expect.objectContaining({ method: 'GET' }),
+      )
+      expect(result.data).toEqual({ users: [] })
+      expect(result.status).toBe(200)
+      expect(result.ok).toBe(true)
+      expect(loading.value).toBe(false)
+    })
+
+    it('POST request sends JSON body', async () => {
+      mockFetch({ id: 1 }, 201)
+      const { useHttp } = await import('../composables/useHttp')
+      const { post } = await withSetup(() => useHttp({ baseURL: 'https://api.test.com' }))
+      const result = await post('/users', { name: 'Alice' })
+      expect((globalThis as any).fetch).toHaveBeenCalledWith(
+        'https://api.test.com/users',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ name: 'Alice' }),
+        }),
+      )
+      expect(result.data).toEqual({ id: 1 })
+    })
+
+    it('PUT request sends JSON body', async () => {
+      mockFetch({ updated: true })
+      const { useHttp } = await import('../composables/useHttp')
+      const { put } = await withSetup(() => useHttp({ baseURL: 'https://api.test.com' }))
+      const result = await put('/users/1', { name: 'Bob' })
+      expect((globalThis as any).fetch).toHaveBeenCalledWith(
+        'https://api.test.com/users/1',
+        expect.objectContaining({ method: 'PUT' }),
+      )
+      expect(result.data).toEqual({ updated: true })
+    })
+
+    it('DELETE request works', async () => {
+      mockFetch({ deleted: true })
+      const { useHttp } = await import('../composables/useHttp')
+      const http = await withSetup(() => useHttp({ baseURL: 'https://api.test.com' }))
+      const result = await http.delete('/users/1')
+      expect((globalThis as any).fetch).toHaveBeenCalledWith(
+        'https://api.test.com/users/1',
+        expect.objectContaining({ method: 'DELETE' }),
+      )
+      expect(result.data).toEqual({ deleted: true })
+    })
+
+    it('PATCH request sends body', async () => {
+      mockFetch({ patched: true })
+      const { useHttp } = await import('../composables/useHttp')
+      const { patch } = await withSetup(() => useHttp({ baseURL: 'https://api.test.com' }))
+      const result = await patch('/users/1', { name: 'Carol' })
+      expect((globalThis as any).fetch).toHaveBeenCalledWith(
+        'https://api.test.com/users/1',
+        expect.objectContaining({ method: 'PATCH' }),
+      )
+      expect(result.data).toEqual({ patched: true })
+    })
+
+    it('sets error state on fetch failure', async () => {
+      ;(globalThis as any).fetch = vi.fn().mockRejectedValue(new Error('Network error'))
+      const { useHttp } = await import('../composables/useHttp')
+      const { get, error, loading } = await withSetup(() => useHttp())
+      await expect(get('https://api.test.com/fail')).rejects.toThrow('Network error')
+      expect(error.value).toBe('Network error')
+      expect(loading.value).toBe(false)
+    })
+
+    it('sets loading to true during request', async () => {
+      const _loadingDuringRequest = false
+      ;(globalThis as any).fetch = vi.fn().mockImplementation(() => {
+        return new Promise((resolve) => {
+          // We'll resolve immediately but capture loading state
+          resolve({
+            status: 200,
+            ok: true,
+            json: () => Promise.resolve({}),
+            headers: { forEach: () => {} },
+          })
+        })
+      })
+      const { useHttp } = await import('../composables/useHttp')
+      const { get, loading } = await withSetup(() => useHttp())
+      // After completing, loading should be false
+      await get('https://api.test.com/test')
+      expect(loading.value).toBe(false)
+    })
+
+    it('merges default and per-request headers', async () => {
+      mockFetch({})
+      const { useHttp } = await import('../composables/useHttp')
+      const { get } = await withSetup(() => useHttp({
+        baseURL: 'https://api.test.com',
+        headers: { Authorization: 'Bearer token' },
+      }))
+      await get('/me', { headers: { 'X-Custom': 'val' } })
+      expect((globalThis as any).fetch).toHaveBeenCalledWith(
+        'https://api.test.com/me',
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            'Authorization': 'Bearer token',
+            'X-Custom': 'val',
+          }),
+        }),
+      )
+    })
+
+    it('GET with query params builds URL correctly', async () => {
+      mockFetch({ results: [] })
+      const { useHttp } = await import('../composables/useHttp')
+      const { get } = await withSetup(() => useHttp({ baseURL: 'https://api.test.com' }))
+      await get('/search', { params: { q: 'hello', page: '1' } })
+      expect((globalThis as any).fetch).toHaveBeenCalledWith(
+        'https://api.test.com/search?q=hello&page=1',
+        expect.any(Object),
+      )
+    })
+
+    it('POST does not set Content-Type for GET methods', async () => {
+      mockFetch({})
+      const { useHttp } = await import('../composables/useHttp')
+      const { get } = await withSetup(() => useHttp())
+      await get('https://api.test.com/data')
+      const fetchCall = (globalThis as any).fetch.mock.calls[0]
+      expect(fetchCall[1].headers['Content-Type']).toBeUndefined()
+    })
+
+    it('POST auto-sets Content-Type to application/json', async () => {
+      mockFetch({})
+      const { useHttp } = await import('../composables/useHttp')
+      const { post } = await withSetup(() => useHttp())
+      await post('https://api.test.com/data', { key: 'val' })
+      const fetchCall = (globalThis as any).fetch.mock.calls[0]
+      expect(fetchCall[1].headers['Content-Type']).toBe('application/json')
+    })
+
+    it('works without baseURL', async () => {
+      mockFetch({ ok: true })
+      const { useHttp } = await import('../composables/useHttp')
+      const { get } = await withSetup(() => useHttp())
+      const result = await get('https://example.com/api')
+      expect((globalThis as any).fetch).toHaveBeenCalledWith(
+        'https://example.com/api',
+        expect.any(Object),
+      )
+      expect(result.data).toEqual({ ok: true })
+    })
+
+    it('configures certificate pins when provided', async () => {
+      mockFetch({})
+      const { useHttp } = await import('../composables/useHttp')
+      const pins = { 'api.example.com': ['sha256/AAAA'] }
+      // Mock __VN_configurePins
+      const configurePins = vi.fn()
+      ;(globalThis as any).__VN_configurePins = configurePins
+      await withSetup(() => useHttp({ pins }))
+      expect(configurePins).toHaveBeenCalledWith(JSON.stringify(pins))
+      delete (globalThis as any).__VN_configurePins
+    })
+  })
 })

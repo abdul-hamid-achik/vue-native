@@ -526,6 +526,51 @@ describe('Components', () => {
       const ops = mockBridge.getOpsByType('create')
       expect(ops.some(o => o.args[1] === 'VActivityIndicator')).toBe(true)
     })
+
+    it('forwards animating prop', async () => {
+      renderComponent(createVNode(VActivityIndicator, { animating: false }))
+      await nextTick()
+      const ops = mockBridge.getOpsByType('updateProp')
+      const prop = ops.find(o => o.args[1] === 'animating')
+      expect(prop).toBeDefined()
+      expect(prop!.args[2]).toBe(false)
+    })
+
+    it('forwards color prop', async () => {
+      renderComponent(createVNode(VActivityIndicator, { color: '#FF0000' }))
+      await nextTick()
+      const ops = mockBridge.getOpsByType('updateProp')
+      const prop = ops.find(o => o.args[1] === 'color')
+      expect(prop).toBeDefined()
+      expect(prop!.args[2]).toBe('#FF0000')
+    })
+
+    it('forwards size prop', async () => {
+      renderComponent(createVNode(VActivityIndicator, { size: 'large' }))
+      await nextTick()
+      const ops = mockBridge.getOpsByType('updateProp')
+      const prop = ops.find(o => o.args[1] === 'size')
+      expect(prop).toBeDefined()
+      expect(prop!.args[2]).toBe('large')
+    })
+
+    it('defaults animating to true', async () => {
+      renderComponent(createVNode(VActivityIndicator))
+      await nextTick()
+      const ops = mockBridge.getOpsByType('updateProp')
+      const prop = ops.find(o => o.args[1] === 'animating')
+      expect(prop).toBeDefined()
+      expect(prop!.args[2]).toBe(true)
+    })
+
+    it('forwards hidesWhenStopped prop', async () => {
+      renderComponent(createVNode(VActivityIndicator, { hidesWhenStopped: false }))
+      await nextTick()
+      const ops = mockBridge.getOpsByType('updateProp')
+      const prop = ops.find(o => o.args[1] === 'hidesWhenStopped')
+      expect(prop).toBeDefined()
+      expect(prop!.args[2]).toBe(false)
+    })
   })
 
   // ---------------------------------------------------------------------------
@@ -537,6 +582,51 @@ describe('Components', () => {
       await nextTick()
       const ops = mockBridge.getOpsByType('create')
       expect(ops.some(o => o.args[1] === 'VProgressBar')).toBe(true)
+    })
+
+    it('forwards progress value', async () => {
+      renderComponent(createVNode(VProgressBar, { progress: 0.75 }))
+      await nextTick()
+      const ops = mockBridge.getOpsByType('updateProp')
+      const prop = ops.find(o => o.args[1] === 'progress')
+      expect(prop).toBeDefined()
+      expect(prop!.args[2]).toBe(0.75)
+    })
+
+    it('forwards progressTintColor prop', async () => {
+      renderComponent(createVNode(VProgressBar, { progressTintColor: '#007AFF' }))
+      await nextTick()
+      const ops = mockBridge.getOpsByType('updateProp')
+      const prop = ops.find(o => o.args[1] === 'progressTintColor')
+      expect(prop).toBeDefined()
+      expect(prop!.args[2]).toBe('#007AFF')
+    })
+
+    it('forwards trackTintColor prop', async () => {
+      renderComponent(createVNode(VProgressBar, { trackTintColor: '#E0E0E0' }))
+      await nextTick()
+      const ops = mockBridge.getOpsByType('updateProp')
+      const prop = ops.find(o => o.args[1] === 'trackTintColor')
+      expect(prop).toBeDefined()
+      expect(prop!.args[2]).toBe('#E0E0E0')
+    })
+
+    it('forwards animated prop', async () => {
+      renderComponent(createVNode(VProgressBar, { animated: false }))
+      await nextTick()
+      const ops = mockBridge.getOpsByType('updateProp')
+      const prop = ops.find(o => o.args[1] === 'animated')
+      expect(prop).toBeDefined()
+      expect(prop!.args[2]).toBe(false)
+    })
+
+    it('defaults progress to 0', async () => {
+      renderComponent(createVNode(VProgressBar))
+      await nextTick()
+      const ops = mockBridge.getOpsByType('updateProp')
+      const prop = ops.find(o => o.args[1] === 'progress')
+      expect(prop).toBeDefined()
+      expect(prop!.args[2]).toBe(0)
     })
   })
 
@@ -550,6 +640,21 @@ describe('Components', () => {
       const ops = mockBridge.getOpsByType('create')
       expect(ops.some(o => o.args[1] === 'VSafeArea')).toBe(true)
     })
+
+    it('renders slot children', async () => {
+      const child = createVNode(VText, null, { default: () => 'Safe content' })
+      renderComponent(createVNode(VSafeArea, null, { default: () => [child] }))
+      await nextTick()
+      const ops = mockBridge.getOpsByType('create')
+      expect(ops.some(o => o.args[1] === 'VText')).toBe(true)
+    })
+
+    it('forwards style prop', async () => {
+      renderComponent(createVNode(VSafeArea, { style: { flex: 1, backgroundColor: '#FFF' } }))
+      await nextTick()
+      const ops = mockBridge.getOpsByType('updateStyle')
+      expect(ops.length).toBeGreaterThanOrEqual(1)
+    })
   })
 
   // ---------------------------------------------------------------------------
@@ -561,6 +666,30 @@ describe('Components', () => {
       await nextTick()
       const ops = mockBridge.getOpsByType('create')
       expect(ops.some(o => o.args[1] === 'VKeyboardAvoiding')).toBe(true)
+    })
+
+    it('renders slot children', async () => {
+      const child = createVNode(VInput, { placeholder: 'Type...' })
+      renderComponent(createVNode(VKeyboardAvoiding, null, { default: () => [child] }))
+      await nextTick()
+      const ops = mockBridge.getOpsByType('create')
+      expect(ops.some(o => o.args[1] === 'VInput')).toBe(true)
+    })
+
+    it('forwards testID prop', async () => {
+      renderComponent(createVNode(VKeyboardAvoiding, { testID: 'kb-avoid' }))
+      await nextTick()
+      const ops = mockBridge.getOpsByType('updateProp')
+      const prop = ops.find(o => o.args[1] === 'testID')
+      expect(prop).toBeDefined()
+      expect(prop!.args[2]).toBe('kb-avoid')
+    })
+
+    it('forwards style prop', async () => {
+      renderComponent(createVNode(VKeyboardAvoiding, { style: { flex: 1 } }))
+      await nextTick()
+      const ops = mockBridge.getOpsByType('updateStyle')
+      expect(ops.length).toBeGreaterThanOrEqual(1)
     })
   })
 
@@ -574,6 +703,51 @@ describe('Components', () => {
       const ops = mockBridge.getOpsByType('create')
       expect(ops.some(o => o.args[1] === 'VStatusBar')).toBe(true)
     })
+
+    it('forwards barStyle prop with light-content', async () => {
+      renderComponent(createVNode(VStatusBar, { barStyle: 'light-content' }))
+      await nextTick()
+      const ops = mockBridge.getOpsByType('updateProp')
+      const prop = ops.find(o => o.args[1] === 'barStyle')
+      expect(prop).toBeDefined()
+      expect(prop!.args[2]).toBe('light-content')
+    })
+
+    it('forwards barStyle prop with dark-content', async () => {
+      renderComponent(createVNode(VStatusBar, { barStyle: 'dark-content' }))
+      await nextTick()
+      const ops = mockBridge.getOpsByType('updateProp')
+      const prop = ops.find(o => o.args[1] === 'barStyle')
+      expect(prop).toBeDefined()
+      expect(prop!.args[2]).toBe('dark-content')
+    })
+
+    it('defaults barStyle to default', async () => {
+      renderComponent(createVNode(VStatusBar))
+      await nextTick()
+      const ops = mockBridge.getOpsByType('updateProp')
+      const prop = ops.find(o => o.args[1] === 'barStyle')
+      expect(prop).toBeDefined()
+      expect(prop!.args[2]).toBe('default')
+    })
+
+    it('forwards hidden prop', async () => {
+      renderComponent(createVNode(VStatusBar, { hidden: true }))
+      await nextTick()
+      const ops = mockBridge.getOpsByType('updateProp')
+      const prop = ops.find(o => o.args[1] === 'hidden')
+      expect(prop).toBeDefined()
+      expect(prop!.args[2]).toBe(true)
+    })
+
+    it('forwards animated prop', async () => {
+      renderComponent(createVNode(VStatusBar, { animated: false }))
+      await nextTick()
+      const ops = mockBridge.getOpsByType('updateProp')
+      const prop = ops.find(o => o.args[1] === 'animated')
+      expect(prop).toBeDefined()
+      expect(prop!.args[2]).toBe(false)
+    })
   })
 
   // ---------------------------------------------------------------------------
@@ -581,10 +755,162 @@ describe('Components', () => {
   // ---------------------------------------------------------------------------
   describe('VWebView', () => {
     it('renders intrinsic VWebView element', async () => {
-      renderComponent(createVNode(VWebView))
+      renderComponent(createVNode(VWebView, { source: { uri: 'https://example.com' } }))
       await nextTick()
       const ops = mockBridge.getOpsByType('create')
       expect(ops.some(o => o.args[1] === 'VWebView')).toBe(true)
+    })
+
+    it('forwards source uri prop', async () => {
+      renderComponent(createVNode(VWebView, { source: { uri: 'https://example.com' } }))
+      await nextTick()
+      const ops = mockBridge.getOpsByType('updateProp')
+      const sourceProp = ops.find(o => o.args[1] === 'source')
+      expect(sourceProp).toBeDefined()
+      expect(sourceProp!.args[2].uri).toBe('https://example.com')
+    })
+
+    it('registers onLoad event handler', async () => {
+      const handler = vi.fn()
+      renderComponent(createVNode(VWebView, { source: { uri: 'https://example.com' }, onLoad: handler }))
+      await nextTick()
+      const ops = mockBridge.getOpsByType('addEventListener')
+      expect(ops.some(o => o.args[1] === 'load')).toBe(true)
+    })
+
+    it('registers onError event handler', async () => {
+      const handler = vi.fn()
+      renderComponent(createVNode(VWebView, { source: { uri: 'https://example.com' }, onError: handler }))
+      await nextTick()
+      const ops = mockBridge.getOpsByType('addEventListener')
+      expect(ops.some(o => o.args[1] === 'error')).toBe(true)
+    })
+
+    it('blocks javascript: URI scheme', async () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      renderComponent(createVNode(VWebView, { source: { uri: 'javascript:alert(1)' } }))
+      await nextTick()
+      const ops = mockBridge.getOpsByType('updateProp')
+      const sourceProp = ops.find(o => o.args[1] === 'source')
+      expect(sourceProp).toBeDefined()
+      expect(sourceProp!.args[2].uri).toBeUndefined()
+      warnSpy.mockRestore()
+    })
+
+    it('blocks data:text/html URI scheme', async () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      renderComponent(createVNode(VWebView, { source: { uri: 'data:text/html,<h1>XSS</h1>' } }))
+      await nextTick()
+      const ops = mockBridge.getOpsByType('updateProp')
+      const sourceProp = ops.find(o => o.args[1] === 'source')
+      expect(sourceProp).toBeDefined()
+      expect(sourceProp!.args[2].uri).toBeUndefined()
+      warnSpy.mockRestore()
+    })
+
+    it('forwards javaScriptEnabled prop', async () => {
+      renderComponent(createVNode(VWebView, { source: { uri: 'https://example.com' }, javaScriptEnabled: false }))
+      await nextTick()
+      const ops = mockBridge.getOpsByType('updateProp')
+      const prop = ops.find(o => o.args[1] === 'javaScriptEnabled')
+      expect(prop).toBeDefined()
+      expect(prop!.args[2]).toBe(false)
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // VAlertDialog
+  // ---------------------------------------------------------------------------
+  describe('VAlertDialog', () => {
+    it('renders intrinsic VAlertDialog element', async () => {
+      const { VAlertDialog } = await import('../components/VAlertDialog')
+      renderComponent(createVNode(VAlertDialog, { visible: true }))
+      await nextTick()
+      // VAlertDialog has a debounce timer, wait for it
+      await new Promise(resolve => setTimeout(resolve, 60))
+      const ops = mockBridge.getOpsByType('create')
+      expect(ops.some(o => o.args[1] === 'VAlertDialog')).toBe(true)
+    })
+
+    it('forwards title and message props', async () => {
+      const { VAlertDialog } = await import('../components/VAlertDialog')
+      renderComponent(createVNode(VAlertDialog, { visible: true, title: 'Warning', message: 'Are you sure?' }))
+      await nextTick()
+      await new Promise(resolve => setTimeout(resolve, 60))
+      const ops = mockBridge.getOpsByType('updateProp')
+      const titleProp = ops.find(o => o.args[1] === 'title')
+      expect(titleProp).toBeDefined()
+      expect(titleProp!.args[2]).toBe('Warning')
+      const msgProp = ops.find(o => o.args[1] === 'message')
+      expect(msgProp).toBeDefined()
+      expect(msgProp!.args[2]).toBe('Are you sure?')
+    })
+
+    it('forwards buttons array', async () => {
+      const { VAlertDialog } = await import('../components/VAlertDialog')
+      const buttons = [
+        { label: 'Cancel', style: 'cancel' as const },
+        { label: 'Delete', style: 'destructive' as const },
+      ]
+      renderComponent(createVNode(VAlertDialog, { visible: true, buttons }))
+      await nextTick()
+      await new Promise(resolve => setTimeout(resolve, 60))
+      const ops = mockBridge.getOpsByType('updateProp')
+      const btnProp = ops.find(o => o.args[1] === 'buttons')
+      expect(btnProp).toBeDefined()
+      expect(btnProp!.args[2]).toHaveLength(2)
+      expect(btnProp!.args[2][0].label).toBe('Cancel')
+      expect(btnProp!.args[2][1].label).toBe('Delete')
+    })
+
+    it('registers onConfirm event handler', async () => {
+      const { VAlertDialog } = await import('../components/VAlertDialog')
+      const handler = vi.fn()
+      renderComponent(createVNode(VAlertDialog, { visible: true, onConfirm: handler }))
+      await nextTick()
+      await new Promise(resolve => setTimeout(resolve, 60))
+      const ops = mockBridge.getOpsByType('addEventListener')
+      expect(ops.some(o => o.args[1] === 'confirm')).toBe(true)
+    })
+
+    it('registers onCancel event handler', async () => {
+      const { VAlertDialog } = await import('../components/VAlertDialog')
+      const handler = vi.fn()
+      renderComponent(createVNode(VAlertDialog, { visible: true, onCancel: handler }))
+      await nextTick()
+      await new Promise(resolve => setTimeout(resolve, 60))
+      const ops = mockBridge.getOpsByType('addEventListener')
+      expect(ops.some(o => o.args[1] === 'cancel')).toBe(true)
+    })
+
+    it('builds buttons from confirmText/cancelText when buttons array is empty', async () => {
+      const { VAlertDialog } = await import('../components/VAlertDialog')
+      renderComponent(createVNode(VAlertDialog, {
+        visible: true,
+        confirmText: 'OK',
+        cancelText: 'Dismiss',
+      }))
+      await nextTick()
+      await new Promise(resolve => setTimeout(resolve, 60))
+      const ops = mockBridge.getOpsByType('updateProp')
+      const btnProp = ops.find(o => o.args[1] === 'buttons')
+      expect(btnProp).toBeDefined()
+      expect(btnProp!.args[2]).toHaveLength(2)
+      expect(btnProp!.args[2][0].label).toBe('Dismiss')
+      expect(btnProp!.args[2][0].style).toBe('cancel')
+      expect(btnProp!.args[2][1].label).toBe('OK')
+      expect(btnProp!.args[2][1].style).toBe('default')
+    })
+
+    it('visible prop controls rendering via debounce', async () => {
+      const { VAlertDialog } = await import('../components/VAlertDialog')
+      renderComponent(createVNode(VAlertDialog, { visible: false }))
+      await nextTick()
+      await new Promise(resolve => setTimeout(resolve, 60))
+      const ops = mockBridge.getOpsByType('updateProp')
+      const visibleProp = ops.find(o => o.args[1] === 'visible')
+      expect(visibleProp).toBeDefined()
+      expect(visibleProp!.args[2]).toBe(false)
     })
   })
 })

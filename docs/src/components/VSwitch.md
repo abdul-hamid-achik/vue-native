@@ -17,6 +17,10 @@ A boolean toggle switch. Maps to `UISwitch` on iOS and `SwitchCompat` on Android
 | `onTintColor` | `string` | -- | Background color when the switch is on (hex string) |
 | `thumbTintColor` | `string` | -- | Color of the thumb circle (hex string) |
 | `style` | `Object` | -- | Layout styles |
+| `accessibilityLabel` | `string` | -- | A text label for assistive technologies |
+| `accessibilityRole` | `string` | -- | The accessibility role (e.g. `'switch'`) |
+| `accessibilityHint` | `string` | -- | Describes what happens when the user interacts with the element |
+| `accessibilityState` | `Object` | -- | Accessibility state object (e.g. `{ checked: true }`) |
 
 ## Events
 

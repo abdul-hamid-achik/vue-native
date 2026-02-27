@@ -45,6 +45,7 @@ const items = ref(
 | `style` | `ViewStyle` | `{}` | Styles for the outer scroll container |
 | `showsScrollIndicator` | `boolean` | `true` | Show/hide the vertical scroll indicator |
 | `bounces` | `boolean` | `true` | Bounce at scroll boundaries (iOS only) |
+| `headerHeight` | `number` | `0` | Height in points of the `#header` slot content. Required for correct virtualization math when using a header. |
 | `endReachedThreshold` | `number` | `0.5` | How far from the end (in viewport fractions) to trigger `@endReached`. 0.5 = trigger when within 50% of a viewport from the bottom. |
 
 ## Slots

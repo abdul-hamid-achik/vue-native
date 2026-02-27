@@ -12,32 +12,51 @@ const { timing, spring, fadeIn, fadeOut } = useAnimation()
 </script>
 ```
 
+## AnimationTarget
+
+All animation methods accept an `AnimationTarget` instead of a raw view ID. This lets you pass template refs, reactive refs, native nodes, or plain numeric IDs:
+
+```ts
+type AnimationTarget = number | Ref<any> | NativeNode | { id: number }
+```
+
+- `number` — a raw native node ID (e.g. `node.__nodeId`)
+- `Ref<any>` — a template ref (e.g. `ref="boxRef"`)
+- `NativeNode` — a native node object with an `id` property
+- `{ id: number }` — any object with a numeric `id` field
+
+The composable resolves the target internally via `resolveId()`.
+
 ## API
 
 ```ts
+import { useAnimation, Easing } from '@thelacanians/vue-native-runtime'
+
 useAnimation(): {
-  timing: (viewId: number, toStyles: Record<string, any>, config?: TimingConfig) => Promise<void>
-  spring: (viewId: number, toStyles: Record<string, any>, config?: SpringConfig) => Promise<void>
-  keyframe: (viewId: number, steps: KeyframeStep[], config?: { duration?: number }) => Promise<void>
+  timing: (target: AnimationTarget, toStyles: Record<string, any>, config?: TimingConfig) => Promise<void>
+  spring: (target: AnimationTarget, toStyles: Record<string, any>, config?: SpringConfig) => Promise<void>
+  keyframe: (target: AnimationTarget, steps: KeyframeStep[], config?: { duration?: number }) => Promise<void>
   sequence: (animations: SequenceAnimation[]) => Promise<void>
   parallel: (animations: SequenceAnimation[]) => Promise<void>
-  fadeIn: (viewId: number, duration?: number) => Promise<void>
-  fadeOut: (viewId: number, duration?: number) => Promise<void>
-  slideInFromRight: (viewId: number, duration?: number) => Promise<void>
-  slideOutToRight: (viewId: number, duration?: number) => Promise<void>
-  Easing: typeof Easing
+  fadeIn: (target: AnimationTarget, duration?: number) => Promise<void>
+  fadeOut: (target: AnimationTarget, duration?: number) => Promise<void>
+  slideInFromRight: (target: AnimationTarget, duration?: number) => Promise<void>
+  slideOutToRight: (target: AnimationTarget, duration?: number) => Promise<void>
+  resolveId: (target: AnimationTarget) => number
 }
 ```
 
+`Easing` is also exported as a top-level constant from the runtime package.
+
 ### Core Methods
 
-#### `timing(viewId, toStyles, config?)`
+#### `timing(target, toStyles, config?)`
 
 Animate a view to the target styles using a timing curve.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `viewId` | `number` | The native view ID to animate. |
+| `target` | `AnimationTarget` | The view to animate — a template ref, native node, node ID, or `{ id }` object. |
 | `toStyles` | `Record<string, any>` | Target style properties (e.g. `{ opacity: 1, translateX: 100 }`). |
 | `config` | `TimingConfig?` | Animation options. |
 
@@ -49,13 +68,13 @@ Animate a view to the target styles using a timing curve.
 | `easing` | `EasingType?` | `'ease'` | Easing curve. |
 | `delay` | `number?` | `0` | Delay before starting in milliseconds. |
 
-#### `spring(viewId, toStyles, config?)`
+#### `spring(target, toStyles, config?)`
 
 Animate a view using spring physics.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `viewId` | `number` | The native view ID to animate. |
+| `target` | `AnimationTarget` | The view to animate — a template ref, native node, node ID, or `{ id }` object. |
 | `toStyles` | `Record<string, any>` | Target style properties. |
 | `config` | `SpringConfig?` | Spring configuration. |
 
@@ -69,13 +88,13 @@ Animate a view using spring physics.
 | `velocity` | `number?` | - | Initial velocity. |
 | `delay` | `number?` | `0` | Delay before starting in milliseconds. |
 
-#### `keyframe(viewId, steps, config?)`
+#### `keyframe(target, steps, config?)`
 
 Run a multi-step keyframe animation on a view.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `viewId` | `number` | The native view ID to animate. |
+| `target` | `AnimationTarget` | The view to animate — a template ref, native node, node ID, or `{ id }` object. |
 | `steps` | `KeyframeStep[]` | Array of keyframe steps. Each step has an `offset` (0.0-1.0) and style properties. |
 | `config` | `{ duration?: number }?` | Animation options. Duration defaults to `300` ms. |
 
@@ -112,7 +131,7 @@ Run multiple animations simultaneously.
 | Property | Type | Description |
 |----------|------|-------------|
 | `type` | `'timing' \| 'spring'` | Animation type. |
-| `viewId` | `number` | Target view ID. |
+| `target` | `AnimationTarget` | The view to animate. |
 | `toStyles` | `Record<string, any>` | Target style properties. |
 | `options` | `TimingConfig \| SpringConfig` | Animation configuration. |
 
@@ -120,10 +139,20 @@ Run multiple animations simultaneously.
 
 | Method | Description |
 |--------|-------------|
-| `fadeIn(viewId, duration?)` | Fade a view to opacity 1. Default duration: 300ms. |
-| `fadeOut(viewId, duration?)` | Fade a view to opacity 0. Default duration: 300ms. |
-| `slideInFromRight(viewId, duration?)` | Slide a view in from the right (translateX to 0). Default duration: 300ms. |
-| `slideOutToRight(viewId, duration?)` | Slide a view out to the right (translateX to 400). Default duration: 300ms. |
+| `fadeIn(target, duration?)` | Fade a view to opacity 1. Default duration: 300ms. |
+| `fadeOut(target, duration?)` | Fade a view to opacity 0. Default duration: 300ms. |
+| `slideInFromRight(target, duration?)` | Slide a view in from the right (translateX to 0). Default duration: 300ms. |
+| `slideOutToRight(target, duration?)` | Slide a view out to the right (translateX to 400). Default duration: 300ms. |
+
+### `resolveId(target)`
+
+Utility to extract the numeric node ID from any `AnimationTarget`. Useful when you need the raw ID for `sequence` or `parallel` animations.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `target` | `AnimationTarget` | A template ref, native node, node ID, or `{ id }` object. |
+
+Returns: `number` — the resolved native node ID.
 
 ### Easing Constants
 
@@ -162,25 +191,20 @@ Available via the `Easing` object returned by `useAnimation()`:
 import { ref } from '@thelacanians/vue-native-runtime'
 import { useAnimation } from '@thelacanians/vue-native-runtime'
 
-const { timing, spring, keyframe, sequence, parallel, fadeIn, Easing } = useAnimation()
+const { timing, spring, keyframe, sequence, parallel, fadeIn, resolveId } = useAnimation()
 const boxRef = ref(null)
 
 async function animateFadeIn() {
-  const viewId = boxRef.value?.__nodeId
-  if (!viewId) return
-  await fadeIn(viewId, 500)
+  // Pass the template ref directly — no need to extract __nodeId manually
+  await fadeIn(boxRef, 500)
 }
 
 async function animateBounce() {
-  const viewId = boxRef.value?.__nodeId
-  if (!viewId) return
-  await spring(viewId, { translateY: 0 }, { tension: 40, friction: 7 })
+  await spring(boxRef, { translateY: 0 }, { tension: 40, friction: 7 })
 }
 
 async function animateFlash() {
-  const viewId = boxRef.value?.__nodeId
-  if (!viewId) return
-  await keyframe(viewId, [
+  await keyframe(boxRef, [
     { offset: 0, opacity: 1 },
     { offset: 0.5, opacity: 0 },
     { offset: 1, opacity: 1 },
@@ -188,12 +212,11 @@ async function animateFlash() {
 }
 
 async function animateSequence() {
-  const viewId = boxRef.value?.__nodeId
-  if (!viewId) return
+  const id = resolveId(boxRef)
   await sequence([
-    { type: 'timing', viewId, toStyles: { opacity: 0 }, options: { duration: 200 } },
-    { type: 'timing', viewId, toStyles: { opacity: 1, translateX: 100 }, options: { duration: 300 } },
-    { type: 'timing', viewId, toStyles: { translateX: 0 }, options: { duration: 300, easing: Easing.easeOut } },
+    { type: 'timing', target: id, toStyles: { opacity: 0 }, options: { duration: 200 } },
+    { type: 'timing', target: id, toStyles: { opacity: 1, translateX: 100 }, options: { duration: 300 } },
+    { type: 'timing', target: id, toStyles: { translateX: 0 }, options: { duration: 300, easing: Easing.easeOut } },
   ])
 }
 </script>
@@ -220,7 +243,8 @@ async function animateSequence() {
 ## Notes
 
 - All animation functions return a `Promise` that resolves when the animation completes.
-- The `viewId` parameter is the native node ID. Access it via the component ref's `__nodeId` property.
+- The `target` parameter accepts template refs, `Ref<any>`, `NativeNode`, `{ id: number }`, or a raw `number`. You no longer need to manually extract `__nodeId`.
+- `Easing` is exported as both a top-level constant (`import { Easing } from '@thelacanians/vue-native-runtime'`) and as part of the `useAnimation()` return value.
 - `sequence` runs animations one after another; `parallel` runs them all at once. Both resolve when all animations finish.
 - On Android, spring animations use `OvershootInterpolator` as an approximation of true spring physics.
 - Durations and delays are specified in milliseconds in the JS API but converted to seconds internally on the native side.

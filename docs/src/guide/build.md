@@ -1,6 +1,50 @@
 # Building for Release
 
-## Build the JS bundle
+## CLI Build Commands
+
+The CLI provides `vue-native build` for creating release builds. It automatically bundles the JS before building the native project.
+
+```bash
+# Build iOS release
+vue-native build ios
+
+# Build Android APK
+vue-native build android
+
+# Build Android App Bundle (.aab) for Play Store
+vue-native build android --aab
+```
+
+### Build Options
+
+| Flag | Description |
+|------|-------------|
+| `--mode <mode>` | Build mode (default: `release`) |
+| `--output <path>` | Output directory for the build artifact (default: `./build`) |
+| `--scheme <scheme>` | Xcode scheme to build (iOS only) |
+| `--aab` | Build Android App Bundle instead of APK (Android only) |
+
+### Examples
+
+```bash
+# Release build with custom output directory
+vue-native build ios --output ./artifacts
+
+# Debug build
+vue-native build ios --mode debug
+
+# Specific Xcode scheme
+vue-native build ios --scheme MyApp-Staging
+
+# Android App Bundle for Play Store
+vue-native build android --aab --output ./release
+```
+
+The CLI auto-bundles the JS before running the native build — you do not need to run `bun run build` separately.
+
+## Manual Build
+
+If you prefer to build manually without the CLI, you can bundle the JS first:
 
 ```bash
 bun run build

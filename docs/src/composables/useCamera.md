@@ -27,6 +27,10 @@ async function takePhoto() {
 useCamera(): {
   launchCamera: (options?: CameraOptions) => Promise<CameraResult>
   launchImageLibrary: (options?: CameraOptions) => Promise<CameraResult>
+  captureVideo: (options?: VideoCaptureOptions) => Promise<VideoCaptureResult>
+  scanQRCode: () => Promise<void>
+  stopQRScan: () => Promise<void>
+  onQRCodeDetected: (callback: (result: QRCodeResult) => void) => () => void
 }
 ```
 
@@ -36,6 +40,10 @@ useCamera(): {
 |--------|-----------|-------------|
 | `launchCamera` | `(options?: CameraOptions) => Promise<CameraResult>` | Open the device camera to capture a photo. |
 | `launchImageLibrary` | `(options?: CameraOptions) => Promise<CameraResult>` | Open the system photo picker to select an existing image. |
+| `captureVideo` | `(options?: VideoCaptureOptions) => Promise<VideoCaptureResult>` | Record a video using the device camera. |
+| `scanQRCode` | `() => Promise<void>` | Start the QR code scanner using the rear camera. |
+| `stopQRScan` | `() => Promise<void>` | Stop an active QR code scanning session. |
+| `onQRCodeDetected` | `(callback: (result: QRCodeResult) => void) => () => void` | Register a callback for detected QR codes. Returns an unsubscribe function. |
 
 ### Types
 
@@ -52,6 +60,30 @@ interface CameraResult {
   height: number        // Image height in pixels
   type: string          // MIME type (e.g., "image/jpeg")
   didCancel?: boolean   // true if the user dismissed the picker
+}
+
+interface VideoCaptureOptions {
+  quality?: 'low' | 'medium' | 'high'  // Video quality preset. Default: 'medium'
+  maxDuration?: number                  // Maximum recording duration in seconds
+  frontCamera?: boolean                 // Use front camera. Default: false
+}
+
+interface VideoCaptureResult {
+  uri: string           // Temporary file URI for the recorded video
+  duration: number      // Video duration in seconds
+  type: string          // MIME type (e.g., "video/mp4")
+  didCancel?: boolean   // true if the user cancelled recording
+}
+
+interface QRCodeResult {
+  data: string          // The decoded QR code content
+  type: string          // Barcode type (e.g., "qr", "ean13")
+  bounds: {             // Bounding box of the detected code in the camera preview
+    x: number
+    y: number
+    width: number
+    height: number
+  }
 }
 ```
 
@@ -115,6 +147,71 @@ async function pickFromLibrary() {
 </template>
 ```
 
+## Video Capture
+
+Use `captureVideo` to record video with the device camera:
+
+```vue
+<script setup>
+import { ref } from '@thelacanians/vue-native-runtime'
+import { useCamera } from '@thelacanians/vue-native-runtime'
+
+const { captureVideo } = useCamera()
+const videoUri = ref('')
+
+async function recordVideo() {
+  const result = await captureVideo({ quality: 'high', maxDuration: 30 })
+  if (!result.didCancel) {
+    videoUri.value = result.uri
+  }
+}
+</script>
+
+<template>
+  <VView :style="{ padding: 20 }">
+    <VButton :onPress="recordVideo"><VText>Record Video</VText></VButton>
+    <VText v-if="videoUri">Recorded: {{ videoUri }}</VText>
+  </VView>
+</template>
+```
+
+## QR Code Scanning
+
+Use `scanQRCode`, `stopQRScan`, and `onQRCodeDetected` to scan QR codes:
+
+```vue
+<script setup>
+import { ref, onUnmounted } from '@thelacanians/vue-native-runtime'
+import { useCamera } from '@thelacanians/vue-native-runtime'
+
+const { scanQRCode, stopQRScan, onQRCodeDetected } = useCamera()
+const scannedData = ref('')
+const scanning = ref(false)
+
+const unsubscribe = onQRCodeDetected((result) => {
+  scannedData.value = result.data
+  stopQRScan()
+  scanning.value = false
+})
+
+onUnmounted(() => unsubscribe())
+
+async function startScan() {
+  scanning.value = true
+  await scanQRCode()
+}
+</script>
+
+<template>
+  <VView :style="{ padding: 20 }">
+    <VButton :onPress="startScan" :disabled="scanning">
+      <VText>{{ scanning ? 'Scanning...' : 'Scan QR Code' }}</VText>
+    </VButton>
+    <VText v-if="scannedData">Scanned: {{ scannedData }}</VText>
+  </VView>
+</template>
+```
+
 ## Notes
 
 - On iOS, captured images are saved to a temporary directory as JPEG files. These are cleaned up by the OS — copy them to permanent storage if you need to keep them.
@@ -122,3 +219,6 @@ async function pickFromLibrary() {
 - On iOS, camera access requires the `NSCameraUsageDescription` key in `Info.plist`.
 - On Android, the default `CameraModule` is a stub that returns an error. You must provide a concrete implementation in your `VueNativeActivity` subclass using `registerForActivityResult`.
 - When the user cancels, the returned `CameraResult` has `didCancel: true` and empty/zero values for `uri`, `width`, and `height`.
+- `captureVideo` returns the recorded video URI and duration. Videos are saved to a temporary directory.
+- QR code scanning uses the rear camera. Call `stopQRScan()` to release the camera when done.
+- `onQRCodeDetected` can fire multiple times if scanning continues — stop the scan after the first detection if you only need one result.

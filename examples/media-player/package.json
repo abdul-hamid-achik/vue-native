@@ -1,0 +1,19 @@
+{
+  "name": "@thelacanians/vue-native-example-media-player",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite build --watch"
+  },
+  "dependencies": {
+    "@thelacanians/vue-native-runtime": "workspace:*"
+  },
+  "devDependencies": {
+    "@thelacanians/vue-native-vite-plugin": "workspace:*",
+    "@vitejs/plugin-vue": "^5.2.0",
+    "vite": "^6.1.0",
+    "vue": "^3.5.0",
+    "typescript": "^5.7.0"
+  }
+}

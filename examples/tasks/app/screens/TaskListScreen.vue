@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
-import { createStyleSheet, useAsyncStorage, useColorScheme, useAnimation } from '@thelacanians/vue-native-runtime'
+import { createStyleSheet, useAsyncStorage, useColorScheme } from '@thelacanians/vue-native-runtime'
 import { useRouter } from '@thelacanians/vue-native-navigation'
 
 interface Task {
@@ -17,7 +17,6 @@ let nextId = 1
 const router = useRouter()
 const { getItem, setItem } = useAsyncStorage()
 const { isDark } = useColorScheme()
-const { timing: _timing } = useAnimation()
 
 // --- State ---
 

@@ -44,7 +44,7 @@ useFileSystem(): {
   deleteFile: (path: string) => Promise<void>,
   exists: (path: string) => Promise<boolean>,
   listDirectory: (path: string) => Promise<string[]>,
-  downloadFile: (url: string, destPath: string) => Promise<void>,
+  downloadFile: (url: string, destPath: string) => Promise<string>,
   getDocumentsPath: () => Promise<string>,
   getCachesPath: () => Promise<string>,
   stat: (path: string) => Promise<FileStat>,
@@ -63,7 +63,7 @@ useFileSystem(): {
 | `deleteFile` | `(path: string) => Promise<void>` | Delete a file at the specified path. |
 | `exists` | `(path: string) => Promise<boolean>` | Check whether a file or directory exists at the given path. |
 | `listDirectory` | `(path: string) => Promise<string[]>` | List the names of all files and subdirectories in a directory. |
-| `downloadFile` | `(url: string, destPath: string) => Promise<void>` | Download a file from a remote URL and save it to the destination path. |
+| `downloadFile` | `(url: string, destPath: string) => Promise<string>` | Download a file from a remote URL and save it to the destination path. Returns the destination path on success. |
 | `getDocumentsPath` | `() => Promise<string>` | Get the absolute path to the app's documents directory. |
 | `getCachesPath` | `() => Promise<string>` | Get the absolute path to the app's caches directory. |
 | `stat` | `(path: string) => Promise<FileStat>` | Get metadata about a file or directory. |

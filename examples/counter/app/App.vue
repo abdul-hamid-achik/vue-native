@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { createStyleSheet } from '@thelacanians/vue-native-runtime'
+import { createStyleSheet, useHaptics } from '@thelacanians/vue-native-runtime'
+
+const { vibrate } = useHaptics()
 
 const name = ref('World')
 const count = ref(0)
@@ -9,11 +11,13 @@ const greeting = computed(() => `Hello, ${name.value}!`)
 
 function increment() {
   count.value++
+  vibrate('light')
 }
 
 function decrement() {
   if (count.value > 0) {
     count.value--
+    vibrate('light')
   }
 }
 

@@ -25,11 +25,15 @@ vi.mock('node:fs/promises', () => ({
 const mockExistsSync = vi.fn().mockReturnValue(false)
 const mockReaddirSync = vi.fn().mockReturnValue([])
 const mockReadFileSync = vi.fn().mockReturnValue('')
+const mockMkdirSync = vi.fn()
+const mockCopyFileSync = vi.fn()
 
 vi.mock('node:fs', () => ({
   existsSync: (...args: unknown[]) => mockExistsSync(...args),
   readdirSync: (...args: unknown[]) => mockReaddirSync(...args),
   readFileSync: (...args: unknown[]) => mockReadFileSync(...args),
+  mkdirSync: (...args: unknown[]) => mockMkdirSync(...args),
+  copyFileSync: (...args: unknown[]) => mockCopyFileSync(...args),
 }))
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -1227,5 +1231,287 @@ describe('cli entry point', () => {
     const portOpt = devCommand.options.find(o => o.long === '--port')
     expect(portOpt).toBeDefined()
     expect(portOpt!.defaultValue).toBe('8174')
+  })
+
+  it('exports build command via build.ts', async () => {
+    const { buildCommand } = await import('../commands/build')
+    expect(buildCommand.name()).toBe('build')
+  })
+
+  it('build command accepts a platform argument', async () => {
+    const { buildCommand } = await import('../commands/build')
+    const args = buildCommand.registeredArguments
+    expect(args).toHaveLength(1)
+    expect(args[0].name()).toBe('platform')
+  })
+
+  it('build command has --mode option with release default', async () => {
+    const { buildCommand } = await import('../commands/build')
+    const modeOpt = buildCommand.options.find(o => o.long === '--mode')
+    expect(modeOpt).toBeDefined()
+    expect(modeOpt!.defaultValue).toBe('release')
+  })
+
+  it('build command has --output option with ./build default', async () => {
+    const { buildCommand } = await import('../commands/build')
+    const outputOpt = buildCommand.options.find(o => o.long === '--output')
+    expect(outputOpt).toBeDefined()
+    expect(outputOpt!.defaultValue).toBe('./build')
+  })
+
+  it('build command has --scheme option for iOS', async () => {
+    const { buildCommand } = await import('../commands/build')
+    const schemeOpt = buildCommand.options.find(o => o.long === '--scheme')
+    expect(schemeOpt).toBeDefined()
+  })
+
+  it('build command has --aab flag for Android App Bundle', async () => {
+    const { buildCommand } = await import('../commands/build')
+    const aabOpt = buildCommand.options.find(o => o.long === '--aab')
+    expect(aabOpt).toBeDefined()
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════════════════
+// BUILD COMMAND TESTS
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('build command', () => {
+  beforeEach(() => {
+    mockExecSync.mockReset()
+    mockSpawn.mockReset().mockReturnValue({
+      stdout: { on: vi.fn() },
+      stderr: { on: vi.fn() },
+      on: vi.fn(),
+      kill: vi.fn(),
+      killed: false,
+    })
+    mockExistsSync.mockReset().mockReturnValue(false)
+    mockReaddirSync.mockReset().mockReturnValue([])
+    vi.spyOn(console, 'log').mockImplementation(() => {})
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.spyOn(process, 'on').mockImplementation(() => process)
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  async function importBuildCommand() {
+    const mod = await import('../commands/build')
+    return mod.buildCommand
+  }
+
+  it('rejects invalid platform names', async () => {
+    const mockExit = vi.spyOn(process, 'exit').mockImplementation((() => {
+      throw new Error('process.exit')
+    }) as () => never)
+
+    const buildCmd = await importBuildCommand()
+    try {
+      await buildCmd.parseAsync(['node', 'build', 'windows'])
+    } catch {
+      // Expected process.exit
+    }
+
+    expect(mockExit).toHaveBeenCalledWith(1)
+    mockExit.mockRestore()
+  })
+
+  describe('iOS build', () => {
+    it('builds JS bundle first with vite', async () => {
+      const mockExit = vi.spyOn(process, 'exit').mockImplementation((() => {
+        throw new Error('process.exit')
+      }) as () => never)
+
+      const buildCmd = await importBuildCommand()
+      try {
+        await buildCmd.parseAsync(['node', 'build', 'ios'])
+      } catch {
+        // Expected — exit after bundle build or no Xcode project
+      }
+
+      // execSync should have been called with vite build in production mode
+      expect(mockExecSync).toHaveBeenCalledWith(
+        'bun run vite build --mode production',
+        expect.objectContaining({ stdio: 'inherit' }),
+      )
+      mockExit.mockRestore()
+    })
+
+    it('reports missing Xcode project gracefully', async () => {
+      mockExecSync.mockImplementation(() => '')
+      mockExistsSync.mockReturnValue(false)
+
+      const buildCmd = await importBuildCommand()
+      await buildCmd.parseAsync(['node', 'build', 'ios'])
+
+      const logCalls = (console.log as ReturnType<typeof vi.fn>).mock.calls
+        .map(([msg]: any[]) => msg)
+        .join(' ')
+      expect(logCalls).toContain('No Xcode project')
+    })
+
+    it('finds .xcworkspace project file', async () => {
+      mockExecSync.mockImplementation(() => '')
+      mockExistsSync.mockImplementation((path: string) => {
+        if (typeof path === 'string' && path.endsWith('/ios')) return true
+        return false
+      })
+      mockReaddirSync.mockReturnValue(['MyApp.xcworkspace'])
+
+      const buildCmd = await importBuildCommand()
+      await buildCmd.parseAsync(['node', 'build', 'ios'])
+
+      expect(mockSpawn).toHaveBeenCalledWith(
+        'xcodebuild',
+        expect.arrayContaining(['-workspace']),
+        expect.any(Object),
+      )
+    })
+
+    it('finds .xcodeproj project file', async () => {
+      mockExecSync.mockImplementation(() => '')
+      mockExistsSync.mockImplementation((path: string) => {
+        if (typeof path === 'string' && path.endsWith('/ios')) return true
+        return false
+      })
+      mockReaddirSync.mockReturnValue(['MyApp.xcodeproj'])
+
+      const buildCmd = await importBuildCommand()
+      await buildCmd.parseAsync(['node', 'build', 'ios'])
+
+      expect(mockSpawn).toHaveBeenCalledWith(
+        'xcodebuild',
+        expect.arrayContaining(['-project']),
+        expect.any(Object),
+      )
+    })
+
+    it('uses Release configuration by default', async () => {
+      mockExecSync.mockImplementation(() => '')
+      mockExistsSync.mockImplementation((path: string) => {
+        if (typeof path === 'string' && path.endsWith('/ios')) return true
+        return false
+      })
+      mockReaddirSync.mockReturnValue(['MyApp.xcodeproj'])
+
+      const buildCmd = await importBuildCommand()
+      await buildCmd.parseAsync(['node', 'build', 'ios'])
+
+      const spawnArgs = mockSpawn.mock.calls[0][1] as string[]
+      const configIndex = spawnArgs.indexOf('-configuration')
+      expect(configIndex).toBeGreaterThan(-1)
+      expect(spawnArgs[configIndex + 1]).toBe('Release')
+    })
+
+    it('uses --scheme option when provided', async () => {
+      mockExecSync.mockImplementation(() => '')
+      mockExistsSync.mockImplementation((path: string) => {
+        if (typeof path === 'string' && path.endsWith('/ios')) return true
+        return false
+      })
+      mockReaddirSync.mockReturnValue(['MyApp.xcodeproj'])
+
+      const buildCmd = await importBuildCommand()
+      await buildCmd.parseAsync(['node', 'build', 'ios', '--scheme', 'CustomScheme'])
+
+      const spawnArgs = mockSpawn.mock.calls[0][1] as string[]
+      const schemeIndex = spawnArgs.indexOf('-scheme')
+      expect(schemeIndex).toBeGreaterThan(-1)
+      expect(spawnArgs[schemeIndex + 1]).toBe('CustomScheme')
+    })
+
+    it('passes generic/platform=iOS destination for archive', async () => {
+      mockExecSync.mockImplementation(() => '')
+      mockExistsSync.mockImplementation((path: string) => {
+        if (typeof path === 'string' && path.endsWith('/ios')) return true
+        return false
+      })
+      mockReaddirSync.mockReturnValue(['MyApp.xcodeproj'])
+
+      const buildCmd = await importBuildCommand()
+      await buildCmd.parseAsync(['node', 'build', 'ios'])
+
+      const spawnArgs = mockSpawn.mock.calls[0][1] as string[]
+      const destIndex = spawnArgs.indexOf('-destination')
+      expect(destIndex).toBeGreaterThan(-1)
+      expect(spawnArgs[destIndex + 1]).toBe('generic/platform=iOS')
+    })
+  })
+
+  describe('Android build', () => {
+    it('reports missing android directory gracefully', async () => {
+      mockExecSync.mockImplementation(() => '')
+      mockExistsSync.mockReturnValue(false)
+
+      const buildCmd = await importBuildCommand()
+      await buildCmd.parseAsync(['node', 'build', 'android'])
+
+      const logCalls = (console.log as ReturnType<typeof vi.fn>).mock.calls
+        .map(([msg]: any[]) => msg)
+        .join(' ')
+      expect(logCalls).toContain('No android/ directory')
+    })
+
+    it('exits with error when gradlew is not found', async () => {
+      const mockExit = vi.spyOn(process, 'exit').mockImplementation((() => {
+        throw new Error('process.exit')
+      }) as () => never)
+
+      mockExecSync.mockImplementation(() => '')
+      mockExistsSync.mockImplementation((path: string) => {
+        if (typeof path === 'string' && path.endsWith('/android')) return true
+        return false
+      })
+
+      const buildCmd = await importBuildCommand()
+      try {
+        await buildCmd.parseAsync(['node', 'build', 'android'])
+      } catch {
+        // Expected process.exit
+      }
+
+      expect(mockExit).toHaveBeenCalledWith(1)
+      mockExit.mockRestore()
+    })
+
+    it('spawns gradlew assembleRelease by default', async () => {
+      mockExecSync.mockImplementation(() => '')
+      mockExistsSync.mockImplementation((path: string) => {
+        if (typeof path === 'string' && (path.endsWith('/android') || path.endsWith('/gradlew'))) {
+          return true
+        }
+        return false
+      })
+
+      const buildCmd = await importBuildCommand()
+      await buildCmd.parseAsync(['node', 'build', 'android'])
+
+      expect(mockSpawn).toHaveBeenCalledWith(
+        './gradlew',
+        ['assembleRelease'],
+        expect.objectContaining({ stdio: 'pipe' }),
+      )
+    })
+
+    it('spawns gradlew bundleRelease with --aab flag', async () => {
+      mockExecSync.mockImplementation(() => '')
+      mockExistsSync.mockImplementation((path: string) => {
+        if (typeof path === 'string' && (path.endsWith('/android') || path.endsWith('/gradlew'))) {
+          return true
+        }
+        return false
+      })
+
+      const buildCmd = await importBuildCommand()
+      await buildCmd.parseAsync(['node', 'build', 'android', '--aab'])
+
+      expect(mockSpawn).toHaveBeenCalledWith(
+        './gradlew',
+        ['bundleRelease'],
+        expect.objectContaining({ stdio: 'pipe' }),
+      )
+    })
   })
 })

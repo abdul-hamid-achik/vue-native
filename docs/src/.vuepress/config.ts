@@ -159,6 +159,13 @@ export default defineUserConfig({
           ],
         },
         {
+          text: 'Navigation',
+          children: [
+            '/components/VNavigationBar.md',
+            '/components/VTabBar.md',
+          ],
+        },
+        {
           text: 'System',
           children: [
             '/components/VStatusBar.md',
@@ -263,6 +270,8 @@ export default defineUserConfig({
         '/navigation/screen-lifecycle.md',
         '/navigation/tabs.md',
         '/navigation/drawer.md',
+        '/navigation/nested.md',
+        '/navigation/state-persistence.md',
       ],
       '/ios/': [
         '/ios/README.md',

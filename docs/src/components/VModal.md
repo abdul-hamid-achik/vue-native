@@ -35,7 +35,7 @@ A window-level modal overlay component. Renders its children in a full-screen ov
 
 ```vue
 <script setup>
-import { ref } from 'vue'
+import { ref } from '@thelacanians/vue-native-runtime'
 
 const showModal = ref(false)
 </script>

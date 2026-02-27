@@ -38,6 +38,31 @@ Use `environment: 'node'` -- not `jsdom`. Vue Native renders to a native bridge,
 
 Every test file that exercises Vue Native components or composables must mock the bridge before anything else runs. The bridge communicates with native code through a global `__VN_flushOperations` function. In tests, you replace it with a spy that captures operations.
 
+The runtime exports a ready-made mock bridge helper:
+
+```ts
+import { installMockBridge } from '@thelacanians/vue-native-runtime/testing'
+
+const mockBridge = installMockBridge()
+const { NativeBridge } = await import('@thelacanians/vue-native-runtime')
+```
+
+The `installMockBridge()` function sets up all required globals (`__VN_flushOperations`, `__VN_handleEvent`, `__VN_resolveCallback`, `__VN_handleGlobalEvent`, `__DEV__`) and returns an object with:
+
+| Method | Description |
+|--------|-------------|
+| `getOps()` | Returns all captured bridge operations |
+| `getOpsByType(type)` | Returns operations filtered by op type |
+| `reset()` | Clears all captured operations |
+| `flush()` | Flushes pending microtasks (returns a Promise) |
+
+::: tip
+You can also write your own mock bridge manually if you need custom behavior. See below for the manual approach.
+:::
+
+<details>
+<summary>Manual mock bridge setup</summary>
+
 ```ts
 // test/helpers.ts
 import { vi } from 'vitest'
@@ -67,10 +92,12 @@ export async function nextTick() {
 }
 ```
 
+</details>
+
 Install the mock bridge **at module scope** so it runs before any `import` of the runtime:
 
 ```ts
-import { installMockBridge, nextTick } from './helpers'
+import { installMockBridge } from '@thelacanians/vue-native-runtime/testing'
 
 const mockBridge = installMockBridge()
 const { NativeBridge } = await import('@thelacanians/vue-native-runtime')

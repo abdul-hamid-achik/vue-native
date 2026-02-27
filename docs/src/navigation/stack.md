@@ -4,12 +4,33 @@ The stack navigator maintains a history of screens. Navigating to a new screen p
 
 ## API
 
-### `router.push(name, params?)`
+### `router.push(name, params?, options?)`
 
 Navigate to a screen, adding it to the stack. Alias: `router.navigate()`.
 
 ```ts
 router.push('detail', { id: 42 })
+```
+
+#### NavigateOptions
+
+Pass an options object as the third argument to customize the navigation:
+
+```ts
+interface NavigateOptions {
+  sharedElements?: string[]
+}
+```
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `sharedElements` | `string[]` | Shared element IDs to animate between source and destination screens. |
+
+```ts
+// Navigate with shared element transition
+router.push('detail', { id: 42 }, {
+  sharedElements: ['hero-image', 'title-text'],
+})
 ```
 
 ### `router.pop()`
@@ -67,7 +88,28 @@ Screen transitions use a horizontal slide animation (`translateX`). The new scre
 </template>
 ```
 
-All screens in the stack are mounted simultaneously (so back navigation is instant -- no remounting). Only the top screen is visible.
+By default, all screens in the stack are mounted simultaneously (so back navigation is instant -- no remounting). Only the top screen is visible.
+
+## Unmounting Inactive Screens
+
+For apps with many screens, keeping all of them mounted can use significant memory. Enable `unmountInactiveScreens` to only mount the active screen and the one behind it (for back animation):
+
+```ts
+const router = createRouter({
+  routes: [
+    { name: 'home', component: Home },
+    { name: 'detail', component: Detail },
+    { name: 'settings', component: Settings },
+  ],
+  unmountInactiveScreens: true,
+})
+```
+
+When enabled, navigating from `home → detail → settings` will unmount the `home` screen. Going back from `settings` to `detail` will re-mount `detail` fresh. This trades navigation speed for lower memory usage.
+
+::: tip
+`unmountInactiveScreens` defaults to `false` for backward compatibility. Enable it in memory-constrained apps or when screens hold large resources (images, video, maps).
+:::
 
 ## Android Back Button
 

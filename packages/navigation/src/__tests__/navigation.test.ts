@@ -922,6 +922,204 @@ describe('Navigation — createRouter', () => {
   })
 
   // ---------------------------------------------------------------------------
+  // useRouter / useRoute composables
+  // ---------------------------------------------------------------------------
+  describe('useRouter / useRoute', () => {
+    it('useRouter throws when called outside router context', async () => {
+      const { useRouter } = await import('../index')
+      // useRouter relies on Vue inject() — calling outside setup context throws
+      expect(() => useRouter()).toThrow()
+    })
+
+    it('useRouter returns router inside app.use(router) context', async () => {
+      const { createRouter, useRouter, RouterView } = await import('../index')
+      const { createApp, createNativeNode } = await import('@thelacanians/vue-native-runtime')
+
+      let capturedRouter: any
+      const TestScreen = defineComponent({
+        setup() {
+          capturedRouter = useRouter()
+          return () => h('VView')
+        },
+      })
+
+      const router = createRouter([
+        { name: 'home', component: TestScreen },
+      ])
+
+      const root = createNativeNode('__ROOT__')
+      const app = createApp({
+        setup() {
+          return () => h(RouterView)
+        },
+      })
+      app.use(router as any)
+      app.mount(root as any)
+      await nextTick()
+
+      expect(capturedRouter).toBeDefined()
+      expect(capturedRouter.currentRoute).toBeDefined()
+      expect(typeof capturedRouter.push).toBe('function')
+    })
+
+    it('useRoute returns current route location', async () => {
+      const { createRouter, useRoute, RouterView } = await import('../index')
+      const { createApp, createNativeNode } = await import('@thelacanians/vue-native-runtime')
+
+      let capturedRoute: any
+      const TestScreen = defineComponent({
+        setup() {
+          capturedRoute = useRoute()
+          return () => h('VView')
+        },
+      })
+
+      const router = createRouter([
+        { name: 'home', component: TestScreen },
+      ])
+
+      const root = createNativeNode('__ROOT__')
+      const app = createApp({
+        setup() {
+          return () => h(RouterView)
+        },
+      })
+      app.use(router as any)
+      app.mount(root as any)
+      await nextTick()
+
+      expect(capturedRoute).toBeDefined()
+      expect(capturedRoute.value.name).toBe('home')
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // RouterView
+  // ---------------------------------------------------------------------------
+  describe('RouterView', () => {
+    it('renders the active screen component', async () => {
+      const { createRouter, RouterView } = await import('../index')
+      const { createApp, createNativeNode } = await import('@thelacanians/vue-native-runtime')
+
+      const router = createRouter([
+        { name: 'home', component: HomeScreen },
+      ])
+
+      const root = createNativeNode('__ROOT__')
+      NativeBridge.createNode(root.id, '__ROOT__')
+      const app = createApp({
+        setup() {
+          return () => h(RouterView)
+        },
+      })
+      app.use(router as any)
+      app.mount(root as any)
+
+      await nextTick()
+      const ops = mockBridge.getOpsByType('create')
+      expect(ops.some(o => o.args[1] === 'VView')).toBe(true)
+    })
+
+    it('renders multiple stack entries', async () => {
+      const { createRouter, RouterView } = await import('../index')
+      const { createApp, createNativeNode } = await import('@thelacanians/vue-native-runtime')
+
+      const router = createRouter([
+        { name: 'home', component: HomeScreen },
+        { name: 'about', component: AboutScreen },
+      ])
+
+      const root = createNativeNode('__ROOT__')
+      NativeBridge.createNode(root.id, '__ROOT__')
+      const app = createApp({
+        setup() {
+          return () => h(RouterView)
+        },
+      })
+      app.use(router as any)
+      app.mount(root as any)
+
+      await router.push('about')
+      await nextTick()
+
+      // Both screens should be mounted (for instant back navigation)
+      expect(router.stack.value).toHaveLength(2)
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // onScreenFocus / onScreenBlur lifecycle hooks
+  // ---------------------------------------------------------------------------
+  describe('onScreenFocus / onScreenBlur', () => {
+    it('onScreenFocus fires when screen becomes top', async () => {
+      const { createRouter, onScreenFocus, RouterView } = await import('../index')
+      const { createApp, createNativeNode } = await import('@thelacanians/vue-native-runtime')
+
+      const focusCallback = vi.fn()
+      const ScreenA = defineComponent({
+        setup() {
+          onScreenFocus(focusCallback)
+          return () => h('VView')
+        },
+      })
+
+      const router = createRouter([
+        { name: 'screenA', component: ScreenA },
+        { name: 'screenB', component: AboutScreen },
+      ])
+
+      const root = createNativeNode('__ROOT__')
+      const app = createApp({
+        setup() {
+          return () => h(RouterView)
+        },
+      })
+      app.use(router as any)
+      app.mount(root as any)
+
+      await nextTick()
+      // Should have fired on initial mount since screenA is the top screen
+      expect(focusCallback).toHaveBeenCalled()
+    })
+
+    it('onScreenBlur fires when screen loses top position', async () => {
+      const { createRouter, onScreenBlur, RouterView } = await import('../index')
+      const { createApp, createNativeNode } = await import('@thelacanians/vue-native-runtime')
+
+      const blurCallback = vi.fn()
+      const ScreenA = defineComponent({
+        setup() {
+          onScreenBlur(blurCallback)
+          return () => h('VView')
+        },
+      })
+
+      const router = createRouter([
+        { name: 'screenA', component: ScreenA },
+        { name: 'screenB', component: AboutScreen },
+      ])
+
+      const root = createNativeNode('__ROOT__')
+      const app = createApp({
+        setup() {
+          return () => h(RouterView)
+        },
+      })
+      app.use(router as any)
+      app.mount(root as any)
+
+      await nextTick()
+      expect(blurCallback).not.toHaveBeenCalled()
+
+      await router.push('screenB')
+      await nextTick()
+
+      // screenA should now be blurred
+      expect(blurCallback).toHaveBeenCalled()
+    })
+  })
+
+  // ---------------------------------------------------------------------------
   // Bug fix: afterEach fires on goBack (P1 2.5 continued)
   // ---------------------------------------------------------------------------
   describe('goBack afterEach hooks', () => {

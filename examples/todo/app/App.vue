@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
-import { createStyleSheet } from '@thelacanians/vue-native-runtime'
+import { ref, computed, watch, onMounted } from 'vue'
+import { createStyleSheet, useAsyncStorage } from '@thelacanians/vue-native-runtime'
 
 type Filter = 'all' | 'active' | 'done'
 
@@ -12,14 +12,42 @@ interface Todo {
 
 let nextId = 1
 
-const todos = ref<Todo[]>([
-  { id: nextId++, text: 'Build Vue Native', done: false },
-  { id: nextId++, text: 'Write examples', done: false },
-  { id: nextId++, text: 'Ship to App Store', done: false },
-])
+const { getItem, setItem } = useAsyncStorage()
 
+const todos = ref<Todo[]>([])
 const newTodo = ref('')
 const filter = ref<Filter>('all')
+
+onMounted(async () => {
+  try {
+    const stored = await getItem('todos_v1')
+    if (stored) {
+      const parsed = JSON.parse(stored) as Todo[]
+      todos.value = parsed
+      nextId = parsed.reduce((max, t) => Math.max(max, t.id), 0) + 1
+    } else {
+      todos.value = [
+        { id: nextId++, text: 'Build Vue Native', done: false },
+        { id: nextId++, text: 'Write examples', done: false },
+        { id: nextId++, text: 'Ship to App Store', done: false },
+      ]
+    }
+  } catch {
+    todos.value = [
+      { id: nextId++, text: 'Build Vue Native', done: false },
+      { id: nextId++, text: 'Write examples', done: false },
+      { id: nextId++, text: 'Ship to App Store', done: false },
+    ]
+  }
+})
+
+async function saveTodos() {
+  try {
+    await setItem('todos_v1', JSON.stringify(todos.value))
+  } catch { /* storage unavailable */ }
+}
+
+watch(todos, saveTodos, { deep: true })
 
 const filtered = computed(() => {
   switch (filter.value) {

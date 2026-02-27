@@ -16,6 +16,10 @@ A slider control for selecting a value from a continuous range. Maps to `UISlide
 | `min` | `number` | `0` | Minimum value |
 | `max` | `number` | `1` | Maximum value |
 | `style` | `Object` | `{}` | Layout styles |
+| `accessibilityLabel` | `string` | -- | A text label for assistive technologies |
+| `accessibilityRole` | `string` | -- | The accessibility role (e.g. `'adjustable'`) |
+| `accessibilityHint` | `string` | -- | Describes what happens when the user interacts with the element |
+| `accessibilityState` | `Object` | -- | Accessibility state object |
 
 ## Events
 

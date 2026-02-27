@@ -21,6 +21,9 @@ Displays images from remote URLs. Maps to `UIImageView` on iOS and `ImageView` (
 | `style` | `Object` | -- | Layout + appearance styles (width and height recommended) |
 | `testID` | `string` | -- | Test identifier for end-to-end testing |
 | `accessibilityLabel` | `string` | -- | Accessible description of the image |
+| `accessibilityRole` | `string` | -- | The accessibility role (e.g. `'image'`) |
+| `accessibilityHint` | `string` | -- | Describes what happens when the user interacts with the element |
+| `accessibilityState` | `Object` | -- | Accessibility state object |
 
 ### Resize Modes
 

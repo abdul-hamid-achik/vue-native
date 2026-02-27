@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { createStyleSheet } from '@thelacanians/vue-native-runtime'
+import { createStyleSheet, useColorScheme, useDeviceInfo } from '@thelacanians/vue-native-runtime'
+
+const { isDark, colorScheme } = useColorScheme()
+const { model, systemVersion, brand } = useDeviceInfo()
 
 // --- State ---
 
@@ -217,6 +220,40 @@ const sections: Section[] = [
             v-model="item.model.value"
             :on-tint-color="'#34C759'"
           />
+        </VView>
+      </VView>
+    </VView>
+
+    <!-- Device Info -->
+    <VView :style="styles.sectionHeader">
+      <VText :style="styles.sectionTitle">Device Info</VText>
+    </VView>
+    <VView :style="styles.sectionContainer">
+      <VView :style="[styles.row, styles.rowFirst]">
+        <VView :style="[styles.rowIcon, { backgroundColor: '#007AFF' }]">
+          <VText :style="{ fontSize: 18 }">📱</VText>
+        </VView>
+        <VView :style="styles.labelGroup">
+          <VText :style="styles.rowLabel">Model</VText>
+          <VText :style="styles.rowSubtitle">{{ model }}</VText>
+        </VView>
+      </VView>
+      <VView :style="styles.row">
+        <VView :style="[styles.rowIcon, { backgroundColor: '#34C759' }]">
+          <VText :style="{ fontSize: 18 }">⚙️</VText>
+        </VView>
+        <VView :style="styles.labelGroup">
+          <VText :style="styles.rowLabel">OS Version</VText>
+          <VText :style="styles.rowSubtitle">{{ brand }} {{ systemVersion }}</VText>
+        </VView>
+      </VView>
+      <VView :style="styles.row">
+        <VView :style="[styles.rowIcon, { backgroundColor: '#FF9500' }]">
+          <VText :style="{ fontSize: 18 }">🎨</VText>
+        </VView>
+        <VView :style="styles.labelGroup">
+          <VText :style="styles.rowLabel">Color Scheme</VText>
+          <VText :style="styles.rowSubtitle">{{ isDark ? 'Dark' : 'Light' }} ({{ colorScheme }})</VText>
         </VView>
       </VView>
     </VView>

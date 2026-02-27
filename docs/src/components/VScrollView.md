@@ -65,11 +65,16 @@ async function onRefresh() {
 | `pagingEnabled` | `Boolean` | `false` | Snap to pages when scrolling |
 | `refreshing` | `Boolean` | `false` | Whether the pull-to-refresh indicator is active |
 | `contentContainerStyle` | `Object` | — | Style for the inner content container |
+| `scrollEventThrottle` | `Number` | `16` | Minimum interval in milliseconds between scroll events. Lower values give more frequent updates but may impact performance. |
 | `style` | `Object` | — | Style for the scroll view |
+| `accessibilityLabel` | `string` | — | A text label for assistive technologies |
+| `accessibilityRole` | `string` | — | The accessibility role (e.g. `'scrollbar'`) |
+| `accessibilityHint` | `string` | — | Describes what happens when the user interacts with the element |
+| `accessibilityState` | `Object` | — | Accessibility state object |
 
 ## Events
 
 | Event | Payload | Description |
 |-------|---------|-------------|
-| `scroll` | `{ x: number, y: number }` | Fired on scroll with current offset |
+| `scroll` | `{ x, y, contentWidth, contentHeight, layoutWidth, layoutHeight }` | Fired on scroll with current offset and content/layout dimensions |
 | `refresh` | — | Fired when the user pulls to refresh |

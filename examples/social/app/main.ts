@@ -1,16 +1,17 @@
 import { createApp } from '@thelacanians/vue-native-runtime'
-import { createRouter } from '@thelacanians/vue-native-navigation'
+import { createTabNavigator } from '@thelacanians/vue-native-navigation'
 import App from './App.vue'
 import FeedScreen from './screens/FeedScreen.vue'
 import ExploreScreen from './screens/ExploreScreen.vue'
 import ProfileScreen from './screens/ProfileScreen.vue'
 
-const router = createRouter([
-  { name: 'Feed', component: FeedScreen, options: { title: 'Feed' } },
-  { name: 'Explore', component: ExploreScreen, options: { title: 'Explore' } },
-  { name: 'Profile', component: ProfileScreen, options: { title: 'Profile' } },
-])
+export const { TabNavigator, useActiveTab } = createTabNavigator()
+
+export const tabs = [
+  { name: 'feed', label: 'Feed', icon: '🏠', component: FeedScreen },
+  { name: 'explore', label: 'Explore', icon: '🔍', component: ExploreScreen },
+  { name: 'profile', label: 'Profile', icon: '👤', component: ProfileScreen },
+]
 
 const app = createApp(App)
-app.use(router)
 app.start()
