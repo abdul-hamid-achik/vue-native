@@ -99,6 +99,63 @@
         "vue": "^3.5.0",
       },
     },
+    "examples/forms": {
+      "name": "@thelacanians/vue-native-example-forms",
+      "version": "0.1.0",
+      "dependencies": {
+        "@thelacanians/vue-native-runtime": "workspace:*",
+      },
+      "devDependencies": {
+        "@thelacanians/vue-native-vite-plugin": "workspace:*",
+        "@vitejs/plugin-vue": "^5.2.0",
+        "typescript": "^5.7.0",
+        "vite": "^6.1.0",
+        "vue": "^3.5.0",
+      },
+    },
+    "examples/lists": {
+      "name": "@thelacanians/vue-native-example-lists",
+      "version": "0.1.0",
+      "dependencies": {
+        "@thelacanians/vue-native-runtime": "workspace:*",
+      },
+      "devDependencies": {
+        "@thelacanians/vue-native-vite-plugin": "workspace:*",
+        "@vitejs/plugin-vue": "^5.2.0",
+        "typescript": "^5.7.0",
+        "vite": "^6.1.0",
+        "vue": "^3.5.0",
+      },
+    },
+    "examples/media-player": {
+      "name": "@thelacanians/vue-native-example-media-player",
+      "version": "0.1.0",
+      "dependencies": {
+        "@thelacanians/vue-native-runtime": "workspace:*",
+      },
+      "devDependencies": {
+        "@thelacanians/vue-native-vite-plugin": "workspace:*",
+        "@vitejs/plugin-vue": "^5.2.0",
+        "typescript": "^5.7.0",
+        "vite": "^6.1.0",
+        "vue": "^3.5.0",
+      },
+    },
+    "examples/navigation-demo": {
+      "name": "@thelacanians/vue-native-example-navigation-demo",
+      "version": "0.1.0",
+      "dependencies": {
+        "@thelacanians/vue-native-navigation": "workspace:*",
+        "@thelacanians/vue-native-runtime": "workspace:*",
+      },
+      "devDependencies": {
+        "@thelacanians/vue-native-vite-plugin": "workspace:*",
+        "@vitejs/plugin-vue": "^5.2.0",
+        "typescript": "^5.7.0",
+        "vite": "^6.1.0",
+        "vue": "^3.5.0",
+      },
+    },
     "examples/settings": {
       "name": "@thelacanians/vue-native-example-settings",
       "version": "0.1.0",
@@ -143,6 +200,20 @@
         "vue": "^3.5.0",
       },
     },
+    "examples/theming": {
+      "name": "@thelacanians/vue-native-example-theming",
+      "version": "0.1.0",
+      "dependencies": {
+        "@thelacanians/vue-native-runtime": "workspace:*",
+      },
+      "devDependencies": {
+        "@thelacanians/vue-native-vite-plugin": "workspace:*",
+        "@vitejs/plugin-vue": "^5.2.0",
+        "typescript": "^5.7.0",
+        "vite": "^6.1.0",
+        "vue": "^3.5.0",
+      },
+    },
     "examples/todo": {
       "name": "@thelacanians/vue-native-example-todo",
       "version": "0.1.0",
@@ -159,7 +230,7 @@
     },
     "packages/cli": {
       "name": "@thelacanians/vue-native-cli",
-      "version": "0.3.0",
+      "version": "0.4.15",
       "bin": {
         "vue-native": "./dist/cli.js",
       },
@@ -179,9 +250,9 @@
     },
     "packages/navigation": {
       "name": "@thelacanians/vue-native-navigation",
-      "version": "0.3.0",
+      "version": "0.4.15",
       "dependencies": {
-        "@thelacanians/vue-native-runtime": "workspace:*",
+        "@thelacanians/vue-native-runtime": "^0.4.15",
         "@vue/runtime-core": "^3.5.0",
       },
       "devDependencies": {
@@ -192,7 +263,7 @@
     },
     "packages/runtime": {
       "name": "@thelacanians/vue-native-runtime",
-      "version": "0.3.0",
+      "version": "0.4.15",
       "dependencies": {
         "@vue/reactivity": "^3.5.0",
         "@vue/runtime-core": "^3.5.0",
@@ -208,7 +279,7 @@
     },
     "packages/vite-plugin": {
       "name": "@thelacanians/vue-native-vite-plugin",
-      "version": "0.3.0",
+      "version": "0.4.15",
       "devDependencies": {
         "tsup": "^8.4.0",
         "typescript": "^5.7.0",
@@ -496,11 +567,21 @@
 
     "@thelacanians/vue-native-example-counter": ["@thelacanians/vue-native-example-counter@workspace:examples/counter"],
 
+    "@thelacanians/vue-native-example-forms": ["@thelacanians/vue-native-example-forms@workspace:examples/forms"],
+
+    "@thelacanians/vue-native-example-lists": ["@thelacanians/vue-native-example-lists@workspace:examples/lists"],
+
+    "@thelacanians/vue-native-example-media-player": ["@thelacanians/vue-native-example-media-player@workspace:examples/media-player"],
+
+    "@thelacanians/vue-native-example-navigation-demo": ["@thelacanians/vue-native-example-navigation-demo@workspace:examples/navigation-demo"],
+
     "@thelacanians/vue-native-example-settings": ["@thelacanians/vue-native-example-settings@workspace:examples/settings"],
 
     "@thelacanians/vue-native-example-social": ["@thelacanians/vue-native-example-social@workspace:examples/social"],
 
     "@thelacanians/vue-native-example-tasks": ["@thelacanians/vue-native-example-tasks@workspace:examples/tasks"],
+
+    "@thelacanians/vue-native-example-theming": ["@thelacanians/vue-native-example-theming@workspace:examples/theming"],
 
     "@thelacanians/vue-native-example-todo": ["@thelacanians/vue-native-example-todo@workspace:examples/todo"],
 
