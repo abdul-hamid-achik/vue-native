@@ -1,5 +1,6 @@
 #if canImport(UIKit)
 import Foundation
+import QuartzCore
 
 /// Throttles high-frequency event handlers to avoid flooding the JS bridge.
 ///

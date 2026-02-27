@@ -425,11 +425,8 @@ public final class NativeBridge {
             factory.insertChild(childView, into: container, before: beforeView)
         } else if let index = container.subviews.firstIndex(of: beforeView) {
             container.insertSubview(childView, at: index)
-            // Rebuild Yoga children to match UIView subview order
-            container.flex.removeAllChildren()
-            for subview in container.subviews {
-                container.flex.addItem(subview)
-            }
+            container.flex.markDirty()
+            container.setNeedsLayout()
         } else {
             container.flex.addItem(childView)
         }
