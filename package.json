@@ -16,7 +16,11 @@
     "lint": "bunx eslint .",
     "lint:fix": "bunx eslint . --fix",
     "knip": "bunx knip",
-    "prepare": "bunx lefthook install"
+    "prepare": "bunx lefthook install",
+    "test:ios": "xcodebuild test -scheme VueNativeCore -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' -quiet",
+    "test:android": "cd native/android && ./gradlew :VueNativeCore:testDebugUnitTest",
+    "test:native": "bun run test:ios && bun run test:android",
+    "test:all": "bun run test && bun run test:native"
   },
   "devDependencies": {
     "@stylistic/eslint-plugin": "^4.2.0",
