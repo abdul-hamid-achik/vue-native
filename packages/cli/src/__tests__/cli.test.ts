@@ -2,6 +2,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { join } from 'node:path'
 import type { VueNativeConfig, ResolvedConfig } from '../config'
 
+// Polyfill vi.resetModules for Bun's test runner (no-op — Bun re-evaluates dynamic imports)
+if (typeof vi.resetModules !== 'function') {
+  vi.resetModules = () => vi
+}
+
 // ───────────────────────────────────────────────────────────────────────────
 // Mock node:fs/promises (used by create command)
 // ───────────────────────────────────────────────────────────────────────────
