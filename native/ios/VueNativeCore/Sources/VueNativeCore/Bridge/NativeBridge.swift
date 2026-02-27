@@ -69,6 +69,59 @@ public final class NativeBridge {
 
     private static var traitObserverKey: UInt8 = 99
 
+    // MARK: - Bridge Function Registration
+
+    /// Register `__VN_flushOperations`, `__VN_teardown`, `__VN_log`, and `__VN_handleError`
+    /// on the given JSContext. Called from both `initialize()` and `reloadWithBundle()`.
+    private func registerBridgeFunctions(on context: JSContext) {
+        let flushOps: @convention(block) (JSValue) -> Void = { [weak self] opsValue in
+            guard let self = self else { return }
+            guard let jsonString = opsValue.toString(), !jsonString.isEmpty else {
+                NSLog("[VueNative Bridge] Warning: Empty operations batch")
+                return
+            }
+
+            guard let data = jsonString.data(using: .utf8),
+                  let operations = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
+                NSLog("[VueNative Bridge] Error: Failed to parse operations JSON")
+                return
+            }
+
+            DispatchQueue.main.async { [weak self] in
+                self?.processOperations(operations)
+            }
+        }
+        context.setObject(flushOps, forKeyedSubscript: "__VN_flushOperations" as NSString)
+
+        let teardown: @convention(block) () -> Void = { [weak self] in
+            NSLog("[VueNative] Teardown called from JS")
+            _ = self
+        }
+        context.setObject(teardown, forKeyedSubscript: "__VN_teardown" as NSString)
+
+        let log: @convention(block) (JSValue) -> Void = { message in
+            NSLog("[VueNative JS] \(message.toString() ?? "")")
+        }
+        context.setObject(log, forKeyedSubscript: "__VN_log" as NSString)
+
+        let handleError: @convention(block) (JSValue) -> Void = { errorInfoValue in
+            let jsonString = errorInfoValue.toString() ?? "{}"
+            NSLog("[VueNative Error] %@", jsonString)
+
+            if let data = jsonString.data(using: .utf8),
+               let info = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                let message = info["message"] as? String ?? "Unknown error"
+                let stack = info["stack"] as? String ?? ""
+                let componentName = info["componentName"] as? String ?? "unknown"
+                NSLog("[VueNative Error] Component: %@, Message: %@", componentName, message)
+                if !stack.isEmpty {
+                    NSLog("[VueNative Error] Stack: %@", stack)
+                }
+            }
+        }
+        context.setObject(handleError, forKeyedSubscript: "__VN_handleError" as NSString)
+    }
+
     // MARK: - Setup
 
     /// Initialize the bridge. Must be called after JSRuntime.initialize().
@@ -83,61 +136,7 @@ public final class NativeBridge {
         runtime.jsQueue.async { [weak self] in
             guard let self = self, let context = runtime.context else { return }
 
-            let flushOps: @convention(block) (JSValue) -> Void = { [weak self] opsValue in
-                guard let self = self else { return }
-                guard let jsonString = opsValue.toString(), !jsonString.isEmpty else {
-                    NSLog("[VueNative Bridge] Warning: Empty operations batch")
-                    return
-                }
-
-                // Parse JSON on the JS queue (avoid main thread work)
-                guard let data = jsonString.data(using: .utf8),
-                      let operations = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
-                    NSLog("[VueNative Bridge] Error: Failed to parse operations JSON")
-                    return
-                }
-
-                // Process operations on the main thread
-                DispatchQueue.main.async { [weak self] in
-                    self?.processOperations(operations)
-                }
-            }
-            context.setObject(flushOps, forKeyedSubscript: "__VN_flushOperations" as NSString)
-
-            // Register __VN_teardown for graceful JS-side shutdown on hot reload
-            let teardown: @convention(block) () -> Void = { [weak self] in
-                // Graceful shutdown: bridge will be re-initialized on reload
-                NSLog("[VueNative] Teardown called from JS")
-                _ = self
-            }
-            context.setObject(teardown, forKeyedSubscript: "__VN_teardown" as NSString)
-
-            // Register __VN_log for debug logging from JS
-            let log: @convention(block) (JSValue) -> Void = { message in
-                NSLog("[VueNative JS] \(message.toString() ?? "")")
-            }
-            context.setObject(log, forKeyedSubscript: "__VN_log" as NSString)
-
-            // Register __VN_handleError for JS error reporting
-            // Called from JS with a JSON-encoded string containing error info
-            // (message, stack, componentName).
-            let handleError: @convention(block) (JSValue) -> Void = { errorInfoValue in
-                let jsonString = errorInfoValue.toString() ?? "{}"
-                NSLog("[VueNative Error] %@", jsonString)
-
-                // Try to extract structured fields for clearer logging
-                if let data = jsonString.data(using: .utf8),
-                   let info = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                    let message = info["message"] as? String ?? "Unknown error"
-                    let stack = info["stack"] as? String ?? ""
-                    let componentName = info["componentName"] as? String ?? "unknown"
-                    NSLog("[VueNative Error] Component: %@, Message: %@", componentName, message)
-                    if !stack.isEmpty {
-                        NSLog("[VueNative Error] Stack: %@", stack)
-                    }
-                }
-            }
-            context.setObject(handleError, forKeyedSubscript: "__VN_handleError" as NSString)
+            self.registerBridgeFunctions(on: context)
         }
 
         // Register all native modules synchronously so they are available
@@ -153,19 +152,44 @@ public final class NativeBridge {
         "setRootView", "setText", "setElementText"
     ]
 
+    /// Style properties that affect Yoga layout and require a layout pass when changed.
+    /// When a batch contains only updateStyle ops for non-layout properties (e.g.
+    /// backgroundColor, opacity), we skip the expensive layout recalculation.
+    private static let layoutAffectingStyles: Set<String> = [
+        // Dimensions
+        "width", "height", "minWidth", "minHeight", "maxWidth", "maxHeight",
+        // Flex
+        "flex", "flexGrow", "flexShrink", "flexBasis", "flexDirection",
+        "flexWrap", "alignItems", "alignSelf", "alignContent", "justifyContent",
+        // Spacing
+        "padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft",
+        "paddingHorizontal", "paddingVertical", "paddingStart", "paddingEnd",
+        "margin", "marginTop", "marginRight", "marginBottom", "marginLeft",
+        "marginHorizontal", "marginVertical", "marginStart", "marginEnd",
+        // Gap
+        "gap", "rowGap", "columnGap",
+        // Position
+        "position", "top", "right", "bottom", "left", "start", "end",
+        // Other layout
+        "aspectRatio", "display", "overflow", "direction",
+    ]
+
     /// Process a batch of operations on the main thread.
     /// Each operation has an "op" key and "args" array.
-    /// Only triggers a Yoga layout pass when the batch contains tree mutations
-    /// (create, appendChild, insertBefore, removeChild, etc.). Batches that
-    /// only update props/styles/events skip the expensive layout recalculation.
+    /// Triggers a Yoga layout pass when the batch contains tree mutations
+    /// (create, appendChild, insertBefore, removeChild, etc.) OR style changes
+    /// that affect layout (width, height, padding, margin, flex, etc.).
+    /// Batches that only update visual styles/events skip the expensive layout.
     ///
     /// Access: internal (not private) so that `@testable import` can exercise
     /// operation handling without going through JSContext.
     func processOperations(_ operations: [[String: Any]]) {
         dispatchPrecondition(condition: .onQueue(.main))
+        #if DEBUG
         NSLog("[VueNative Bridge] Processing %d operations", operations.count)
+        #endif
 
-        var hasMutations = false
+        var needsLayout = false
 
         for operation in operations {
             guard let op = operation["op"] as? String,
@@ -174,8 +198,20 @@ public final class NativeBridge {
                 continue
             }
 
-            if !hasMutations && NativeBridge.treeMutationOps.contains(op) {
-                hasMutations = true
+            if !needsLayout && NativeBridge.treeMutationOps.contains(op) {
+                needsLayout = true
+            }
+
+            // Check if updateStyle changes any layout-affecting property
+            if !needsLayout && op == "updateStyle",
+               args.count >= 2,
+               let styles = args[1] as? [String: Any] {
+                for key in styles.keys {
+                    if NativeBridge.layoutAffectingStyles.contains(key) {
+                        needsLayout = true
+                        break
+                    }
+                }
             }
 
             switch op {
@@ -212,8 +248,8 @@ public final class NativeBridge {
             }
         }
 
-        // Only trigger layout recalculation when the batch mutated the view tree
-        if hasMutations {
+        // Trigger layout when tree was mutated or layout-affecting styles changed
+        if needsLayout {
             triggerLayout()
         }
     }
@@ -388,8 +424,12 @@ public final class NativeBridge {
         if let factory = ComponentRegistry.factory(for: parentView) {
             factory.insertChild(childView, into: container, before: beforeView)
         } else if let index = container.subviews.firstIndex(of: beforeView) {
-            container.flex.addItem(childView)
             container.insertSubview(childView, at: index)
+            // Rebuild Yoga children to match UIView subview order
+            container.flex.removeAllChildren()
+            for subview in container.subviews {
+                container.flex.addItem(subview)
+            }
         } else {
             container.flex.addItem(childView)
         }
@@ -781,55 +821,9 @@ public final class NativeBridge {
                 return
             }
 
-            // Re-register __VN_flushOperations, __VN_teardown, __VN_log on new context
+            // Re-register bridge functions on new context
             guard let context = self.runtime.context else { return }
-
-            let flushOps: @convention(block) (JSValue) -> Void = { [weak self] opsValue in
-                guard let self = self else { return }
-                guard let jsonString = opsValue.toString(), !jsonString.isEmpty else {
-                    NSLog("[VueNative Bridge] Warning: Empty operations batch")
-                    return
-                }
-
-                guard let data = jsonString.data(using: .utf8),
-                      let operations = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
-                    NSLog("[VueNative Bridge] Error: Failed to parse operations JSON")
-                    return
-                }
-
-                DispatchQueue.main.async { [weak self] in
-                    self?.processOperations(operations)
-                }
-            }
-            context.setObject(flushOps, forKeyedSubscript: "__VN_flushOperations" as NSString)
-
-            let teardown: @convention(block) () -> Void = { [weak self] in
-                NSLog("[VueNative] Teardown called from JS")
-                _ = self
-            }
-            context.setObject(teardown, forKeyedSubscript: "__VN_teardown" as NSString)
-
-            let log: @convention(block) (JSValue) -> Void = { message in
-                NSLog("[VueNative JS] \(message.toString() ?? "")")
-            }
-            context.setObject(log, forKeyedSubscript: "__VN_log" as NSString)
-
-            let handleError: @convention(block) (JSValue) -> Void = { errorInfoValue in
-                let jsonString = errorInfoValue.toString() ?? "{}"
-                NSLog("[VueNative Error] %@", jsonString)
-
-                if let data = jsonString.data(using: .utf8),
-                   let info = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                    let message = info["message"] as? String ?? "Unknown error"
-                    let stack = info["stack"] as? String ?? ""
-                    let componentName = info["componentName"] as? String ?? "unknown"
-                    NSLog("[VueNative Error] Component: %@, Message: %@", componentName, message)
-                    if !stack.isEmpty {
-                        NSLog("[VueNative Error] Stack: %@", stack)
-                    }
-                }
-            }
-            context.setObject(handleError, forKeyedSubscript: "__VN_handleError" as NSString)
+            self.registerBridgeFunctions(on: context)
 
             NSLog("[VueNative Bridge] reloadWithBundle: bridge re-registered on new context")
         }

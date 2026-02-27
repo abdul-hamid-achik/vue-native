@@ -74,9 +74,9 @@ export interface RouterInstance {
   /** Alias for navigate — preferred name in new API. */
   push(name: string, params?: Record<string, any>, options?: NavigateOptions): Promise<void>
   /** Pop the current route off the stack. */
-  goBack(): void
+  goBack(): Promise<void>
   /** Alias for goBack — preferred name in new API. */
-  pop(): void
+  pop(): Promise<void>
   /** Replace the current route without adding to the stack. */
   replace(name: string, params?: Record<string, any>): Promise<void>
   /** Reset the stack to a single route. */
@@ -276,7 +276,12 @@ export function createRouter(optionsOrRoutes: RouterOptions | RouteConfig[]): Ro
 
   // ── Navigation methods ─────────────────────────────────────────────────────
 
-  async function navigate(name: string, params: Record<string, any> = {}, options?: NavigateOptions): Promise<void> {
+  async function navigate(name: string, params: Record<string, any> = {}, options?: NavigateOptions, _redirectDepth = 0): Promise<void> {
+    if (_redirectDepth > 20) {
+      console.warn('[vue-native/navigation] Circular redirect detected (depth > 20), aborting navigation')
+      return
+    }
+
     const config = routeMap.get(name)
     if (!config) {
       console.warn(`[vue-native/navigation] Route "${name}" not found`)
@@ -294,14 +299,14 @@ export function createRouter(optionsOrRoutes: RouterOptions | RouteConfig[]): Ro
     const beforeResult = await runGuards(beforeGuards, to, from)
     if (beforeResult === false) return
     if (typeof beforeResult === 'string') {
-      return navigate(beforeResult)
+      return navigate(beforeResult, params, undefined, _redirectDepth + 1)
     }
 
     // Run beforeResolve guards
     const resolveResult = await runGuards(resolveGuards, to, from)
     if (resolveResult === false) return
     if (typeof resolveResult === 'string') {
-      return navigate(resolveResult)
+      return navigate(resolveResult, params, undefined, _redirectDepth + 1)
     }
 
     // Commit navigation
@@ -312,14 +317,39 @@ export function createRouter(optionsOrRoutes: RouterOptions | RouteConfig[]): Ro
     afterGuards.forEach(guard => guard(to, from))
   }
 
-  function goBack(): void {
+  async function goBack(): Promise<void> {
     if (stack.value.length <= 1) return
     const newStack = stack.value.slice(0, -1)
+    const to = newStack[newStack.length - 1]
+    const from = currentRoute.value
+
+    // Run beforeEach guards
+    const beforeResult = await runGuards(beforeGuards, to, from)
+    if (beforeResult === false) return
+    if (typeof beforeResult === 'string') {
+      return navigate(beforeResult)
+    }
+
+    // Run beforeResolve guards
+    const resolveResult = await runGuards(resolveGuards, to, from)
+    if (resolveResult === false) return
+    if (typeof resolveResult === 'string') {
+      return navigate(resolveResult)
+    }
+
     stack.value = newStack
-    currentRoute.value = newStack[newStack.length - 1]
+    currentRoute.value = to
+
+    // Run afterEach hooks
+    afterGuards.forEach(guard => guard(to, from))
   }
 
-  async function replace(name: string, params: Record<string, any> = {}): Promise<void> {
+  async function replace(name: string, params: Record<string, any> = {}, _redirectDepth = 0): Promise<void> {
+    if (_redirectDepth > 20) {
+      console.warn('[vue-native/navigation] Circular redirect detected (depth > 20), aborting navigation')
+      return
+    }
+
     const config = routeMap.get(name)
     if (!config) {
       console.warn(`[vue-native/navigation] Route "${name}" not found`)
@@ -331,13 +361,13 @@ export function createRouter(optionsOrRoutes: RouterOptions | RouteConfig[]): Ro
     const beforeResult = await runGuards(beforeGuards, to, from)
     if (beforeResult === false) return
     if (typeof beforeResult === 'string') {
-      return navigate(beforeResult)
+      return navigate(beforeResult, params, undefined, _redirectDepth + 1)
     }
 
     const resolveResult = await runGuards(resolveGuards, to, from)
     if (resolveResult === false) return
     if (typeof resolveResult === 'string') {
-      return navigate(resolveResult)
+      return navigate(resolveResult, params, undefined, _redirectDepth + 1)
     }
 
     stack.value = [...stack.value.slice(0, -1), to]
@@ -346,7 +376,12 @@ export function createRouter(optionsOrRoutes: RouterOptions | RouteConfig[]): Ro
     afterGuards.forEach(guard => guard(to, from))
   }
 
-  async function reset(name: string, params: Record<string, any> = {}): Promise<void> {
+  async function reset(name: string, params: Record<string, any> = {}, _redirectDepth = 0): Promise<void> {
+    if (_redirectDepth > 20) {
+      console.warn('[vue-native/navigation] Circular redirect detected (depth > 20), aborting navigation')
+      return
+    }
+
     const config = routeMap.get(name)
     if (!config) {
       console.warn(`[vue-native/navigation] Route "${name}" not found`)
@@ -358,13 +393,13 @@ export function createRouter(optionsOrRoutes: RouterOptions | RouteConfig[]): Ro
     const beforeResult = await runGuards(beforeGuards, to, from)
     if (beforeResult === false) return
     if (typeof beforeResult === 'string') {
-      return navigate(beforeResult)
+      return navigate(beforeResult, params, undefined, _redirectDepth + 1)
     }
 
     const resolveResult = await runGuards(resolveGuards, to, from)
     if (resolveResult === false) return
     if (typeof resolveResult === 'string') {
-      return navigate(resolveResult)
+      return navigate(resolveResult, params, undefined, _redirectDepth + 1)
     }
 
     stack.value = [to]
@@ -398,12 +433,34 @@ export function createRouter(optionsOrRoutes: RouterOptions | RouteConfig[]): Ro
       return false
     }
 
-    // Strip prefix
+    // Strip prefix (sort by length descending so longest prefix matches first)
     let path = url
-    for (const prefix of linkingConfig.prefixes) {
+    const sortedPrefixes = [...linkingConfig.prefixes].sort((a, b) => b.length - a.length)
+    for (const prefix of sortedPrefixes) {
       if (url.startsWith(prefix)) {
         path = url.slice(prefix.length)
         break
+      }
+    }
+
+    // Strip query string and fragment before matching
+    const queryParams: Record<string, string> = {}
+    const hashIndex = path.indexOf('#')
+    if (hashIndex !== -1) {
+      path = path.slice(0, hashIndex)
+    }
+    const qIndex = path.indexOf('?')
+    if (qIndex !== -1) {
+      const queryString = path.slice(qIndex + 1)
+      path = path.slice(0, qIndex)
+      // Parse query params
+      for (const pair of queryString.split('&')) {
+        const eqIdx = pair.indexOf('=')
+        if (eqIdx !== -1) {
+          queryParams[decodeURIComponent(pair.slice(0, eqIdx))] = decodeURIComponent(pair.slice(eqIdx + 1))
+        } else if (pair.length > 0) {
+          queryParams[decodeURIComponent(pair)] = ''
+        }
       }
     }
 
@@ -414,7 +471,7 @@ export function createRouter(optionsOrRoutes: RouterOptions | RouteConfig[]): Ro
     for (const [screenName, pattern] of Object.entries(linkingConfig.config.screens)) {
       const params = matchPattern(pattern, path)
       if (params !== null) {
-        navigate(screenName, params)
+        navigate(screenName, { ...queryParams, ...params })
         return true
       }
     }
@@ -491,12 +548,14 @@ export function createRouter(optionsOrRoutes: RouterOptions | RouteConfig[]): Ro
   // an early navigation overwrites the persisted state before it's been read.
   if (_persistState) {
     let restoreComplete = false
+    let restoring = false
 
     watch(() => stack.value, () => {
-      if (restoreComplete) schedulePersist()
+      if (restoreComplete && !restoring) schedulePersist()
     }, { deep: true })
 
     // Restore state on creation
+    restoring = true
     NativeBridge.invokeNativeModule('AsyncStorage', 'getItem', [persistKey])
       .then((json: any) => {
         if (typeof json === 'string' && json.length > 0) {
@@ -509,7 +568,10 @@ export function createRouter(optionsOrRoutes: RouterOptions | RouteConfig[]): Ro
         }
       })
       .catch(() => {})
-      .finally(() => { restoreComplete = true })
+      .finally(() => {
+        restoring = false
+        restoreComplete = true
+      })
   }
 
   // ── Router instance ────────────────────────────────────────────────────────

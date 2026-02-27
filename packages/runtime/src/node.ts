@@ -15,24 +15,42 @@ let nextNodeId = 1
 /** Maximum safe node ID for 32-bit signed integer (Java/Kotlin int, Swift Int32) */
 const MAX_NODE_ID = 2_147_483_647
 
+/** Set of currently allocated node IDs for collision avoidance during wraparound */
+const activeNodeIds = new Set<number>()
+
 /**
- * Reset the node ID counter. Used for testing and hot reload teardown.
+ * Reset the node ID counter and active ID set. Used for testing and hot reload teardown.
  */
 export function resetNodeId(): void {
   nextNodeId = 1
+  activeNodeIds.clear()
+}
+
+/**
+ * Release a node ID back to the pool. Should be called when a node is
+ * removed from the tree and will no longer be referenced.
+ */
+export function releaseNodeId(id: number): void {
+  activeNodeIds.delete(id)
 }
 
 /**
  * Get the next node ID, wrapping around at MAX_NODE_ID to prevent overflow
  * on platforms using 32-bit integers for node IDs.
+ * When wrapping, skips IDs that are still in use to avoid collisions.
  */
 function getNextNodeId(): number {
   const id = nextNodeId
   if (nextNodeId >= MAX_NODE_ID) {
     nextNodeId = 1
+    // Skip IDs still in active use after wraparound
+    while (activeNodeIds.has(nextNodeId) && nextNodeId < MAX_NODE_ID) {
+      nextNodeId++
+    }
   } else {
     nextNodeId++
   }
+  activeNodeIds.add(id)
   return id
 }
 

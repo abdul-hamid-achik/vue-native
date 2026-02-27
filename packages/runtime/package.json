@@ -1,6 +1,6 @@
 {
   "name": "@thelacanians/vue-native-runtime",
-  "version": "0.4.14",
+  "version": "0.4.15",
   "description": "Vue 3 custom renderer for native iOS and Android apps",
   "license": "MIT",
   "author": "Vue Native Contributors",
@@ -21,12 +21,17 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
+    },
+    "./testing": {
+      "types": "./dist/testing.d.ts",
+      "import": "./dist/testing.js",
+      "require": "./dist/testing.cjs"
     }
   },
   "files": ["dist", "README.md"],
   "scripts": {
-    "build": "tsup src/index.ts --format esm,cjs --dts",
-    "dev": "tsup src/index.ts --format esm,cjs --dts --watch",
+    "build": "tsup src/index.ts src/testing.ts --format esm,cjs --dts",
+    "dev": "tsup src/index.ts src/testing.ts --format esm,cjs --dts --watch",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",

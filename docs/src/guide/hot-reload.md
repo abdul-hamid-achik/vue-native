@@ -10,6 +10,18 @@ Vue Native supports hot reload — edit a `.vue` file and see the change on your
 4. `HotReloadManager` on the native side receives the bundle, tears down the current JS context, and re-evaluates the new bundle
 5. Vue re-renders from scratch — your app reflects the new code
 
+::: warning State is reset on reload
+Hot reload performs a **full reload** — the entire JS context is torn down and re-created. This means:
+- All component state (`ref`, `reactive`) is lost
+- Navigation stack resets to the initial route
+- Pinia/store state is cleared
+- Timers, WebSocket connections, and subscriptions are cleaned up and restarted
+
+This is different from Vite's HMR in web apps, which preserves component state. Granular state-preserving HMR is planned for a future release.
+
+**Workaround:** Use `useAsyncStorage` to persist critical state during development, or structure your development workflow to work from the initial screen.
+:::
+
 ## Setup
 
 ### iOS
@@ -53,6 +65,13 @@ bun run dev
 
 Then run the app from Xcode / Android Studio.
 
-::: tip
-Use a real device? Make sure the device and your computer are on the same Wi-Fi network, then use your computer's local IP address (e.g. `ws://192.168.1.5:8174`) instead of `localhost`.
+::: tip Physical Devices
+The dev server accepts connections from any device on your local network. When you run `vue-native dev`, it prints your LAN IP address:
+
+```
+  Hot reload server: ws://localhost:8174
+  LAN address:       ws://192.168.1.5:8174
+```
+
+Use the LAN address in your device's dev server URL configuration. Both the device and your computer must be on the same Wi-Fi network.
 :::

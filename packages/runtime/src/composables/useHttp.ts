@@ -10,10 +10,30 @@ interface RequestInit {
   body?: string
 }
 
+interface FetchHeaders {
+  entries?(): Iterable<[string, string]>
+  forEach?(callback: (value: string, key: string) => void): void
+  [key: string]: any
+}
+
+interface FetchResponse {
+  status: number
+  ok: boolean
+  json(): Promise<any>
+  headers?: FetchHeaders
+}
+
 declare function fetch(
   input: string,
   init?: RequestInit,
-): Promise<{ status: number, ok: boolean, json(): Promise<any> }>
+): Promise<FetchResponse>
+
+// AbortController may be available in newer JSC runtimes (iOS 15+).
+// Declare it here since the ES2020 lib doesn't include it.
+declare class AbortController {
+  readonly signal: any
+  abort(): void
+}
 
 export interface HttpRequestConfig {
   baseURL?: string
@@ -69,6 +89,29 @@ export function useHttp(config: HttpRequestConfig = {}) {
     isMounted = false
   })
 
+  /** Methods that typically carry a request body */
+  const BODY_METHODS = new Set(['POST', 'PUT', 'PATCH'])
+
+  /** Parse response headers from a fetch Response into a plain object */
+  function parseResponseHeaders(response: FetchResponse): Record<string, string> {
+    const result: Record<string, string> = {}
+    if (!response.headers) return result
+    try {
+      if (typeof response.headers.forEach === 'function') {
+        response.headers.forEach((value: string, key: string) => {
+          result[key] = value
+        })
+      } else if (typeof response.headers.entries === 'function') {
+        for (const [key, value] of response.headers.entries()) {
+          result[key] = value
+        }
+      }
+    } catch {
+      // Gracefully fall back to empty headers
+    }
+    return result
+  }
+
   async function request<T = any>(
     method: string,
     url: string,
@@ -78,16 +121,34 @@ export function useHttp(config: HttpRequestConfig = {}) {
     loading.value = true
     error.value = null
 
+    // Set up AbortController for timeout if configured
+    let controller: AbortController | undefined
+    let timeoutId: ReturnType<typeof setTimeout> | undefined
+    if (config.timeout && config.timeout > 0 && typeof AbortController !== 'undefined') {
+      controller = new AbortController()
+      timeoutId = setTimeout(() => controller!.abort(), config.timeout)
+    }
+
     try {
+      const upperMethod = method.toUpperCase()
+
       const mergedHeaders: Record<string, string> = {
-        'Content-Type': 'application/json',
         ...(config.headers ?? {}),
         ...(options.headers ?? {}),
       }
 
+      // Only set Content-Type: application/json for methods that carry a body
+      if (BODY_METHODS.has(upperMethod) && !mergedHeaders['Content-Type']) {
+        mergedHeaders['Content-Type'] = 'application/json'
+      }
+
       const fetchOptions: RequestInit = {
-        method: method.toUpperCase(),
+        method: upperMethod,
         headers: mergedHeaders,
+      }
+
+      if (controller) {
+        (fetchOptions as any).signal = controller.signal
       }
 
       if (options.body !== undefined) {
@@ -96,16 +157,17 @@ export function useHttp(config: HttpRequestConfig = {}) {
 
       const response = await fetch(fullUrl, fetchOptions)
       const data: T = await response.json()
+      const responseHeaders = parseResponseHeaders(response)
 
       if (!isMounted) {
-        return { data, status: response.status, ok: response.ok, headers: {} }
+        return { data, status: response.status, ok: response.ok, headers: responseHeaders }
       }
 
       return {
         data,
         status: response.status,
         ok: response.ok,
-        headers: {},
+        headers: responseHeaders,
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
@@ -114,6 +176,9 @@ export function useHttp(config: HttpRequestConfig = {}) {
       }
       throw e
     } finally {
+      if (timeoutId !== undefined) {
+        clearTimeout(timeoutId)
+      }
       if (isMounted) {
         loading.value = false
       }

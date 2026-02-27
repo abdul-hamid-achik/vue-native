@@ -55,3 +55,23 @@ export async function nextTick() {
   await Promise.resolve()
   await new Promise(resolve => setTimeout(resolve, 0))
 }
+
+/**
+ * Run a composable inside a proper Vue component setup context.
+ * This silences "onUnmounted is called when there is no active component
+ * instance" warnings and makes test execution more realistic.
+ */
+export async function withSetup<T>(composable: () => T): Promise<T> {
+  const { baseCreateApp } = await import('../renderer')
+  const { createNativeNode } = await import('../node')
+
+  let result!: T
+  const app = baseCreateApp({
+    setup() {
+      result = composable()
+      return () => {}
+    },
+  })
+  app.mount(createNativeNode('__ROOT__') as any)
+  return result
+}

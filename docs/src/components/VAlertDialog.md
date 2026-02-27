@@ -76,7 +76,7 @@ This is equivalent to passing `buttons` with `[{ label: 'Cancel', style: 'cancel
 
 ```vue
 <script setup>
-import { ref } from 'vue'
+import { ref } from '@thelacanians/vue-native-runtime'
 
 const showAlert = ref(false)
 const result = ref('')

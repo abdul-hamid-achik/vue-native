@@ -47,3 +47,6 @@ export { VDropdown } from './VDropdown'
 export type { DropdownOption } from './VDropdown'
 
 export { VVideo } from './VVideo'
+
+export { VFlatList } from './VFlatList'
+export type { FlatListRenderItemInfo } from './VFlatList'

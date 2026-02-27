@@ -3,7 +3,7 @@
  * Verifies start/stop/metrics behavior and reactive state updates.
  */
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
-import { installMockBridge } from './helpers'
+import { installMockBridge, withSetup } from './helpers'
 
 const mockBridge = installMockBridge()
 
@@ -54,14 +54,14 @@ describe('usePerformance', () => {
 
   it('startProfiling calls Performance.startProfiling', async () => {
     const { usePerformance } = await import('../composables/usePerformance')
-    const { startProfiling } = usePerformance()
+    const { startProfiling } = await withSetup(() => usePerformance())
     await startProfiling()
     expect(invokeModuleSpy).toHaveBeenCalledWith('Performance', 'startProfiling', [])
   })
 
   it('stopProfiling calls Performance.stopProfiling', async () => {
     const { usePerformance } = await import('../composables/usePerformance')
-    const { startProfiling, stopProfiling } = usePerformance()
+    const { startProfiling, stopProfiling } = await withSetup(() => usePerformance())
     await startProfiling()
     await stopProfiling()
     expect(invokeModuleSpy).toHaveBeenCalledWith('Performance', 'stopProfiling', [])
@@ -69,7 +69,7 @@ describe('usePerformance', () => {
 
   it('isProfiling ref tracks profiling state', async () => {
     const { usePerformance } = await import('../composables/usePerformance')
-    const { startProfiling, stopProfiling, isProfiling } = usePerformance()
+    const { startProfiling, stopProfiling, isProfiling } = await withSetup(() => usePerformance())
 
     expect(isProfiling.value).toBe(false)
     await startProfiling()
@@ -80,7 +80,7 @@ describe('usePerformance', () => {
 
   it('subscribes to perf:metrics event on start', async () => {
     const { usePerformance } = await import('../composables/usePerformance')
-    const { startProfiling } = usePerformance()
+    const { startProfiling } = await withSetup(() => usePerformance())
     await startProfiling()
 
     expect(onGlobalEventSpy).toHaveBeenCalledWith('perf:metrics', expect.any(Function))
@@ -88,7 +88,7 @@ describe('usePerformance', () => {
 
   it('unsubscribes from perf:metrics event on stop', async () => {
     const { usePerformance } = await import('../composables/usePerformance')
-    const { startProfiling, stopProfiling } = usePerformance()
+    const { startProfiling, stopProfiling } = await withSetup(() => usePerformance())
 
     await startProfiling()
     const handlersBeforeStop = globalEventHandlers.get('perf:metrics')?.length ?? 0
@@ -101,7 +101,7 @@ describe('usePerformance', () => {
 
   it('updates reactive refs when perf:metrics event fires', async () => {
     const { usePerformance } = await import('../composables/usePerformance')
-    const { startProfiling, fps, memoryMB, bridgeOps } = usePerformance()
+    const { startProfiling, fps, memoryMB, bridgeOps } = await withSetup(() => usePerformance())
 
     await startProfiling()
 
@@ -126,7 +126,7 @@ describe('usePerformance', () => {
     invokeModuleSpy.mockResolvedValueOnce(metrics)
 
     const { usePerformance } = await import('../composables/usePerformance')
-    const { getMetrics } = usePerformance()
+    const { getMetrics } = await withSetup(() => usePerformance())
     const result = await getMetrics()
     expect(invokeModuleSpy).toHaveBeenCalledWith('Performance', 'getMetrics', [])
     expect(result).toEqual(metrics)
@@ -134,7 +134,7 @@ describe('usePerformance', () => {
 
   it('does not start profiling twice', async () => {
     const { usePerformance } = await import('../composables/usePerformance')
-    const { startProfiling, isProfiling: _isProfiling } = usePerformance()
+    const { startProfiling, isProfiling: _isProfiling } = await withSetup(() => usePerformance())
 
     await startProfiling()
     await startProfiling()
@@ -148,7 +148,7 @@ describe('usePerformance', () => {
 
   it('does not stop profiling when not started', async () => {
     const { usePerformance } = await import('../composables/usePerformance')
-    const { stopProfiling } = usePerformance()
+    const { stopProfiling } = await withSetup(() => usePerformance())
 
     await stopProfiling()
 

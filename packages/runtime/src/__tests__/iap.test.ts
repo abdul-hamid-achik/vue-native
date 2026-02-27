@@ -3,7 +3,7 @@
  * NativeBridge module/method and handles reactive state and errors.
  */
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
-import { installMockBridge } from './helpers'
+import { installMockBridge, withSetup } from './helpers'
 
 const mockBridge = installMockBridge()
 
@@ -54,7 +54,7 @@ describe('useIAP', () => {
 
   it('initializes billing client on creation', async () => {
     const { useIAP } = await import('../composables/useIAP')
-    useIAP()
+    await withSetup(() => useIAP())
     expect(invokeModuleSpy).toHaveBeenCalledWith('IAP', 'initialize')
   })
 
@@ -64,7 +64,7 @@ describe('useIAP', () => {
       return Promise.resolve(undefined as any)
     })
     const { useIAP } = await import('../composables/useIAP')
-    const { isReady } = useIAP()
+    const { isReady } = await withSetup(() => useIAP())
     await Promise.resolve()
     await Promise.resolve()
     expect(isReady.value).toBe(true)
@@ -72,7 +72,7 @@ describe('useIAP', () => {
 
   it('subscribes to iap:transactionUpdate global event', async () => {
     const { useIAP } = await import('../composables/useIAP')
-    useIAP()
+    await withSetup(() => useIAP())
     expect(onGlobalEventSpy).toHaveBeenCalledWith('iap:transactionUpdate', expect.any(Function))
   })
 
@@ -86,7 +86,7 @@ describe('useIAP', () => {
     })
 
     const { useIAP } = await import('../composables/useIAP')
-    const { getProducts, products } = useIAP()
+    const { getProducts, products } = await withSetup(() => useIAP())
     const result = await getProducts(['com.app.premium'])
     expect(invokeModuleSpy).toHaveBeenCalledWith('IAP', 'getProducts', [['com.app.premium']])
     expect(result).toEqual(mockProducts)
@@ -101,7 +101,7 @@ describe('useIAP', () => {
     })
 
     const { useIAP } = await import('../composables/useIAP')
-    const { purchase } = useIAP()
+    const { purchase } = await withSetup(() => useIAP())
     const result = await purchase('com.app.premium')
     expect(invokeModuleSpy).toHaveBeenCalledWith('IAP', 'purchase', ['com.app.premium'])
     expect(result).toEqual(mockPurchase)
@@ -114,7 +114,7 @@ describe('useIAP', () => {
     })
 
     const { useIAP } = await import('../composables/useIAP')
-    const { purchase, error } = useIAP()
+    const { purchase, error } = await withSetup(() => useIAP())
     const result = await purchase('com.app.premium')
     expect(result).toBeNull()
     expect(error.value).toBe('user cancelled')
@@ -128,7 +128,7 @@ describe('useIAP', () => {
     })
 
     const { useIAP } = await import('../composables/useIAP')
-    const { restorePurchases } = useIAP()
+    const { restorePurchases } = await withSetup(() => useIAP())
     const result = await restorePurchases()
     expect(invokeModuleSpy).toHaveBeenCalledWith('IAP', 'restorePurchases')
     expect(result).toEqual(restored)
@@ -142,7 +142,7 @@ describe('useIAP', () => {
     })
 
     const { useIAP } = await import('../composables/useIAP')
-    const { getActiveSubscriptions } = useIAP()
+    const { getActiveSubscriptions } = await withSetup(() => useIAP())
     const result = await getActiveSubscriptions()
     expect(invokeModuleSpy).toHaveBeenCalledWith('IAP', 'getActiveSubscriptions')
     expect(result).toEqual(active)
@@ -150,7 +150,7 @@ describe('useIAP', () => {
 
   it('updates error on iap:transactionUpdate with failed state', async () => {
     const { useIAP } = await import('../composables/useIAP')
-    const { error } = useIAP()
+    const { error } = await withSetup(() => useIAP())
 
     triggerGlobalEvent('iap:transactionUpdate', {
       productId: 'com.app.premium',
@@ -162,7 +162,7 @@ describe('useIAP', () => {
 
   it('onTransactionUpdate registers custom callback', async () => {
     const { useIAP } = await import('../composables/useIAP')
-    const { onTransactionUpdate } = useIAP()
+    const { onTransactionUpdate } = await withSetup(() => useIAP())
     const handler = vi.fn()
     onTransactionUpdate(handler)
 
@@ -178,7 +178,7 @@ describe('useIAP', () => {
     })
 
     const { useIAP } = await import('../composables/useIAP')
-    const { restorePurchases, error } = useIAP()
+    const { restorePurchases, error } = await withSetup(() => useIAP())
     const result = await restorePurchases()
     expect(result).toEqual([])
     expect(error.value).toBe('network error')

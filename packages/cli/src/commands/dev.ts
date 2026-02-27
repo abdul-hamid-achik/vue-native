@@ -124,12 +124,42 @@ export const devCommand = new Command('dev')
       console.log()
     }
 
+    // ── Detect LAN IP for physical device connections ────────────────────
+    let lanIP = ''
+    try {
+      const nets = await import('node:os').then(os => os.networkInterfaces())
+      for (const ifaces of Object.values(nets)) {
+        for (const iface of ifaces ?? []) {
+          if (iface.family === 'IPv4' && !iface.internal) {
+            lanIP = iface.address
+            break
+          }
+        }
+        if (lanIP) break
+      }
+    } catch {}
+
     // ── WebSocket server for hot reload ────────────────────────────────────
+    // Allow connections from localhost (simulators/emulators) and LAN devices.
+    // Private network ranges: 10.x.x.x, 172.16-31.x.x, 192.168.x.x
+    const isPrivateOrLocal = (addr?: string): boolean => {
+      if (!addr) return false
+      // Normalize IPv4-mapped IPv6 (::ffff:x.x.x.x -> x.x.x.x)
+      const ip = addr.replace(/^::ffff:/, '')
+      if (ip === '127.0.0.1' || ip === '::1') return true
+      // Android emulator host loopback
+      if (ip === '10.0.2.2') return true
+      // Private networks
+      if (ip.startsWith('10.')) return true
+      if (ip.startsWith('192.168.')) return true
+      if (/^172\.(1[6-9]|2\d|3[01])\./.test(ip)) return true
+      return false
+    }
+
     const wss = new WebSocketServer({
       port,
       verifyClient: (info: { req: { socket: { remoteAddress?: string } } }) => {
-        const addr = info.req.socket.remoteAddress
-        return addr === '127.0.0.1' || addr === '::1' || addr === '::ffff:127.0.0.1'
+        return isPrivateOrLocal(info.req.socket.remoteAddress)
       },
     })
     const clients = new Set<WebSocket>()
@@ -169,15 +199,24 @@ export const devCommand = new Command('dev')
     })
 
     console.log(pc.white(`  Hot reload server: ${pc.bold(`ws://localhost:${port}`)}`))
+    if (lanIP) {
+      console.log(pc.white(`  LAN address:       ${pc.bold(`ws://${lanIP}:${port}`)}`))
+    }
 
     // Show connection info for both platforms
     const iosDir = join(cwd, 'ios')
     const androidDir = join(cwd, 'android')
     if (existsSync(iosDir)) {
-      console.log(pc.dim(`  iOS app should connect to ws://localhost:${port}`))
+      console.log(pc.dim(`  iOS Simulator:     ws://localhost:${port}`))
+      if (lanIP) {
+        console.log(pc.dim(`  iOS Device (WiFi): ws://${lanIP}:${port}`))
+      }
     }
     if (existsSync(androidDir)) {
-      console.log(pc.dim(`  Android emulator should connect to ws://10.0.2.2:${port}`))
+      console.log(pc.dim(`  Android emulator:  ws://10.0.2.2:${port}`))
+      if (lanIP) {
+        console.log(pc.dim(`  Android Device:    ws://${lanIP}:${port}`))
+      }
     }
     console.log(pc.dim('  Waiting for app to connect...\n'))
 

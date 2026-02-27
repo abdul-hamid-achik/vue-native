@@ -3,7 +3,7 @@
  * NativeBridge module/method and handles reactive state and cleanup.
  */
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
-import { installMockBridge } from './helpers'
+import { installMockBridge, withSetup } from './helpers'
 
 const mockBridge = installMockBridge()
 
@@ -282,13 +282,13 @@ describe('Composables', () => {
   describe('useNetwork', () => {
     it('subscribes to network:change global event', async () => {
       const { useNetwork } = await import('../composables/useNetwork')
-      useNetwork()
+      await withSetup(() => useNetwork())
       expect(onGlobalEventSpy).toHaveBeenCalledWith('network:change', expect.any(Function))
     })
 
     it('updates reactive state on network:change', async () => {
       const { useNetwork } = await import('../composables/useNetwork')
-      const { isConnected, connectionType } = useNetwork()
+      const { isConnected, connectionType } = await withSetup(() => useNetwork())
 
       // Defaults
       expect(isConnected.value).toBe(true)
@@ -302,7 +302,7 @@ describe('Composables', () => {
 
     it('fetches initial status from Network.getStatus', async () => {
       const { useNetwork } = await import('../composables/useNetwork')
-      useNetwork()
+      await withSetup(() => useNetwork())
       expect(invokeModuleSpy).toHaveBeenCalledWith('Network', 'getStatus')
     })
   })
@@ -313,13 +313,15 @@ describe('Composables', () => {
   describe('useAppState', () => {
     it('subscribes to appState:change global event', async () => {
       const { useAppState } = await import('../composables/useAppState')
-      useAppState()
+      await withSetup(() => useAppState())
       expect(onGlobalEventSpy).toHaveBeenCalledWith('appState:change', expect.any(Function))
     })
 
     it('updates reactive state on appState:change', async () => {
+      invokeModuleSpy.mockResolvedValueOnce('active') // for auto getState call
       const { useAppState } = await import('../composables/useAppState')
-      const { state } = useAppState()
+      const { state } = await withSetup(() => useAppState())
+      await new Promise(resolve => setTimeout(resolve, 0)) // let getState resolve
 
       expect(state.value).toBe('active')
       triggerGlobalEvent('appState:change', { state: 'background' })
@@ -333,13 +335,13 @@ describe('Composables', () => {
   describe('useColorScheme', () => {
     it('subscribes to colorScheme:change', async () => {
       const { useColorScheme } = await import('../composables/useColorScheme')
-      useColorScheme()
+      await withSetup(() => useColorScheme())
       expect(onGlobalEventSpy).toHaveBeenCalledWith('colorScheme:change', expect.any(Function))
     })
 
     it('updates isDark on dark mode change', async () => {
       const { useColorScheme } = await import('../composables/useColorScheme')
-      const { colorScheme, isDark } = useColorScheme()
+      const { colorScheme, isDark } = await withSetup(() => useColorScheme())
 
       expect(colorScheme.value).toBe('light')
       expect(isDark.value).toBe(false)
@@ -357,20 +359,20 @@ describe('Composables', () => {
   describe('useWebSocket', () => {
     it('auto-connects by default', async () => {
       const { useWebSocket } = await import('../composables/useWebSocket')
-      const { status } = useWebSocket('wss://test.example.com')
+      const { status } = await withSetup(() => useWebSocket('wss://test.example.com'))
       expect(status.value).toBe('CONNECTING')
       expect(invokeModuleSpy).toHaveBeenCalledWith('WebSocket', 'connect', expect.arrayContaining(['wss://test.example.com']))
     })
 
     it('does not connect if autoConnect is false', async () => {
       const { useWebSocket } = await import('../composables/useWebSocket')
-      const { status } = useWebSocket('wss://test.example.com', { autoConnect: false })
+      const { status } = await withSetup(() => useWebSocket('wss://test.example.com', { autoConnect: false }))
       expect(status.value).toBe('CLOSED')
     })
 
     it('subscribes to websocket events', async () => {
       const { useWebSocket } = await import('../composables/useWebSocket')
-      useWebSocket('wss://test.example.com')
+      await withSetup(() => useWebSocket('wss://test.example.com'))
       expect(onGlobalEventSpy).toHaveBeenCalledWith('websocket:open', expect.any(Function))
       expect(onGlobalEventSpy).toHaveBeenCalledWith('websocket:message', expect.any(Function))
       expect(onGlobalEventSpy).toHaveBeenCalledWith('websocket:close', expect.any(Function))
@@ -379,7 +381,7 @@ describe('Composables', () => {
 
     it('updates lastMessage on websocket:message', async () => {
       const { useWebSocket } = await import('../composables/useWebSocket')
-      const { lastMessage, status } = useWebSocket('wss://test.example.com')
+      const { lastMessage, status } = await withSetup(() => useWebSocket('wss://test.example.com'))
 
       // Get the connectionId from the connect call
       const connectCall = invokeModuleSpy.mock.calls.find(
@@ -398,7 +400,7 @@ describe('Composables', () => {
 
     it('send calls WebSocket.send when open', async () => {
       const { useWebSocket } = await import('../composables/useWebSocket')
-      const { send, status: _status } = useWebSocket('wss://test.example.com')
+      const { send, status: _status } = await withSetup(() => useWebSocket('wss://test.example.com'))
 
       const connectCall = invokeModuleSpy.mock.calls.find(
         (c: unknown[]) => c[0] === 'WebSocket' && c[1] === 'connect',
@@ -415,7 +417,7 @@ describe('Composables', () => {
 
     it('send does nothing when not open', async () => {
       const { useWebSocket } = await import('../composables/useWebSocket')
-      const { send } = useWebSocket('wss://test.example.com', { autoConnect: false })
+      const { send } = await withSetup(() => useWebSocket('wss://test.example.com', { autoConnect: false }))
 
       invokeModuleSpy.mockClear()
       send('hello')
@@ -426,7 +428,7 @@ describe('Composables', () => {
 
     it('send stringifies objects', async () => {
       const { useWebSocket } = await import('../composables/useWebSocket')
-      const { send } = useWebSocket('wss://test.example.com')
+      const { send } = await withSetup(() => useWebSocket('wss://test.example.com'))
 
       const connectCall = invokeModuleSpy.mock.calls.find(
         (c: unknown[]) => c[0] === 'WebSocket' && c[1] === 'connect',
@@ -446,7 +448,7 @@ describe('Composables', () => {
   describe('useDatabase', () => {
     it('execute opens the database and runs SQL', async () => {
       const { useDatabase } = await import('../composables/useDatabase')
-      const db = useDatabase('testdb')
+      const db = await withSetup(() => useDatabase('testdb'))
       await db.execute('CREATE TABLE test (id INTEGER)')
       // First call opens, second executes
       expect(invokeModuleSpy).toHaveBeenCalledWith('Database', 'open', ['testdb'])
@@ -455,7 +457,7 @@ describe('Composables', () => {
 
     it('query opens the database and runs query', async () => {
       const { useDatabase } = await import('../composables/useDatabase')
-      const db = useDatabase('testdb')
+      const db = await withSetup(() => useDatabase('testdb'))
       await db.query('SELECT * FROM test')
       expect(invokeModuleSpy).toHaveBeenCalledWith('Database', 'open', ['testdb'])
       expect(invokeModuleSpy).toHaveBeenCalledWith('Database', 'query', ['testdb', 'SELECT * FROM test', []])
@@ -463,7 +465,7 @@ describe('Composables', () => {
 
     it('close calls Database.close', async () => {
       const { useDatabase } = await import('../composables/useDatabase')
-      const db = useDatabase('testdb')
+      const db = await withSetup(() => useDatabase('testdb'))
       // Must open first
       await db.execute('SELECT 1')
       await db.close()
@@ -472,7 +474,7 @@ describe('Composables', () => {
 
     it('uses "default" as default database name', async () => {
       const { useDatabase } = await import('../composables/useDatabase')
-      const db = useDatabase()
+      const db = await withSetup(() => useDatabase())
       await db.execute('SELECT 1')
       expect(invokeModuleSpy).toHaveBeenCalledWith('Database', 'open', ['default'])
     })
@@ -485,7 +487,7 @@ describe('Composables', () => {
     it('play calls Audio.play and sets isPlaying', async () => {
       invokeModuleSpy.mockResolvedValue({ duration: 120 })
       const { useAudio } = await import('../composables/useAudio')
-      const { play, isPlaying, duration } = useAudio()
+      const { play, isPlaying, duration } = await withSetup(() => useAudio())
       await play('https://example.com/song.mp3', { volume: 0.8 })
       expect(invokeModuleSpy).toHaveBeenCalledWith('Audio', 'play', ['https://example.com/song.mp3', { volume: 0.8 }])
       expect(isPlaying.value).toBe(true)
@@ -494,7 +496,7 @@ describe('Composables', () => {
 
     it('pause calls Audio.pause and clears isPlaying', async () => {
       const { useAudio } = await import('../composables/useAudio')
-      const { pause, isPlaying } = useAudio()
+      const { pause, isPlaying } = await withSetup(() => useAudio())
       await pause()
       expect(invokeModuleSpy).toHaveBeenCalledWith('Audio', 'pause', [])
       expect(isPlaying.value).toBe(false)
@@ -502,7 +504,7 @@ describe('Composables', () => {
 
     it('stop calls Audio.stop and resets state', async () => {
       const { useAudio } = await import('../composables/useAudio')
-      const { stop, isPlaying, position, duration } = useAudio()
+      const { stop, isPlaying, position, duration } = await withSetup(() => useAudio())
       await stop()
       expect(invokeModuleSpy).toHaveBeenCalledWith('Audio', 'stop', [])
       expect(isPlaying.value).toBe(false)
@@ -512,7 +514,7 @@ describe('Composables', () => {
 
     it('seek calls Audio.seek', async () => {
       const { useAudio } = await import('../composables/useAudio')
-      const { seek } = useAudio()
+      const { seek } = await withSetup(() => useAudio())
       await seek(30)
       expect(invokeModuleSpy).toHaveBeenCalledWith('Audio', 'seek', [30])
     })
@@ -520,7 +522,7 @@ describe('Composables', () => {
     it('startRecording calls Audio.startRecording', async () => {
       invokeModuleSpy.mockResolvedValue({ uri: '/tmp/rec.m4a' })
       const { useAudio } = await import('../composables/useAudio')
-      const { startRecording, isRecording } = useAudio()
+      const { startRecording, isRecording } = await withSetup(() => useAudio())
       const uri = await startRecording({ quality: 'high' })
       expect(invokeModuleSpy).toHaveBeenCalledWith('Audio', 'startRecording', [{ quality: 'high' }])
       expect(isRecording.value).toBe(true)
@@ -530,7 +532,7 @@ describe('Composables', () => {
     it('stopRecording calls Audio.stopRecording and returns result', async () => {
       invokeModuleSpy.mockResolvedValue({ uri: '/tmp/rec.m4a', duration: 5.5 })
       const { useAudio } = await import('../composables/useAudio')
-      const { stopRecording, isRecording } = useAudio()
+      const { stopRecording, isRecording } = await withSetup(() => useAudio())
       const result = await stopRecording()
       expect(invokeModuleSpy).toHaveBeenCalledWith('Audio', 'stopRecording', [])
       expect(isRecording.value).toBe(false)
@@ -539,7 +541,7 @@ describe('Composables', () => {
 
     it('updates position/duration on audio:progress event', async () => {
       const { useAudio } = await import('../composables/useAudio')
-      const { position, duration } = useAudio()
+      const { position, duration } = await withSetup(() => useAudio())
       triggerGlobalEvent('audio:progress', { currentTime: 15, duration: 120 })
       expect(position.value).toBe(15)
       expect(duration.value).toBe(120)
@@ -547,7 +549,7 @@ describe('Composables', () => {
 
     it('resets isPlaying on audio:complete event', async () => {
       const { useAudio } = await import('../composables/useAudio')
-      const audio = useAudio()
+      const audio = await withSetup(() => useAudio())
       // Manually set playing state
       triggerGlobalEvent('audio:complete', {})
       expect(audio.isPlaying.value).toBe(false)
@@ -556,7 +558,7 @@ describe('Composables', () => {
 
     it('sets error on audio:error event', async () => {
       const { useAudio } = await import('../composables/useAudio')
-      const { error } = useAudio()
+      const { error } = await withSetup(() => useAudio())
       triggerGlobalEvent('audio:error', { message: 'Playback failed' })
       expect(error.value).toBe('Playback failed')
     })
@@ -568,7 +570,7 @@ describe('Composables', () => {
   describe('useAccelerometer', () => {
     it('start calls Sensors.startAccelerometer and subscribes to events', async () => {
       const { useAccelerometer } = await import('../composables/useSensors')
-      const { start, x, y, z } = useAccelerometer({ interval: 50 })
+      const { start, x, y, z } = await withSetup(() => useAccelerometer({ interval: 50 }))
       start()
       expect(invokeModuleSpy).toHaveBeenCalledWith('Sensors', 'startAccelerometer', [50])
       expect(onGlobalEventSpy).toHaveBeenCalledWith('sensor:accelerometer', expect.any(Function))
@@ -582,7 +584,7 @@ describe('Composables', () => {
 
     it('stop calls Sensors.stopAccelerometer', async () => {
       const { useAccelerometer } = await import('../composables/useSensors')
-      const { start, stop } = useAccelerometer()
+      const { start, stop } = await withSetup(() => useAccelerometer())
       start()
       invokeModuleSpy.mockClear()
       stop()
@@ -591,7 +593,7 @@ describe('Composables', () => {
 
     it('checks sensor availability on creation', async () => {
       const { useAccelerometer } = await import('../composables/useSensors')
-      useAccelerometer()
+      await withSetup(() => useAccelerometer())
       expect(invokeModuleSpy).toHaveBeenCalledWith('Sensors', 'isAvailable', ['accelerometer'])
     })
   })
@@ -599,14 +601,14 @@ describe('Composables', () => {
   describe('useGyroscope', () => {
     it('start calls Sensors.startGyroscope', async () => {
       const { useGyroscope } = await import('../composables/useSensors')
-      const { start } = useGyroscope({ interval: 100 })
+      const { start } = await withSetup(() => useGyroscope({ interval: 100 }))
       start()
       expect(invokeModuleSpy).toHaveBeenCalledWith('Sensors', 'startGyroscope', [100])
     })
 
     it('updates reactive data on sensor event', async () => {
       const { useGyroscope } = await import('../composables/useSensors')
-      const { start, x, y, z } = useGyroscope()
+      const { start, x, y, z } = await withSetup(() => useGyroscope())
       start()
       triggerGlobalEvent('sensor:gyroscope', { x: 1.1, y: 2.2, z: 3.3 })
       expect(x.value).toBe(1.1)
@@ -621,7 +623,7 @@ describe('Composables', () => {
   describe('useBackgroundTask', () => {
     it('scheduleTask calls BackgroundTask.scheduleTask', async () => {
       const { useBackgroundTask } = await import('../composables/useBackgroundTask')
-      const { scheduleTask } = useBackgroundTask()
+      const { scheduleTask } = await withSetup(() => useBackgroundTask())
       await scheduleTask('com.myapp.sync', { type: 'refresh', requiresNetworkConnectivity: true })
       expect(invokeModuleSpy).toHaveBeenCalledWith('BackgroundTask', 'scheduleTask', [
         'com.myapp.sync',
@@ -632,35 +634,35 @@ describe('Composables', () => {
 
     it('cancelTask calls BackgroundTask.cancelTask', async () => {
       const { useBackgroundTask } = await import('../composables/useBackgroundTask')
-      const { cancelTask } = useBackgroundTask()
+      const { cancelTask } = await withSetup(() => useBackgroundTask())
       await cancelTask('com.myapp.sync')
       expect(invokeModuleSpy).toHaveBeenCalledWith('BackgroundTask', 'cancelTask', ['com.myapp.sync'])
     })
 
     it('cancelAllTasks calls BackgroundTask.cancelAllTasks', async () => {
       const { useBackgroundTask } = await import('../composables/useBackgroundTask')
-      const { cancelAllTasks } = useBackgroundTask()
+      const { cancelAllTasks } = await withSetup(() => useBackgroundTask())
       await cancelAllTasks()
       expect(invokeModuleSpy).toHaveBeenCalledWith('BackgroundTask', 'cancelAllTasks', [])
     })
 
     it('completeTask calls BackgroundTask.completeTask', async () => {
       const { useBackgroundTask } = await import('../composables/useBackgroundTask')
-      const { completeTask } = useBackgroundTask()
+      const { completeTask } = await withSetup(() => useBackgroundTask())
       await completeTask('com.myapp.sync')
       expect(invokeModuleSpy).toHaveBeenCalledWith('BackgroundTask', 'completeTask', ['com.myapp.sync', true])
     })
 
     it('registerTask calls BackgroundTask.registerTask', async () => {
       const { useBackgroundTask } = await import('../composables/useBackgroundTask')
-      const { registerTask } = useBackgroundTask()
+      const { registerTask } = await withSetup(() => useBackgroundTask())
       await registerTask('com.myapp.sync')
       expect(invokeModuleSpy).toHaveBeenCalledWith('BackgroundTask', 'registerTask', ['com.myapp.sync'])
     })
 
     it('onTaskExecute receives background:taskExecute events', async () => {
       const { useBackgroundTask } = await import('../composables/useBackgroundTask')
-      const { onTaskExecute } = useBackgroundTask()
+      const { onTaskExecute } = await withSetup(() => useBackgroundTask())
 
       expect(onGlobalEventSpy).toHaveBeenCalledWith('background:taskExecute', expect.any(Function))
 
@@ -673,7 +675,7 @@ describe('Composables', () => {
 
     it('onTaskExecute with taskId only fires for matching task', async () => {
       const { useBackgroundTask } = await import('../composables/useBackgroundTask')
-      const { onTaskExecute } = useBackgroundTask()
+      const { onTaskExecute } = await withSetup(() => useBackgroundTask())
 
       const specificHandler = vi.fn()
       const defaultHandler = vi.fn()
@@ -688,7 +690,7 @@ describe('Composables', () => {
 
     it('scheduleTask defaults to refresh type', async () => {
       const { useBackgroundTask } = await import('../composables/useBackgroundTask')
-      const { scheduleTask } = useBackgroundTask()
+      const { scheduleTask } = await withSetup(() => useBackgroundTask())
       await scheduleTask('com.myapp.sync')
       expect(invokeModuleSpy).toHaveBeenCalledWith('BackgroundTask', 'scheduleTask', [
         'com.myapp.sync',
@@ -705,7 +707,7 @@ describe('Composables', () => {
     it('fetches current version on init', async () => {
       invokeModuleSpy.mockResolvedValue({ version: '3', isUsingOTA: true, bundlePath: '/path' })
       const { useOTAUpdate } = await import('../composables/useOTAUpdate')
-      useOTAUpdate('https://updates.example.com/check')
+      await withSetup(() => useOTAUpdate('https://updates.example.com/check'))
       expect(invokeModuleSpy).toHaveBeenCalledWith('OTA', 'getCurrentVersion', [])
     })
 
@@ -719,7 +721,7 @@ describe('Composables', () => {
         releaseNotes: 'Bug fixes',
       })
       const { useOTAUpdate } = await import('../composables/useOTAUpdate')
-      const { checkForUpdate, availableVersion, isChecking } = useOTAUpdate('https://updates.example.com/check')
+      const { checkForUpdate, availableVersion, isChecking } = await withSetup(() => useOTAUpdate('https://updates.example.com/check'))
 
       const result = await checkForUpdate()
       expect(invokeModuleSpy).toHaveBeenCalledWith('OTA', 'checkForUpdate', ['https://updates.example.com/check'])
@@ -732,7 +734,7 @@ describe('Composables', () => {
     it('downloadUpdate calls OTA.downloadUpdate', async () => {
       invokeModuleSpy.mockResolvedValue({ path: '/docs/bundle.js', size: 2048 })
       const { useOTAUpdate } = await import('../composables/useOTAUpdate')
-      const { downloadUpdate, isDownloading, status } = useOTAUpdate('https://updates.example.com/check')
+      const { downloadUpdate, isDownloading, status } = await withSetup(() => useOTAUpdate('https://updates.example.com/check'))
 
       await downloadUpdate('https://cdn.example.com/bundle.js', 'abc123')
       expect(invokeModuleSpy).toHaveBeenCalledWith('OTA', 'downloadUpdate', ['https://cdn.example.com/bundle.js', 'abc123'])
@@ -742,7 +744,7 @@ describe('Composables', () => {
 
     it('downloadUpdate throws if no URL provided and no prior check', async () => {
       const { useOTAUpdate } = await import('../composables/useOTAUpdate')
-      const { downloadUpdate, error, status } = useOTAUpdate('https://updates.example.com/check')
+      const { downloadUpdate, error, status } = await withSetup(() => useOTAUpdate('https://updates.example.com/check'))
 
       await expect(downloadUpdate()).rejects.toThrow('No download URL')
       expect(error.value).toContain('No download URL')
@@ -758,7 +760,7 @@ describe('Composables', () => {
         .mockResolvedValueOnce({ applied: true }) // applyUpdate
         .mockResolvedValueOnce({ version: '2', isUsingOTA: true, bundlePath: '/path' }) // getCurrentVersion after apply
       const { useOTAUpdate } = await import('../composables/useOTAUpdate')
-      const { applyUpdate, currentVersion, checkForUpdate, downloadUpdate } = useOTAUpdate('https://updates.example.com/check')
+      const { applyUpdate, currentVersion, checkForUpdate, downloadUpdate } = await withSetup(() => useOTAUpdate('https://updates.example.com/check'))
 
       // Must go through check -> download -> apply flow so status reaches 'ready'
       await checkForUpdate()
@@ -775,7 +777,7 @@ describe('Composables', () => {
         .mockResolvedValueOnce({ rolledBack: true, toEmbedded: true }) // rollback
         .mockResolvedValueOnce({ version: 'embedded', isUsingOTA: false, bundlePath: '' }) // getCurrentVersion after rollback
       const { useOTAUpdate } = await import('../composables/useOTAUpdate')
-      const { rollback, currentVersion } = useOTAUpdate('https://updates.example.com/check')
+      const { rollback, currentVersion } = await withSetup(() => useOTAUpdate('https://updates.example.com/check'))
 
       await rollback()
       expect(invokeModuleSpy).toHaveBeenCalledWith('OTA', 'rollback', [])
@@ -785,7 +787,7 @@ describe('Composables', () => {
     it('updates downloadProgress on ota:downloadProgress event', async () => {
       invokeModuleSpy.mockResolvedValue({ version: '1', isUsingOTA: false, bundlePath: '' })
       const { useOTAUpdate } = await import('../composables/useOTAUpdate')
-      const { downloadProgress } = useOTAUpdate('https://updates.example.com/check')
+      const { downloadProgress } = await withSetup(() => useOTAUpdate('https://updates.example.com/check'))
 
       expect(onGlobalEventSpy).toHaveBeenCalledWith('ota:downloadProgress', expect.any(Function))
 
@@ -798,7 +800,7 @@ describe('Composables', () => {
         .mockResolvedValueOnce({ version: '1', isUsingOTA: false, bundlePath: '' }) // init
         .mockRejectedValueOnce(new Error('Network error'))
       const { useOTAUpdate } = await import('../composables/useOTAUpdate')
-      const { checkForUpdate, error, status } = useOTAUpdate('https://updates.example.com/check')
+      const { checkForUpdate, error, status } = await withSetup(() => useOTAUpdate('https://updates.example.com/check'))
 
       await expect(checkForUpdate()).rejects.toThrow('Network error')
       expect(error.value).toBe('Network error')
@@ -813,14 +815,14 @@ describe('Composables', () => {
     it('checks BLE state on creation', async () => {
       invokeModuleSpy.mockResolvedValue('poweredOn')
       const { useBluetooth } = await import('../composables/useBluetooth')
-      useBluetooth()
+      await withSetup(() => useBluetooth())
       expect(invokeModuleSpy).toHaveBeenCalledWith('Bluetooth', 'getState')
     })
 
     it('subscribes to BLE events', async () => {
       invokeModuleSpy.mockResolvedValue('poweredOn')
       const { useBluetooth } = await import('../composables/useBluetooth')
-      useBluetooth()
+      await withSetup(() => useBluetooth())
       expect(onGlobalEventSpy).toHaveBeenCalledWith('ble:stateChanged', expect.any(Function))
       expect(onGlobalEventSpy).toHaveBeenCalledWith('ble:deviceFound', expect.any(Function))
       expect(onGlobalEventSpy).toHaveBeenCalledWith('ble:connected', expect.any(Function))
@@ -831,7 +833,7 @@ describe('Composables', () => {
     it('scan calls Bluetooth.startScan', async () => {
       invokeModuleSpy.mockResolvedValue('poweredOn')
       const { useBluetooth } = await import('../composables/useBluetooth')
-      const { scan, isScanning } = useBluetooth()
+      const { scan, isScanning } = await withSetup(() => useBluetooth())
       await scan(['180D'])
       expect(invokeModuleSpy).toHaveBeenCalledWith('Bluetooth', 'startScan', [['180D']])
       expect(isScanning.value).toBe(true)
@@ -840,7 +842,7 @@ describe('Composables', () => {
     it('stopScan calls Bluetooth.stopScan', async () => {
       invokeModuleSpy.mockResolvedValue(undefined)
       const { useBluetooth } = await import('../composables/useBluetooth')
-      const { stopScan, isScanning } = useBluetooth()
+      const { stopScan, isScanning } = await withSetup(() => useBluetooth())
       await stopScan()
       expect(invokeModuleSpy).toHaveBeenCalledWith('Bluetooth', 'stopScan')
       expect(isScanning.value).toBe(false)
@@ -849,7 +851,7 @@ describe('Composables', () => {
     it('updates devices on ble:deviceFound', async () => {
       invokeModuleSpy.mockResolvedValue('poweredOn')
       const { useBluetooth } = await import('../composables/useBluetooth')
-      const { devices } = useBluetooth()
+      const { devices } = await withSetup(() => useBluetooth())
 
       triggerGlobalEvent('ble:deviceFound', { id: 'dev1', name: 'HeartRate', rssi: -50 })
       expect(devices.value).toHaveLength(1)
@@ -860,7 +862,7 @@ describe('Composables', () => {
     it('connect calls Bluetooth.connect', async () => {
       invokeModuleSpy.mockResolvedValue({ id: 'dev1', name: 'HeartRate' })
       const { useBluetooth } = await import('../composables/useBluetooth')
-      const { connect } = useBluetooth()
+      const { connect } = await withSetup(() => useBluetooth())
       const result = await connect('dev1')
       expect(invokeModuleSpy).toHaveBeenCalledWith('Bluetooth', 'connect', ['dev1'])
       expect(result.id).toBe('dev1')
@@ -869,7 +871,7 @@ describe('Composables', () => {
     it('disconnect calls Bluetooth.disconnect', async () => {
       invokeModuleSpy.mockResolvedValue(undefined)
       const { useBluetooth } = await import('../composables/useBluetooth')
-      const { disconnect, connectedDevice } = useBluetooth()
+      const { disconnect, connectedDevice } = await withSetup(() => useBluetooth())
       await disconnect('dev1')
       expect(invokeModuleSpy).toHaveBeenCalledWith('Bluetooth', 'disconnect', ['dev1'])
       expect(connectedDevice.value).toBeNull()
@@ -878,7 +880,7 @@ describe('Composables', () => {
     it('read calls Bluetooth.readCharacteristic', async () => {
       invokeModuleSpy.mockResolvedValue({ value: 'AQID', characteristicUUID: 'char1', serviceUUID: 'svc1' })
       const { useBluetooth } = await import('../composables/useBluetooth')
-      const { read } = useBluetooth()
+      const { read } = await withSetup(() => useBluetooth())
       const result = await read('dev1', 'svc1', 'char1')
       expect(invokeModuleSpy).toHaveBeenCalledWith('Bluetooth', 'readCharacteristic', ['dev1', 'svc1', 'char1'])
       expect(result.value).toBe('AQID')
@@ -887,7 +889,7 @@ describe('Composables', () => {
     it('write calls Bluetooth.writeCharacteristic', async () => {
       invokeModuleSpy.mockResolvedValue(undefined)
       const { useBluetooth } = await import('../composables/useBluetooth')
-      const { write } = useBluetooth()
+      const { write } = await withSetup(() => useBluetooth())
       await write('dev1', 'svc1', 'char1', 'AQID')
       expect(invokeModuleSpy).toHaveBeenCalledWith('Bluetooth', 'writeCharacteristic', ['dev1', 'svc1', 'char1', 'AQID'])
     })
@@ -895,7 +897,7 @@ describe('Composables', () => {
     it('updates isAvailable on ble:stateChanged', async () => {
       invokeModuleSpy.mockResolvedValue('poweredOff')
       const { useBluetooth } = await import('../composables/useBluetooth')
-      const { isAvailable } = useBluetooth()
+      const { isAvailable } = await withSetup(() => useBluetooth())
 
       triggerGlobalEvent('ble:stateChanged', { state: 'poweredOn' })
       expect(isAvailable.value).toBe(true)
@@ -907,7 +909,7 @@ describe('Composables', () => {
     it('updates connectedDevice on ble:connected', async () => {
       invokeModuleSpy.mockResolvedValue('poweredOn')
       const { useBluetooth } = await import('../composables/useBluetooth')
-      const { connectedDevice } = useBluetooth()
+      const { connectedDevice } = await withSetup(() => useBluetooth())
 
       triggerGlobalEvent('ble:connected', { id: 'dev1', name: 'HeartRate' })
       expect(connectedDevice.value?.id).toBe('dev1')
@@ -916,7 +918,7 @@ describe('Composables', () => {
     it('clears connectedDevice on ble:disconnected', async () => {
       invokeModuleSpy.mockResolvedValue('poweredOn')
       const { useBluetooth } = await import('../composables/useBluetooth')
-      const { connectedDevice } = useBluetooth()
+      const { connectedDevice } = await withSetup(() => useBluetooth())
 
       triggerGlobalEvent('ble:connected', { id: 'dev1', name: 'HeartRate' })
       triggerGlobalEvent('ble:disconnected', { id: 'dev1' })
@@ -926,7 +928,7 @@ describe('Composables', () => {
     it('sets error on ble:error', async () => {
       invokeModuleSpy.mockResolvedValue('poweredOn')
       const { useBluetooth } = await import('../composables/useBluetooth')
-      const { error } = useBluetooth()
+      const { error } = await withSetup(() => useBluetooth())
 
       triggerGlobalEvent('ble:error', { message: 'Connection failed' })
       expect(error.value).toBe('Connection failed')
@@ -1088,6 +1090,574 @@ describe('Composables', () => {
       expect(result).toBe(false)
       expect(hasAccess.value).toBe(false)
       expect(error.value).toBe('Access denied')
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // useShare
+  // ---------------------------------------------------------------------------
+  describe('useShare', () => {
+    it('share calls Share.share with content', async () => {
+      const { useShare } = await import('../composables/useShare')
+      const { share } = useShare()
+      await share({ message: 'Hello', url: 'https://example.com' })
+      expect(invokeModuleSpy).toHaveBeenCalledWith('Share', 'share', [{ message: 'Hello', url: 'https://example.com' }])
+    })
+
+    it('share returns result from bridge', async () => {
+      invokeModuleSpy.mockResolvedValueOnce({ shared: true })
+      const { useShare } = await import('../composables/useShare')
+      const { share } = useShare()
+      const result = await share({ message: 'Test' })
+      expect(result).toEqual({ shared: true })
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // useLinking
+  // ---------------------------------------------------------------------------
+  describe('useLinking', () => {
+    it('openURL calls Linking.openURL', async () => {
+      const { useLinking } = await import('../composables/useLinking')
+      const { openURL } = useLinking()
+      await openURL('https://example.com')
+      expect(invokeModuleSpy).toHaveBeenCalledWith('Linking', 'openURL', ['https://example.com'])
+    })
+
+    it('canOpenURL calls Linking.canOpenURL', async () => {
+      invokeModuleSpy.mockResolvedValueOnce(true)
+      const { useLinking } = await import('../composables/useLinking')
+      const { canOpenURL } = useLinking()
+      const result = await canOpenURL('tel://555-1234')
+      expect(invokeModuleSpy).toHaveBeenCalledWith('Linking', 'canOpenURL', ['tel://555-1234'])
+      expect(result).toBe(true)
+    })
+
+    it('canOpenURL returns false for unsupported schemes', async () => {
+      invokeModuleSpy.mockResolvedValueOnce(false)
+      const { useLinking } = await import('../composables/useLinking')
+      const { canOpenURL } = useLinking()
+      const result = await canOpenURL('unknown://foo')
+      expect(result).toBe(false)
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // usePermissions
+  // ---------------------------------------------------------------------------
+  describe('usePermissions', () => {
+    it('request calls Permissions.request', async () => {
+      invokeModuleSpy.mockResolvedValueOnce('granted')
+      const { usePermissions } = await import('../composables/usePermissions')
+      const { request } = usePermissions()
+      const status = await request('camera')
+      expect(invokeModuleSpy).toHaveBeenCalledWith('Permissions', 'request', ['camera'])
+      expect(status).toBe('granted')
+    })
+
+    it('check calls Permissions.check', async () => {
+      invokeModuleSpy.mockResolvedValueOnce('denied')
+      const { usePermissions } = await import('../composables/usePermissions')
+      const { check } = usePermissions()
+      const status = await check('location')
+      expect(invokeModuleSpy).toHaveBeenCalledWith('Permissions', 'check', ['location'])
+      expect(status).toBe('denied')
+    })
+
+    it('request returns notDetermined for first-time permission', async () => {
+      invokeModuleSpy.mockResolvedValueOnce('notDetermined')
+      const { usePermissions } = await import('../composables/usePermissions')
+      const { request } = usePermissions()
+      const status = await request('microphone')
+      expect(status).toBe('notDetermined')
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // useBiometry
+  // ---------------------------------------------------------------------------
+  describe('useBiometry', () => {
+    it('authenticate calls Biometry.authenticate with reason', async () => {
+      invokeModuleSpy.mockResolvedValueOnce({ success: true })
+      const { useBiometry } = await import('../composables/useBiometry')
+      const { authenticate } = useBiometry()
+      const result = await authenticate('Confirm your identity')
+      expect(invokeModuleSpy).toHaveBeenCalledWith('Biometry', 'authenticate', ['Confirm your identity'])
+      expect(result.success).toBe(true)
+    })
+
+    it('authenticate uses default reason', async () => {
+      invokeModuleSpy.mockResolvedValueOnce({ success: true })
+      const { useBiometry } = await import('../composables/useBiometry')
+      const { authenticate } = useBiometry()
+      await authenticate()
+      expect(invokeModuleSpy).toHaveBeenCalledWith('Biometry', 'authenticate', ['Authenticate'])
+    })
+
+    it('getSupportedBiometry calls Biometry.getSupportedBiometry', async () => {
+      invokeModuleSpy.mockResolvedValueOnce('faceID')
+      const { useBiometry } = await import('../composables/useBiometry')
+      const { getSupportedBiometry } = useBiometry()
+      const type = await getSupportedBiometry()
+      expect(invokeModuleSpy).toHaveBeenCalledWith('Biometry', 'getSupportedBiometry')
+      expect(type).toBe('faceID')
+    })
+
+    it('isAvailable calls Biometry.isAvailable', async () => {
+      invokeModuleSpy.mockResolvedValueOnce(true)
+      const { useBiometry } = await import('../composables/useBiometry')
+      const { isAvailable } = useBiometry()
+      const available = await isAvailable()
+      expect(invokeModuleSpy).toHaveBeenCalledWith('Biometry', 'isAvailable')
+      expect(available).toBe(true)
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // useSecureStorage
+  // ---------------------------------------------------------------------------
+  describe('useSecureStorage', () => {
+    it('getItem calls SecureStorage.get', async () => {
+      invokeModuleSpy.mockResolvedValueOnce('secret-value')
+      const { useSecureStorage } = await import('../composables/useSecureStorage')
+      const { getItem } = useSecureStorage()
+      const result = await getItem('token')
+      expect(invokeModuleSpy).toHaveBeenCalledWith('SecureStorage', 'get', ['token'])
+      expect(result).toBe('secret-value')
+    })
+
+    it('setItem calls SecureStorage.set', async () => {
+      const { useSecureStorage } = await import('../composables/useSecureStorage')
+      const { setItem } = useSecureStorage()
+      await setItem('token', 'abc123')
+      expect(invokeModuleSpy).toHaveBeenCalledWith('SecureStorage', 'set', ['token', 'abc123'])
+    })
+
+    it('removeItem calls SecureStorage.remove', async () => {
+      const { useSecureStorage } = await import('../composables/useSecureStorage')
+      const { removeItem } = useSecureStorage()
+      await removeItem('token')
+      expect(invokeModuleSpy).toHaveBeenCalledWith('SecureStorage', 'remove', ['token'])
+    })
+
+    it('clear calls SecureStorage.clear', async () => {
+      const { useSecureStorage } = await import('../composables/useSecureStorage')
+      const { clear } = useSecureStorage()
+      await clear()
+      expect(invokeModuleSpy).toHaveBeenCalledWith('SecureStorage', 'clear', [])
+    })
+
+    it('getItem returns null for missing key', async () => {
+      invokeModuleSpy.mockResolvedValueOnce(null)
+      const { useSecureStorage } = await import('../composables/useSecureStorage')
+      const { getItem } = useSecureStorage()
+      const result = await getItem('nonexistent')
+      expect(result).toBeNull()
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // useKeyboard
+  // ---------------------------------------------------------------------------
+  describe('useKeyboard', () => {
+    it('dismiss calls Keyboard.dismiss', async () => {
+      const { useKeyboard } = await import('../composables/useKeyboard')
+      const { dismiss } = useKeyboard()
+      await dismiss()
+      expect(invokeModuleSpy).toHaveBeenCalledWith('Keyboard', 'dismiss', [])
+    })
+
+    it('getHeight calls Keyboard.getHeight and updates refs', async () => {
+      invokeModuleSpy.mockResolvedValueOnce({ height: 320, isVisible: true })
+      const { useKeyboard } = await import('../composables/useKeyboard')
+      const { getHeight, isVisible, height } = useKeyboard()
+      const result = await getHeight()
+      expect(invokeModuleSpy).toHaveBeenCalledWith('Keyboard', 'getHeight', [])
+      expect(result).toEqual({ height: 320, isVisible: true })
+      expect(isVisible.value).toBe(true)
+      expect(height.value).toBe(320)
+    })
+
+    it('has default ref values', async () => {
+      const { useKeyboard } = await import('../composables/useKeyboard')
+      const { isVisible, height } = useKeyboard()
+      expect(isVisible.value).toBe(false)
+      expect(height.value).toBe(0)
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // useDeviceInfo (uses onMounted)
+  // ---------------------------------------------------------------------------
+  describe('useDeviceInfo', () => {
+    it('exposes reactive refs with defaults before mount', async () => {
+      // onMounted auto-calls fetchInfo; provide empty object so it doesn't crash
+      invokeModuleSpy.mockResolvedValueOnce({})
+      const { useDeviceInfo } = await import('../composables/useDeviceInfo')
+      const info = await withSetup(() => useDeviceInfo())
+      expect(info.model.value).toBe('')
+      expect(info.screenWidth.value).toBe(0)
+      expect(info.scale.value).toBe(1)
+    })
+
+    it('fetchInfo populates reactive refs', async () => {
+      const deviceData = {
+        model: 'iPhone 15',
+        systemVersion: '17.0',
+        systemName: 'iOS',
+        name: 'User\'s iPhone',
+        screenWidth: 393,
+        screenHeight: 852,
+        scale: 3,
+      }
+      // First call is consumed by onMounted auto-fetch, second by manual fetchInfo
+      invokeModuleSpy.mockResolvedValueOnce(deviceData).mockResolvedValueOnce(deviceData)
+      const { useDeviceInfo } = await import('../composables/useDeviceInfo')
+      const info = await withSetup(() => useDeviceInfo())
+      await info.fetchInfo()
+      expect(info.model.value).toBe('iPhone 15')
+      expect(info.systemVersion.value).toBe('17.0')
+      expect(info.screenWidth.value).toBe(393)
+      expect(info.screenHeight.value).toBe(852)
+      expect(info.scale.value).toBe(3)
+      expect(info.isLoaded.value).toBe(true)
+    })
+
+    it('fetchInfo calls DeviceInfo.getInfo', async () => {
+      // onMounted auto-calls fetchInfo, provide a value for it
+      invokeModuleSpy.mockResolvedValue({ model: '', systemVersion: '', systemName: '', name: '', screenWidth: 0, screenHeight: 0, scale: 1 })
+      const { useDeviceInfo } = await import('../composables/useDeviceInfo')
+      const info = await withSetup(() => useDeviceInfo())
+      await info.fetchInfo()
+      expect(invokeModuleSpy).toHaveBeenCalledWith('DeviceInfo', 'getInfo', [])
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // useI18n (uses onMounted)
+  // ---------------------------------------------------------------------------
+  describe('useI18n', () => {
+    it('defaults to en locale and non-RTL', async () => {
+      const { useI18n } = await import('../composables/useI18n')
+      const { locale, isRTL } = await withSetup(() => useI18n())
+      expect(locale.value).toBe('en')
+      expect(isRTL.value).toBe(false)
+    })
+
+    it('detects RTL for Arabic locale', async () => {
+      invokeModuleSpy.mockResolvedValueOnce({ locale: 'ar-SA' })
+      const { useI18n } = await import('../composables/useI18n')
+      const { locale, isRTL } = await withSetup(() => useI18n())
+      // onMounted fires during mount; wait for the async call to resolve
+      await new Promise(resolve => setTimeout(resolve, 10))
+      expect(locale.value).toBe('ar-SA')
+      expect(isRTL.value).toBe(true)
+    })
+
+    it('detects RTL for Hebrew locale', async () => {
+      invokeModuleSpy.mockResolvedValueOnce({ locale: 'he' })
+      const { useI18n } = await import('../composables/useI18n')
+      const { locale, isRTL } = await withSetup(() => useI18n())
+      await new Promise(resolve => setTimeout(resolve, 10))
+      expect(locale.value).toBe('he')
+      expect(isRTL.value).toBe(true)
+    })
+
+    it('non-RTL language stays isRTL=false', async () => {
+      invokeModuleSpy.mockResolvedValueOnce({ locale: 'fr-FR' })
+      const { useI18n } = await import('../composables/useI18n')
+      const { locale, isRTL } = await withSetup(() => useI18n())
+      await new Promise(resolve => setTimeout(resolve, 10))
+      expect(locale.value).toBe('fr-FR')
+      expect(isRTL.value).toBe(false)
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // useDimensions (uses onMounted + onUnmounted)
+  // ---------------------------------------------------------------------------
+  describe('useDimensions', () => {
+    it('subscribes to dimensionsChange event', async () => {
+      const { useDimensions } = await import('../composables/useDimensions')
+      await withSetup(() => useDimensions())
+      expect(onGlobalEventSpy).toHaveBeenCalledWith('dimensionsChange', expect.any(Function))
+    })
+
+    it('updates reactive refs on dimensionsChange', async () => {
+      const { useDimensions } = await import('../composables/useDimensions')
+      const { width, height, scale } = await withSetup(() => useDimensions())
+
+      triggerGlobalEvent('dimensionsChange', { width: 414, height: 896, scale: 3 })
+      expect(width.value).toBe(414)
+      expect(height.value).toBe(896)
+      expect(scale.value).toBe(3)
+    })
+
+    it('has default values before data is loaded', async () => {
+      const { useDimensions } = await import('../composables/useDimensions')
+      const { width, height, scale } = await withSetup(() => useDimensions())
+      expect(width.value).toBe(0)
+      expect(height.value).toBe(0)
+      expect(scale.value).toBe(1)
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // useBackHandler (uses onMounted + onUnmounted)
+  // ---------------------------------------------------------------------------
+  describe('useBackHandler', () => {
+    it('subscribes to hardware:backPress on mount', async () => {
+      const { useBackHandler } = await import('../composables/useBackHandler')
+      await withSetup(() => useBackHandler(() => true))
+      // onMounted fires during mount and registers the global event
+      // Wait for onMounted to fire
+      await new Promise(resolve => setTimeout(resolve, 10))
+      expect(onGlobalEventSpy).toHaveBeenCalledWith('hardware:backPress', expect.any(Function))
+    })
+
+    it('handler returning true prevents default back', async () => {
+      const { useBackHandler } = await import('../composables/useBackHandler')
+      const handler = vi.fn(() => true)
+      await withSetup(() => useBackHandler(handler))
+      await new Promise(resolve => setTimeout(resolve, 10))
+
+      triggerGlobalEvent('hardware:backPress', {})
+      expect(handler).toHaveBeenCalled()
+      // Should NOT call exitApp since handler returned true
+      const exitCalls = invokeModuleSpy.mock.calls.filter(
+        (c: unknown[]) => c[0] === 'BackHandler' && c[1] === 'exitApp',
+      )
+      expect(exitCalls).toHaveLength(0)
+    })
+
+    it('handler returning false triggers exitApp', async () => {
+      const { useBackHandler } = await import('../composables/useBackHandler')
+      const handler = vi.fn(() => false)
+      await withSetup(() => useBackHandler(handler))
+      await new Promise(resolve => setTimeout(resolve, 10))
+
+      triggerGlobalEvent('hardware:backPress', {})
+      expect(handler).toHaveBeenCalled()
+      expect(invokeModuleSpy).toHaveBeenCalledWith('BackHandler', 'exitApp', [])
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // useGeolocation
+  // ---------------------------------------------------------------------------
+  describe('useGeolocation', () => {
+    it('getCurrentPosition calls Geolocation.getCurrentPosition', async () => {
+      const mockCoords = { latitude: 37.7749, longitude: -122.4194, altitude: 0, accuracy: 10, altitudeAccuracy: 0, heading: 0, speed: 0, timestamp: 1000 }
+      invokeModuleSpy.mockResolvedValueOnce(mockCoords)
+      const { useGeolocation } = await import('../composables/useGeolocation')
+      const { getCurrentPosition, coords } = useGeolocation()
+      const result = await getCurrentPosition()
+      expect(invokeModuleSpy).toHaveBeenCalledWith('Geolocation', 'getCurrentPosition')
+      expect(result.latitude).toBe(37.7749)
+      expect(coords.value?.latitude).toBe(37.7749)
+    })
+
+    it('getCurrentPosition sets error on failure', async () => {
+      invokeModuleSpy.mockRejectedValueOnce(new Error('Location denied'))
+      const { useGeolocation } = await import('../composables/useGeolocation')
+      const { getCurrentPosition, error } = useGeolocation()
+      await expect(getCurrentPosition()).rejects.toThrow('Location denied')
+      expect(error.value).toBe('Location denied')
+    })
+
+    it('watchPosition calls Geolocation.watchPosition', async () => {
+      invokeModuleSpy.mockResolvedValueOnce(42)
+      const { useGeolocation } = await import('../composables/useGeolocation')
+      // watchPosition registers onUnmounted, so use withSetup
+      const { watchPosition } = await withSetup(() => useGeolocation())
+      const id = await watchPosition()
+      expect(invokeModuleSpy).toHaveBeenCalledWith('Geolocation', 'watchPosition')
+      expect(id).toBe(42)
+    })
+
+    it('watchPosition subscribes to location:update events', async () => {
+      invokeModuleSpy.mockResolvedValueOnce(1)
+      const { useGeolocation } = await import('../composables/useGeolocation')
+      const { watchPosition, coords } = await withSetup(() => useGeolocation())
+      await watchPosition()
+      expect(onGlobalEventSpy).toHaveBeenCalledWith('location:update', expect.any(Function))
+
+      const mockCoords = { latitude: 40.7128, longitude: -74.006, altitude: 0, accuracy: 5, altitudeAccuracy: 0, heading: 0, speed: 0, timestamp: 2000 }
+      triggerGlobalEvent('location:update', mockCoords)
+      expect(coords.value?.latitude).toBe(40.7128)
+    })
+
+    it('clearWatch calls Geolocation.clearWatch', async () => {
+      const { useGeolocation } = await import('../composables/useGeolocation')
+      const { clearWatch } = useGeolocation()
+      await clearWatch(42)
+      expect(invokeModuleSpy).toHaveBeenCalledWith('Geolocation', 'clearWatch', [42])
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // useNotifications
+  // ---------------------------------------------------------------------------
+  describe('useNotifications', () => {
+    it('requestPermission calls Notifications.requestPermission', async () => {
+      invokeModuleSpy.mockResolvedValueOnce(true)
+      const { useNotifications } = await import('../composables/useNotifications')
+      const { requestPermission, isGranted } = await withSetup(() => useNotifications())
+      const result = await requestPermission()
+      expect(invokeModuleSpy).toHaveBeenCalledWith('Notifications', 'requestPermission')
+      expect(result).toBe(true)
+      expect(isGranted.value).toBe(true)
+    })
+
+    it('requestPermission sets isGranted=false when denied', async () => {
+      invokeModuleSpy.mockResolvedValueOnce(false)
+      const { useNotifications } = await import('../composables/useNotifications')
+      const { requestPermission, isGranted } = await withSetup(() => useNotifications())
+      const result = await requestPermission()
+      expect(result).toBe(false)
+      expect(isGranted.value).toBe(false)
+    })
+
+    it('scheduleLocal calls Notifications.scheduleLocal', async () => {
+      invokeModuleSpy.mockResolvedValueOnce('notif-1')
+      const { useNotifications } = await import('../composables/useNotifications')
+      const { scheduleLocal } = await withSetup(() => useNotifications())
+      const id = await scheduleLocal({ title: 'Reminder', body: 'Time to stretch!', delay: 5 })
+      expect(invokeModuleSpy).toHaveBeenCalledWith('Notifications', 'scheduleLocal', [
+        { title: 'Reminder', body: 'Time to stretch!', delay: 5 },
+      ])
+      expect(id).toBe('notif-1')
+    })
+
+    it('cancel calls Notifications.cancel', async () => {
+      const { useNotifications } = await import('../composables/useNotifications')
+      const { cancel } = await withSetup(() => useNotifications())
+      await cancel('notif-1')
+      expect(invokeModuleSpy).toHaveBeenCalledWith('Notifications', 'cancel', ['notif-1'])
+    })
+
+    it('cancelAll calls Notifications.cancelAll', async () => {
+      const { useNotifications } = await import('../composables/useNotifications')
+      const { cancelAll } = await withSetup(() => useNotifications())
+      await cancelAll()
+      expect(invokeModuleSpy).toHaveBeenCalledWith('Notifications', 'cancelAll')
+    })
+
+    it('onNotification subscribes to notification:received', async () => {
+      const { useNotifications } = await import('../composables/useNotifications')
+      const handler = vi.fn()
+      // Call onNotification inside setup so its onUnmounted registers correctly
+      await withSetup(() => {
+        const notifs = useNotifications()
+        notifs.onNotification(handler)
+        return notifs
+      })
+      expect(onGlobalEventSpy).toHaveBeenCalledWith('notification:received', expect.any(Function))
+
+      const payload = { id: 'n1', title: 'Test', body: 'Hello', data: {} }
+      triggerGlobalEvent('notification:received', payload)
+      expect(handler).toHaveBeenCalledWith(payload)
+    })
+
+    it('registerForPush calls Notifications.registerForPush', async () => {
+      const { useNotifications } = await import('../composables/useNotifications')
+      const { registerForPush } = await withSetup(() => useNotifications())
+      await registerForPush()
+      expect(invokeModuleSpy).toHaveBeenCalledWith('Notifications', 'registerForPush')
+    })
+
+    it('getToken calls Notifications.getToken', async () => {
+      invokeModuleSpy.mockResolvedValueOnce('device-push-token-xyz')
+      const { useNotifications } = await import('../composables/useNotifications')
+      const { getToken } = await withSetup(() => useNotifications())
+      const token = await getToken()
+      expect(invokeModuleSpy).toHaveBeenCalledWith('Notifications', 'getToken')
+      expect(token).toBe('device-push-token-xyz')
+    })
+
+    it('onPushToken subscribes to push:token event', async () => {
+      const { useNotifications } = await import('../composables/useNotifications')
+      const handler = vi.fn()
+      // Call onPushToken inside setup so its onUnmounted registers correctly
+      const { pushToken } = await withSetup(() => {
+        const notifs = useNotifications()
+        notifs.onPushToken(handler)
+        return notifs
+      })
+      expect(onGlobalEventSpy).toHaveBeenCalledWith('push:token', expect.any(Function))
+
+      triggerGlobalEvent('push:token', { token: 'new-token-abc' })
+      expect(handler).toHaveBeenCalledWith('new-token-abc')
+      expect(pushToken.value).toBe('new-token-abc')
+    })
+
+    it('onPushReceived subscribes to push:received event', async () => {
+      const { useNotifications } = await import('../composables/useNotifications')
+      const handler = vi.fn()
+      // Call onPushReceived inside setup so its onUnmounted registers correctly
+      await withSetup(() => {
+        const notifs = useNotifications()
+        notifs.onPushReceived(handler)
+        return notifs
+      })
+      expect(onGlobalEventSpy).toHaveBeenCalledWith('push:received', expect.any(Function))
+
+      const payload = { title: 'New message', body: 'You have a new message', data: { chatId: '123' }, remote: true as const }
+      triggerGlobalEvent('push:received', payload)
+      expect(handler).toHaveBeenCalledWith(payload)
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // useSharedElementTransition
+  // ---------------------------------------------------------------------------
+  describe('useSharedElementTransition', () => {
+    it('register adds element to registry', async () => {
+      const mod = await import('../composables/useSharedElementTransition')
+      mod.clearSharedElementRegistry()
+      const { register, viewId } = await withSetup(() => mod.useSharedElementTransition('hero-image'))
+      register(42)
+      expect(viewId.value).toBe(42)
+      expect(mod.getSharedElementViewId('hero-image')).toBe(42)
+    })
+
+    it('unregister removes element from registry', async () => {
+      const mod = await import('../composables/useSharedElementTransition')
+      mod.clearSharedElementRegistry()
+      const { register, unregister, viewId } = await withSetup(() => mod.useSharedElementTransition('hero-image'))
+      register(42)
+      unregister()
+      expect(viewId.value).toBeNull()
+      expect(mod.getSharedElementViewId('hero-image')).toBeUndefined()
+    })
+
+    it('getRegisteredSharedElements returns all registered ids', async () => {
+      const mod = await import('../composables/useSharedElementTransition')
+      mod.clearSharedElementRegistry()
+      const first = await withSetup(() => mod.useSharedElementTransition('el-1'))
+      const second = await withSetup(() => mod.useSharedElementTransition('el-2'))
+      first.register(1)
+      second.register(2)
+      const ids = mod.getRegisteredSharedElements()
+      expect(ids).toContain('el-1')
+      expect(ids).toContain('el-2')
+    })
+
+    it('clearSharedElementRegistry removes all entries', async () => {
+      const mod = await import('../composables/useSharedElementTransition')
+      mod.clearSharedElementRegistry()
+      const { register } = await withSetup(() => mod.useSharedElementTransition('el-1'))
+      register(1)
+      mod.clearSharedElementRegistry()
+      expect(mod.getRegisteredSharedElements()).toHaveLength(0)
+    })
+
+    it('measureViewFrame calls Animation.measureView', async () => {
+      invokeModuleSpy.mockResolvedValueOnce({ x: 10, y: 20, width: 100, height: 200 })
+      const { measureViewFrame } = await import('../composables/useSharedElementTransition')
+      const frame = await measureViewFrame(42)
+      expect(invokeModuleSpy).toHaveBeenCalledWith('Animation', 'measureView', [42])
+      expect(frame).toEqual({ x: 10, y: 20, width: 100, height: 200 })
     })
   })
 })

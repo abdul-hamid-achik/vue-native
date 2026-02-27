@@ -1,6 +1,6 @@
 # Components
 
-Vue Native provides 22 built-in components that map directly to native views on iOS and Android.
+Vue Native provides 30+ built-in components that map directly to native views on iOS and Android.
 
 See the [Components guide](../guide/components.md) for a full comparison table.
 
@@ -20,14 +20,20 @@ See the [Components guide](../guide/components.md) for a full comparison table.
 - [VSwitch](./VSwitch.md) -- Toggle switch
 - [VSlider](./VSlider.md) -- Range slider
 - [VSegmentedControl](./VSegmentedControl.md) -- Tab selector
+- [VCheckbox](./VCheckbox.md) -- Checkbox
+- [VRadio](./VRadio.md) -- Radio button
+- [VDropdown](./VDropdown.md) -- Dropdown selector
+- [VRefreshControl](./VRefreshControl.md) -- Pull-to-refresh indicator
 
 ## Media
 - [VImage](./VImage.md) -- Async image
 - [VWebView](./VWebView.md) -- Embedded web view
+- [VVideo](./VVideo.md) -- Video player
 
 ## Lists
-- [VList](./VList.md) -- Virtualized list
-- [VRefreshControl](./VRefreshControl.md) -- Pull-to-refresh indicator
+- [VList](./VList.md) -- Virtualized list (UITableView / RecyclerView)
+- [VFlatList](./VFlatList.md) -- High-performance virtualized list
+- [VSectionList](./VSectionList.md) -- Sectioned list
 
 ## Feedback
 - [VActivityIndicator](./VActivityIndicator.md) -- Loading spinner
@@ -35,6 +41,7 @@ See the [Components guide](../guide/components.md) for a full comparison table.
 - [VAlertDialog](./VAlertDialog.md) -- Native alert
 - [VActionSheet](./VActionSheet.md) -- Bottom sheet
 - [VModal](./VModal.md) -- Overlay modal
+- [VErrorBoundary](./VErrorBoundary.md) -- Error boundary
 
 ## System
 - [VStatusBar](./VStatusBar.md) -- Status bar control

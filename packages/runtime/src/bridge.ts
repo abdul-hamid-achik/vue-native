@@ -177,6 +177,17 @@ class NativeBridgeImpl {
     this.enqueue('updateStyle', [nodeId, { [key]: value }])
   }
 
+  /**
+   * Update multiple style properties on a native view in a single bridge op.
+   * Swift/Kotlin handler: handleUpdateStyle(args: [nodeId, { key1: val1, key2: val2, ... }])
+   *
+   * More efficient than calling updateStyle() per property — sends one op
+   * instead of N ops, reducing JSON overhead and bridge dispatch.
+   */
+  updateStyles(nodeId: number, styles: Record<string, any>): void {
+    this.enqueue('updateStyle', [nodeId, styles])
+  }
+
   // ---------------------------------------------------------------------------
   // Tree mutations
   // ---------------------------------------------------------------------------
@@ -394,6 +405,10 @@ class NativeBridgeImpl {
     this.pendingOps = []
     this.flushScheduled = false
     this.eventHandlers.clear()
+    // Clear pending callback timeouts before discarding the map
+    for (const pending of this.pendingCallbacks.values()) {
+      clearTimeout(pending.timeoutId)
+    }
     this.pendingCallbacks.clear()
     this.nextCallbackId = 1
     this.globalEventHandlers.clear()

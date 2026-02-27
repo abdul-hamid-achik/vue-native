@@ -161,7 +161,7 @@ describe('Navigation — createRouter', () => {
       await router.push('about')
       expect(router.stack.value).toHaveLength(2)
 
-      router.goBack()
+      await router.goBack()
       expect(router.stack.value).toHaveLength(1)
       expect(router.currentRoute.value.config.name).toBe('home')
     })
@@ -174,7 +174,7 @@ describe('Navigation — createRouter', () => {
       ])
 
       await router.push('about')
-      router.pop()
+      await router.pop()
       expect(router.currentRoute.value.config.name).toBe('home')
     })
 
@@ -184,7 +184,7 @@ describe('Navigation — createRouter', () => {
         { name: 'home', component: HomeScreen },
       ])
 
-      router.goBack()
+      await router.goBack()
       expect(router.stack.value).toHaveLength(1)
       expect(router.currentRoute.value.config.name).toBe('home')
     })
@@ -389,9 +389,8 @@ describe('Navigation — createRouter', () => {
 
       unsub()
       afterHook.mockClear()
-      router.goBack()
-      // After goBack, afterEach is NOT called (goBack doesn't run guards)
-      // So after unsub, push should also not trigger afterHook
+      await router.goBack()
+      // After unsub, goBack should not trigger afterHook
     })
   })
 
@@ -720,8 +719,245 @@ describe('Navigation — createRouter', () => {
       await router.push('profile', {}, { sharedElements: ['hero-image'] })
       expect(router.currentRoute.value.sharedElements).toEqual(['hero-image'])
 
-      router.pop()
+      await router.pop()
       expect(router.currentRoute.value.sharedElements).toBeUndefined()
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // Bug fix: Circular redirect protection (P0 1.2)
+  // ---------------------------------------------------------------------------
+  describe('circular redirect protection', () => {
+    it('stops after max redirect depth and warns', async () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const createRouter = await getRouter()
+      const router = createRouter([
+        { name: 'home', component: HomeScreen },
+        { name: 'a', component: AboutScreen },
+        { name: 'b', component: ProfileScreen },
+      ])
+
+      // Guard creates an infinite A→B→A loop
+      router.beforeEach((_to: any, _from: any, next: any) => {
+        if (_to.config.name === 'a') next('b')
+        else if (_to.config.name === 'b') next('a')
+        else next()
+      })
+
+      await router.push('a')
+      await nextTick()
+
+      // Should have warned about circular redirect, not hung or crashed
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Circular redirect'),
+      )
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // Bug fix: goBack() runs guards (P1 2.5)
+  // ---------------------------------------------------------------------------
+  describe('goBack runs guards', () => {
+    it('beforeEach fires on goBack', async () => {
+      const createRouter = await getRouter()
+      const router = createRouter([
+        { name: 'home', component: HomeScreen },
+        { name: 'about', component: AboutScreen },
+      ])
+
+      await router.push('about')
+      const guard = vi.fn((_to: any, _from: any, next: any) => next())
+      router.beforeEach(guard)
+
+      await router.goBack()
+      expect(guard).toHaveBeenCalledTimes(1)
+      expect(guard.mock.calls[0][0].config.name).toBe('home')
+      expect(guard.mock.calls[0][1].config.name).toBe('about')
+    })
+
+    it('beforeEach can block goBack', async () => {
+      const createRouter = await getRouter()
+      const router = createRouter([
+        { name: 'home', component: HomeScreen },
+        { name: 'about', component: AboutScreen },
+      ])
+
+      await router.push('about')
+      router.beforeEach((_to: any, _from: any, next: any) => next(false))
+
+      await router.goBack()
+      // Navigation should be blocked — still on about
+      expect(router.currentRoute.value.config.name).toBe('about')
+      expect(router.stack.value).toHaveLength(2)
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // Bug fix: Deep links with query strings (P1 2.6)
+  // ---------------------------------------------------------------------------
+  describe('deep link query strings', () => {
+    it('parses query params from deep link URL', async () => {
+      const createRouter = await getRouter()
+      const router = createRouter({
+        routes: [
+          { name: 'home', component: HomeScreen },
+          { name: 'profile', component: ProfileScreen },
+        ],
+        linking: {
+          prefixes: ['myapp://'],
+          config: {
+            screens: {
+              profile: 'profile/:id',
+            },
+          },
+        },
+      })
+
+      const result = router.handleURL('myapp://profile/42?tab=posts&sort=recent')
+      await nextTick()
+      expect(result).toBe(true)
+      // Path params should take precedence, query params merged in
+      expect(router.currentRoute.value.params.id).toBe('42')
+      expect(router.currentRoute.value.params.tab).toBe('posts')
+      expect(router.currentRoute.value.params.sort).toBe('recent')
+    })
+
+    it('strips fragment before matching', async () => {
+      const createRouter = await getRouter()
+      const router = createRouter({
+        routes: [
+          { name: 'home', component: HomeScreen },
+          { name: 'about', component: AboutScreen },
+        ],
+        linking: {
+          prefixes: ['myapp://'],
+          config: {
+            screens: {
+              about: 'about',
+            },
+          },
+        },
+      })
+
+      const result = router.handleURL('myapp://about#section1')
+      await nextTick()
+      expect(result).toBe(true)
+      expect(router.currentRoute.value.config.name).toBe('about')
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // Bug fix: Deep link prefix matching longest first (P1 2.11)
+  // ---------------------------------------------------------------------------
+  describe('deep link prefix matching', () => {
+    it('matches longest prefix first', async () => {
+      const createRouter = await getRouter()
+      const router = createRouter({
+        routes: [
+          { name: 'home', component: HomeScreen },
+          { name: 'about', component: AboutScreen },
+        ],
+        linking: {
+          prefixes: ['myapp://', 'myapp://deep/'],
+          config: {
+            screens: {
+              about: 'about',
+            },
+          },
+        },
+      })
+
+      // 'myapp://deep/' is longer and should match first, leaving 'about'
+      const result = router.handleURL('myapp://deep/about')
+      await nextTick()
+      expect(result).toBe(true)
+      expect(router.currentRoute.value.config.name).toBe('about')
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // Bug fix: Params preserved on guard redirects (P1 2.10)
+  // ---------------------------------------------------------------------------
+  describe('params on guard redirects', () => {
+    it('replace forwards params on guard redirect', async () => {
+      const createRouter = await getRouter()
+      const router = createRouter([
+        { name: 'home', component: HomeScreen },
+        { name: 'about', component: AboutScreen },
+        { name: 'profile', component: ProfileScreen },
+      ])
+
+      // Guard redirects 'about' to 'profile'
+      router.beforeEach((to: any, _from: any, next: any) => {
+        if (to.config.name === 'about') next('profile')
+        else next()
+      })
+
+      await router.replace('about', { userId: '123' })
+      await nextTick()
+
+      expect(router.currentRoute.value.config.name).toBe('profile')
+      expect(router.currentRoute.value.params.userId).toBe('123')
+    })
+
+    it('reset forwards params on guard redirect', async () => {
+      const createRouter = await getRouter()
+      const router = createRouter([
+        { name: 'home', component: HomeScreen },
+        { name: 'about', component: AboutScreen },
+        { name: 'profile', component: ProfileScreen },
+      ])
+
+      router.beforeEach((to: any, _from: any, next: any) => {
+        if (to.config.name === 'about') next('profile')
+        else next()
+      })
+
+      await router.reset('about', { userId: '456' })
+      await nextTick()
+
+      expect(router.currentRoute.value.config.name).toBe('profile')
+      expect(router.currentRoute.value.params.userId).toBe('456')
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // Bug fix: afterEach fires on goBack (P1 2.5 continued)
+  // ---------------------------------------------------------------------------
+  describe('goBack afterEach hooks', () => {
+    it('afterEach fires after successful goBack', async () => {
+      const createRouter = await getRouter()
+      const router = createRouter([
+        { name: 'home', component: HomeScreen },
+        { name: 'about', component: AboutScreen },
+      ])
+
+      await router.push('about')
+
+      const afterHook = vi.fn()
+      router.afterEach(afterHook)
+
+      await router.goBack()
+      expect(afterHook).toHaveBeenCalledTimes(1)
+      expect(afterHook.mock.calls[0][0].config.name).toBe('home') // to
+      expect(afterHook.mock.calls[0][1].config.name).toBe('about') // from
+    })
+
+    it('afterEach does not fire when goBack is blocked', async () => {
+      const createRouter = await getRouter()
+      const router = createRouter([
+        { name: 'home', component: HomeScreen },
+        { name: 'about', component: AboutScreen },
+      ])
+
+      await router.push('about')
+
+      router.beforeEach((_to: any, _from: any, next: any) => next(false))
+      const afterHook = vi.fn()
+      router.afterEach(afterHook)
+
+      await router.goBack()
+      expect(afterHook).not.toHaveBeenCalled()
     })
   })
 })

@@ -4,7 +4,7 @@
  * reactive state, errors, and credential events.
  */
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
-import { installMockBridge } from './helpers'
+import { installMockBridge, withSetup } from './helpers'
 
 const mockBridge = installMockBridge()
 
@@ -59,13 +59,13 @@ describe('Social Auth', () => {
   describe('useAppleSignIn', () => {
     it('checks for existing session on creation', async () => {
       const { useAppleSignIn } = await import('../composables/useAppleSignIn')
-      useAppleSignIn()
+      await withSetup(() => useAppleSignIn())
       expect(invokeModuleSpy).toHaveBeenCalledWith('SocialAuth', 'getCurrentUser', ['apple'])
     })
 
     it('subscribes to auth:appleCredentialRevoked event', async () => {
       const { useAppleSignIn } = await import('../composables/useAppleSignIn')
-      useAppleSignIn()
+      await withSetup(() => useAppleSignIn())
       expect(onGlobalEventSpy).toHaveBeenCalledWith('auth:appleCredentialRevoked', expect.any(Function))
     })
 
@@ -82,7 +82,7 @@ describe('Social Auth', () => {
       })
 
       const { useAppleSignIn } = await import('../composables/useAppleSignIn')
-      const { signIn, user, isAuthenticated } = useAppleSignIn()
+      const { signIn, user, isAuthenticated } = await withSetup(() => useAppleSignIn())
       const result = await signIn()
 
       expect(invokeModuleSpy).toHaveBeenCalledWith('SocialAuth', 'signInWithApple')
@@ -101,7 +101,7 @@ describe('Social Auth', () => {
       })
 
       const { useAppleSignIn } = await import('../composables/useAppleSignIn')
-      const { signIn, error, isAuthenticated } = useAppleSignIn()
+      const { signIn, error, isAuthenticated } = await withSetup(() => useAppleSignIn())
       const result = await signIn()
 
       expect(result.success).toBe(false)
@@ -118,7 +118,7 @@ describe('Social Auth', () => {
       })
 
       const { useAppleSignIn } = await import('../composables/useAppleSignIn')
-      const { signIn, signOut, user, isAuthenticated } = useAppleSignIn()
+      const { signIn, signOut, user, isAuthenticated } = await withSetup(() => useAppleSignIn())
       await signIn()
       expect(isAuthenticated.value).toBe(true)
 
@@ -136,7 +136,7 @@ describe('Social Auth', () => {
       })
 
       const { useAppleSignIn } = await import('../composables/useAppleSignIn')
-      const { signIn, user, isAuthenticated } = useAppleSignIn()
+      const { signIn, user, isAuthenticated } = await withSetup(() => useAppleSignIn())
       await signIn()
       expect(isAuthenticated.value).toBe(true)
 
@@ -153,7 +153,7 @@ describe('Social Auth', () => {
       })
 
       const { useAppleSignIn } = await import('../composables/useAppleSignIn')
-      const { user, isAuthenticated } = useAppleSignIn()
+      const { user, isAuthenticated } = await withSetup(() => useAppleSignIn())
 
       // Wait for async init
       await Promise.resolve()
@@ -171,7 +171,7 @@ describe('Social Auth', () => {
 
     it('checks for existing session on creation', async () => {
       const { useGoogleSignIn } = await import('../composables/useGoogleSignIn')
-      useGoogleSignIn(CLIENT_ID)
+      await withSetup(() => useGoogleSignIn(CLIENT_ID))
       expect(invokeModuleSpy).toHaveBeenCalledWith('SocialAuth', 'getCurrentUser', ['google'])
     })
 
@@ -188,7 +188,7 @@ describe('Social Auth', () => {
       })
 
       const { useGoogleSignIn } = await import('../composables/useGoogleSignIn')
-      const { signIn, user, isAuthenticated } = useGoogleSignIn(CLIENT_ID)
+      const { signIn, user, isAuthenticated } = await withSetup(() => useGoogleSignIn(CLIENT_ID))
       const result = await signIn()
 
       expect(invokeModuleSpy).toHaveBeenCalledWith('SocialAuth', 'signInWithGoogle', [CLIENT_ID])
@@ -207,7 +207,7 @@ describe('Social Auth', () => {
       })
 
       const { useGoogleSignIn } = await import('../composables/useGoogleSignIn')
-      const { signIn, error, isAuthenticated } = useGoogleSignIn(CLIENT_ID)
+      const { signIn, error, isAuthenticated } = await withSetup(() => useGoogleSignIn(CLIENT_ID))
       const result = await signIn()
 
       expect(result.success).toBe(false)
@@ -224,7 +224,7 @@ describe('Social Auth', () => {
       })
 
       const { useGoogleSignIn } = await import('../composables/useGoogleSignIn')
-      const { signIn, signOut, user, isAuthenticated } = useGoogleSignIn(CLIENT_ID)
+      const { signIn, signOut, user, isAuthenticated } = await withSetup(() => useGoogleSignIn(CLIENT_ID))
       await signIn()
       expect(isAuthenticated.value).toBe(true)
 
@@ -242,7 +242,7 @@ describe('Social Auth', () => {
       })
 
       const { useGoogleSignIn } = await import('../composables/useGoogleSignIn')
-      const { user, isAuthenticated } = useGoogleSignIn(CLIENT_ID)
+      const { user, isAuthenticated } = await withSetup(() => useGoogleSignIn(CLIENT_ID))
 
       await Promise.resolve()
       await Promise.resolve()

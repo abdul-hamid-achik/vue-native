@@ -25,7 +25,7 @@ The JavaScript engine runs your Vue app:
 - **Vue 3 Composition API** — `ref`, `computed`, `watch`, `<script setup>` all work as expected
 - **Real native UI** — No DOM, no WebView, no HTML
 - **Cross-platform** — One Vue codebase, both platforms
-- **20 built-in components** — VView, VText, VButton, VInput, VList, and more
+- **30+ built-in components** — VView, VText, VButton, VInput, VList, and more
 - **Native modules** — Haptics, AsyncStorage, Camera, Geolocation, and more
 - **Navigation** — Stack navigation via `@thelacanians/vue-native-navigation`
 - **Hot reload** — Edit Vue files, see changes instantly

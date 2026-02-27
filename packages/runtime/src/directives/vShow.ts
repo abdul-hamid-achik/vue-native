@@ -8,10 +8,18 @@ import { NativeBridge } from '../bridge'
  */
 export const vShow: Directive<NativeNode> = {
   beforeMount(el, { value }) {
-    NativeBridge.updateProp(el.id, 'hidden', !value)
+    try {
+      NativeBridge.updateProp(el.id, 'hidden', !value)
+    } catch (err) {
+      console.error('[VueNative] v-show beforeMount error:', err)
+    }
   },
   updated(el, { value, oldValue }) {
     if (value === oldValue) return
-    NativeBridge.updateProp(el.id, 'hidden', !value)
+    try {
+      NativeBridge.updateProp(el.id, 'hidden', !value)
+    } catch (err) {
+      console.error('[VueNative] v-show updated error:', err)
+    }
   },
 }

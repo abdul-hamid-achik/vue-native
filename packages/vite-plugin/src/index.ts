@@ -51,7 +51,7 @@ export interface VueNativePluginOptions {
 }
 
 export default function vueNativePlugin(options: VueNativePluginOptions = {}) {
-  const { platform = 'ios', globalName = 'VueNativeApp' } = options
+  const { platform = 'ios', globalName = 'VueNativeApp', hotReload = true, hotReloadPort = 8174 } = options
 
   return {
     name: 'vue-native',
@@ -79,6 +79,9 @@ export default function vueNativePlugin(options: VueNativePluginOptions = {}) {
           '__DEV__': JSON.stringify(isDev),
           // Platform identifier available at compile time
           '__PLATFORM__': JSON.stringify(platform),
+          // Hot reload configuration available at compile time
+          '__HOT_RELOAD__': JSON.stringify(hotReload && isDev),
+          '__HOT_RELOAD_PORT__': JSON.stringify(hotReloadPort),
           // Replace process.env.NODE_ENV references from @vue/shared and
           // @vue/runtime-core. JavaScriptCore has no `process` global, so
           // leaving these unresolved would crash the bundle on load.
@@ -110,6 +113,9 @@ export default function vueNativePlugin(options: VueNativePluginOptions = {}) {
 
           // Don't clear the output directory (native project may have other files)
           emptyOutDir: false,
+
+          // Disable watching when hot reload is turned off
+          watch: hotReload && isDev ? undefined : null,
 
           // Generate source maps for debugging in native dev tools
           sourcemap: isDev,

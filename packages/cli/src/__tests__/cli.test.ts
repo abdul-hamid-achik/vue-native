@@ -861,7 +861,7 @@ describe('dev command', () => {
     expect(capturedWssOptions.port).toBe(9999)
   })
 
-  it('configures verifyClient to allow only localhost', async () => {
+  it('configures verifyClient to allow localhost and private network IPs', async () => {
     const devCommand = await importDevCommand()
     await devCommand.parseAsync(['node', 'dev'])
     await new Promise(resolve => setTimeout(resolve, 10))
@@ -882,9 +882,15 @@ describe('dev command', () => {
     // IPv4-mapped localhost should be allowed
     expect(verifyClient({ req: { socket: { remoteAddress: '::ffff:127.0.0.1' } } })).toBe(true)
 
-    // External IPs should be rejected
-    expect(verifyClient({ req: { socket: { remoteAddress: '192.168.1.100' } } })).toBe(false)
-    expect(verifyClient({ req: { socket: { remoteAddress: '10.0.0.1' } } })).toBe(false)
+    // Private network IPs should be allowed (for physical device testing)
+    expect(verifyClient({ req: { socket: { remoteAddress: '192.168.1.100' } } })).toBe(true)
+    expect(verifyClient({ req: { socket: { remoteAddress: '10.0.0.1' } } })).toBe(true)
+    expect(verifyClient({ req: { socket: { remoteAddress: '172.16.5.10' } } })).toBe(true)
+    expect(verifyClient({ req: { socket: { remoteAddress: '::ffff:192.168.1.50' } } })).toBe(true)
+
+    // Public IPs should be rejected
+    expect(verifyClient({ req: { socket: { remoteAddress: '8.8.8.8' } } })).toBe(false)
+    expect(verifyClient({ req: { socket: { remoteAddress: '203.0.113.1' } } })).toBe(false)
   })
 
   it('registers connection and error handlers on WebSocket server', async () => {

@@ -64,6 +64,9 @@ class VScrollViewFactory : NativeComponentFactory {
         }
     }
 
+    private val scrollThrottles = mutableMapOf<SwipeRefreshLayout, EventThrottle>()
+    private val scrollListeners = mutableMapOf<SwipeRefreshLayout, android.view.ViewTreeObserver.OnScrollChangedListener>()
+
     override fun addEventListener(view: View, event: String, handler: (Any?) -> Unit) {
         val srf = view as? SwipeRefreshLayout ?: return
         val scroll = states[srf]?.scrollView
@@ -73,20 +76,38 @@ class VScrollViewFactory : NativeComponentFactory {
                 srf.setOnRefreshListener { handler(null) }
             }
             "scroll" -> {
-                scroll?.viewTreeObserver?.addOnScrollChangedListener {
-                    handler(mapOf(
-                        "contentOffset" to mapOf("x" to scroll.scrollX, "y" to scroll.scrollY)
+                val throttle = EventThrottle(intervalMs = 16L, handler = handler)
+                scrollThrottles[srf] = throttle
+                val listener = android.view.ViewTreeObserver.OnScrollChangedListener {
+                    val child = if (scroll != null && scroll.childCount > 0) scroll.getChildAt(0) else null
+                    throttle.fire(mapOf(
+                        "x" to (scroll?.scrollX ?: 0),
+                        "y" to (scroll?.scrollY ?: 0),
+                        "contentWidth" to (child?.width ?: scroll?.width ?: 0),
+                        "contentHeight" to (child?.height ?: scroll?.height ?: 0),
+                        "layoutWidth" to (scroll?.width ?: 0),
+                        "layoutHeight" to (scroll?.height ?: 0),
                     ))
                 }
+                scrollListeners[srf] = listener
+                scroll?.viewTreeObserver?.addOnScrollChangedListener(listener)
             }
         }
     }
 
     override fun removeEventListener(view: View, event: String) {
         val srf = view as? SwipeRefreshLayout ?: return
-        if (event == "refresh") {
-            srf.setOnRefreshListener(null)
-            srf.isEnabled = false
+        when (event) {
+            "refresh" -> {
+                srf.setOnRefreshListener(null)
+                srf.isEnabled = false
+            }
+            "scroll" -> {
+                scrollListeners.remove(srf)?.let { listener ->
+                    states[srf]?.scrollView?.viewTreeObserver?.removeOnScrollChangedListener(listener)
+                }
+                scrollThrottles.remove(srf)?.cancel()
+            }
         }
     }
 

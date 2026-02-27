@@ -20,7 +20,7 @@ import {
   VProgressBar, VPicker, VSegmentedControl, VActionSheet,
   VRefreshControl, VPressable, VSectionList,
   VCheckbox, VRadio, VDropdown,
-  VVideo,
+  VVideo, VFlatList,
 } from './components'
 import { vShow } from './directives/vShow'
 import { ErrorBoundary } from './errorBoundary'
@@ -90,6 +90,7 @@ export function createApp(rootComponent: Component, rootProps?: Record<string, a
   app.component('VRadio', VRadio)
   app.component('VDropdown', VDropdown)
   app.component('VVideo', VVideo)
+  app.component('VFlatList', VFlatList)
   app.component('ErrorBoundary', ErrorBoundary)
   app.component('VErrorBoundary', ErrorBoundary)
   app.directive('show', vShow)
@@ -192,9 +193,9 @@ export {
   VProgressBar, VPicker, VSegmentedControl, VActionSheet,
   VRefreshControl, VPressable, VSectionList,
   VCheckbox, VRadio, VDropdown,
-  VVideo,
+  VVideo, VFlatList,
 } from './components'
-export type { AlertButton, StatusBarStyle, WebViewSource, ActionSheetAction, RadioOption, DropdownOption } from './components'
+export type { AlertButton, StatusBarStyle, WebViewSource, ActionSheetAction, RadioOption, DropdownOption, FlatListRenderItemInfo } from './components'
 
 // Error Boundary
 export { ErrorBoundary } from './errorBoundary'
@@ -244,6 +245,9 @@ export type {
   CalendarEvent, Calendar, CreateEventOptions,
   Contact, ContactField, CreateContactData,
 } from './composables'
+
+// Theme system
+export { createTheme, createDynamicStyleSheet, type ThemeDefinition, type ThemeContext } from './theme'
 
 // Bridge (for advanced native interop)
 export { NativeBridge } from './bridge'

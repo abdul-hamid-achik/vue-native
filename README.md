@@ -7,7 +7,7 @@ Build native iOS and Android apps with Vue 3. Write Vue components, render real 
 - **Vue 3 First** — Composition API, `<script setup>`, `ref`, `computed`, `watch` — all just work
 - **Real Native UI** — Every component maps to native UIKit (iOS) or Android Views. No DOM, no WebView
 - **Cross-Platform** — Same Vue code targets both iOS and Android from a single codebase
-- **20 Built-in Components** — VView, VText, VButton, VInput, VScrollView, VImage, VList, VModal, and more
+- **28+ Built-in Components** — VView, VText, VButton, VInput, VScrollView, VImage, VList, VModal, and more
 - **Native Modules** — Haptics, AsyncStorage, Clipboard, Network, Camera, Geolocation, and more
 - **Navigation** — Stack navigation via `@thelacanians/vue-native-navigation`
 - **Flexbox Layout** — Yoga (iOS) and FlexboxLayout (Android) for consistent cross-platform layouts
@@ -18,7 +18,7 @@ Build native iOS and Android apps with Vue 3. Write Vue components, render real 
 
 | Feature | iOS | Android |
 |---------|-----|---------|
-| All 20 components | ✅ | ✅ |
+| All 28+ components | ✅ | ✅ |
 | Native Modules | ✅ | ✅ |
 | Navigation | ✅ | ✅ |
 | Hot Reload | ✅ | ✅ |
@@ -145,11 +145,27 @@ bun run dev      # Start Vite watch mode + dev server
 | `<VActionSheet>` | Native bottom action sheet |
 | `<VModal>` | Window-level overlay modal |
 
+### Form Controls
+| Component | Description |
+|-----------|-------------|
+| `<VCheckbox>` | Checkbox with `v-model` support |
+| `<VRadio>` | Radio button group |
+| `<VDropdown>` | Dropdown/select picker |
+
+### Video
+| Component | Description |
+|-----------|-------------|
+| `<VVideo>` | Video playback component |
+
 ### System
 | Component | Description |
 |-----------|-------------|
 | `<VStatusBar>` | Control status bar style and visibility |
 | `<VPicker>` | Date/time picker |
+| `<VRefreshControl>` | Pull-to-refresh for scroll views |
+| `<VPressable>` | Generic pressable wrapper with press/long-press events |
+| `<VSectionList>` | Sectioned list with headers |
+| `<ErrorBoundary>` | Catches and displays component errors with recovery |
 
 ## Composables
 

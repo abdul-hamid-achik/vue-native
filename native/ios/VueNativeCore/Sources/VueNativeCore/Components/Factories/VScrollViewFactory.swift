@@ -221,20 +221,25 @@ private final class RefreshTarget: NSObject {
 // MARK: - ScrollDelegateProxy
 
 /// UIScrollViewDelegate proxy that forwards scroll events to a JS handler.
+/// Uses EventThrottle to limit bridge round-trips to ~60/s during fast scrolling.
 private final class ScrollDelegateProxy: NSObject, UIScrollViewDelegate {
-    private let handler: (Any?) -> Void
+    private let throttle: EventThrottle
 
     init(handler: @escaping (Any?) -> Void) {
-        self.handler = handler
+        self.throttle = EventThrottle(interval: 0.016, handler: handler)
         super.init()
     }
 
     func scrollViewDidScroll(_ scrollView: UIScrollView) {
         let payload: [String: Any] = [
             "x": scrollView.contentOffset.x,
-            "y": scrollView.contentOffset.y
+            "y": scrollView.contentOffset.y,
+            "contentWidth": scrollView.contentSize.width,
+            "contentHeight": scrollView.contentSize.height,
+            "layoutWidth": scrollView.frame.width,
+            "layoutHeight": scrollView.frame.height,
         ]
-        handler(payload)
+        throttle.fire(payload)
     }
 }
 #endif

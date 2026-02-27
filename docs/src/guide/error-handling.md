@@ -113,7 +113,7 @@ The `resetKeys` prop accepts an array of reactive values. When any value in the 
 
 ```vue
 <script setup>
-import { ref } from 'vue'
+import { ref } from '@thelacanians/vue-native-runtime'
 import {
   ErrorBoundary,
   VView,

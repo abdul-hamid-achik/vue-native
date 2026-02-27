@@ -48,18 +48,24 @@ class VSliderFactory : NativeComponentFactory {
         }
     }
 
+    private val throttles = mutableMapOf<SeekBar, EventThrottle>()
+
     override fun addEventListener(view: View, event: String, handler: (Any?) -> Unit) {
         val sb = view as? SeekBar ?: return
         when (event) {
             "change", "valueChange" -> {
                 changeHandlers[sb] = handler
+                val throttle = EventThrottle(intervalMs = 16L, handler = handler)
+                throttles[sb] = throttle
                 sb.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
                     override fun onProgressChanged(s: SeekBar, progress: Int, fromUser: Boolean) {
-                        if (fromUser) changeHandlers[s]?.invoke(mapOf("value" to progress.toFloat()))
+                        if (fromUser) throttle.fire(mapOf("value" to progress.toFloat() / s.max.toFloat()))
                     }
                     override fun onStartTrackingTouch(s: SeekBar) {}
                     override fun onStopTrackingTouch(s: SeekBar) {
-                        changeHandlers[s]?.invoke(mapOf("value" to s.progress.toFloat()))
+                        // Always deliver the final value immediately on release
+                        throttle.cancel()
+                        changeHandlers[s]?.invoke(mapOf("value" to s.progress.toFloat() / s.max.toFloat()))
                     }
                 })
             }
@@ -69,6 +75,7 @@ class VSliderFactory : NativeComponentFactory {
     override fun removeEventListener(view: View, event: String) {
         val sb = view as? SeekBar ?: return
         changeHandlers.remove(sb)
+        throttles.remove(sb)?.cancel()
         sb.setOnSeekBarChangeListener(null)
     }
 }

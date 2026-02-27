@@ -119,7 +119,7 @@ Each pin must be in the format `sha256/<base64-encoded-hash>`. Provide multiple 
 import { ref, onMounted } from '@thelacanians/vue-native-runtime'
 import { useHttp } from '@thelacanians/vue-native-runtime'
 
-const http = useHttp({
+const { loading, error, get, post: postRequest } = useHttp({
   baseURL: 'https://jsonplaceholder.typicode.com',
   headers: { 'Accept': 'application/json' },
 })
@@ -128,17 +128,17 @@ const posts = ref([])
 
 onMounted(async () => {
   try {
-    const response = await http.get('/posts', {
+    const response = await get('/posts', {
       params: { _limit: '10' },
     })
     posts.value = response.data
   } catch (e) {
-    console.log('Request failed:', http.error.value)
+    console.log('Request failed:', error.value)
   }
 })
 
 async function createPost() {
-  const response = await http.post('/posts', {
+  const response = await postRequest('/posts', {
     title: 'New Post',
     body: 'Created with Vue Native',
     userId: 1,
@@ -149,9 +149,9 @@ async function createPost() {
 
 <template>
   <VView :style="{ flex: 1, padding: 20 }">
-    <VText v-if="http.loading.value">Loading...</VText>
-    <VText v-if="http.error.value" :style="{ color: 'red' }">
-      Error: {{ http.error.value }}
+    <VText v-if="loading">Loading...</VText>
+    <VText v-if="error" :style="{ color: 'red' }">
+      Error: {{ error }}
     </VText>
 
     <VButton :onPress="createPost"><VText>Create Post</VText></VButton>

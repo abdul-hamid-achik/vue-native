@@ -98,9 +98,16 @@ class VListFactory : NativeComponentFactory {
                 cumulativeX += dx
                 cumulativeY += dy
 
-                // Dispatch scroll event with cumulative position
+                // Dispatch scroll event with cumulative position and dimensions
                 scrollHandlers[recyclerView]?.invoke(
-                    mapOf("x" to cumulativeX, "y" to cumulativeY)
+                    mapOf(
+                        "x" to cumulativeX,
+                        "y" to cumulativeY,
+                        "contentWidth" to (recyclerView.computeHorizontalScrollRange()),
+                        "contentHeight" to (recyclerView.computeVerticalScrollRange()),
+                        "layoutWidth" to recyclerView.width,
+                        "layoutHeight" to recyclerView.height,
+                    )
                 )
 
                 // endReached detection (threshold = 20% from bottom)
@@ -167,20 +174,33 @@ class VListFactory : NativeComponentFactory {
 }
 
 class VListAdapter(private val items: List<View>) : RecyclerView.Adapter<VListAdapter.VH>() {
-    class VH(val view: View) : RecyclerView.ViewHolder(view)
+    class VH(itemView: View) : RecyclerView.ViewHolder(itemView)
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
-        val v = items.getOrNull(viewType) ?: android.widget.FrameLayout(parent.context)
-        // Remove from any existing parent
-        (v.parent as? ViewGroup)?.removeView(v)
-        v.layoutParams = RecyclerView.LayoutParams(
-            RecyclerView.LayoutParams.MATCH_PARENT,
-            RecyclerView.LayoutParams.WRAP_CONTENT
-        )
-        return VH(v)
+        val container = android.widget.FrameLayout(parent.context).apply {
+            layoutParams = RecyclerView.LayoutParams(
+                RecyclerView.LayoutParams.MATCH_PARENT,
+                RecyclerView.LayoutParams.WRAP_CONTENT
+            )
+        }
+        return VH(container)
     }
 
-    override fun onBindViewHolder(holder: VH, position: Int) {}
+    override fun onBindViewHolder(holder: VH, position: Int) {
+        val container = holder.itemView as android.widget.FrameLayout
+        // Remove the previous item view from this recycled container
+        container.removeAllViews()
+        val itemView = items.getOrNull(position) ?: return
+        // Remove from any existing parent (previous container or direct parent)
+        (itemView.parent as? ViewGroup)?.removeView(itemView)
+        container.addView(itemView, ViewGroup.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        ))
+    }
+
     override fun getItemCount(): Int = items.size
-    override fun getItemViewType(position: Int): Int = position
+
+    // Use a single view type so RecyclerView can reuse all ViewHolders
+    override fun getItemViewType(position: Int): Int = 0
 }

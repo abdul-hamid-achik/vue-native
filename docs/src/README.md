@@ -15,7 +15,7 @@ features:
   - title: Vue 3 First
     details: Composition API, script setup, ref, computed, watch — your existing Vue knowledge transfers directly.
   - title: Cross-Platform
-    details: One Vue codebase targets both iOS and Android. 20 built-in components with full parity.
+    details: One Vue codebase targets both iOS and Android. 30+ built-in components with full parity.
   - title: Native Performance
     details: JavaScriptCore on iOS, V8 on Android. Yoga / FlexboxLayout for pixel-perfect layouts.
   - title: Developer Experience

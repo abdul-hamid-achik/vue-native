@@ -27,9 +27,9 @@ describe('Renderer resilience', () => {
       // Create a valid element
       const el = nodeOps.createElement('VView')
 
-      // Temporarily break the bridge
-      const originalUpdateStyle = NativeBridge.updateStyle.bind(NativeBridge)
-      NativeBridge.updateStyle = () => {
+      // Temporarily break the bridge (patchStyle uses updateStyles for batching)
+      const originalUpdateStyles = NativeBridge.updateStyles.bind(NativeBridge)
+      NativeBridge.updateStyles = () => {
         throw new Error('Style update failed')
       }
 
@@ -43,7 +43,7 @@ describe('Renderer resilience', () => {
         expect.any(Error),
       )
 
-      NativeBridge.updateStyle = originalUpdateStyle
+      NativeBridge.updateStyles = originalUpdateStyles
       errorSpy.mockRestore()
     })
 

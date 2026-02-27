@@ -37,6 +37,7 @@ final class VListFactory: NativeComponentFactory {
         switch event {
         case "scroll":
             container.onScroll = handler
+            container.scrollThrottle = EventThrottle(interval: 0.016, handler: handler)
         case "endReached":
             container.onEndReached = handler
         default:
@@ -47,7 +48,9 @@ final class VListFactory: NativeComponentFactory {
     func removeEventListener(view: UIView, event: String) {
         guard let container = view as? VListContainerView else { return }
         switch event {
-        case "scroll": container.onScroll = nil
+        case "scroll":
+            container.onScroll = nil
+            container.scrollThrottle = nil
         case "endReached": container.onEndReached = nil
         default: break
         }
@@ -106,6 +109,7 @@ final class VListContainerView: UIView {
     var itemViews: [UIView] = []
     var estimatedItemHeight: CGFloat = 44
     var onScroll: ((Any?) -> Void)?
+    var scrollThrottle: EventThrottle?
     var onEndReached: ((Any?) -> Void)?
     fileprivate var firedEndReached = false
     private lazy var internalDelegate = VListInternalDelegate(container: self)
@@ -195,7 +199,20 @@ private final class VListInternalDelegate: NSObject,
     func scrollViewDidScroll(_ scrollView: UIScrollView) {
         guard let container = container else { return }
         let offset = scrollView.contentOffset
-        container.onScroll?(["x": Double(offset.x), "y": Double(offset.y)])
+        let payload: [String: Any] = [
+            "x": Double(offset.x),
+            "y": Double(offset.y),
+            "contentWidth": Double(scrollView.contentSize.width),
+            "contentHeight": Double(scrollView.contentSize.height),
+            "layoutWidth": Double(scrollView.frame.width),
+            "layoutHeight": Double(scrollView.frame.height),
+        ]
+        // Use throttle if available, otherwise fire directly
+        if let throttle = container.scrollThrottle {
+            throttle.fire(payload)
+        } else {
+            container.onScroll?(payload)
+        }
 
         // endReached detection (threshold = 20% from bottom)
         let contentH = scrollView.contentSize.height

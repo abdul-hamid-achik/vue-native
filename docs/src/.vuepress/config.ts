@@ -63,11 +63,13 @@ export default defineUserConfig({
             '/guide/shared-transitions.md',
             '/guide/testing.md',
             '/guide/security.md',
+            '/guide/debugging.md',
           ],
         },
         {
           text: 'Integration Guides',
           children: [
+            '/guide/state-management.md',
             '/guide/deep-linking.md',
             '/guide/state-persistence.md',
             '/guide/push-notifications.md',
@@ -141,6 +143,7 @@ export default defineUserConfig({
           text: 'Lists',
           children: [
             '/components/VList.md',
+            '/components/VFlatList.md',
             '/components/VSectionList.md',
           ],
         },
@@ -181,6 +184,7 @@ export default defineUserConfig({
             '/composables/useAsyncStorage.md',
             '/composables/useSecureStorage.md',
             '/composables/useFileSystem.md',
+            '/composables/useDatabase.md',
           ],
         },
         {

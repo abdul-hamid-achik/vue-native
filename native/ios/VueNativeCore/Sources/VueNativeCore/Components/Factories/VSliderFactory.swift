@@ -53,11 +53,16 @@ final class VSliderFactory: NativeComponentFactory {
     }
 }
 
+/// Throttled target for UISlider .valueChanged events.
+/// Limits bridge round-trips to ~60/s during continuous slider dragging.
 private final class SliderTarget: NSObject {
-    let handler: (Any?) -> Void
-    init(handler: @escaping (Any?) -> Void) { self.handler = handler }
+    private let throttle: EventThrottle
+    init(handler: @escaping (Any?) -> Void) {
+        self.throttle = EventThrottle(interval: 0.016, handler: handler)
+        super.init()
+    }
     @objc func handleValueChanged(_ slider: UISlider) {
-        handler(Double(slider.value))
+        throttle.fire(["value": Double(slider.value)])
     }
 }
 #endif

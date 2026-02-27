@@ -23,6 +23,20 @@ class NativeBridge(private val context: Context) {
             "create", "createText", "appendChild", "insertBefore", "removeChild",
             "setRootView", "setText", "setElementText"
         )
+
+        /** Style properties that affect layout and require a layout pass when changed. */
+        private val layoutAffectingStyles = setOf(
+            "width", "height", "minWidth", "minHeight", "maxWidth", "maxHeight",
+            "flex", "flexGrow", "flexShrink", "flexBasis", "flexDirection",
+            "flexWrap", "alignItems", "alignSelf", "alignContent", "justifyContent",
+            "padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft",
+            "paddingHorizontal", "paddingVertical", "paddingStart", "paddingEnd",
+            "margin", "marginTop", "marginRight", "marginBottom", "marginLeft",
+            "marginHorizontal", "marginVertical", "marginStart", "marginEnd",
+            "gap", "rowGap", "columnGap",
+            "position", "top", "right", "bottom", "left", "start", "end",
+            "aspectRatio", "display", "overflow", "direction",
+        )
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -81,20 +95,34 @@ class NativeBridge(private val context: Context) {
         }
 
         mainHandler.post {
-            var hasMutations = false
+            var needsLayout = false
             for (op in ops) {
                 try {
                     val opName = op.optString("op")
-                    if (!hasMutations && opName in treeMutationOps) {
-                        hasMutations = true
+                    if (!needsLayout && opName in treeMutationOps) {
+                        needsLayout = true
+                    }
+                    // Check if updateStyle changes any layout-affecting property
+                    if (!needsLayout && opName == "updateStyle") {
+                        val args = op.optJSONArray("args")
+                        val styleObj = args?.optJSONObject(1)
+                        if (styleObj != null) {
+                            val keys = styleObj.keys()
+                            while (keys.hasNext()) {
+                                if (keys.next() in layoutAffectingStyles) {
+                                    needsLayout = true
+                                    break
+                                }
+                            }
+                        }
                     }
                     handleOperation(op)
                 } catch (e: Exception) {
                     Log.e(TAG, "Error handling op '${op.optString("op")}': ${e.message}")
                 }
             }
-            // Only trigger layout when the batch mutated the view tree
-            if (hasMutations) {
+            // Trigger layout when tree was mutated or layout-affecting styles changed
+            if (needsLayout) {
                 triggerLayout()
             }
         }
@@ -380,6 +408,11 @@ class NativeBridge(private val context: Context) {
 
     /** Clear all registries. Called during hot reload after JS teardown. Must run on main thread. */
     fun clearAllRegistries() {
+        // Destroy all views via their factories before clearing maps
+        for ((_, view) in nodeViews) {
+            val factory = componentRegistry.factoryForView(view)
+            factory?.destroyView(view)
+        }
         nodeViews.clear()
         nodeTypes.clear()
         eventHandlers.clear()

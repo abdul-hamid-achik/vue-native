@@ -137,7 +137,7 @@ describe('NativeRenderer (nodeOps)', () => {
   // patchProp — style
   // -------------------------------------------------------------------------
   describe('patchProp: style', () => {
-    it('sends updateStyle for each style property that changes', async () => {
+    it('sends a single batched updateStyle for all style properties that change', async () => {
       const el = nodeOps.createElement('VView')
       await nextTick()
       mockBridge.reset()
@@ -146,10 +146,10 @@ describe('NativeRenderer (nodeOps)', () => {
       await nextTick()
 
       const ops = mockBridge.getOpsByType('updateStyle')
-      expect(ops).toHaveLength(2)
-      const keys = ops.map(o => Object.keys(o.args[1])[0])
-      expect(keys).toContain('backgroundColor')
-      expect(keys).toContain('opacity')
+      expect(ops).toHaveLength(1)
+      const styles = ops[0].args[1]
+      expect(styles.backgroundColor).toBe('#FF0000')
+      expect(styles.opacity).toBe(1)
     })
 
     it('sends null for style properties that are removed', async () => {

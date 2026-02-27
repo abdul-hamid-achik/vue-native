@@ -7,7 +7,7 @@
  */
 
 import { createRenderer, type RendererOptions } from '@vue/runtime-core'
-import { type NativeNode, createNativeNode, createTextNode, createCommentNode } from './node'
+import { type NativeNode, createNativeNode, createTextNode, createCommentNode, releaseNodeId } from './node'
 import { NativeBridge } from './bridge'
 
 /**
@@ -19,9 +19,11 @@ function toEventName(key: string): string {
 }
 
 /**
- * Diff two style objects and send only the changed properties to native.
- * - Properties in nextStyle that differ from prevStyle are updated.
- * - Properties in prevStyle missing from nextStyle are set to null (removed).
+ * Diff two style objects and send changed properties to native as a single
+ * batched `updateStyle` operation. Instead of sending one bridge op per
+ * property, we collect all changed keys into one dict and send them together.
+ * This reduces bridge round-trips from O(n) to O(1) per style patch.
+ *
  * Errors are caught to prevent breaking the Vue render loop.
  */
 function patchStyle(
@@ -32,19 +34,28 @@ function patchStyle(
   try {
     const prev = prevStyle || {}
     const next = nextStyle || {}
+    const changes: Record<string, any> = {}
+    let hasChanges = false
 
-    // Update changed or new properties
+    // Collect changed or new properties
     for (const key in next) {
       if (next[key] !== prev[key]) {
-        NativeBridge.updateStyle(nodeId, key, next[key])
+        changes[key] = next[key]
+        hasChanges = true
       }
     }
 
-    // Remove properties that no longer exist
+    // Collect removed properties (set to null)
     for (const key in prev) {
       if (!(key in next)) {
-        NativeBridge.updateStyle(nodeId, key, null)
+        changes[key] = null
+        hasChanges = true
       }
+    }
+
+    // Send all changes in a single bridge operation
+    if (hasChanges) {
+      NativeBridge.updateStyles(nodeId, changes)
     }
   } catch (err) {
     console.error(`[VueNative] Error patching style on node ${nodeId}:`, err)
@@ -212,6 +223,7 @@ const nodeOps: RendererOptions<NativeNode, NativeNode> = {
       } catch (err) {
         console.error(`[VueNative] Error removing node ${child.id}:`, err)
       }
+      releaseNodeId(child.id)
     }
   },
 
