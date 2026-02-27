@@ -10,7 +10,8 @@
   "scripts": {
     "build": "turbo run build",
     "dev": "turbo run dev",
-    "test": "turbo run test",
+    "test": "turbo run test && bun run test:ios && bun run test:android",
+    "test:ts": "turbo run test",
     "typecheck": "turbo run typecheck",
     "clean": "turbo run clean",
     "lint": "bunx eslint .",
@@ -18,9 +19,7 @@
     "knip": "bunx knip",
     "prepare": "bunx lefthook install",
     "test:ios": "xcodebuild test -scheme VueNativeCore -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' -quiet",
-    "test:android": "cd native/android && ./gradlew :VueNativeCore:testDebugUnitTest",
-    "test:native": "bun run test:ios && bun run test:android",
-    "test:all": "bun run test && bun run test:native"
+    "test:android": "cd native/android && ./gradlew :VueNativeCore:testDebugUnitTest"
   },
   "devDependencies": {
     "@stylistic/eslint-plugin": "^4.2.0",

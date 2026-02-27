@@ -96,7 +96,7 @@ cd native/android && ./gradlew :VueNativeCore:testDebugUnitTest       # JUnit + 
 When a change spans multiple languages (e.g., adding a component requires TS + Swift + Kotlin), run ALL relevant checks before committing. Use the convenience scripts:
 
 ```bash
-bun run test:all          # Runs TS tests + iOS tests + Android tests
+bun run test              # Runs TS tests + iOS tests + Android tests
 ```
 
 ### Documentation changes (`docs/`)
@@ -212,7 +212,8 @@ bun run build                # Build all packages (turbo)
 bun run lint                 # ESLint across all packages
 bun run typecheck            # TypeScript type-check (turbo)
 bun test                     # Run TS tests (Bun runner, all packages)
-bun run test                 # Run TS tests (turbo → vitest in each package)
+bun run test                 # Run ALL tests (TS + iOS + Android)
+bun run test:ts              # Run TS tests only (turbo → vitest in each package)
 
 # ── iOS (Swift) ─────────────────────────────────────────────
 swift build --package-path native/ios/VueNativeCore    # Build Swift package
@@ -225,8 +226,6 @@ cd native/android && ./gradlew :VueNativeCore:testDebugUnitTest        # Test
 bun run test:android                                                   # Shortcut from root
 
 # ── All platforms ───────────────────────────────────────────
-bun run test:native          # iOS + Android native tests
-bun run test:all             # TS + iOS + Android — run before pushing
 
 # ── CLI ─────────────────────────────────────────────────────
 vue-native create <name>     # Scaffold a new project
@@ -257,7 +256,7 @@ cd examples/counter && bun run dev       # Vite watch + hot reload
 | Duplicate Vue instances | Two copies of Vue produce two reactivity systems | Ensure `@thelacanians/vue-native-runtime` re-exports from one `@vue/runtime-core` |
 | `FPercent(value:)` in FlexLayout (iOS) | Internal type, not public API | Use the postfix `%` operator: `50%` |
 | Removing `invokeNativeModule` timeout | Promise hangs forever if native never replies | The 30s timeout in `bridge.ts` is intentional |
-| Pushing without running tests | CI breaks, blocks other contributors | Run `bun run test:all` before pushing |
+| Pushing without running tests | CI breaks, blocks other contributors | Run `bun run test` before pushing |
 | Adding a component without tests/docs | Feature is undiscoverable and untested | Always add tests (all 3 languages) + doc page + sidebar entry |
 | Committing `.env` or credentials | Leaks secrets to the repository | Never commit secrets; use `.gitignore` and env vars |
 
