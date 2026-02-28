@@ -21,7 +21,7 @@ let package = Package(
             path: "Sources/VueNativeCore",
             resources: [
                 .copy("Resources/vue-native-placeholder.js")
-            ],
+            ]
         ),
         .testTarget(
             name: "VueNativeCoreTests",

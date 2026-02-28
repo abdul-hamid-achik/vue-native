@@ -17,5 +17,6 @@
     "tools/**",
     "**/*.d.ts"
   ],
-  "exclude": ["classMembers", "exports", "types"]
+  "exclude": ["classMembers", "exports", "types"],
+  "ignoreBinaries": ["swift"]
 }
