@@ -36,7 +36,7 @@ jobs:
         run: bun run build
 
       - name: Test
-        run: bun run test
+        run: bun run test:ts
 
       - name: Dead code check
         run: bun run knip
@@ -58,6 +58,7 @@ jobs:
 
       - name: Build VueNativeCore for iOS Simulator
         run: |
+          cd native/ios/VueNativeCore
           xcodebuild build \
             -scheme VueNativeCore \
             -sdk iphonesimulator \
@@ -66,6 +67,7 @@ jobs:
 
       - name: Test VueNativeCore
         run: |
+          cd native/ios/VueNativeCore
           xcodebuild test \
             -scheme VueNativeCore \
             -sdk iphonesimulator \
@@ -76,7 +78,7 @@ jobs:
   # ── Swift / macOS (build & test VueNativeShared + VueNativeMacOS) ──
   swift-macos:
     name: Swift (macOS)
-    runs-on: macos-14
+    runs-on: macos-15
 
     steps:
       - uses: actions/checkout@v4

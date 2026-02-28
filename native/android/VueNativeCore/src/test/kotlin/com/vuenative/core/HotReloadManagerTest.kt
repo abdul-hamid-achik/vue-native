@@ -1,7 +1,6 @@
 package com.vuenative.core
 
 import android.content.Context
-import android.widget.FrameLayout
 import androidx.test.core.app.ApplicationProvider
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
