@@ -73,6 +73,34 @@ jobs:
             -skipPackagePluginValidation \
             -resultBundlePath TestResults.xcresult
 
+  # ── Swift / macOS (build & test VueNativeShared + VueNativeMacOS) ──
+  swift-macos:
+    name: Swift (macOS)
+    runs-on: macos-14
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build VueNativeShared
+        run: |
+          cd native/shared/VueNativeShared
+          swift build
+
+      - name: Test VueNativeShared
+        run: |
+          cd native/shared/VueNativeShared
+          swift test
+
+      - name: Build VueNativeMacOS
+        run: |
+          cd native/macos/VueNativeMacOS
+          swift build
+
+      - name: Test VueNativeMacOS
+        run: |
+          cd native/macos/VueNativeMacOS
+          swift test
+
   # ── Kotlin / Android (lint, build, test VueNativeCore) ──
   kotlin:
     runs-on: ubuntu-latest

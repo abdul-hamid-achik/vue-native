@@ -158,6 +158,11 @@ describe('Config — platform option', () => {
     const config = getPluginConfig({ platform: 'android' })
     expect(config.define['__PLATFORM__']).toBe(JSON.stringify('android'))
   })
+
+  it('sets __PLATFORM__ to "macos" when specified', () => {
+    const config = getPluginConfig({ platform: 'macos' })
+    expect(config.define['__PLATFORM__']).toBe(JSON.stringify('macos'))
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -233,6 +238,11 @@ describe('Edge cases', () => {
   it('works with android platform', () => {
     const config = getPluginConfig({ platform: 'android' })
     expect(config.define['__PLATFORM__']).toBe(JSON.stringify('android'))
+  })
+
+  it('works with macos platform', () => {
+    const config = getPluginConfig({ platform: 'macos' })
+    expect(config.define['__PLATFORM__']).toBe(JSON.stringify('macos'))
   })
 
   it('treats any non-production mode as development', () => {

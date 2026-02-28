@@ -5,7 +5,7 @@ import { viteBundler } from '@vuepress/bundler-vite'
 export default defineUserConfig({
   lang: 'en-US',
   title: 'Vue Native',
-  description: 'Build native iOS and Android apps with Vue 3.',
+  description: 'Build native iOS, Android, and macOS apps with Vue 3.',
 
   bundler: viteBundler(),
 
@@ -28,6 +28,7 @@ export default defineUserConfig({
         children: [
           { text: 'iOS', link: '/ios/' },
           { text: 'Android', link: '/android/' },
+          { text: 'macOS', link: '/macos/' },
         ],
       },
     ],
@@ -261,6 +262,15 @@ export default defineUserConfig({
             '/composables/useBackgroundTask.md',
           ],
         },
+        {
+          text: 'Desktop (macOS)',
+          children: [
+            '/composables/useWindow.md',
+            '/composables/useMenu.md',
+            '/composables/useFileDialog.md',
+            '/composables/useDragDrop.md',
+          ],
+        },
       ],
       '/navigation/': [
         '/navigation/README.md',
@@ -282,6 +292,11 @@ export default defineUserConfig({
         '/android/README.md',
         '/android/setup.md',
         '/android/VueNativeActivity.md',
+      ],
+      '/macos/': [
+        '/macos/README.md',
+        '/macos/setup.md',
+        '/macos/VueNativeWindowController.md',
       ],
     },
   }),

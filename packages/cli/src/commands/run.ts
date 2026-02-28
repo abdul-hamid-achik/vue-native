@@ -68,7 +68,7 @@ function findApkPath(androidDir: string): string | null {
 
 export const runCommand = new Command('run')
   .description('Build and run the app')
-  .argument('<platform>', 'platform to run on (ios, android)')
+  .argument('<platform>', 'platform to run on (ios, android, macos)')
   .option('--device', 'run on physical device instead of simulator')
   .option('--scheme <scheme>', 'Xcode scheme to build')
   .option('--simulator <name>', 'simulator name', 'iPhone 16')
@@ -83,15 +83,16 @@ export const runCommand = new Command('run')
     package: string
     activity: string
   }) => {
-    if (platform !== 'ios' && platform !== 'android') {
-      console.error(pc.red('Platform must be "ios" or "android"'))
+    if (platform !== 'ios' && platform !== 'android' && platform !== 'macos') {
+      console.error(pc.red('Platform must be "ios", "android", or "macos"'))
       process.exit(1)
     }
 
     const cwd = process.cwd()
 
     // Step 1: Build the JS bundle
-    console.log(pc.cyan(`\n📱 Vue Native — Run ${platform === 'ios' ? 'iOS' : 'Android'}\n`))
+    const platformLabel = platform === 'ios' ? 'iOS' : platform === 'android' ? 'Android' : 'macOS'
+    console.log(pc.cyan(`\n📱 Vue Native — Run ${platformLabel}\n`))
     console.log(pc.white('  Building JS bundle...'))
     try {
       execSync('bun run vite build', { cwd, stdio: 'inherit' })
@@ -103,8 +104,10 @@ export const runCommand = new Command('run')
 
     if (platform === 'ios') {
       runIOS(cwd, options)
-    } else {
+    } else if (platform === 'android') {
       runAndroid(cwd, options)
+    } else {
+      runMacOS(cwd, options)
     }
   })
 
@@ -328,6 +331,106 @@ function runAndroid(
     } catch (err) {
       console.error(pc.red(`  ✗ Failed to launch app: ${(err as Error).message}`))
       process.exit(1)
+    }
+  })
+}
+
+function runMacOS(
+  cwd: string,
+  options: {
+    scheme?: string
+  },
+) {
+  const macosDir = join(cwd, 'macos')
+
+  if (!existsSync(macosDir)) {
+    console.log(pc.yellow('  No macos/ directory found.'))
+    console.log(pc.dim('  To add macOS support, create an Xcode project in the macos/ directory.'))
+    console.log(pc.dim('  Bundle has been built to dist/vue-native-bundle.js\n'))
+    return
+  }
+
+  // Find Xcode project in macos/ directory
+  let xcodeProject: string | null = null
+  for (const ext of ['.xcworkspace', '.xcodeproj']) {
+    try {
+      const entries = readdirSync(macosDir)
+      const match = entries.find(e => e.endsWith(ext))
+      if (match) {
+        xcodeProject = join(macosDir, match)
+        break
+      }
+    } catch {}
+  }
+
+  if (!xcodeProject) {
+    console.log(pc.yellow('  No Xcode project found in ./macos/'))
+    return
+  }
+
+  const isWorkspace = xcodeProject.endsWith('.xcworkspace')
+  const scheme = options.scheme || xcodeProject.split('/').pop()?.replace(/\.(xcworkspace|xcodeproj)$/, '') || 'App'
+  const projectFlag = isWorkspace ? '-workspace' : '-project'
+
+  console.log(pc.white(`  Building ${scheme} for macOS...`))
+
+  const xcodebuild = spawn(
+    'xcodebuild',
+    [projectFlag, xcodeProject, '-scheme', scheme, '-destination', 'platform=macOS', 'build'],
+    {
+      cwd,
+      stdio: 'pipe',
+      env: { ...process.env, DEVELOPER_DIR: '/Applications/Xcode.app/Contents/Developer' },
+    },
+  )
+
+  xcodebuild.stderr?.on('data', (data: Buffer) => {
+    const text = data.toString().trim()
+    if (text.includes('error:') || text.includes('warning:')) {
+      console.log(pc.dim(`  ${text}`))
+    }
+  })
+
+  xcodebuild.on('close', (code) => {
+    if (code !== 0) {
+      console.error(pc.red(`  ✗ Build failed (exit code ${code})`))
+      process.exit(1)
+    }
+
+    console.log(pc.green('  ✓ Build successful\n'))
+
+    // Find and launch the macOS app
+    const derivedDataBase = join(process.env.HOME || '~', 'Library/Developer/Xcode/DerivedData')
+    let appPath: string | null = null
+
+    if (existsSync(derivedDataBase)) {
+      try {
+        const projects = readdirSync(derivedDataBase)
+        for (const project of projects.reverse()) {
+          const productsDir = join(derivedDataBase, project, 'Build/Products/Debug')
+          if (existsSync(productsDir)) {
+            const entries = readdirSync(productsDir)
+            const app = entries.find(e => e.endsWith('.app'))
+            if (app) {
+              appPath = join(productsDir, app)
+              break
+            }
+          }
+        }
+      } catch {}
+    }
+
+    if (appPath) {
+      console.log(pc.white(`  Launching ${appPath}...`))
+      try {
+        execSync(`open "${appPath}"`, { stdio: 'pipe' })
+        console.log(pc.green(`  ✓ App launched\n`))
+      } catch (err) {
+        console.error(pc.red(`  ✗ Failed to launch app: ${(err as Error).message}`))
+      }
+    } else {
+      console.log(pc.yellow('  Could not locate .app bundle in DerivedData.'))
+      console.log(pc.dim('  Try running the app from Xcode directly.\n'))
     }
   })
 }

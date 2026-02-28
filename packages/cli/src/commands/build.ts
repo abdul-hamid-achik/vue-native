@@ -60,7 +60,7 @@ function ensureOutputDir(outputPath: string): void {
 
 export const buildCommand = new Command('build')
   .description('Create a release build of the app')
-  .argument('<platform>', 'platform to build for (ios, android)')
+  .argument('<platform>', 'platform to build for (ios, android, macos)')
   .option('--mode <mode>', 'build mode', 'release')
   .option('--output <path>', 'output directory for the build artifact', './build')
   .option('--scheme <scheme>', 'Xcode scheme to build (iOS only)')
@@ -71,8 +71,8 @@ export const buildCommand = new Command('build')
     scheme?: string
     aab?: boolean
   }) => {
-    if (platform !== 'ios' && platform !== 'android') {
-      console.error(pc.red('Platform must be "ios" or "android"'))
+    if (platform !== 'ios' && platform !== 'android' && platform !== 'macos') {
+      console.error(pc.red('Platform must be "ios", "android", or "macos"'))
       process.exit(1)
     }
 
@@ -80,7 +80,8 @@ export const buildCommand = new Command('build')
     const outputDir = join(cwd, options.output)
 
     // Step 1: Build the JS bundle
-    console.log(pc.cyan(`\n  Vue Native — ${options.mode.charAt(0).toUpperCase() + options.mode.slice(1)} Build (${platform === 'ios' ? 'iOS' : 'Android'})\n`))
+    const platformLabel = platform === 'ios' ? 'iOS' : platform === 'android' ? 'Android' : 'macOS'
+    console.log(pc.cyan(`\n  Vue Native — ${options.mode.charAt(0).toUpperCase() + options.mode.slice(1)} Build (${platformLabel})\n`))
     console.log(pc.white('  Building JS bundle for production...'))
     try {
       execSync('bun run vite build --mode production', { cwd, stdio: 'inherit' })
@@ -92,8 +93,10 @@ export const buildCommand = new Command('build')
 
     if (platform === 'ios') {
       buildIOS(cwd, outputDir, options)
-    } else {
+    } else if (platform === 'android') {
       buildAndroid(cwd, outputDir, options)
+    } else {
+      buildMacOS(cwd, outputDir, options)
     }
   })
 
@@ -293,6 +296,99 @@ function buildAndroid(
         console.log(pc.yellow('  Could not locate release APK.'))
         console.log(pc.dim('  Expected at android/app/build/outputs/apk/release/\n'))
       }
+    }
+  })
+}
+
+function buildMacOS(
+  cwd: string,
+  outputDir: string,
+  options: {
+    mode: string
+    scheme?: string
+  },
+) {
+  const macosDir = join(cwd, 'macos')
+  const project = findXcodeProject(macosDir)
+
+  if (!project) {
+    console.log(pc.yellow('  No Xcode project found in ./macos/'))
+    console.log(pc.dim('  To add macOS support, create an Xcode project in the macos/ directory.'))
+    console.log(pc.dim('  Bundle has been built to dist/vue-native-bundle.js\n'))
+    return
+  }
+
+  const projectFlag = project.isWorkspace ? '-workspace' : '-project'
+  const scheme = options.scheme || project.path.split('/').pop()?.replace(/\.(xcworkspace|xcodeproj)$/, '') || 'App'
+  const configuration = options.mode === 'release' ? 'Release' : 'Debug'
+  const archivePath = join(outputDir, `${scheme}.xcarchive`)
+
+  ensureOutputDir(outputDir)
+
+  console.log(pc.white(`  Archiving ${scheme} (${configuration}) for macOS...`))
+  console.log(pc.dim(`  Archive path: ${archivePath}`))
+
+  const xcodebuild = spawn(
+    'xcodebuild',
+    [
+      projectFlag, project.path,
+      '-scheme', scheme,
+      '-configuration', configuration,
+      '-destination', 'generic/platform=macOS',
+      '-archivePath', archivePath,
+      'archive',
+    ],
+    {
+      cwd,
+      stdio: 'pipe',
+      env: { ...process.env, DEVELOPER_DIR: '/Applications/Xcode.app/Contents/Developer' },
+    },
+  )
+
+  const cleanup = () => {
+    if (xcodebuild && !xcodebuild.killed) {
+      xcodebuild.kill()
+    }
+  }
+  process.on('exit', cleanup)
+  process.on('SIGINT', cleanup)
+  process.on('SIGTERM', cleanup)
+
+  xcodebuild.stdout?.on('data', (data: Buffer) => {
+    const text = data.toString().trim()
+    if (text.includes('Compiling') || text.includes('Linking') || text.includes('Signing')) {
+      console.log(pc.dim(`  ${text.split('\n').pop()}`))
+    }
+  })
+
+  xcodebuild.stderr?.on('data', (data: Buffer) => {
+    const text = data.toString().trim()
+    if (text.includes('error:')) {
+      console.log(pc.red(`  ${text}`))
+    } else if (text.includes('warning:')) {
+      console.log(pc.yellow(`  ${text}`))
+    }
+  })
+
+  xcodebuild.on('error', (err) => {
+    console.error(pc.red(`  xcodebuild process error: ${err.message}`))
+    cleanup()
+  })
+
+  xcodebuild.on('close', (code) => {
+    if (code !== 0) {
+      console.error(pc.red(`  ✗ Archive failed (exit code ${code})`))
+      process.exit(1)
+    }
+
+    console.log(pc.green('  ✓ Archive successful\n'))
+
+    if (existsSync(archivePath)) {
+      console.log(pc.green(`  Archive: ${archivePath}`))
+      console.log(pc.dim('  To export a .app or .pkg, open the archive in Xcode Organizer or run:'))
+      console.log(pc.dim(`  xcodebuild -exportArchive -archivePath "${archivePath}" -exportOptionsPlist ExportOptions.plist -exportPath "${outputDir}"\n`))
+    } else {
+      console.log(pc.yellow('  Archive path not found. Check Xcode build settings.\n'))
     }
   })
 }

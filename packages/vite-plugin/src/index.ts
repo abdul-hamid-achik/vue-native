@@ -26,9 +26,10 @@ export interface VueNativePluginOptions {
    * Target platform.
    * - `'ios'` — JavaScriptCore (built into iOS)
    * - `'android'` — V8 via J2V8
+   * - `'macos'` — JavaScriptCore (same as iOS)
    * @default 'ios'
    */
-  platform?: 'ios' | 'android'
+  platform?: 'ios' | 'android' | 'macos'
 
   /**
    * The global variable name for the IIFE bundle.

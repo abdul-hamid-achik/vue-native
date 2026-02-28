@@ -93,3 +93,14 @@ export type { CalendarEvent, Calendar, CreateEventOptions } from './useCalendar'
 
 export { useContacts } from './useContacts'
 export type { Contact, ContactField, CreateContactData } from './useContacts'
+
+export { useWindow } from './useWindow'
+export type { WindowInfo } from './useWindow'
+
+export { useMenu } from './useMenu'
+export type { MenuItem, MenuSection } from './useMenu'
+
+export { useFileDialog } from './useFileDialog'
+export type { OpenFileOptions, SaveFileOptions } from './useFileDialog'
+
+export { useDragDrop } from './useDragDrop'

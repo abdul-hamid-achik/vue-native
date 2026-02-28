@@ -10,7 +10,7 @@
   "scripts": {
     "build": "turbo run build",
     "dev": "turbo run dev",
-    "test": "turbo run test && bun run test:ios && bun run test:android",
+    "test": "turbo run test && bun run test:ios && bun run test:android && bun run test:shared && bun run test:macos",
     "test:ts": "turbo run test",
     "typecheck": "turbo run typecheck",
     "clean": "turbo run clean",
@@ -18,8 +18,10 @@
     "lint:fix": "bunx eslint . --fix",
     "knip": "bunx knip",
     "prepare": "bunx lefthook install",
-    "test:ios": "xcodebuild test -scheme VueNativeCore -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' -quiet",
-    "test:android": "cd native/android && ./gradlew :VueNativeCore:testDebugUnitTest"
+    "test:ios": "cd native/ios/VueNativeCore && xcodebuild test -scheme VueNativeCore -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' -quiet",
+    "test:android": "cd native/android && ./gradlew :VueNativeCore:testDebugUnitTest",
+    "test:shared": "cd native/shared/VueNativeShared && swift test",
+    "test:macos": "cd native/macos/VueNativeMacOS && swift test"
   },
   "devDependencies": {
     "@stylistic/eslint-plugin": "^4.2.0",
@@ -28,7 +30,7 @@
     "globals": "^16.0.0",
     "knip": "^5.85.0",
     "lefthook": "^2.1.1",
-    "turbo": "^2.4.0",
+    "turbo": "^2.8.12",
     "typescript": "^5.7.0",
     "typescript-eslint": "^8.56.0",
     "vue-eslint-parser": "^10.1.0"

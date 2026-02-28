@@ -1939,4 +1939,268 @@ describe('Composables', () => {
       delete (globalThis as any).__VN_configurePins
     })
   })
+
+  // ---------------------------------------------------------------------------
+  // useWindow (macOS-only)
+  // ---------------------------------------------------------------------------
+  describe('useWindow', () => {
+    beforeEach(() => {
+      ;(globalThis as any).__PLATFORM__ = 'macos'
+    })
+
+    afterEach(() => {
+      ;(globalThis as any).__PLATFORM__ = 'ios'
+    })
+
+    it('setTitle calls Window.setTitle', async () => {
+      const { useWindow } = await import('../composables/useWindow')
+      const { setTitle } = useWindow()
+      await setTitle('My App')
+      expect(invokeModuleSpy).toHaveBeenCalledWith('Window', 'setTitle', ['My App'])
+    })
+
+    it('setSize calls Window.setSize', async () => {
+      const { useWindow } = await import('../composables/useWindow')
+      const { setSize } = useWindow()
+      await setSize(1024, 768)
+      expect(invokeModuleSpy).toHaveBeenCalledWith('Window', 'setSize', [1024, 768])
+    })
+
+    it('center calls Window.center', async () => {
+      const { useWindow } = await import('../composables/useWindow')
+      const { center } = useWindow()
+      await center()
+      expect(invokeModuleSpy).toHaveBeenCalledWith('Window', 'center', [])
+    })
+
+    it('minimize calls Window.minimize', async () => {
+      const { useWindow } = await import('../composables/useWindow')
+      const { minimize } = useWindow()
+      await minimize()
+      expect(invokeModuleSpy).toHaveBeenCalledWith('Window', 'minimize', [])
+    })
+
+    it('toggleFullScreen calls Window.toggleFullScreen', async () => {
+      const { useWindow } = await import('../composables/useWindow')
+      const { toggleFullScreen } = useWindow()
+      await toggleFullScreen()
+      expect(invokeModuleSpy).toHaveBeenCalledWith('Window', 'toggleFullScreen', [])
+    })
+
+    it('close calls Window.close', async () => {
+      const { useWindow } = await import('../composables/useWindow')
+      const { close } = useWindow()
+      await close()
+      expect(invokeModuleSpy).toHaveBeenCalledWith('Window', 'close', [])
+    })
+
+    it('getInfo calls Window.getInfo', async () => {
+      const mockInfo = { width: 1024, height: 768, x: 100, y: 200, isFullScreen: false, isVisible: true, title: 'Test' }
+      invokeModuleSpy.mockResolvedValueOnce(mockInfo)
+      const { useWindow } = await import('../composables/useWindow')
+      const { getInfo } = useWindow()
+      const info = await getInfo()
+      expect(invokeModuleSpy).toHaveBeenCalledWith('Window', 'getInfo', [])
+      expect(info).toEqual(mockInfo)
+    })
+
+    it('returns null from getInfo on non-macOS', async () => {
+      ;(globalThis as any).__PLATFORM__ = 'ios'
+      const { useWindow } = await import('../composables/useWindow')
+      const { getInfo } = useWindow()
+      const info = await getInfo()
+      expect(info).toBeNull()
+      expect(invokeModuleSpy).not.toHaveBeenCalled()
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // useMenu (macOS-only)
+  // ---------------------------------------------------------------------------
+  describe('useMenu', () => {
+    beforeEach(() => {
+      ;(globalThis as any).__PLATFORM__ = 'macos'
+    })
+
+    afterEach(() => {
+      ;(globalThis as any).__PLATFORM__ = 'ios'
+    })
+
+    it('setAppMenu calls Menu.setAppMenu', async () => {
+      const { useMenu } = await import('../composables/useMenu')
+      const { setAppMenu } = useMenu()
+      const sections = [{ title: 'File', items: [{ id: 'new', title: 'New' }] }]
+      await setAppMenu(sections)
+      expect(invokeModuleSpy).toHaveBeenCalledWith('Menu', 'setAppMenu', [sections])
+    })
+
+    it('showContextMenu calls Menu.showContextMenu', async () => {
+      const { useMenu } = await import('../composables/useMenu')
+      const { showContextMenu } = useMenu()
+      const items = [{ id: 'copy', title: 'Copy' }]
+      await showContextMenu(items)
+      expect(invokeModuleSpy).toHaveBeenCalledWith('Menu', 'showContextMenu', [items])
+    })
+
+    it('onMenuItemClick subscribes to menu:itemClick event', async () => {
+      const { useMenu } = await import('../composables/useMenu')
+      const { onMenuItemClick } = useMenu()
+      const callback = vi.fn()
+      onMenuItemClick(callback)
+      expect(onGlobalEventSpy).toHaveBeenCalledWith('menu:itemClick', expect.any(Function))
+    })
+
+    it('onMenuItemClick callback receives id and title', async () => {
+      const { useMenu } = await import('../composables/useMenu')
+      const { onMenuItemClick } = useMenu()
+      const callback = vi.fn()
+      onMenuItemClick(callback)
+      triggerGlobalEvent('menu:itemClick', { id: 'save', title: 'Save' })
+      expect(callback).toHaveBeenCalledWith('save', 'Save')
+    })
+
+    it('is no-op on non-macOS', async () => {
+      ;(globalThis as any).__PLATFORM__ = 'ios'
+      const { useMenu } = await import('../composables/useMenu')
+      const { setAppMenu, onMenuItemClick } = useMenu()
+      await setAppMenu([])
+      expect(invokeModuleSpy).not.toHaveBeenCalled()
+      const cleanup = onMenuItemClick(() => {})
+      expect(onGlobalEventSpy).not.toHaveBeenCalled()
+      expect(typeof cleanup).toBe('function')
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // useFileDialog (macOS-only)
+  // ---------------------------------------------------------------------------
+  describe('useFileDialog', () => {
+    beforeEach(() => {
+      ;(globalThis as any).__PLATFORM__ = 'macos'
+    })
+
+    afterEach(() => {
+      ;(globalThis as any).__PLATFORM__ = 'ios'
+    })
+
+    it('openFile calls FileDialog.openFile', async () => {
+      invokeModuleSpy.mockResolvedValueOnce(['/path/to/file.txt'])
+      const { useFileDialog } = await import('../composables/useFileDialog')
+      const { openFile } = useFileDialog()
+      const result = await openFile({ multiple: true, allowedTypes: ['txt'] })
+      expect(invokeModuleSpy).toHaveBeenCalledWith('FileDialog', 'openFile', [{ multiple: true, allowedTypes: ['txt'] }])
+      expect(result).toEqual(['/path/to/file.txt'])
+    })
+
+    it('openFile passes empty object when no options', async () => {
+      invokeModuleSpy.mockResolvedValueOnce(null)
+      const { useFileDialog } = await import('../composables/useFileDialog')
+      const { openFile } = useFileDialog()
+      await openFile()
+      expect(invokeModuleSpy).toHaveBeenCalledWith('FileDialog', 'openFile', [{}])
+    })
+
+    it('openDirectory calls FileDialog.openDirectory', async () => {
+      invokeModuleSpy.mockResolvedValueOnce('/path/to/dir')
+      const { useFileDialog } = await import('../composables/useFileDialog')
+      const { openDirectory } = useFileDialog()
+      const result = await openDirectory({ title: 'Pick folder' })
+      expect(invokeModuleSpy).toHaveBeenCalledWith('FileDialog', 'openDirectory', [{ title: 'Pick folder' }])
+      expect(result).toBe('/path/to/dir')
+    })
+
+    it('saveFile calls FileDialog.saveFile', async () => {
+      invokeModuleSpy.mockResolvedValueOnce('/path/to/export.json')
+      const { useFileDialog } = await import('../composables/useFileDialog')
+      const { saveFile } = useFileDialog()
+      const result = await saveFile({ defaultName: 'export.json' })
+      expect(invokeModuleSpy).toHaveBeenCalledWith('FileDialog', 'saveFile', [{ defaultName: 'export.json' }])
+      expect(result).toBe('/path/to/export.json')
+    })
+
+    it('returns null on non-macOS', async () => {
+      ;(globalThis as any).__PLATFORM__ = 'ios'
+      const { useFileDialog } = await import('../composables/useFileDialog')
+      const { openFile, openDirectory, saveFile } = useFileDialog()
+      expect(await openFile()).toBeNull()
+      expect(await openDirectory()).toBeNull()
+      expect(await saveFile()).toBeNull()
+      expect(invokeModuleSpy).not.toHaveBeenCalled()
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // useDragDrop (macOS-only)
+  // ---------------------------------------------------------------------------
+  describe('useDragDrop', () => {
+    beforeEach(() => {
+      ;(globalThis as any).__PLATFORM__ = 'macos'
+    })
+
+    afterEach(() => {
+      ;(globalThis as any).__PLATFORM__ = 'ios'
+    })
+
+    it('enableDropZone calls DragDrop.enableDropZone', async () => {
+      const { useDragDrop } = await import('../composables/useDragDrop')
+      const { enableDropZone } = await withSetup(() => useDragDrop())
+      await enableDropZone()
+      expect(invokeModuleSpy).toHaveBeenCalledWith('DragDrop', 'enableDropZone', [])
+    })
+
+    it('onDrop subscribes to dragdrop:drop event', async () => {
+      const { useDragDrop } = await import('../composables/useDragDrop')
+      const { onDrop } = await withSetup(() => useDragDrop())
+      const callback = vi.fn()
+      onDrop(callback)
+      expect(onGlobalEventSpy).toHaveBeenCalledWith('dragdrop:drop', expect.any(Function))
+    })
+
+    it('onDrop callback receives file paths', async () => {
+      const { useDragDrop } = await import('../composables/useDragDrop')
+      const { onDrop } = await withSetup(() => useDragDrop())
+      const callback = vi.fn()
+      onDrop(callback)
+      triggerGlobalEvent('dragdrop:drop', { files: ['/a.txt', '/b.png'] })
+      expect(callback).toHaveBeenCalledWith(['/a.txt', '/b.png'])
+    })
+
+    it('onDragEnter sets isDragging to true', async () => {
+      const { useDragDrop } = await import('../composables/useDragDrop')
+      const { onDragEnter, isDragging } = await withSetup(() => useDragDrop())
+      const callback = vi.fn()
+      onDragEnter(callback)
+      triggerGlobalEvent('dragdrop:enter', {})
+      expect(isDragging.value).toBe(true)
+      expect(callback).toHaveBeenCalled()
+    })
+
+    it('onDragLeave sets isDragging to false', async () => {
+      const { useDragDrop } = await import('../composables/useDragDrop')
+      const { onDragEnter, onDragLeave, isDragging } = await withSetup(() => useDragDrop())
+      onDragEnter(() => {})
+      triggerGlobalEvent('dragdrop:enter', {})
+      expect(isDragging.value).toBe(true)
+      const callback = vi.fn()
+      onDragLeave(callback)
+      triggerGlobalEvent('dragdrop:leave', {})
+      expect(isDragging.value).toBe(false)
+      expect(callback).toHaveBeenCalled()
+    })
+
+    it('is no-op on non-macOS', async () => {
+      ;(globalThis as any).__PLATFORM__ = 'ios'
+      const { useDragDrop } = await import('../composables/useDragDrop')
+      const { enableDropZone, onDrop, onDragEnter, onDragLeave } = await withSetup(() => useDragDrop())
+      await enableDropZone()
+      expect(invokeModuleSpy).not.toHaveBeenCalled()
+      const cleanup1 = onDrop(() => {})
+      const cleanup2 = onDragEnter(() => {})
+      const cleanup3 = onDragLeave(() => {})
+      expect(onGlobalEventSpy).not.toHaveBeenCalled()
+      expect(typeof cleanup1).toBe('function')
+      expect(typeof cleanup2).toBe('function')
+      expect(typeof cleanup3).toBe('function')
+    })
+  })
 })

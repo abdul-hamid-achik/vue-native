@@ -6,13 +6,14 @@ Guidelines for AI agents (Claude, Codex, etc.) working on this codebase. Read th
 
 ## What this project is
 
-Vue Native is a framework for building **real native iOS and Android apps with Vue 3**. It is NOT a WebView wrapper. Vue components drive `UIKit` views on iOS and `Android Views` on Android via a custom `createRenderer()` bridge.
+Vue Native is a framework for building **real native iOS, Android, and macOS apps with Vue 3**. It is NOT a WebView wrapper. Vue components drive `UIKit` views on iOS, `Android Views` on Android, and `AppKit` views on macOS via a custom `createRenderer()` bridge.
 
 ```
 Vue SFC  →  Vue custom renderer  →  NativeBridge (TS)
                                           ↓  JSON batch
                                   iOS: Swift → UIKit + Yoga
                                   Android: Kotlin → Views + FlexboxLayout
+                                  macOS: Swift → AppKit + LayoutNode
 ```
 
 ---
@@ -26,6 +27,12 @@ packages/
   vite-plugin/      @thelacanians/vue-native-vite-plugin — Vite build config for native targets
   cli/              @thelacanians/vue-native-cli — project scaffold + dev tooling
 native/
+  shared/VueNativeShared/    Cross-platform Swift (iOS 16+, macOS 13+)
+    Sources/VueNativeShared/
+      JSRuntime, EventThrottle, HotReloadManager, CertificatePinning,
+      SharedJSPolyfills, NativeModule protocol, NativeModuleRegistry,
+      NativeEventDispatcher, Modules/ (9 shared modules)
+    Tests/VueNativeSharedTests/
   ios/VueNativeCore/         Swift Package (iOS 16+, UIKit, JavaScriptCore, Yoga)
     Package.swift
     Sources/VueNativeCore/
@@ -47,12 +54,23 @@ native/
       Helpers/               EventThrottle, GestureHelper, TouchableView
       VueNativeActivity.kt   Base Activity for apps
     src/test/kotlin/com/vuenative/core/
+  macos/VueNativeMacOS/      Swift Package (macOS 15+, AppKit, JavaScriptCore, LayoutNode)
+    Package.swift             (depends on VueNativeShared)
+    Sources/VueNativeMacOS/
+      Bridge/                NativeBridge, JSPolyfills, VueNativeWindowController,
+                             ErrorOverlayView, HotReloadManager, EventThrottle
+      Components/Factories/  28 component factories (AppKit equivalents)
+      Modules/               16 modules (12 cross-platform + 4 macOS-only)
+      Styling/               StyleEngine.swift — CSS props → LayoutNode + NSView.layer
+      Layout/                LayoutNode (custom flexbox), FlippedView (isFlipped=true)
+      Helpers/               ClickableView, GestureWrapper, NSColor+Hex, Extensions
+    Tests/VueNativeMacOSTests/
 docs/
   src/               VuePress 2.x documentation site (bun run dev in docs/)
 examples/
   counter/  calculator/  settings/  social/  tasks/  todo/
   auth-flow/  chat/  camera-app/  forms/  lists/
-  navigation-demo/  media-player/  theming/
+  navigation-demo/  media-player/  theming/  macos-showcase/
 tools/
   vscode-extension/  VS Code snippets + diagnostics
   nvim-plugin/       Neovim snippets + completion + diagnostics
@@ -75,12 +93,20 @@ bun test                  # Bun test runner (640+ tests, 0 failures required)
 
 The `lefthook` pre-commit hook runs lint + typecheck automatically, but **you must also run tests manually** before pushing. The hook does NOT run tests.
 
-### Swift changes (`native/ios/`)
+### Swift changes (`native/ios/` or `native/shared/`)
 
 ```bash
 # Both must pass before committing:
 cd native/ios/VueNativeCore && swift build    # Compilation check
 cd native/ios/VueNativeCore && swift test     # XCTest suite — all tests must pass
+```
+
+### Swift changes (`native/macos/` or `native/shared/`)
+
+```bash
+# Both must pass before committing:
+cd native/shared/VueNativeShared && swift build && swift test
+cd native/macos/VueNativeMacOS && swift build && swift test
 ```
 
 ### Kotlin changes (`native/android/`)
@@ -126,6 +152,11 @@ cd docs && bun run build  # VuePress must build without errors
 - **Never pass a J2V8 `V8Object` or `V8Array` across threads** — release on the JS thread
 - All view operations must run on the main thread (`mainHandler.post`)
 
+### Thread model — macOS
+- Same as iOS: JSContext on dedicated serial `jsQueue` (via VueNativeShared's JSRuntime)
+- Same rules: never pass JSValue across threads, always `[weak self]` in JSContext closures
+- UI updates on `DispatchQueue.main`
+
 ### Vue renderer (`packages/runtime/src/renderer.ts`)
 - **Always call `markRaw(node)`** when creating a `NativeNode` — prevents Vue from tracking node internals as reactive state, which would cause infinite loops
 - The scheduler uses only `Promise.resolve().then()` — no DOM APIs needed
@@ -139,6 +170,7 @@ cd docs && bun run build  # VuePress must build without errors
 ### Layout
 - **iOS:** Yoga via `layoutBox/FlexLayout` SPM. Use `view.flex.xxx` to set Yoga props. Call `view.flex.layout(mode:)` to trigger layout. Percentage widths/heights: use `view.flex.width(50%)` (postfix `%` operator, not `FPercent(value:)`).
 - **Android:** `FlexboxLayout` 3.0.0. Use `StyleEngine.kt` to set flex props. Percentage widths/heights use `FlexboxLayout.LayoutParams.widthPercent` / `heightPercent` — **not** `ViewGroup.LayoutParams.WRAP_CONTENT`.
+- **macOS:** Custom `LayoutNode` (pure-Swift flexbox engine, no Yoga dependency). Properties use `LayoutValue` enum: `.points(CGFloat)`, `.percent(CGFloat)`, `.auto`, `.undefined` — NOT raw Int/CGFloat. All views use `FlippedView` base class (`isFlipped=true`) for CSS-compatible top-left origin coordinates.
 
 ### VList — special child management
 Both platforms override `insertChild`/`removeChild` in VListFactory. Item views are stored in a separate array (`itemViews` on iOS, adapter items on Android) — they are **not** regular ViewGroup/subview children. Use targeted row operations (`insertRows`, `deleteRows`) instead of `reloadData`/`notifyDataSetChanged` to avoid layout loops.
@@ -164,6 +196,15 @@ Both platforms override `insertChild`/`removeChild` in VListFactory. Item views 
 - Tests use XCTest with `@MainActor`, `#if canImport(UIKit)` guard
 - Tests in `Tests/VueNativeCoreTests/`
 
+### Swift — macOS (`native/macos/VueNativeMacOS/`)
+- Swift 5.9+ (swiftLanguageMode .v5), macOS 15+, AppKit only (no SwiftUI)
+- Depends on `VueNativeShared` — use `import VueNativeShared` for NativeModule, EventThrottle, etc.
+- Factories implement `NativeComponentFactory` — same protocol as iOS but returns `NSView`
+- `StyleEngine.apply(key:value:to:)` routes layout props to LayoutNode and visual props to NSView.layer
+- Associated object keys accessed from `@objc` proxy classes must use `nonisolated(unsafe) static var`
+- Use `NSColor.fromHex()` (not UIColor) for hex color parsing
+- Tests use XCTest with `@MainActor`, `#if canImport(AppKit)` guard
+
 ### Kotlin (`native/android/VueNativeCore/`)
 - Kotlin 1.9+, API 21+, AppCompat
 - Prefer `?.` safe calls over `!!` — treat `!!` as a code smell
@@ -179,16 +220,18 @@ Both platforms override `insertChild`/`removeChild` in VListFactory. Item views 
 1. **TypeScript** — add `packages/runtime/src/components/V<Name>.ts` and export from `index.ts`
 2. **iOS** — add `native/ios/VueNativeCore/Sources/VueNativeCore/Components/Factories/V<Name>Factory.swift` and register in `ComponentRegistry.swift`
 3. **Android** — add `native/android/VueNativeCore/src/main/kotlin/.../Components/Factories/V<Name>Factory.kt` and register in `ComponentRegistry.kt`
-4. **Tests** — add test cases in all three languages (TS component test, Swift factory test, Kotlin factory test)
-5. **Docs** — add `docs/src/components/V<Name>.md` with props/events table and examples; add to sidebar in `.vuepress/config.ts`
-6. Keep both platforms in parity — if a prop or event exists on one, it must exist on the other
+4. **macOS** — add `native/macos/VueNativeMacOS/Sources/VueNativeMacOS/Components/Factories/V<Name>Factory.swift` and register in `ComponentRegistry.swift`
+5. **Tests** — add test cases in all languages (TS component test, Swift factory test, Kotlin factory test)
+6. **Docs** — add `docs/src/components/V<Name>.md` with props/events table and examples; add to sidebar in `.vuepress/config.ts`
+7. Keep all platforms in parity — if a prop or event exists on one, it must exist on the others (except platform-specific no-ops)
 
 ## How to add a native module
 
 1. **TypeScript** — add `packages/runtime/src/composables/use<Name>.ts`, export from `index.ts`
 2. **iOS** — add `native/ios/VueNativeCore/Sources/VueNativeCore/Modules/<Name>Module.swift`, register in `NativeModuleRegistry.swift`
 3. **Android** — add `.../Modules/<Name>Module.kt`, register in `NativeModuleRegistry.kt`
-4. **Tests** — add test cases in all three languages
+4. **macOS** — add `native/macos/VueNativeMacOS/Sources/VueNativeMacOS/Modules/<Name>Module.swift`, register in `NativeModuleRegistry.swift`
+5. **Tests** — add test cases in all languages
 5. **Docs** — add `docs/src/composables/use<Name>.md` with API reference; add to sidebar
 6. Async methods: use `invokeNativeModule` (returns a Promise with 30s timeout)
 7. Sync methods: use `invokeNativeModuleSync` only when the result is needed immediately and latency is guaranteed low
@@ -215,6 +258,11 @@ bun test                     # Run TS tests (Bun runner, all packages)
 bun run test                 # Run ALL tests (TS + iOS + Android)
 bun run test:ts              # Run TS tests only (turbo → vitest in each package)
 
+# ── Shared (Swift) ──────────────────────────────────────────
+swift build --package-path native/shared/VueNativeShared  # Build shared package
+swift test --package-path native/shared/VueNativeShared   # Run shared tests
+bun run test:shared                                       # Shortcut from root
+
 # ── iOS (Swift) ─────────────────────────────────────────────
 swift build --package-path native/ios/VueNativeCore    # Build Swift package
 swift test --package-path native/ios/VueNativeCore     # Run XCTest suite
@@ -225,13 +273,18 @@ cd native/android && ./gradlew :VueNativeCore:compileDebugKotlin       # Build
 cd native/android && ./gradlew :VueNativeCore:testDebugUnitTest        # Test
 bun run test:android                                                   # Shortcut from root
 
+# ── macOS (Swift) ───────────────────────────────────────────
+swift build --package-path native/macos/VueNativeMacOS # Build macOS package
+swift test --package-path native/macos/VueNativeMacOS  # Run macOS tests
+bun run test:macos                                     # Shortcut from root
+
 # ── All platforms ───────────────────────────────────────────
 
 # ── CLI ─────────────────────────────────────────────────────
-vue-native create <name>     # Scaffold a new project
-vue-native dev               # Vite watch + hot reload WebSocket server
-vue-native run ios|android   # Build and run on simulator/device
-vue-native build ios|android # Production build (--mode, --output, --scheme, --aab)
+vue-native create <name>           # Scaffold a new project
+vue-native dev                     # Vite watch + hot reload WebSocket server
+vue-native run ios|android|macos   # Build and run on simulator/device
+vue-native build ios|android|macos # Production build (--mode, --output, --scheme, --aab)
 
 # ── Docs ────────────────────────────────────────────────────
 cd docs && bun install && bun run dev    # Dev server
@@ -256,6 +309,11 @@ cd examples/counter && bun run dev       # Vite watch + hot reload
 | Duplicate Vue instances | Two copies of Vue produce two reactivity systems | Ensure `@thelacanians/vue-native-runtime` re-exports from one `@vue/runtime-core` |
 | `FPercent(value:)` in FlexLayout (iOS) | Internal type, not public API | Use the postfix `%` operator: `50%` |
 | Removing `invokeNativeModule` timeout | Promise hangs forever if native never replies | The 30s timeout in `bridge.ts` is intentional |
+| `node.width = 0` on macOS LayoutNode | LayoutNode props are `LayoutValue` enum, not raw Int | Use `node.width = .points(0)` |
+| `private static var` for ObjC keys (macOS) | Proxy classes can't access `private` members | Use `nonisolated(unsafe) static var` |
+| Defining `NativeModule` in macOS | Duplicates the shared protocol from VueNativeShared | Import VueNativeShared; don't redefine |
+| Missing `isFlipped=true` (macOS) | NSView origin is bottom-left; layout breaks | Use FlippedView base class |
+| NSScrollView child management | Children go to documentView, not the scroll view | Override insertChild/removeChild |
 | Pushing without running tests | CI breaks, blocks other contributors | Run `bun run test` before pushing |
 | Adding a component without tests/docs | Feature is undiscoverable and untested | Always add tests (all 3 languages) + doc page + sidebar entry |
 | Committing `.env` or credentials | Leaks secrets to the repository | Never commit secrets; use `.gitignore` and env vars |
@@ -289,5 +347,14 @@ cd examples/counter && bun run dev       # Vite watch + hot reload
 | Android component registry | `native/android/VueNativeCore/src/main/kotlin/com/vuenative/core/Components/ComponentRegistry.kt` |
 | Android base Activity | `native/android/VueNativeCore/src/main/kotlin/com/vuenative/core/VueNativeActivity.kt` |
 | Android tests | `native/android/VueNativeCore/src/test/kotlin/com/vuenative/core/` |
+| Shared package | `native/shared/VueNativeShared/Sources/VueNativeShared/` |
+| Shared NativeModule protocol | `native/shared/VueNativeShared/Sources/VueNativeShared/NativeModule.swift` |
+| Shared tests | `native/shared/VueNativeShared/Tests/VueNativeSharedTests/` |
+| macOS Swift bridge | `native/macos/VueNativeMacOS/Sources/VueNativeMacOS/Bridge/NativeBridge.swift` |
+| macOS style engine | `native/macos/VueNativeMacOS/Sources/VueNativeMacOS/Styling/StyleEngine.swift` |
+| macOS component registry | `native/macos/VueNativeMacOS/Sources/VueNativeMacOS/Components/ComponentRegistry.swift` |
+| macOS layout engine | `native/macos/VueNativeMacOS/Sources/VueNativeMacOS/Layout/LayoutNode.swift` |
+| macOS base WC | `native/macos/VueNativeMacOS/Sources/VueNativeMacOS/Bridge/VueNativeWindowController.swift` |
+| macOS tests | `native/macos/VueNativeMacOS/Tests/VueNativeMacOSTests/` |
 | Docs sidebar config | `docs/src/.vuepress/config.ts` |
 | Lefthook pre-commit | `lefthook.yml` |

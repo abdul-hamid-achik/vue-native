@@ -224,6 +224,10 @@ export {
   useBluetooth,
   useCalendar,
   useContacts,
+  useWindow,
+  useMenu,
+  useFileDialog,
+  useDragDrop,
 } from './composables'
 export type {
   TimingOptions, SpringOptions, NetworkState, ConnectionType, AppStateStatus,
@@ -244,6 +248,9 @@ export type {
   BLEDevice, BLECharacteristic, BLECharacteristicChange, BLEState,
   CalendarEvent, Calendar, CreateEventOptions,
   Contact, ContactField, CreateContactData,
+  WindowInfo,
+  MenuItem, MenuSection,
+  OpenFileOptions, SaveFileOptions,
 } from './composables'
 
 // Theme system
