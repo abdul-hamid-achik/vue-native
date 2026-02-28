@@ -10,7 +10,7 @@ All composables are exported from `@thelacanians/vue-native-runtime`.
 - [useColorScheme](./useColorScheme.md) -- Light/dark mode
 - [useDeviceInfo](./useDeviceInfo.md) -- Device model, screen dimensions
 - [useDimensions](./useDimensions.md) -- Screen and window dimensions
-- [usePlatform](./usePlatform.md) -- Platform detection (iOS/Android)
+- [usePlatform](./usePlatform.md) -- Platform detection (iOS/Android/macOS)
 - [useBackHandler](./useBackHandler.md) -- Android back button interception
 
 ## Storage & Files
@@ -60,3 +60,12 @@ All composables are exported from `@thelacanians/vue-native-runtime`.
 - [useIAP](./useIAP.md) -- In-app purchases
 - [useOTAUpdate](./useOTAUpdate.md) -- Over-the-air bundle updates
 - [useBackgroundTask](./useBackgroundTask.md) -- Background task scheduling
+
+## Desktop (macOS)
+
+The following composables are available exclusively on macOS targets and expose desktop-specific capabilities.
+
+- [useWindow](./useWindow.md) -- Control window size, position, title, and full-screen state
+- [useMenu](./useMenu.md) -- Build and update the native macOS menu bar (NSMenu)
+- [useFileDialog](./useFileDialog.md) -- Open and save panel dialogs for file system access
+- [useDragDrop](./useDragDrop.md) -- Register views as drag sources or drop targets (NSDraggingDestination)

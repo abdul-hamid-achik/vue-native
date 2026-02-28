@@ -13,7 +13,7 @@ const { openFile, openDirectory, saveFile } = useFileDialog()
 async function handleOpen() {
   const files = await openFile({
     allowedTypes: ['png', 'jpg', 'jpeg'],
-    allowMultiple: true,
+    multiple: true,
   })
   if (files) {
     console.log('Selected:', files)
@@ -23,7 +23,6 @@ async function handleOpen() {
 async function handleSave() {
   const path = await saveFile({
     defaultName: 'document.txt',
-    allowedTypes: ['txt', 'md'],
   })
   if (path) {
     console.log('Save to:', path)
@@ -37,7 +36,7 @@ async function handleSave() {
 ```ts
 useFileDialog(): {
   openFile: (options?: OpenFileOptions) => Promise<string[] | null>
-  openDirectory: (options?: OpenDirectoryOptions) => Promise<string | null>
+  openDirectory: (options?: { title?: string }) => Promise<string | null>
   saveFile: (options?: SaveFileOptions) => Promise<string | null>
 }
 ```
@@ -54,21 +53,12 @@ useFileDialog(): {
 
 ```ts
 interface OpenFileOptions {
-  /** Window title. Defaults to 'Open'. */
-  title?: string
+  /** Allow selecting multiple files. Defaults to false. */
+  multiple?: boolean
   /** Allowed file extensions (e.g. ['png', 'jpg']). Omit to allow all files. */
   allowedTypes?: string[]
-  /** Allow selecting multiple files. Defaults to false. */
-  allowMultiple?: boolean
-  /** Starting directory path. */
-  initialDirectory?: string
-}
-
-interface OpenDirectoryOptions {
   /** Window title. Defaults to 'Open'. */
   title?: string
-  /** Starting directory path. */
-  initialDirectory?: string
 }
 
 interface SaveFileOptions {
@@ -76,10 +66,6 @@ interface SaveFileOptions {
   title?: string
   /** Default file name shown in the save field. */
   defaultName?: string
-  /** Allowed file extensions (e.g. ['txt', 'md']). */
-  allowedTypes?: string[]
-  /** Starting directory path. */
-  initialDirectory?: string
 }
 ```
 
@@ -106,7 +92,7 @@ async function pickImages() {
   const files = await openFile({
     title: 'Select Images',
     allowedTypes: ['png', 'jpg', 'jpeg', 'gif', 'webp'],
-    allowMultiple: true,
+    multiple: true,
   })
   if (files) {
     selectedPaths.value = files
@@ -124,7 +110,6 @@ async function saveDocument() {
   const path = await saveFile({
     title: 'Save Document',
     defaultName: 'untitled.md',
-    allowedTypes: ['md', 'txt'],
   })
   if (path) {
     savedPath.value = path
@@ -158,4 +143,5 @@ async function saveDocument() {
 - Returns `null` when the user cancels — always check the return value.
 - File paths are absolute POSIX paths (e.g. `/Users/name/Documents/file.txt`).
 - Calling these methods on iOS or Android is a no-op that returns `null`.
-- The `allowedTypes` array uses file extensions without dots (e.g. `'png'`, not `'.png'`).
+- The `allowedTypes` array in `OpenFileOptions` uses file extensions without dots (e.g. `'png'`, not `'.png'`).
+- `SaveFileOptions` does not support `allowedTypes` — the save panel accepts any file name the user types.

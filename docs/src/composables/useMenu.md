@@ -12,25 +12,25 @@ const { setAppMenu, showContextMenu, onMenuItemClick } = useMenu()
 
 setAppMenu([
   {
-    label: 'File',
-    children: [
-      { id: 'new', label: 'New', shortcut: 'cmd+n' },
-      { id: 'open', label: 'Open...', shortcut: 'cmd+o' },
-      { type: 'separator' },
-      { id: 'quit', label: 'Quit', shortcut: 'cmd+q' },
+    title: 'File',
+    items: [
+      { id: 'new', title: 'New', key: 'n' },
+      { id: 'open', title: 'Open...', key: 'o' },
+      { title: '', separator: true },
+      { id: 'quit', title: 'Quit', key: 'q' },
     ],
   },
   {
-    label: 'Edit',
-    children: [
-      { id: 'undo', label: 'Undo', shortcut: 'cmd+z' },
-      { id: 'redo', label: 'Redo', shortcut: 'cmd+shift+z' },
+    title: 'Edit',
+    items: [
+      { id: 'undo', title: 'Undo', key: 'z' },
+      { id: 'redo', title: 'Redo', key: 'Z' },
     ],
   },
 ])
 
-onMenuItemClick((id) => {
-  console.log('Menu item clicked:', id)
+onMenuItemClick((id, title) => {
+  console.log('Menu item clicked:', id, title)
 })
 </script>
 ```
@@ -39,9 +39,9 @@ onMenuItemClick((id) => {
 
 ```ts
 useMenu(): {
-  setAppMenu: (items: MenuItemConfig[]) => void
-  showContextMenu: (items: MenuItemConfig[]) => void
-  onMenuItemClick: (callback: (id: string) => void) => void
+  setAppMenu: (sections: MenuSection[]) => Promise<void>
+  showContextMenu: (items: MenuItem[]) => Promise<void>
+  onMenuItemClick: (callback: (id: string, title: string) => void) => () => void
 }
 ```
 
@@ -49,43 +49,33 @@ useMenu(): {
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `setAppMenu` | `(items: MenuItemConfig[]) => void` | Set the application menu bar. Replaces the entire menu. |
-| `showContextMenu` | `(items: MenuItemConfig[]) => void` | Show a context menu at the current mouse position. |
-| `onMenuItemClick` | `(callback: (id: string) => void) => void` | Register a callback invoked when any menu item is clicked. The `id` from the `MenuItemConfig` is passed. |
+| `setAppMenu` | `(sections: MenuSection[]) => Promise<void>` | Set the application menu bar. Replaces the entire menu. Takes an array of `MenuSection` objects, each with a `title` and `items` list. |
+| `showContextMenu` | `(items: MenuItem[]) => Promise<void>` | Show a context menu at the current mouse position. |
+| `onMenuItemClick` | `(callback: (id: string, title: string) => void) => () => void` | Register a callback invoked when any menu item is clicked. Returns an unsubscribe function. Both the `id` and `title` of the clicked item are passed to the callback. |
 
 ### Types
 
 ```ts
-interface MenuItemConfig {
-  /** Unique identifier for the menu item. Required for non-separator items. */
+interface MenuItem {
+  /** Unique identifier for the menu item. */
   id?: string
   /** Display text for the menu item. */
-  label?: string
-  /** Item type. Defaults to 'normal'. */
-  type?: 'normal' | 'separator' | 'checkbox'
-  /** Keyboard shortcut (e.g. 'cmd+s', 'cmd+shift+n'). */
-  shortcut?: string
+  title: string
+  /** Keyboard shortcut key (single character, e.g. 'n', 's', 'z'). */
+  key?: string
   /** Whether the item is disabled (grayed out). */
   disabled?: boolean
-  /** Whether a checkbox item is checked. Only used when type is 'checkbox'. */
-  checked?: boolean
-  /** Submenu items. Creates a hierarchical menu. */
-  children?: MenuItemConfig[]
+  /** Whether the item is a separator line. */
+  separator?: boolean
+}
+
+interface MenuSection {
+  /** Display title for the menu section (shown as the top-level menu name). */
+  title: string
+  /** Items in this section. */
+  items: MenuItem[]
 }
 ```
-
-#### Shortcut Format
-
-Shortcuts use a `+`-separated modifier string:
-
-| Modifier | Key |
-|----------|-----|
-| `cmd` | Command |
-| `shift` | Shift |
-| `alt` | Option |
-| `ctrl` | Control |
-
-Examples: `cmd+s`, `cmd+shift+n`, `alt+f4`, `ctrl+alt+delete`
 
 ## Platform Support
 
@@ -107,35 +97,35 @@ const lastAction = ref('None')
 
 setAppMenu([
   {
-    label: 'File',
-    children: [
-      { id: 'new-file', label: 'New File', shortcut: 'cmd+n' },
-      { id: 'open', label: 'Open...', shortcut: 'cmd+o' },
-      { id: 'save', label: 'Save', shortcut: 'cmd+s' },
-      { type: 'separator' },
-      { id: 'quit', label: 'Quit', shortcut: 'cmd+q' },
+    title: 'File',
+    items: [
+      { id: 'new-file', title: 'New File', key: 'n' },
+      { id: 'open', title: 'Open...', key: 'o' },
+      { id: 'save', title: 'Save', key: 's' },
+      { title: '', separator: true },
+      { id: 'quit', title: 'Quit', key: 'q' },
     ],
   },
   {
-    label: 'View',
-    children: [
-      { id: 'sidebar', label: 'Show Sidebar', type: 'checkbox', checked: true, shortcut: 'cmd+b' },
-      { id: 'fullscreen', label: 'Full Screen', shortcut: 'ctrl+cmd+f' },
+    title: 'View',
+    items: [
+      { id: 'sidebar', title: 'Show Sidebar', key: 'b' },
+      { id: 'fullscreen', title: 'Full Screen' },
     ],
   },
 ])
 
-onMenuItemClick((id) => {
-  lastAction.value = id
+onMenuItemClick((id, title) => {
+  lastAction.value = `${title} (${id})`
 })
 
 function handleRightClick() {
   showContextMenu([
-    { id: 'cut', label: 'Cut', shortcut: 'cmd+x' },
-    { id: 'copy', label: 'Copy', shortcut: 'cmd+c' },
-    { id: 'paste', label: 'Paste', shortcut: 'cmd+v' },
-    { type: 'separator' },
-    { id: 'select-all', label: 'Select All', shortcut: 'cmd+a' },
+    { id: 'cut', title: 'Cut', key: 'x' },
+    { id: 'copy', title: 'Copy', key: 'c' },
+    { id: 'paste', title: 'Paste', key: 'v' },
+    { title: '', separator: true },
+    { id: 'select-all', title: 'Select All', key: 'a' },
   ])
 }
 </script>
@@ -154,8 +144,9 @@ function handleRightClick() {
 
 ## Notes
 
-- `setAppMenu` replaces the entire application menu. Call it once at app startup.
-- `showContextMenu` is typically called in response to a right-click or long-press event.
-- The `onMenuItemClick` callback receives the `id` string — use it to dispatch actions in your app.
+- `setAppMenu` accepts an array of `MenuSection` objects (not flat `MenuItemConfig` items). Each section has a `title` and an `items` array of `MenuItem` objects.
+- Use `separator: true` on a `MenuItem` to render a divider line between items.
+- `showContextMenu` takes a flat `MenuItem[]` list and displays it at the current mouse position.
+- The `onMenuItemClick` callback receives both the item `id` and `title` — the `id` is useful for action dispatch and the `title` is useful for display.
+- `onMenuItemClick` returns an unsubscribe function. Call it to stop listening before the component unmounts, or rely on automatic cleanup.
 - Calling these methods on iOS or Android is a no-op and does not throw.
-- The cleanup function returned by `onMenuItemClick` is automatically called when the component unmounts.

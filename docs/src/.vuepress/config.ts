@@ -173,6 +173,14 @@ export default defineUserConfig({
             '/components/VPicker.md',
           ],
         },
+        {
+          text: 'macOS',
+          children: [
+            '/components/VToolbar.md',
+            '/components/VSplitView.md',
+            '/components/VOutlineView.md',
+          ],
+        },
       ],
       '/composables/': [
         {

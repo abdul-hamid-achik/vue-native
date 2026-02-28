@@ -9,15 +9,12 @@ Enable drag and drop support for macOS. Register drop zones on views and respond
 import { ref } from '@thelacanians/vue-native-runtime'
 import { useDragDrop } from '@thelacanians/vue-native-runtime'
 
-const dropZoneRef = ref()
 const { isDragging, enableDropZone, onDrop, onDragEnter, onDragLeave } = useDragDrop()
 
-enableDropZone(dropZoneRef, {
-  acceptedTypes: ['public.image', 'public.file-url'],
-})
+enableDropZone()
 
-onDrop((items) => {
-  console.log('Dropped items:', items)
+onDrop((files) => {
+  console.log('Dropped files:', files)
 })
 
 onDragEnter(() => {
@@ -31,7 +28,6 @@ onDragLeave(() => {
 
 <template>
   <VView
-    ref="dropZoneRef"
     :style="{
       padding: 40,
       borderWidth: 2,
@@ -52,11 +48,11 @@ onDragLeave(() => {
 
 ```ts
 useDragDrop(): {
-  isDragging: Ref<boolean>
-  enableDropZone: (ref: Ref<NativeNode>, options?: DropZoneOptions) => void
-  onDrop: (callback: (items: DropItem[]) => void) => void
-  onDragEnter: (callback: () => void) => void
-  onDragLeave: (callback: () => void) => void
+  isDragging: Readonly<Ref<boolean>>
+  enableDropZone: () => Promise<void>
+  onDrop: (callback: (files: string[]) => void) => () => void
+  onDragEnter: (callback: () => void) => () => void
+  onDragLeave: (callback: () => void) => () => void
 }
 ```
 
@@ -64,41 +60,15 @@ useDragDrop(): {
 
 | Property | Type | Description |
 |----------|------|-------------|
-| `isDragging` | `Ref<boolean>` | Reactive ref that is `true` when a drag operation is hovering over the registered drop zone. |
-| `enableDropZone` | `(ref, options?) => void` | Register a view as a drop target. Pass a template ref to the view. |
-| `onDrop` | `(callback) => void` | Register a callback invoked when items are dropped on the zone. |
-| `onDragEnter` | `(callback) => void` | Register a callback invoked when a drag enters the zone. |
-| `onDragLeave` | `(callback) => void` | Register a callback invoked when a drag leaves the zone. |
+| `isDragging` | `Readonly<Ref<boolean>>` | Reactive ref that is `true` when a drag operation is hovering over the drop zone. |
+| `enableDropZone` | `() => Promise<void>` | Register the window as a drop target. Call this once during component setup. |
+| `onDrop` | `(callback: (files: string[]) => void) => () => void` | Register a callback invoked when files are dropped. Receives an array of absolute file paths. Returns an unsubscribe function. |
+| `onDragEnter` | `(callback: () => void) => () => void` | Register a callback invoked when a drag enters the zone. Returns an unsubscribe function. |
+| `onDragLeave` | `(callback: () => void) => () => void` | Register a callback invoked when a drag leaves the zone. Returns an unsubscribe function. |
 
 ### Types
 
-```ts
-interface DropZoneOptions {
-  /** UTI types to accept (e.g. 'public.image', 'public.file-url'). Omit to accept all. */
-  acceptedTypes?: string[]
-}
-
-interface DropItem {
-  /** The type of the dropped item (UTI string). */
-  type: string
-  /** File path, if the item is a file. */
-  path?: string
-  /** Text content, if the item is a string. */
-  text?: string
-  /** Raw data as base64, if the item is binary data. */
-  data?: string
-}
-```
-
-#### Common UTI Types
-
-| UTI | Description |
-|-----|-------------|
-| `public.file-url` | Any file |
-| `public.image` | Images (PNG, JPEG, etc.) |
-| `public.plain-text` | Plain text strings |
-| `public.html` | HTML content |
-| `public.url` | URLs |
+The `onDrop` callback receives `string[]` — an array of absolute POSIX file paths for every file dropped onto the window. No additional type filtering is exposed at the JS layer.
 
 ## Platform Support
 
@@ -115,19 +85,13 @@ interface DropItem {
 import { ref } from '@thelacanians/vue-native-runtime'
 import { useDragDrop } from '@thelacanians/vue-native-runtime'
 
-const dropZoneRef = ref()
 const droppedFiles = ref<string[]>([])
 const { isDragging, enableDropZone, onDrop } = useDragDrop()
 
-enableDropZone(dropZoneRef, {
-  acceptedTypes: ['public.file-url'],
-})
+enableDropZone()
 
-onDrop((items) => {
-  const paths = items
-    .filter((item) => item.path)
-    .map((item) => item.path!)
-  droppedFiles.value = [...droppedFiles.value, ...paths]
+onDrop((files) => {
+  droppedFiles.value = [...droppedFiles.value, ...files]
 })
 </script>
 
@@ -136,7 +100,6 @@ onDrop((items) => {
     <VText :style="{ fontSize: 18, fontWeight: 'bold' }">Drag & Drop Demo</VText>
 
     <VView
-      ref="dropZoneRef"
       :style="{
         padding: 40,
         borderWidth: 2,
@@ -168,8 +131,8 @@ onDrop((items) => {
 
 ## Notes
 
-- `enableDropZone` must be called with a template ref after the component mounts. The view is registered as a drop target on the native side.
-- `isDragging` updates reactively — use it to style the drop zone (highlight, border color, etc.).
-- Callbacks registered with `onDrop`, `onDragEnter`, and `onDragLeave` are automatically cleaned up when the component unmounts.
+- `enableDropZone` takes no arguments. It registers the entire window as a drop target on the native side. Call it once during component setup.
+- `isDragging` is a readonly reactive ref that updates automatically — use it to style your drop indicator.
+- `onDrop` receives `string[]` — a flat array of absolute POSIX file paths (e.g. `/Users/name/Desktop/file.png`). You can pass these paths directly to `useFileSystem` for reading.
+- All event listener functions (`onDrop`, `onDragEnter`, `onDragLeave`) return unsubscribe functions. Call the returned function to stop listening.
 - Calling these methods on iOS or Android is a no-op and does not throw. `isDragging` will always be `false`.
-- For file drops, the `path` property contains the absolute POSIX file path. You can pass this to `useFileSystem` for reading.

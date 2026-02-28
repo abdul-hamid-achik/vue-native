@@ -35,13 +35,13 @@ setTitle('My App — Settings')
 
 ```ts
 useWindow(): {
-  setTitle: (title: string) => void
-  setSize: (width: number, height: number) => void
-  center: () => void
-  minimize: () => void
-  toggleFullScreen: () => void
-  close: () => void
-  getInfo: () => Promise<WindowInfo>
+  setTitle: (title: string) => Promise<void>
+  setSize: (width: number, height: number) => Promise<void>
+  center: () => Promise<void>
+  minimize: () => Promise<void>
+  toggleFullScreen: () => Promise<void>
+  close: () => Promise<void>
+  getInfo: () => Promise<WindowInfo | null>
 }
 ```
 
@@ -49,13 +49,13 @@ useWindow(): {
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `setTitle` | `(title: string) => void` | Set the window title bar text. |
-| `setSize` | `(width: number, height: number) => void` | Resize the window to the given dimensions in points. |
-| `center` | `() => void` | Center the window on the screen. |
-| `minimize` | `() => void` | Minimize the window to the dock. |
-| `toggleFullScreen` | `() => void` | Toggle between full screen and windowed mode. |
-| `close` | `() => void` | Close the window. If this is the last window and `applicationShouldTerminateAfterLastWindowClosed` returns `true`, the app will quit. |
-| `getInfo` | `() => Promise<WindowInfo>` | Get current window information (size, position, full screen state). |
+| `setTitle` | `(title: string) => Promise<void>` | Set the window title bar text. |
+| `setSize` | `(width: number, height: number) => Promise<void>` | Resize the window to the given dimensions in points. |
+| `center` | `() => Promise<void>` | Center the window on the screen. |
+| `minimize` | `() => Promise<void>` | Minimize the window to the dock. |
+| `toggleFullScreen` | `() => Promise<void>` | Toggle between full screen and windowed mode. |
+| `close` | `() => Promise<void>` | Close the window. If this is the last window and `applicationShouldTerminateAfterLastWindowClosed` returns `true`, the app will quit. |
+| `getInfo` | `() => Promise<WindowInfo \| null>` | Get current window information (size, position, full screen state). Returns `null` on non-macOS platforms. |
 
 ### Types
 
@@ -66,7 +66,7 @@ interface WindowInfo {
   x: number
   y: number
   isFullScreen: boolean
-  isMinimized: boolean
+  isVisible: boolean
   title: string
 }
 ```
@@ -124,6 +124,6 @@ async function handleResize(width: number, height: number) {
 
 ## Notes
 
-- All methods are synchronous fire-and-forget calls across the native bridge, except `getInfo()` which is async.
+- All methods are async and return Promises. Await them if you need to ensure ordering.
 - Calling these methods on iOS or Android is a no-op and does not throw.
 - Window size is specified in points, not pixels. On Retina displays, multiply by `window.devicePixelRatio` for pixel dimensions.

@@ -8,7 +8,7 @@ Returns the current platform the app is running on. Provides simple boolean flag
 <script setup>
 import { usePlatform } from '@thelacanians/vue-native-runtime'
 
-const { platform, isIOS, isAndroid } = usePlatform()
+const { platform, isIOS, isAndroid, isMacOS } = usePlatform()
 </script>
 
 <template>
@@ -16,6 +16,7 @@ const { platform, isIOS, isAndroid } = usePlatform()
     <VText>Running on: {{ platform }}</VText>
     <VText v-if="isIOS">Welcome, iOS user!</VText>
     <VText v-if="isAndroid">Welcome, Android user!</VText>
+    <VText v-if="isMacOS">Welcome, macOS user!</VText>
   </VView>
 </template>
 ```
@@ -24,9 +25,13 @@ const { platform, isIOS, isAndroid } = usePlatform()
 
 ```ts
 usePlatform(): {
-  platform: 'ios' | 'android',
-  isIOS: boolean,
+  platform: 'ios' | 'android' | 'macos'
+  isIOS: boolean
   isAndroid: boolean
+  isMacOS: boolean
+  isApple: boolean
+  isDesktop: boolean
+  isMobile: boolean
 }
 ```
 
@@ -34,9 +39,13 @@ usePlatform(): {
 
 | Property | Type | Description |
 |----------|------|-------------|
-| `platform` | `'ios' \| 'android'` | The current platform identifier. |
+| `platform` | `'ios' \| 'android' \| 'macos'` | The current platform identifier. |
 | `isIOS` | `boolean` | `true` if the app is running on iOS. |
 | `isAndroid` | `boolean` | `true` if the app is running on Android. |
+| `isMacOS` | `boolean` | `true` if the app is running on macOS. |
+| `isApple` | `boolean` | `true` if the app is running on an Apple platform (iOS or macOS). |
+| `isDesktop` | `boolean` | `true` if the app is running on a desktop platform (macOS). |
+| `isMobile` | `boolean` | `true` if the app is running on a mobile platform (iOS or Android). |
 
 ## Platform Support
 
@@ -44,6 +53,7 @@ usePlatform(): {
 |----------|---------|
 | iOS | Returns `'ios'` as the platform value. |
 | Android | Returns `'android'` as the platform value. |
+| macOS | Returns `'macos'` as the platform value. |
 
 ## Example
 
@@ -51,12 +61,12 @@ usePlatform(): {
 <script setup>
 import { usePlatform } from '@thelacanians/vue-native-runtime'
 
-const { isIOS, isAndroid } = usePlatform()
+const { platform, isIOS, isAndroid, isMacOS, isApple, isDesktop, isMobile } = usePlatform()
 
 const buttonStyle = {
-  backgroundColor: isIOS ? '#007AFF' : '#6200EE',
-  borderRadius: isIOS ? 10 : 4,
-  padding: 12,
+  backgroundColor: isIOS ? '#007AFF' : isAndroid ? '#6200EE' : '#000000',
+  borderRadius: isIOS || isMacOS ? 10 : 4,
+  padding: isMacOS ? 8 : 12,
 }
 </script>
 
@@ -76,6 +86,18 @@ const buttonStyle = {
     </VText>
     <VText v-if="isAndroid" :style="{ marginTop: 12 }">
       Using Roboto font defaults
+    </VText>
+    <VText v-if="isMacOS" :style="{ marginTop: 12 }">
+      Running on macOS — menu bar and window controls are available
+    </VText>
+    <VText v-if="isApple" :style="{ marginTop: 8, color: '#888' }">
+      Apple platform: {{ platform }}
+    </VText>
+    <VText v-if="isMobile" :style="{ marginTop: 8, color: '#888' }">
+      Mobile platform — touch optimised layout
+    </VText>
+    <VText v-if="isDesktop" :style="{ marginTop: 8, color: '#888' }">
+      Desktop platform — mouse and keyboard input expected
     </VText>
   </VView>
 </template>

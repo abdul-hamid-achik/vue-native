@@ -7,6 +7,7 @@ This guide walks you through building a complete Vue Native app from scratch —
 - Node.js 18+ or [Bun](https://bun.sh)
 - **iOS:** Xcode 15+, iOS 16+ Simulator
 - **Android:** Android Studio, API 21+ emulator
+- **macOS:** Xcode 15+, macOS 13.0+
 
 ## Part 1: Project Setup & Your First Screen
 
@@ -25,6 +26,7 @@ my-contacts/
 │   ├── main.ts          # Entry point
 │   └── App.vue          # Root component
 ├── ios/                  # Xcode project (iOS)
+├── macos/                # Xcode project (macOS)
 ├── android/              # Gradle project (Android)
 ├── vite.config.ts        # Build configuration
 └── package.json
@@ -109,6 +111,7 @@ bun run dev
 # Terminal 2: Build and run on simulator (first time only)
 vue-native run ios
 # or: vue-native run android
+# or: vue-native run macos
 ```
 
 You should see a centered counter that increments on tap. Any edits to `.vue` files will hot-reload instantly.

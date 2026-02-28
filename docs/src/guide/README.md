@@ -1,8 +1,8 @@
 # Introduction
 
-Vue Native lets you build **real native iOS and Android apps** with Vue 3.
+Vue Native lets you build **real native iOS, Android, and macOS apps** with Vue 3.
 
-Unlike hybrid frameworks that render HTML in a WebView, Vue Native drives native UI components directly — `UIKit` on iOS and `Android Views` on Android. Your Vue components produce actual native views with native performance and look.
+Unlike hybrid frameworks that render HTML in a WebView, Vue Native drives native UI components directly — `UIKit` on iOS, `AppKit` on macOS, and `Android Views` on Android. Your Vue components produce actual native views with native performance and look.
 
 ## How it works
 
@@ -11,20 +11,22 @@ Vue Component (SFC)
       ↓  Vue custom renderer  (createRenderer)
   NativeBridge (TypeScript)
       ↓  JSON batch via queueMicrotask
-      ├── iOS:     Swift → UIKit  → Yoga layout
+      ├── iOS:     Swift → UIKit   → Yoga layout
+      ├── macOS:   Swift → AppKit  → Yoga layout
       └── Android: Kotlin → Android Views → FlexboxLayout
 ```
 
 The JavaScript engine runs your Vue app:
 
 - **iOS** — JavaScriptCore (built into the OS, zero download overhead)
+- **macOS** — JavaScriptCore (built into the OS, zero download overhead)
 - **Android** — V8 via J2V8
 
 ## Key features
 
 - **Vue 3 Composition API** — `ref`, `computed`, `watch`, `<script setup>` all work as expected
 - **Real native UI** — No DOM, no WebView, no HTML
-- **Cross-platform** — One Vue codebase, both platforms
+- **Cross-platform** — One Vue codebase, iOS, Android, and macOS
 - **30+ built-in components** — VView, VText, VButton, VInput, VList, and more
 - **Native modules** — Haptics, AsyncStorage, Camera, Geolocation, and more
 - **Navigation** — Stack navigation via `@thelacanians/vue-native-navigation`

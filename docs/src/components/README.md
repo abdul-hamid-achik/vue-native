@@ -1,6 +1,6 @@
 # Components
 
-Vue Native provides 30+ built-in components that map directly to native views on iOS and Android.
+Vue Native provides 30+ built-in components that map directly to native views on iOS, Android, and macOS.
 
 See the [Components guide](../guide/components.md) for a full comparison table.
 
@@ -46,3 +46,11 @@ See the [Components guide](../guide/components.md) for a full comparison table.
 ## System
 - [VStatusBar](./VStatusBar.md) -- Status bar control
 - [VPicker](./VPicker.md) -- Date/time picker
+
+## macOS-Only Components
+
+The following components are available exclusively on macOS targets and have no mobile equivalent.
+
+- [VToolbar](./VToolbar.md) -- Window toolbar with title and toolbar items
+- [VSplitView](./VSplitView.md) -- Horizontal or vertical split pane container
+- [VOutlineView](./VOutlineView.md) -- Hierarchical tree list (NSOutlineView)
