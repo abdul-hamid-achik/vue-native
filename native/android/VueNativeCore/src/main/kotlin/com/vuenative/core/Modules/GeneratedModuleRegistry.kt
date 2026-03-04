@@ -23,6 +23,6 @@ fun NativeModuleRegistry.registerGeneratedModules() {
     // Example:
     // register(HapticsModule())
     // register(CameraModule())
-    
+
     // This function is called automatically after registerDefaults()
 }

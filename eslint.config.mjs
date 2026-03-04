@@ -19,6 +19,7 @@ export default tseslint.config(
       '**/DerivedData/',
       '**/.build/',
       '**/*.json',
+      'examples/native-blocks-demo/',
     ],
   },
 

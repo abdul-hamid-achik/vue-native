@@ -9,8 +9,8 @@ export default defineConfig({
       platform: 'ios',
       nativeCodegen: true,
       nativeOutputDirs: {
-        ios: '../../native/ios/VueNativeCore/Sources/VueNativeCore/GeneratedModules',
-        android: '../../native/android/VueNativeCore/src/main/kotlin/com/vuenative/core/GeneratedModules',
+        ios: 'generated/ios',
+        android: 'generated/android',
         typescript: 'app/generated',
       },
     }),

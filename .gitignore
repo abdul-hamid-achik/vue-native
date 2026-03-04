@@ -32,6 +32,10 @@ Thumbs.db
 # Test coverage
 coverage/
 
+# Codegen output
+**/generated/
+test-output/
+
 # vecgrep
 .vecgrep/
 

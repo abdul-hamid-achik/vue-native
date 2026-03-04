@@ -25,8 +25,6 @@
 import { parseDirectory, type NativeBlock } from '@thelacanians/vue-native-sfc-parser'
 import { generateCode, writeGeneratedFiles, type CodegenResult } from '@thelacanians/vue-native-codegen'
 import fg from 'fast-glob'
-import * as path from 'path'
-import * as fs from 'fs'
 
 export interface VueNativePluginOptions {
   /**
@@ -314,6 +312,21 @@ export default function vueNativePlugin(options: VueNativePluginOptions = {}) {
     async buildStart() {
       if (nativeCodegen && projectRoot) {
         await runCodegen(projectRoot)
+      }
+    },
+
+    /**
+     * Strip <native> custom blocks — they contain Swift/Kotlin code
+     * that should not be processed by Rollup/esbuild.
+     */
+    /**
+     * Strip <native> custom blocks — they contain Swift/Kotlin code
+     * that should not be processed by Rollup/esbuild.
+     * The vue plugin loads the raw content; we transform it to a no-op.
+     */
+    transform(_code: string, id: string) {
+      if (id.includes('type=native')) {
+        return { code: 'export default () => {}', map: null }
       }
     },
 

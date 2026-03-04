@@ -58,7 +58,7 @@ class NativeModuleRegistry private constructor(private val context: Context) {
             register(m)
             m.initialize(ctx, bridge)
         }
-        
+
         // Register generated modules from <native> blocks
         registerGeneratedModules()
     }

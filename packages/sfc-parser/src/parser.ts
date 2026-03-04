@@ -1,6 +1,6 @@
 import { parse } from '@vue/compiler-sfc'
 import { readFileSync, readdirSync } from 'node:fs'
-import { resolve, join, dirname, basename } from 'node:path'
+import { resolve, join } from 'node:path'
 import { extractNativeBlocks } from './extractor'
 import type {
   ParsedSFC,
@@ -139,7 +139,7 @@ export function parseDirectory(
   // Recursively find all .vue files
   function scanDirectory(dir: string): void {
     const entries = readdirSync(dir, { withFileTypes: true })
-    
+
     for (const entry of entries) {
       const fullPath = join(dir, entry.name)
 

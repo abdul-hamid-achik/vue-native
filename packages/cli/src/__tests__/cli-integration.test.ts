@@ -6,8 +6,14 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { execSync } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
+
+const __dirname = typeof import.meta.url !== 'undefined'
+  ? fileURLToPath(new URL('.', import.meta.url))
+  : process.cwd()
+const cliPath = resolve(__dirname, '..', '..', 'dist', 'cli.js')
 
 /**
  * Create a temporary test directory
@@ -63,7 +69,7 @@ describe('CLI Command Tests', () => {
       writeTestSFC(testDir, 'Test.vue', sfc)
 
       // Run generate command
-      const output = execSync('bunx vue-native generate', {
+      const output = execSync(`node ${cliPath} generate`, {
         cwd: testDir,
         encoding: 'utf-8',
         stdio: 'pipe',
@@ -86,7 +92,7 @@ describe('CLI Command Tests', () => {
       writeTestSFC(testDir, 'Invalid.vue', invalidSFC)
 
       try {
-        execSync('bunx vue-native generate', {
+        execSync(`node ${cliPath} generate`, {
           cwd: testDir,
           encoding: 'utf-8',
           stdio: 'pipe',
@@ -117,7 +123,7 @@ describe('CLI Command Tests', () => {
       const customDir = join(testDir, 'custom', 'output')
 
       const output = execSync(
-        `bunx vue-native generate --ios-output ${customDir}`,
+        `node ${cliPath} generate --ios-output ${customDir}`,
         {
           cwd: testDir,
           encoding: 'utf-8',
@@ -145,14 +151,14 @@ describe('CLI Command Tests', () => {
       writeTestSFC(testDir, 'Test.vue', sfc)
 
       // Generate first
-      execSync('bunx vue-native generate', {
+      execSync(`node ${cliPath} generate`, {
         cwd: testDir,
         encoding: 'utf-8',
         stdio: 'pipe',
       })
 
       // Clean and regenerate
-      const output = execSync('bunx vue-native generate --clean', {
+      const output = execSync(`node ${cliPath} generate --clean`, {
         cwd: testDir,
         encoding: 'utf-8',
         stdio: 'pipe',
@@ -175,7 +181,7 @@ describe('CLI Command Tests', () => {
 
       writeTestSFC(testDir, 'NoNative.vue', sfc)
 
-      const output = execSync('bunx vue-native generate', {
+      const output = execSync(`node ${cliPath} generate`, {
         cwd: testDir,
         encoding: 'utf-8',
         stdio: 'pipe',
@@ -199,7 +205,7 @@ describe('CLI Command Tests', () => {
 
       writeTestSFC(testDir, 'Test.vue', sfc)
 
-      const output = execSync('bunx vue-native generate --no-typescript', {
+      const output = execSync(`node ${cliPath} generate --no-typescript`, {
         cwd: testDir,
         encoding: 'utf-8',
         stdio: 'pipe',
@@ -233,7 +239,7 @@ describe('CLI Command Tests', () => {
 
       writeTestSFC(testDir, 'Test.vue', sfc)
 
-      const output = execSync('bunx vue-native generate', {
+      const output = execSync(`node ${cliPath} generate`, {
         cwd: testDir,
         encoding: 'utf-8',
         stdio: 'pipe',
@@ -245,7 +251,7 @@ describe('CLI Command Tests', () => {
 
   describe('CLI Help', () => {
     it('should show help for generate command', () => {
-      const output = execSync('bunx vue-native generate --help', {
+      const output = execSync(`node ${cliPath} generate --help`, {
         encoding: 'utf-8',
         stdio: 'pipe',
       })

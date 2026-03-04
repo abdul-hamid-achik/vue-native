@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseSFC, parseDirectory, getNativeBlocks, groupBlocksByComponent, groupBlocksByPlatform } from '../parser'
+import { parseSFC, getNativeBlocks, groupBlocksByComponent, groupBlocksByPlatform } from '../parser'
 import type { NativeBlock } from '../types'
 
 describe('SFC Parser', () => {

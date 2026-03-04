@@ -36,7 +36,7 @@ export function generateSwiftFile(
  */
 export function generateSwiftRegistration(
   blocks: NativeBlock[],
-  options: CodegenOptions = {},
+  _options: CodegenOptions = {},
 ): string {
   const iosBlocks = blocks.filter(b => b.platform === 'ios' || b.platform === 'macos')
 
