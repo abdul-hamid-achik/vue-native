@@ -9,7 +9,12 @@
       "ignoreDependencies": ["vite"]
     },
     "packages/cli": {},
-    "examples/*": {}
+    "examples/*": {},
+    "examples/native-blocks-demo": {
+      "ignore": ["app/**"],
+      "ignoreDependencies": ["@thelacanians/vue-native-runtime", "@thelacanians/vue-native-navigation"],
+      "ignoreBinaries": ["vue-native"]
+    }
   },
   "ignore": [
     "native/**",
