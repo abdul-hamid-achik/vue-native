@@ -155,6 +155,21 @@
         "vue": "^3.5.0",
       },
     },
+    "examples/native-blocks-demo": {
+      "name": "@thelacanians/vue-native-example-native-blocks-demo",
+      "version": "0.0.1",
+      "dependencies": {
+        "@thelacanians/vue-native-navigation": "workspace:*",
+        "@thelacanians/vue-native-runtime": "workspace:*",
+        "vue": "^3.4.0",
+      },
+      "devDependencies": {
+        "@thelacanians/vue-native-vite-plugin": "workspace:*",
+        "@vitejs/plugin-vue": "^5.0.0",
+        "typescript": "^5.7.0",
+        "vite": "^6.0.0",
+      },
+    },
     "examples/navigation-demo": {
       "name": "@thelacanians/vue-native-example-navigation-demo",
       "version": "0.1.0",
@@ -249,6 +264,8 @@
         "vue-native": "./dist/cli.js",
       },
       "dependencies": {
+        "@thelacanians/vue-native-codegen": "workspace:*",
+        "@thelacanians/vue-native-sfc-parser": "workspace:*",
         "chokidar": "^3.6.0",
         "commander": "^12.1.0",
         "picocolors": "^1.1.0",
@@ -257,6 +274,19 @@
       "devDependencies": {
         "@types/node": "^22.0.0",
         "@types/ws": "^8.5.13",
+        "tsup": "^8.4.0",
+        "typescript": "^5.7.0",
+        "vitest": "^4.0.18",
+      },
+    },
+    "packages/codegen": {
+      "name": "@thelacanians/vue-native-codegen",
+      "version": "0.0.1",
+      "dependencies": {
+        "@thelacanians/vue-native-sfc-parser": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/node": "^22.0.0",
         "tsup": "^8.4.0",
         "typescript": "^5.7.0",
         "vitest": "^4.0.18",
@@ -291,9 +321,27 @@
         "vitest": "^4.0.18",
       },
     },
+    "packages/sfc-parser": {
+      "name": "@thelacanians/vue-native-sfc-parser",
+      "version": "0.0.1",
+      "dependencies": {
+        "@vue/compiler-sfc": "^3.4.0",
+      },
+      "devDependencies": {
+        "@types/node": "^22.0.0",
+        "tsup": "^8.4.0",
+        "typescript": "^5.7.0",
+        "vitest": "^4.0.18",
+      },
+    },
     "packages/vite-plugin": {
       "name": "@thelacanians/vue-native-vite-plugin",
       "version": "0.4.15",
+      "dependencies": {
+        "@thelacanians/vue-native-codegen": "workspace:*",
+        "@thelacanians/vue-native-sfc-parser": "workspace:*",
+        "fast-glob": "^3.3.2",
+      },
       "devDependencies": {
         "tsup": "^8.4.0",
         "typescript": "^5.7.0",
@@ -569,6 +617,8 @@
 
     "@thelacanians/vue-native-cli": ["@thelacanians/vue-native-cli@workspace:packages/cli"],
 
+    "@thelacanians/vue-native-codegen": ["@thelacanians/vue-native-codegen@workspace:packages/codegen"],
+
     "@thelacanians/vue-native-docs": ["@thelacanians/vue-native-docs@workspace:docs"],
 
     "@thelacanians/vue-native-example-auth-flow": ["@thelacanians/vue-native-example-auth-flow@workspace:examples/auth-flow"],
@@ -589,6 +639,8 @@
 
     "@thelacanians/vue-native-example-media-player": ["@thelacanians/vue-native-example-media-player@workspace:examples/media-player"],
 
+    "@thelacanians/vue-native-example-native-blocks-demo": ["@thelacanians/vue-native-example-native-blocks-demo@workspace:examples/native-blocks-demo"],
+
     "@thelacanians/vue-native-example-navigation-demo": ["@thelacanians/vue-native-example-navigation-demo@workspace:examples/navigation-demo"],
 
     "@thelacanians/vue-native-example-settings": ["@thelacanians/vue-native-example-settings@workspace:examples/settings"],
@@ -604,6 +656,8 @@
     "@thelacanians/vue-native-navigation": ["@thelacanians/vue-native-navigation@workspace:packages/navigation"],
 
     "@thelacanians/vue-native-runtime": ["@thelacanians/vue-native-runtime@workspace:packages/runtime"],
+
+    "@thelacanians/vue-native-sfc-parser": ["@thelacanians/vue-native-sfc-parser@workspace:packages/sfc-parser"],
 
     "@thelacanians/vue-native-vite-plugin": ["@thelacanians/vue-native-vite-plugin@workspace:packages/vite-plugin"],
 
@@ -929,7 +983,7 @@
 
     "estraverse": ["estraverse@5.3.0", "", {}, "sha512-MMdARuVEQziNTeJD8DgMqmhwR11BRQ/cBP+pLtYdSTnf3MIO8fFeiINEbX36ZdNlfU/7A9f3gUw49B3oQsvwBA=="],
 
-    "estree-walker": ["estree-walker@3.0.3", "", { "dependencies": { "@types/estree": "^1.0.0" } }, "sha512-7RUKfXgSMMkzt6ZuXmqapOurLGPPfgj6l9uRZ7lRGolvk0y2yocc35LdcxKC5PQZdn2DMqioAQ2NoWcrTKmm6g=="],
+    "estree-walker": ["estree-walker@2.0.2", "", {}, "sha512-Rfkk/Mp/DL7JVje3u18FxFujQlTNR2q6QfMSMB7AvCBx91NGj/ba3kCfza0f6dVDbw7YlRf/nDrn7pQrCCyQ/w=="],
 
     "esutils": ["esutils@2.0.3", "", {}, "sha512-kVscqXk4OCp68SZ0dkgEKVi6/8ij300KBWTJq32P/dYeWTSwK41WyTxalN1eRmA5Z9UU/LX9D7FWSmV9SAYx6g=="],
 
@@ -1499,9 +1553,7 @@
 
     "@vitest/expect/chai": ["chai@6.2.2", "", {}, "sha512-NUPRluOfOiTKBKvWPtSD4PhFvWCqOi0BGStNWs57X9js7XGTprSmFoz5F0tWhR4WPjNeR9jXqdC7/UpSJTnlRg=="],
 
-    "@vue/compiler-core/estree-walker": ["estree-walker@2.0.2", "", {}, "sha512-Rfkk/Mp/DL7JVje3u18FxFujQlTNR2q6QfMSMB7AvCBx91NGj/ba3kCfza0f6dVDbw7YlRf/nDrn7pQrCCyQ/w=="],
-
-    "@vue/compiler-sfc/estree-walker": ["estree-walker@2.0.2", "", {}, "sha512-Rfkk/Mp/DL7JVje3u18FxFujQlTNR2q6QfMSMB7AvCBx91NGj/ba3kCfza0f6dVDbw7YlRf/nDrn7pQrCCyQ/w=="],
+    "@vitest/mocker/estree-walker": ["estree-walker@3.0.3", "", { "dependencies": { "@types/estree": "^1.0.0" } }, "sha512-7RUKfXgSMMkzt6ZuXmqapOurLGPPfgj6l9uRZ7lRGolvk0y2yocc35LdcxKC5PQZdn2DMqioAQ2NoWcrTKmm6g=="],
 
     "@vuepress/bundler-vite/@vitejs/plugin-vue": ["@vitejs/plugin-vue@6.0.4", "", { "dependencies": { "@rolldown/pluginutils": "1.0.0-rc.2" }, "peerDependencies": { "vite": "^5.0.0 || ^6.0.0 || ^7.0.0 || ^8.0.0-0", "vue": "^3.2.25" } }, "sha512-uM5iXipgYIn13UUQCZNdWkYk+sysBeA97d5mHsAoAt1u/wpN3+zxOmsVJWosuzX+IMGRzeYUNytztrYznboIkQ=="],
 
@@ -1514,6 +1566,8 @@
     "@vuepress/plugin-palette/chokidar": ["chokidar@5.0.0", "", { "dependencies": { "readdirp": "^5.0.0" } }, "sha512-TQMmc3w+5AxjpL8iIiwebF73dRDF4fBIieAqGn9RGCWaEVwQ6Fb2cGe31Yns0RRIzii5goJ1Y7xbMwo1TxMplw=="],
 
     "anymatch/picomatch": ["picomatch@2.3.1", "", {}, "sha512-JU3teHTNjmE2VCGFzuY8EXzCDVwEqB2a8fsIvwaStHhAWJEeVd1o1QD80CU6+ZdEXXSLbSsuLwJjkCBWqRQUVA=="],
+
+    "ast-v8-to-istanbul/estree-walker": ["estree-walker@3.0.3", "", { "dependencies": { "@types/estree": "^1.0.0" } }, "sha512-7RUKfXgSMMkzt6ZuXmqapOurLGPPfgj6l9uRZ7lRGolvk0y2yocc35LdcxKC5PQZdn2DMqioAQ2NoWcrTKmm6g=="],
 
     "chalk/supports-color": ["supports-color@7.2.0", "", { "dependencies": { "has-flag": "^4.0.0" } }, "sha512-qpCAvRl9stuOHveKsn7HncJRvv501qIacKzQlO/+Lwxc9+0q2wLyv4Dfvt80/DPn2pqOBsJdDiogXGR9+OvwRw=="],
 
@@ -1704,6 +1758,8 @@
     "vite/esbuild/@esbuild/win32-ia32": ["@esbuild/win32-ia32@0.25.12", "", { "os": "win32", "cpu": "ia32" }, "sha512-HkqnmmBoCbCwxUKKNPBixiWDGCpQGVsrQfJoVGYLPT41XWF8lHuE5N6WhVia2n4o5QK5M4tYr21827fNhi4byQ=="],
 
     "vite/esbuild/@esbuild/win32-x64": ["@esbuild/win32-x64@0.25.12", "", { "os": "win32", "cpu": "x64" }, "sha512-alJC0uCZpTFrSL0CCDjcgleBXPnCrEAhTBILpeAp7M/OFgoqtAetfBzX0xM00MUsVVPpVjlPuMbREqnZCXaTnA=="],
+
+    "@thelacanians/vue-native-navigation/vitest/@vitest/mocker/estree-walker": ["estree-walker@3.0.3", "", { "dependencies": { "@types/estree": "^1.0.0" } }, "sha512-7RUKfXgSMMkzt6ZuXmqapOurLGPPfgj6l9uRZ7lRGolvk0y2yocc35LdcxKC5PQZdn2DMqioAQ2NoWcrTKmm6g=="],
 
     "@thelacanians/vue-native-navigation/vitest/vite/esbuild": ["esbuild@0.21.5", "", { "optionalDependencies": { "@esbuild/aix-ppc64": "0.21.5", "@esbuild/android-arm": "0.21.5", "@esbuild/android-arm64": "0.21.5", "@esbuild/android-x64": "0.21.5", "@esbuild/darwin-arm64": "0.21.5", "@esbuild/darwin-x64": "0.21.5", "@esbuild/freebsd-arm64": "0.21.5", "@esbuild/freebsd-x64": "0.21.5", "@esbuild/linux-arm": "0.21.5", "@esbuild/linux-arm64": "0.21.5", "@esbuild/linux-ia32": "0.21.5", "@esbuild/linux-loong64": "0.21.5", "@esbuild/linux-mips64el": "0.21.5", "@esbuild/linux-ppc64": "0.21.5", "@esbuild/linux-riscv64": "0.21.5", "@esbuild/linux-s390x": "0.21.5", "@esbuild/linux-x64": "0.21.5", "@esbuild/netbsd-x64": "0.21.5", "@esbuild/openbsd-x64": "0.21.5", "@esbuild/sunos-x64": "0.21.5", "@esbuild/win32-arm64": "0.21.5", "@esbuild/win32-ia32": "0.21.5", "@esbuild/win32-x64": "0.21.5" }, "bin": { "esbuild": "bin/esbuild" } }, "sha512-mg3OPMV4hXywwpoDxu3Qda5xCKQi+vCTZq8S9J/EpkhB2HzKXq4SNFZE3+NK93JYxc8VMSep+lOUSC/RVKaBqw=="],
 

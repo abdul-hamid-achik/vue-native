@@ -51,6 +51,7 @@ export default defineUserConfig({
             '/guide/styling.md',
             '/guide/navigation.md',
             '/guide/native-modules.md',
+            '/guide/native-blocks.md',
             '/guide/hot-reload.md',
           ],
         },

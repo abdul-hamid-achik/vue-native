@@ -1,0 +1,22 @@
+{
+  "name": "@thelacanians/vue-native-example-native-blocks-demo",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Vue Native example app demonstrating <native> blocks code generation",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "generate": "vue-native generate"
+  },
+  "dependencies": {
+    "vue": "^3.4.0",
+    "@thelacanians/vue-native-runtime": "workspace:*",
+    "@thelacanians/vue-native-navigation": "workspace:*"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.0.0",
+    "@thelacanians/vue-native-vite-plugin": "workspace:*",
+    "vite": "^6.0.0",
+    "typescript": "^5.7.0"
+  }
+}

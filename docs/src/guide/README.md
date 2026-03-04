@@ -29,6 +29,7 @@ The JavaScript engine runs your Vue app:
 - **Cross-platform** — One Vue codebase, iOS, Android, and macOS
 - **30+ built-in components** — VView, VText, VButton, VInput, VList, and more
 - **Native modules** — Haptics, AsyncStorage, Camera, Geolocation, and more
+- **Custom native code** — Write Swift/Kotlin directly in Vue SFCs with [`<native>` blocks](./native-blocks.md)
 - **Navigation** — Stack navigation via `@thelacanians/vue-native-navigation`
 - **Hot reload** — Edit Vue files, see changes instantly
 - **TypeScript** — Full type coverage
@@ -37,3 +38,4 @@ The JavaScript engine runs your Vue app:
 
 - [Installation →](./installation.md)
 - [Your first app →](./your-first-app.md)
+- [Native code blocks →](./native-blocks.md) - Write custom Swift/Kotlin code

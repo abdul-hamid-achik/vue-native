@@ -31,6 +31,8 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
+    "@thelacanians/vue-native-sfc-parser": "workspace:*",
+    "@thelacanians/vue-native-codegen": "workspace:*",
     "commander": "^12.1.0",
     "ws": "^8.18.0",
     "chokidar": "^3.6.0",

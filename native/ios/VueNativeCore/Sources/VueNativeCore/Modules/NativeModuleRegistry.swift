@@ -55,6 +55,9 @@ final class NativeModuleRegistry {
         register(BluetoothModule(bridge: bridge))
         register(CalendarModule())
         register(ContactsModule())
+        
+        // Register generated modules from <native> blocks
+        registerGeneratedModules()
     }
 
     // MARK: - Invocation
