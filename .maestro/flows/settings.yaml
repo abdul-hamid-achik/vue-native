@@ -1,0 +1,29 @@
+appId: com.vuenative.example
+name: Settings Flow
+---
+# Test settings modifications
+- launchApp
+
+# Navigate to settings
+- tapOn: "Settings"
+- assertVisible: "Settings"
+
+# Toggle notifications
+- tapOn: "Notifications"
+- waitForAnimationToEnd: 300
+
+# Change theme
+- tapOn: "Theme"
+- tapOn: "Dark"
+- waitForAnimationToEnd: 500
+- assertVisible: "Dark"
+
+# Go back
+- back
+- assertVisible: "Settings"
+
+# Test logout
+- tapOn: "Logout"
+- tapOn: "Confirm"
+- waitForAnimationToEnd: 1000
+- assertVisible: "Login"

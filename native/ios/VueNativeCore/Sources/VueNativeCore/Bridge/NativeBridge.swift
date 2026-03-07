@@ -61,6 +61,23 @@ public final class NativeBridge {
     /// Reference to the JS runtime.
     private let runtime = JSRuntime.shared
 
+    // MARK: - Teleport Support
+
+    /// Maps teleport marker IDs (start, end) for cleanup
+    private var teleportMarkers: [Int: (start: Int, end: Int)] = [:]
+
+    /// Maps parent node IDs to their teleport containers
+    private var teleportContainers: [Int: UIView] = [:]
+
+    /// Modal container for teleporting modals
+    private lazy var modalContainer: UIView = {
+        let container = UIView()
+        container.backgroundColor = .clear
+        container.isUserInteractionEnabled = true
+        container.translatesAutoresizingMaskIntoConstraints = false
+        return container
+    }()
+
     // MARK: - Initialization
 
     private init() {}
@@ -239,6 +256,12 @@ public final class NativeBridge {
                 handleRemoveEventListener(args: args)
             case "setRootView":
                 handleSetRootView(args: args)
+            case "createTeleport":
+                handleCreateTeleport(args: args)
+            case "removeTeleport":
+                handleRemoveTeleport(args: args)
+            case "teleportTo":
+                handleTeleportTo(args: args)
             case "invokeNativeModule":
                 handleInvokeNativeModule(args: args)
             case "invokeNativeModuleSync":
@@ -596,6 +619,124 @@ public final class NativeBridge {
         vc.view.addSubview(traitObserver)
         // Retain the observer for the lifetime of the root view controller's view
         objc_setAssociatedObject(vc.view as UIView, &NativeBridge.traitObserverKey, traitObserver as AnyObject, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+
+        // Add modal container to root view for teleport
+        if rootView != nil {
+            rootView?.addSubview(modalContainer)
+            modalContainer.topAnchor.constraint(equalTo: rootView!.topAnchor).isActive = true
+            modalContainer.leadingAnchor.constraint(equalTo: rootView!.leadingAnchor).isActive = true
+            modalContainer.trailingAnchor.constraint(equalTo: rootView!.trailingAnchor).isActive = true
+            modalContainer.bottomAnchor.constraint(equalTo: rootView!.bottomAnchor).isActive = true
+        }
+    }
+
+    // MARK: - Teleport Handlers
+
+    /// createTeleport: [parentId: Int, startId: Int, endId: Int]
+    private func handleCreateTeleport(args: [Any]) {
+        guard args.count >= 3,
+              let parentId = asInt(args[0]),
+              let startId = asInt(args[1]),
+              let endId = asInt(args[2]) else {
+            NSLog("[VueNative Bridge] Error: Invalid createTeleport args: \(args)")
+            return
+        }
+
+        guard let parentView = viewRegistry[parentId] else {
+            NSLog("[VueNative Bridge] Error: Parent view not found for teleport (id: \(parentId))")
+            return
+        }
+
+        // Store teleport marker IDs
+        teleportMarkers[parentId] = (start: startId, end: endId)
+
+        // Create container for teleported content
+        let container = UIView()
+        container.tag = -parentId  // Negative tag to identify as teleport container
+        container.backgroundColor = .clear
+        container.isUserInteractionEnabled = true
+        container.translatesAutoresizingMaskIntoConstraints = false
+
+        parentView.addSubview(container)
+        teleportContainers[parentId] = container
+
+        #if DEBUG
+        NSLog("[VueNative Bridge] Created teleport container for parent \(parentId)")
+        #endif
+    }
+
+    /// removeTeleport: [parentId: Int, startId: Int, endId: Int]
+    private func handleRemoveTeleport(args: [Any]) {
+        guard args.count >= 1,
+              let parentId = asInt(args[0]) else {
+            NSLog("[VueNative Bridge] Error: Invalid removeTeleport args: \(args)")
+            return
+        }
+
+        // Remove teleport container
+        if let container = teleportContainers.removeValue(forKey: parentId) {
+            container.removeFromSuperview()
+        }
+
+        // Clean up markers
+        teleportMarkers.removeValue(forKey: parentId)
+
+        #if DEBUG
+        NSLog("[VueNative Bridge] Removed teleport container for parent \(parentId)")
+        #endif
+    }
+
+    /// teleportTo: [target: String, nodeId: Int]
+    private func handleTeleportTo(args: [Any]) {
+        guard args.count >= 2,
+              let target = args[0] as? String,
+              let nodeId = asInt(args[1]) else {
+            NSLog("[VueNative Bridge] Error: Invalid teleportTo args: \(args)")
+            return
+        }
+
+        guard let targetView = getTeleportTarget(target) else {
+            NSLog("[VueNative Bridge] Warning: Teleport target '\(target)' not found")
+            return
+        }
+
+        guard let childView = viewRegistry[nodeId] else {
+            NSLog("[VueNative Bridge] Warning: Node view not found for teleport (id: \(nodeId))")
+            return
+        }
+
+        // Move view to teleport target
+        childView.removeFromSuperview()
+        targetView.addSubview(childView)
+
+        // Set up full-size constraints
+        childView.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            childView.topAnchor.constraint(equalTo: targetView.topAnchor),
+            childView.leadingAnchor.constraint(equalTo: targetView.leadingAnchor),
+            childView.trailingAnchor.constraint(equalTo: targetView.trailingAnchor),
+            childView.bottomAnchor.constraint(equalTo: targetView.bottomAnchor),
+        ])
+
+        #if DEBUG
+        NSLog("[VueNative Bridge] Teleported node \(nodeId) to target '\(target)'")
+        #endif
+    }
+
+    /// Get teleport target view by name
+    private func getTeleportTarget(_ target: String) -> UIView? {
+        switch target {
+        case "root":
+            return rootView
+        case "modal":
+            // Ensure modal container is added to root if not already
+            if modalContainer.superview == nil && rootView != nil {
+                rootView?.addSubview(modalContainer)
+            }
+            return modalContainer
+        default:
+            return nil
+        }
     }
 
     // MARK: - Native Module Handlers

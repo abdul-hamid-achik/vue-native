@@ -66,6 +66,8 @@ export default defineUserConfig({
             '/guide/testing.md',
             '/guide/security.md',
             '/guide/debugging.md',
+            '/guide/teleport.md',
+            '/guide/forms.md',
           ],
         },
         {

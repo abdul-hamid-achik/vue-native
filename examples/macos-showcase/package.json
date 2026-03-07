@@ -1,6 +1,6 @@
 {
   "name": "@thelacanians/vue-native-example-macos-showcase",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "private": true,
   "scripts": {
     "build": "vite build",

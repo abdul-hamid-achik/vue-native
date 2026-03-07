@@ -1,0 +1,33 @@
+appId: com.vuenative.example
+name: Navigation Flow
+---
+# Test basic navigation
+- launchApp
+- assertVisible: "Home"
+
+# Navigate to settings
+- tapOn: "Settings"
+- waitForAnimationToEnd: 500
+- assertVisible: "Settings"
+
+# Go back
+- back
+- assertVisible: "Home"
+
+# Navigate to profile
+- tapOn: "Profile"
+- waitForAnimationToEnd: 500
+- assertVisible: "Profile"
+
+# Go back again
+- back
+- assertVisible: "Home"
+
+# Test tab navigation (if available)
+- tapOn: 
+    id: "tab-home"
+- assertVisible: "Home"
+
+- tapOn:
+    id: "tab-search"
+- assertVisible: "Search"

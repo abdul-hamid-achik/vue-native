@@ -1,0 +1,30 @@
+appId: com.vuenative.example
+name: Login Flow
+env:
+  EMAIL: test@example.com
+  PASSWORD: password123
+---
+# Test login flow
+- launchApp
+
+# Navigate to login
+- tapOn: "Login"
+- assertVisible: "Sign In"
+
+# Enter credentials
+- tapOn: "Email"
+- inputText: ${EMAIL}
+
+- tapOn: "Password"
+- inputText: ${PASSWORD}
+
+# Submit
+- tapOn: "Sign In"
+- waitForAnimationToEnd: 1000
+
+# Verify login successful
+- assertVisible: "Welcome back"
+- assertVisible: "Home"
+
+# Take screenshot
+- takeScreenshot: "login_success"

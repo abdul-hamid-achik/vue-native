@@ -1,30 +1,67 @@
-# Media Player Example
+# Media Player
 
-Demonstrates video playback, audio controls, and embedded web content.
+A media player demonstrating video and audio playback controls.
 
-## Components Used
+## What It Demonstrates
 
-- **VVideo** — Video playback with custom controls (AVPlayer / MediaPlayer)
-- **VWebView** — Embedded web browser with URL bar
-- **VSlider** — Volume control and seek
-- **VPressable** — Tap targets for player controls
+- **Components:** VVideo, VView, VButton, VText, VSlider
+- **Composables:** `useAudio`, `usePermissions`
+- **Patterns:**
+  - Video playback
+  - Audio controls
+  - Progress tracking
+  - Play/pause state
 
-## Composables Used
+## Key Features
 
-- **useAudio** — Audio playback: play, pause, resume, stop, seek, volume
-- **useDimensions** — Responsive video sizing based on screen width
+- Video player with controls
+- Play/pause toggle
+- Progress slider
+- Volume control
+- Fullscreen support
 
-## Features
-
-- Video player with play/pause/mute controls and progress display
-- Audio player with track list, progress bar, prev/next, volume slider
-- Embedded web browser (VWebView) with URL input
-- Dark theme media UI
-- Tab-based navigation between Video, Audio, and Web views
-
-## Running
+## How to Run
 
 ```bash
-bun run dev    # Watch mode
-bun run build  # Production build
+cd examples/media-player
+bun install
+bun vue-native dev
 ```
+
+## Key Concepts
+
+### Video Playback
+
+```typescript
+const videoRef = ref(null)
+const isPlaying = ref(false)
+const progress = ref(0)
+
+function togglePlay() {
+  if (isPlaying.value) {
+    videoRef.value?.pause()
+  } else {
+    videoRef.value?.play()
+  }
+  isPlaying.value = !isPlaying.value
+}
+```
+
+### Progress Tracking
+
+```typescript
+function onTimeUpdate(event) {
+  progress.value = (event.currentTime / event.duration) * 100
+}
+
+function seek(position) {
+  const time = (position / 100) * videoRef.value.duration
+  videoRef.value.seekTo(time)
+}
+```
+
+## Learn More
+
+- [VVideo Component](../../docs/src/components/VVideo.md)
+- [useAudio](../../docs/src/composables/useAudio.md)
+- [VSlider Component](../../docs/src/components/VSlider.md)

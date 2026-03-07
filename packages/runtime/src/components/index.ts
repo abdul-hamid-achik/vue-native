@@ -47,6 +47,9 @@ export { VDropdown } from './VDropdown'
 export type { DropdownOption } from './VDropdown'
 
 export { VVideo } from './VVideo'
-
 export { VFlatList } from './VFlatList'
+export { VTabBar } from './VTabBar'
+export type { TabConfig } from './VTabBar'
+export { VDrawer } from './VDrawer'
+
 export type { FlatListRenderItemInfo } from './VFlatList'

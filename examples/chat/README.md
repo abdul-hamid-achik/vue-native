@@ -1,25 +1,57 @@
 # Chat
 
-A real-time chat app using WebSockets with an echo server.
+A chat interface demonstrating real-time messaging, lists, and input handling.
 
 ## What It Demonstrates
 
-- **Components:** VView, VText, VButton, VInput, VScrollView, VKeyboardAvoiding
-- **Composables:** `useWebSocket` (real-time messaging)
-- **Patterns:** `watch` for incoming messages, computed status indicators, keyboard avoidance
+- **Components:** VList, VInput, VButton, VView, VText, VImage
+- **Composables:** `useWebSocket` for real-time, `useKeyboard` for keyboard handling
+- **Patterns:**
+  - Real-time messaging
+  - Auto-scroll to bottom
+  - Keyboard handling
+  - Message bubbles
 
 ## Key Features
 
-- Real-time messaging via WebSocket echo server
-- Connection status indicator (connected / connecting / disconnected)
-- Auto-reconnect with configurable retry logic
-- Message bubbles with timestamps (sent vs received)
-- Keyboard-avoiding input bar
-- Reconnect button on connection loss
+- Message list
+- Input with send button
+- Auto-scroll on new message
+- Timestamp display
+- Sender/receiver styling
 
 ## How to Run
 
 ```bash
+cd examples/chat
 bun install
-bun run dev
+bun vue-native dev
 ```
+
+## Key Concepts
+
+### WebSocket Integration
+
+```typescript
+const { send, onMessage } = useWebSocket('wss://chat.example.com')
+
+onMessage((data) => {
+  messages.value.push(data)
+})
+```
+
+### Auto-Scroll
+
+```typescript
+const listRef = ref(null)
+
+watch(() => messages.value.length, () => {
+  listRef.value?.scrollToEnd({ animated: true })
+})
+```
+
+## Learn More
+
+- [useWebSocket](../../docs/src/composables/useWebSocket.md)
+- [useKeyboard](../../docs/src/composables/useKeyboard.md)
+- [VList Component](../../docs/src/components/VList.md)

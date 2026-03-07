@@ -1,6 +1,6 @@
 {
   "name": "@thelacanians/vue-native-navigation",
-  "version": "0.4.15",
+  "version": "0.5.0",
   "description": "Stack navigation for Vue Native apps",
   "license": "MIT",
   "author": "Vue Native Contributors",
@@ -23,7 +23,10 @@
       "require": "./dist/index.cjs"
     }
   },
-  "files": ["dist", "README.md"],
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsup src/index.ts --format esm,cjs --dts",
     "dev": "tsup src/index.ts --format esm,cjs --dts --watch",
@@ -32,8 +35,16 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@vue/runtime-core": "^3.5.0",
-    "@thelacanians/vue-native-runtime": "^0.4.15"
+    "@vue/runtime-core": "3.5.12",
+    "@thelacanians/vue-native-runtime": "^0.5.0"
+  },
+  "peerDependencies": {
+    "vue": "^3.5.0"
+  },
+  "peerDependenciesMeta": {
+    "vue": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "tsup": "^8.4.0",

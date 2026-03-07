@@ -1,25 +1,66 @@
-# Social Feed
+# Social
 
-A social media app with tab navigation, feed, explore grid, and profile screens.
+A social feed demonstrating infinite scroll, image loading, and interactions.
 
 ## What It Demonstrates
 
-- **Components:** VView, VText, VButton, VImage, VScrollView, VProgressBar
-- **Composables:** `useNetwork` (connectivity status), `useHaptics` (like feedback)
-- **Navigation:** `createTabNavigator` from `@thelacanians/vue-native-navigation`
-- **Patterns:** Multi-screen tab app, pull-to-refresh, photo grid layout, profile stats
+- **Components:** VList, VImage, VButton, VText, VView, VInput
+- **Composables:** `useHttp`, `useHaptics`, `useShare`
+- **Patterns:**
+  - Infinite scrolling
+  - Image lazy loading
+  - Like/comment interactions
+  - Share functionality
 
 ## Key Features
 
-- **Feed:** Social posts with likes, comments, images, and pull-to-refresh
-- **Explore:** Photo grid with search bar
-- **Profile:** User profile with stats, follow button, and skill progress bars
-- Offline banner when network is unavailable
-- Tab navigator with lazy screen mounting
+- Social feed
+- Like posts
+- Comment on posts
+- Share posts
+- Infinite scroll
 
 ## How to Run
 
 ```bash
+cd examples/social
 bun install
-bun run dev
+bun vue-native dev
 ```
+
+## Key Concepts
+
+### Feed Loading
+
+```typescript
+const posts = ref([])
+const page = ref(1)
+
+async function loadFeed() {
+  const response = await useHttp().get(`/posts?page=${page.value}`)
+  posts.value.push(...response.data)
+}
+```
+
+### Interactions
+
+```typescript
+async function like(postId: string) {
+  await useHttp().post(`/posts/${postId}/like`)
+  haptics.selection()
+}
+
+async function share(post: Post) {
+  await useShare().share({
+    title: post.title,
+    text: post.content,
+    url: post.url,
+  })
+}
+```
+
+## Learn More
+
+- [useHttp](../../docs/src/composables/useHttp.md)
+- [useShare](../../docs/src/composables/useShare.md)
+- [VImage Component](../../docs/src/components/VImage.md)

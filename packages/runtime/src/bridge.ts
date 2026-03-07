@@ -354,6 +354,31 @@ class NativeBridgeImpl {
     }
   }
 
+  /**
+   * Create teleport markers in native.
+   * Used for Teleport component to render content outside parent hierarchy.
+   */
+  createTeleport(parentId: number, startId: number, endId: number): void {
+    this.enqueue('createTeleport', [parentId, startId, endId])
+  }
+
+  /**
+   * Remove teleport markers from native.
+   * Cleans up teleport containers and markers.
+   */
+  removeTeleport(parentId: number, startId: number, endId: number): void {
+    this.enqueue('removeTeleport', [parentId, startId, endId])
+  }
+
+  /**
+   * Move a node to a teleport target.
+   * @param target - Teleport target name ('modal', 'root', etc.)
+   * @param nodeId - Node ID to teleport
+   */
+  teleportTo(target: string, nodeId: number): void {
+    this.enqueue('teleportTo', [target, nodeId])
+  }
+
   // ---------------------------------------------------------------------------
   // Global push events
   // ---------------------------------------------------------------------------

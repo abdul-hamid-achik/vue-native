@@ -67,6 +67,26 @@ class NativeBridge(private val context: Context) {
     /** The container view from the host Activity — where the root view is attached. */
     var hostContainer: ViewGroup? = null
 
+    // -- Teleport support --
+    /** Maps teleport marker IDs for cleanup */
+    private val teleportMarkers = mutableMapOf<Int, Pair<Int, Int>>()
+
+    /** Maps parent node IDs to their teleport containers */
+    private val teleportContainers = mutableMapOf<Int, ViewGroup>()
+
+    /** Modal container for teleporting modals */
+    private val modalContainer: FrameLayout by lazy {
+        FrameLayout(context).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+            setBackgroundColor(android.graphics.Color.TRANSPARENT)
+            isClickable = true
+            isFocusable = false
+        }
+    }
+
     /** Called when native fires an event to JS (nodeId, eventName, payloadJson). */
     var onFireEvent: ((nodeId: Int, eventName: String, payloadJson: String) -> Unit)? = null
 
@@ -143,6 +163,9 @@ class NativeBridge(private val context: Context) {
             "insertBefore" -> handleInsertBefore(args)
             "removeChild" -> handleRemoveChild(args)
             "setRootView" -> handleSetRootView(args)
+            "createTeleport" -> handleCreateTeleport(args)
+            "removeTeleport" -> handleRemoveTeleport(args)
+            "teleportTo" -> handleTeleportTo(args)
             "addEventListener" -> handleAddEventListener(args)
             "removeEventListener" -> handleRemoveEventListener(args)
             "invokeNativeModule" -> handleInvokeNativeModule(args)
@@ -311,6 +334,100 @@ class NativeBridge(private val context: Context) {
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
         )
+
+        // Add modal container for teleport
+        container.addView(
+            modalContainer,
+            ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        )
+    }
+
+    // -- Teleport handlers --
+
+    private fun handleCreateTeleport(args: JSONArray) {
+        val parentId = args.getInt(0)
+        val startId = args.getInt(1)
+        val endId = args.getInt(2)
+
+        val parentView = nodeViews[parentId] ?: run {
+            Log.w(TAG, "Parent view not found for teleport (id: $parentId)")
+            return
+        }
+
+        // Store teleport marker IDs
+        teleportMarkers[parentId] = Pair(startId, endId)
+
+        // Create container for teleported content
+        val container = FrameLayout(context).apply {
+            id = View.generateViewId()
+            setBackgroundColor(android.graphics.Color.TRANSPARENT)
+            isClickable = true
+            isFocusable = false
+        }
+
+        if (parentView is ViewGroup) {
+            parentView.addView(container)
+            teleportContainers[parentId] = container
+        }
+
+        Log.d(TAG, "Created teleport container for parent $parentId")
+    }
+
+    private fun handleRemoveTeleport(args: JSONArray) {
+        val parentId = args.getInt(0)
+
+        // Remove teleport container
+        teleportContainers.remove(parentId)?.let { container ->
+            mainHandler.post {
+                (container.parent as? ViewGroup)?.removeView(container)
+            }
+        }
+
+        // Clean up markers
+        teleportMarkers.remove(parentId)
+
+        Log.d(TAG, "Removed teleport container for parent $parentId")
+    }
+
+    private fun handleTeleportTo(args: JSONArray) {
+        val target = args.getString(0)
+        val nodeId = args.getInt(1)
+
+        val targetView = getTeleportTarget(target) ?: run {
+            Log.w(TAG, "Teleport target '$target' not found")
+            return
+        }
+
+        val childView = nodeViews[nodeId] ?: run {
+            Log.w(TAG, "Node view not found for teleport (id: $nodeId)")
+            return
+        }
+
+        // Move view to teleport target
+        mainHandler.post {
+            (childView.parent as? ViewGroup)?.removeView(childView)
+            targetView.addView(childView)
+            childView.requestLayout()
+        }
+
+        Log.d(TAG, "Teleported node $nodeId to target '$target'")
+    }
+
+    private fun getTeleportTarget(target: String): ViewGroup? {
+        return when (target) {
+            "root" -> rootView as? ViewGroup
+            "modal" -> {
+                // Ensure modal container is added to root if not already
+                if (modalContainer.parent == null && rootView != null) {
+                    (rootView as? ViewGroup)?.addView(modalContainer)
+                }
+                modalContainer
+            }
+            else -> null
+        }
     }
 
     private fun handleAddEventListener(args: JSONArray) {

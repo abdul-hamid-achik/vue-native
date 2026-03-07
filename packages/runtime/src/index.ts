@@ -21,8 +21,10 @@ import {
   VRefreshControl, VPressable, VSectionList,
   VCheckbox, VRadio, VDropdown,
   VVideo, VFlatList,
+  VTabBar, VDrawer,
 } from './components'
 import { vShow } from './directives/vShow'
+import { vModel } from './directives/vModel'
 import { ErrorBoundary } from './errorBoundary'
 
 /**
@@ -91,9 +93,12 @@ export function createApp(rootComponent: Component, rootProps?: Record<string, a
   app.component('VDropdown', VDropdown)
   app.component('VVideo', VVideo)
   app.component('VFlatList', VFlatList)
+  app.component('VTabBar', VTabBar)
+  app.component('VDrawer', VDrawer)
   app.component('ErrorBoundary', ErrorBoundary)
   app.component('VErrorBoundary', ErrorBoundary)
   app.directive('show', vShow)
+  app.directive('model', vModel)
 
   // Global error handler — catches unhandled errors in components,
   // formats them, and forwards to native for error overlay display.
@@ -194,7 +199,9 @@ export {
   VRefreshControl, VPressable, VSectionList,
   VCheckbox, VRadio, VDropdown,
   VVideo, VFlatList,
+  VTabBar, VDrawer,
 } from './components'
+export type { TabConfig } from './components/VTabBar'
 export type { AlertButton, StatusBarStyle, WebViewSource, ActionSheetAction, RadioOption, DropdownOption, FlatListRenderItemInfo } from './components'
 
 // Error Boundary
@@ -202,6 +209,7 @@ export { ErrorBoundary } from './errorBoundary'
 
 // Directives
 export { vShow } from './directives/vShow'
+export { vModel } from './directives/vModel'
 
 // Composables (native module wrappers)
 export {
@@ -228,6 +236,7 @@ export {
   useMenu,
   useFileDialog,
   useDragDrop,
+  useTeleport,
 } from './composables'
 export type {
   TimingOptions, SpringOptions, NetworkState, ConnectionType, AppStateStatus,

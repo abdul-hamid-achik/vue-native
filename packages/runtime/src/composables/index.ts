@@ -104,3 +104,5 @@ export { useFileDialog } from './useFileDialog'
 export type { OpenFileOptions, SaveFileOptions } from './useFileDialog'
 
 export { useDragDrop } from './useDragDrop'
+
+export { useTeleport } from './useTeleport'

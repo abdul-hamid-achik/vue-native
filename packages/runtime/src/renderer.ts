@@ -244,6 +244,40 @@ const nodeOps: RendererOptions<NativeNode, NativeNode> = {
     if (idx === -1 || idx >= parent.children.length - 1) return null
     return parent.children[idx + 1]
   },
+
+  /**
+   * Insert static content (for Teleport).
+   * Creates teleport boundary markers.
+   */
+  insertStaticContent(
+    content: string,
+    parent: NativeNode,
+    anchor: NativeNode | null,
+    _namespace: string | undefined,
+    _start?: NativeNode | null,
+    _end?: NativeNode | null,
+  ): [NativeNode, NativeNode] {
+    // Create teleport boundary markers
+    const startNode = createNativeNode('__TELEPORT_START__')
+    const endNode = createNativeNode('__TELEPORT_END__')
+
+    if (anchor) {
+      // Insert before anchor
+      const idx = parent.children.indexOf(anchor)
+      if (idx !== -1) {
+        parent.children.splice(idx, 0, startNode)
+        parent.children.splice(idx + 1, 0, endNode)
+      }
+    } else {
+      // Append to parent
+      parent.children.push(startNode, endNode)
+    }
+
+    // Notify native bridge of teleport markers
+    NativeBridge.createTeleport(parent.id, startNode.id, endNode.id)
+
+    return [startNode, endNode]
+  },
 }
 
 /**

@@ -1,209 +1,150 @@
 # Native Blocks Demo
 
-This example demonstrates Vue Native's **`<native>` blocks** feature - write Swift and Kotlin code directly in your Vue SFC files!
+Advanced example demonstrating `<native>` blocks for custom native code.
 
-## What This Demo Shows
+## What It Demonstrates
 
-1. **Custom Haptics Module** - Advanced haptic feedback with custom patterns
-2. **Image Processor Module** - Native image filters using Core Image (iOS) and Bitmap (Android)
-3. **Device Info Module** - Extended device information access
+- **Feature:** `<native>` blocks for Swift/Kotlin code
+- **Patterns:**
+  - Custom native modules
+  - Code generation
+  - TypeScript type generation
+  - Platform-specific implementations
 
-## Features Demonstrated
+## Key Features
 
-- ✅ Multiple `<native>` blocks in a single SFC
-- ✅ Platform-specific implementations (iOS + Android)
-- ✅ Auto-generated TypeScript composables
-- ✅ Method signature extraction
-- ✅ Type-safe native module calls
-- ✅ Complex native code (async patterns, image processing)
+- Write Swift code inline
+- Write Kotlin code inline
+- Automatic TypeScript types
+- Automatic module registration
+- Cross-platform native functionality
 
-## Running the Demo
-
-### Prerequisites
-
-- Vue Native CLI installed
-- Xcode (for iOS) or Android Studio (for Android)
-- Node.js and Bun
-
-### Install Dependencies
+## How to Run
 
 ```bash
 cd examples/native-blocks-demo
 bun install
+bun vue-native dev
 ```
 
-### Generate Native Code
+## Key Concepts
 
-```bash
-# Generate Swift, Kotlin, and TypeScript from <native> blocks
-bun run generate
-
-# Or use the CLI directly
-vue-native generate
-```
-
-### Run on iOS
-
-```bash
-# Start dev server
-bun run dev
-
-# In another terminal, run on iOS
-vue-native run ios
-```
-
-### Run on Android
-
-```bash
-# Start dev server
-bun run dev
-
-# In another terminal, run on Android
-vue-native run android
-```
-
-## Generated Files
-
-After running `vue-native generate`, you'll find:
-
-### TypeScript Composables
-
-```
-app/generated/
-├── useCustomHaptics.ts
-├── useImageProcessor.ts
-└── useDeviceInfo.ts
-```
-
-### Swift Modules (iOS)
-
-```
-native/ios/.../GeneratedModules/
-├── CustomHapticsModule.swift
-├── ImageProcessorModule.swift
-└── DeviceInfoModule.swift
-```
-
-### Kotlin Modules (Android)
-
-```
-native/android/.../GeneratedModules/
-├── CustomHapticsModule.kt
-├── ImageProcessorModule.kt
-└── DeviceInfoModule.kt
-```
-
-## Code Structure
-
-### Vue SFC with Native Blocks
+### Native Block Syntax
 
 ```vue
-<template>
-  <VView>
-    <VButton title="Vibrate" @press="handleVibrate" />
-  </VView>
-</template>
+<script setup>
+import { ref } from '@thelacanians/vue-native-runtime'
 
-<script setup lang="ts">
-import { useCustomHaptics } from './generated/useCustomHaptics'
+const result = ref('')
 
-const { vibrate } = useCustomHaptics()
-
-async function handleVibrate() {
-  await vibrate('heavy')
+// Call the native module
+async function callNative() {
+  result.value = await NativeBridge.invokeNativeModule(
+    'CustomModule',
+    'greet',
+    ['World']
+  )
 }
 </script>
 
+<template>
+  <VView>
+    <VButton title="Call Native" @press="callNative" />
+    <VText>{{ result }}</VText>
+  </VView>
+</template>
+
+<native>
+// This code is compiled to Swift (iOS) and Kotlin (Android)
+
+module CustomModule {
+  func greet(name: String) -> String {
+    return "Hello, \(name)!"
+  }
+}
+</native>
+```
+
+### Platform-Specific Code
+
+```vue
 <native platform="ios">
-class CustomHapticsModule: NativeModule {
-  var moduleName: String { "CustomHaptics" }
-  
-  func invoke(method: String, args: [Any], callback: @escaping (Any?, String?) -> Void) {
-    // Implementation
+// Swift code only for iOS
+import UIKit
+
+module iOSModule {
+  func showNativeAlert(title: String, message: String) {
+    let alert = UIAlertController(
+      title: title,
+      message: message,
+      preferredStyle: .alert
+    )
+    // ...
   }
 }
 </native>
 
 <native platform="android">
-class CustomHapticsModule: NativeModule {
-  override val moduleName: String = "CustomHaptics"
-  
-  override fun invoke(method: String, args: List<Any>, callback: (Any?, String?) -> Unit) {
-    // Implementation
+// Kotlin code only for Android
+package com.example
+
+module AndroidModule {
+  fun showNativeAlert(title: String, message: String) {
+    // Android alert implementation
   }
 }
 </native>
 ```
 
-## Examples in Action
+### Custom Native Module
 
-### Custom Haptics
-
-```typescript
-// Light, medium, heavy vibrations
-await vibrate('light')
-await vibrate('medium')
-await vibrate('heavy')
-
-// Custom pattern (duration in ms)
-await pattern([100, 50, 100, 50, 200])
+```vue
+<native>
+module BatteryModule {
+  func getBatteryLevel() -> Int {
+    // iOS implementation
+    return UIDevice.current.batteryLevel * 100
+  }
+}
+</native>
 ```
 
-### Image Filters
+## File Structure
 
-```typescript
-// Apply grayscale filter
-await applyFilter('CIPhotoEffectMono')
-
-// Apply blur with radius
-await applyFilter('CIGaussianBlur', { inputRadius: 5 })
+```
+examples/native-blocks-demo/
+├── app/
+│   ├── main.ts
+│   ├── App.vue
+│   └── NativeDemo.vue    # Contains <native> blocks
+├── native/
+│   ├── ios/
+│   └── android/
+├── generated/            # Auto-generated code
+│   ├── ios/
+│   └── android/
+└── package.json
 ```
 
-### Device Info
+## Build Process
 
-```typescript
-// Get battery level (0.0 - 1.0)
-const battery = await getBatteryLevel()
+1. Vite plugin extracts `<native>` blocks
+2. Code generator creates Swift/Kotlin files
+3. TypeScript types are generated
+4. Native modules are registered
+5. App is built with native code
 
-// Get device model
-const model = await getDeviceModel()
-```
+## Learn More
 
-## Learning Points
+- [Native Blocks Guide](../../docs/src/guide/native-blocks.md)
+- [Custom Native Modules](../../docs/src/guide/native-modules.md)
+- [Code Generation](../../docs/src/guide/codegen.md)
 
-1. **Multiple Native Blocks**: You can have multiple `<native>` blocks in a single SFC
-2. **Platform Specific**: Each block targets a specific platform (ios, android, macos)
-3. **Auto-Generated Types**: TypeScript interfaces are generated from your Swift/Kotlin code
-4. **Method Extraction**: Public methods are automatically extracted and typed
-5. **Registration**: Modules are automatically registered in the native runtime
+## Try This
 
-## Troubleshooting
-
-### Generated Files Not Found
-
-Run `vue-native generate` to create the files.
-
-### TypeScript Errors
-
-Make sure the generated files are up to date:
-
-```bash
-vue-native generate --clean
-```
-
-### Native Module Not Found at Runtime
-
-1. Rebuild the native project
-2. Check that the module name matches in all platforms
-3. Verify the generated registration code includes your module
-
-## Next Steps
-
-- Try modifying the native code and regenerating
-- Add your own custom native module
-- Check out the [Native Blocks Documentation](../../docs/src/guide/native-blocks.md)
-- Explore other examples in the `examples/` directory
-
-## License
-
-MIT
+Experiment with:
+1. Create a custom toast notification module
+2. Implement platform-specific haptics
+3. Add a native image filter
+4. Create a barcode scanner module
+5. Build a native payment integration

@@ -1,0 +1,18 @@
+appId: com.vuenative.example
+name: Onboarding Flow
+---
+# Test onboarding flow
+- launchApp
+- assertVisible: "Welcome to Vue Native"
+- assertVisible: "Build native apps with Vue 3"
+
+# Tap get started
+- tapOn: "Get Started"
+- waitForAnimationToEnd: 500
+
+# Should see home screen
+- assertVisible: "Home"
+- assertVisible: "Welcome"
+
+# Take screenshot
+- takeScreenshot: "onboarding_complete"

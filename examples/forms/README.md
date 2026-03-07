@@ -1,34 +1,65 @@
-# Forms Example
+# Forms
 
-Demonstrates form components and validation in Vue Native.
+Complete form handling example with validation, error handling, and submission.
 
-## Components Used
+## What It Demonstrates
 
-- **VInput** — Text input with keyboard type and auto-capitalize
-- **VSwitch** — Toggle switches for boolean settings
-- **VCheckbox** — Checkbox for terms agreement
-- **VRadio** — Radio group for priority selection
-- **VDropdown** — Dropdown picker for category
-- **VSlider** — Slider for volume control
-- **VKeyboardAvoiding** — Automatic keyboard avoidance
-- **VScrollView** — Scrollable form content
+- **Components:** VView, VText, VButton, VInput, VSwitch, VPicker, VActivityIndicator
+- **Composables:** `useHttp` for submission, `useHaptics` for feedback
+- **Patterns:**
+  - Form validation
+  - Error handling
+  - Loading states
+  - Success/error feedback
 
-## Composables Used
+## Key Features
 
-- **useHaptics** — Haptic feedback on submit/reset
-- **useKeyboard** — Keyboard visibility tracking and dismiss
+- Multiple input types
+- Real-time validation
+- Error messages
+- Loading indicators
+- Success confirmation
 
-## Features
-
-- Form validation with computed properties
-- Email format validation
-- Disabled submit button when form is invalid
-- Reset functionality
-- Accessibility labels on all interactive elements
-
-## Running
+## How to Run
 
 ```bash
-bun run dev    # Watch mode
-bun run build  # Production build
+cd examples/forms
+bun install
+bun vue-native dev
 ```
+
+## Key Concepts
+
+### Form Validation
+
+```typescript
+const errors = ref({})
+
+function validate() {
+  errors.value = {}
+  if (!email.value) errors.value.email = 'Email required'
+  if (!password.value) errors.value.password = 'Password required'
+  return Object.keys(errors.value).length === 0
+}
+```
+
+### Loading State
+
+```typescript
+const loading = ref(false)
+
+async function submit() {
+  loading.value = true
+  try {
+    await api.submit(form.value)
+  } finally {
+    loading.value = false
+  }
+}
+```
+
+## Learn More
+
+- [VInput Component](../../docs/src/components/VInput.md)
+- [Form Handling Guide](../../docs/src/guide/forms.md)
+- [Error Handling](../../docs/src/guide/error-handling.md)
