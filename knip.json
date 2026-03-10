@@ -23,5 +23,5 @@
     "**/*.d.ts"
   ],
   "exclude": ["classMembers", "exports", "types"],
-  "ignoreBinaries": ["swift"]
+  "ignoreBinaries": ["maestro", "swift"]
 }
