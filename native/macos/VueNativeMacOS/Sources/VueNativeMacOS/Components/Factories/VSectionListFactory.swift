@@ -2,14 +2,14 @@ import AppKit
 import ObjectiveC
 
 /// Factory for VSectionList — sectioned list component backed by NSTableView with group rows.
-/// Extends the VList pattern to support section headers via NSTableView's group row feature.
+/// Children marked with `__sectionHeader` are treated as section headers.
 final class VSectionListFactory: NativeComponentFactory {
 
     // MARK: - Associated object keys
 
-    private static var scrollThrottleKey: UInt8 = 0
-    private static var scrollObserverKey: UInt8 = 0
-    private static var endReachedHandlerKey: UInt8 = 0
+    nonisolated(unsafe) private static var scrollThrottleKey: UInt8 = 0
+    nonisolated(unsafe) private static var scrollObserverKey: UInt8 = 0
+    nonisolated(unsafe) private static var endReachedHandlerKey: UInt8 = 0
 
     // MARK: - NativeComponentFactory
 
@@ -26,30 +26,21 @@ final class VSectionListFactory: NativeComponentFactory {
         }
 
         switch key {
-        case "sections":
-            if let sections = value as? [[String: Any]] {
-                container.sections = sections.map { dict in
-                    let title = dict["title"] as? String ?? ""
-                    let dataCount: Int
-                    if let data = dict["data"] as? [Any] {
-                        dataCount = data.count
-                    } else {
-                        dataCount = 0
-                    }
-                    return SectionInfo(title: title, itemCount: dataCount)
-                }
-            }
-            container.rebuildFlatList()
-            container.tableView.reloadData()
+        case "estimatedItemHeight":
+            container.estimatedItemHeight = Self.cgFloat(from: value) ?? 44
 
-        case "scrollEnabled":
-            let enabled = (value as? Bool) ?? true
-            container.scrollView.verticalScrollElasticity = enabled ? .allowed : .none
-            container.scrollView.hasVerticalScroller = enabled
+        case "stickySectionHeaders":
+            let sticky = (value as? Bool) ?? true
+            container.stickySectionHeaders = sticky
+            container.tableView.floatsGroupRows = sticky
 
-        case "showsVerticalScrollIndicator":
-            let show = (value as? Bool) ?? true
-            container.scrollView.hasVerticalScroller = show
+        case "showsScrollIndicator":
+            container.scrollView.hasVerticalScroller = (value as? Bool) ?? true
+
+        case "bounces":
+            let elasticity: NSScrollView.Elasticity = ((value as? Bool) ?? true) ? .allowed : .none
+            container.scrollView.verticalScrollElasticity = elasticity
+            container.scrollView.horizontalScrollElasticity = elasticity
 
         default:
             StyleEngine.apply(key: key, value: value, to: view)
@@ -81,22 +72,15 @@ final class VSectionListFactory: NativeComponentFactory {
                 let visibleSize = c.scrollView.contentView.bounds.size
 
                 let payload: [String: Any] = [
-                    "contentOffset": [
-                        "x": clipBounds.origin.x,
-                        "y": clipBounds.origin.y
-                    ],
-                    "contentSize": [
-                        "width": docSize.width,
-                        "height": docSize.height
-                    ],
-                    "layoutMeasurement": [
-                        "width": visibleSize.width,
-                        "height": visibleSize.height
-                    ]
+                    "x": clipBounds.origin.x,
+                    "y": clipBounds.origin.y,
+                    "contentWidth": docSize.width,
+                    "contentHeight": docSize.height,
+                    "layoutWidth": visibleSize.width,
+                    "layoutHeight": visibleSize.height,
                 ]
                 throttle.fire(payload)
 
-                // Check for endReached
                 let endThreshold: CGFloat = 100
                 let scrolledToBottom = clipBounds.origin.y + visibleSize.height >= docSize.height - endThreshold
                 if scrolledToBottom, let wrapper = objc_getAssociatedObject(
@@ -155,11 +139,12 @@ final class VSectionListFactory: NativeComponentFactory {
         guard let container = parent as? VSectionListContainerView else { return }
         child.ensureLayoutNode()
 
-        if let anchor = anchor, let idx = container.childViews.firstIndex(where: { $0 === anchor }) {
-            container.childViews.insert(child, at: idx)
+        if let anchor = anchor, let idx = container.allChildren.firstIndex(where: { $0 === anchor }) {
+            container.allChildren.insert(child, at: idx)
         } else {
-            container.childViews.append(child)
+            container.allChildren.append(child)
         }
+        container.rebuildSections()
         container.tableView.reloadData()
     }
 
@@ -168,8 +153,10 @@ final class VSectionListFactory: NativeComponentFactory {
             child.removeFromSuperview()
             return
         }
-        container.childViews.removeAll { $0 === child }
+
+        container.allChildren.removeAll { $0 === child }
         child.removeFromSuperview()
+        container.rebuildSections()
         container.tableView.reloadData()
     }
 }
@@ -185,25 +172,23 @@ private final class SectionHandlerWrapper: NSObject {
     }
 }
 
-// MARK: - SectionInfo
+// MARK: - SectionData
 
-struct SectionInfo {
-    let title: String
-    let itemCount: Int
+private struct SectionData {
+    var headerView: NSView?
+    var itemViews: [NSView]
 }
 
 // MARK: - FlatRow
 
-/// Represents either a section header or an item row in the flattened table view data.
 private enum FlatRow {
-    case sectionHeader(String)
+    case sectionHeader(sectionIndex: Int)
     case item(sectionIndex: Int, itemIndex: Int)
 }
 
 // MARK: - VSectionListContainerView
 
 /// Container view hosting NSScrollView + NSTableView with section support.
-/// Uses NSTableView group rows for section headers.
 final class VSectionListContainerView: FlippedView, NSTableViewDataSource, NSTableViewDelegate {
 
     // MARK: - Subviews
@@ -213,12 +198,13 @@ final class VSectionListContainerView: FlippedView, NSTableViewDataSource, NSTab
 
     // MARK: - State
 
-    var childViews: [NSView] = []
-    var sections: [SectionInfo] = []
-    private var flatRows: [FlatRow] = []
+    var allChildren: [NSView] = []
+    var estimatedItemHeight: CGFloat = 44
+    var stickySectionHeaders = true
+    fileprivate var sections: [SectionData] = []
+    fileprivate var flatRows: [FlatRow] = []
 
     private static let cellIdentifier = NSUserInterfaceItemIdentifier("VSectionListCell")
-    private static let headerIdentifier = NSUserInterfaceItemIdentifier("VSectionListHeader")
 
     // MARK: - Init
 
@@ -256,12 +242,37 @@ final class VSectionListContainerView: FlippedView, NSTableViewDataSource, NSTab
         scrollView.frame = bounds
     }
 
-    /// Rebuild the flat row list from sections data.
-    func rebuildFlatList() {
+    func rebuildSections() {
+        sections.removeAll()
+        var currentSection = SectionData(headerView: nil, itemViews: [])
+
+        for child in allChildren {
+            let isSectionHeader = StyleEngine.getInternalProp("__sectionHeader", from: child) as? Bool ?? false
+            if isSectionHeader {
+                if currentSection.headerView != nil || !currentSection.itemViews.isEmpty {
+                    sections.append(currentSection)
+                }
+                currentSection = SectionData(headerView: child, itemViews: [])
+            } else {
+                currentSection.itemViews.append(child)
+            }
+        }
+
+        if currentSection.headerView != nil || !currentSection.itemViews.isEmpty {
+            sections.append(currentSection)
+        }
+
+        rebuildFlatRows()
+    }
+
+    private func rebuildFlatRows() {
         flatRows.removeAll()
+
         for (sectionIndex, section) in sections.enumerated() {
-            flatRows.append(.sectionHeader(section.title))
-            for itemIndex in 0..<section.itemCount {
+            if section.headerView != nil {
+                flatRows.append(.sectionHeader(sectionIndex: sectionIndex))
+            }
+            for itemIndex in section.itemViews.indices {
                 flatRows.append(.item(sectionIndex: sectionIndex, itemIndex: itemIndex))
             }
         }
@@ -270,14 +281,16 @@ final class VSectionListContainerView: FlippedView, NSTableViewDataSource, NSTab
     // MARK: - NSTableViewDataSource
 
     func numberOfRows(in tableView: NSTableView) -> Int {
-        return flatRows.count
+        flatRows.count
     }
 
     // MARK: - NSTableViewDelegate
 
     func tableView(_ tableView: NSTableView, isGroupRow row: Int) -> Bool {
         guard row < flatRows.count else { return false }
-        if case .sectionHeader = flatRows[row] { return true }
+        if case .sectionHeader = flatRows[row] {
+            return true
+        }
         return false
     }
 
@@ -285,31 +298,15 @@ final class VSectionListContainerView: FlippedView, NSTableViewDataSource, NSTab
         guard row < flatRows.count else { return nil }
 
         switch flatRows[row] {
-        case .sectionHeader(let title):
-            let headerView: NSTableCellView
-            if let reused = tableView.makeView(withIdentifier: VSectionListContainerView.headerIdentifier, owner: nil) as? NSTableCellView {
-                reused.textField?.stringValue = title
-                headerView = reused
-            } else {
-                headerView = NSTableCellView()
-                headerView.identifier = VSectionListContainerView.headerIdentifier
-                let label = NSTextField(labelWithString: title)
-                label.font = NSFont.boldSystemFont(ofSize: 13)
-                label.textColor = .secondaryLabelColor
-                headerView.addSubview(label)
-                headerView.textField = label
-                label.translatesAutoresizingMaskIntoConstraints = false
-                NSLayoutConstraint.activate([
-                    label.leadingAnchor.constraint(equalTo: headerView.leadingAnchor, constant: 12),
-                    label.centerYAnchor.constraint(equalTo: headerView.centerYAnchor)
-                ])
-            }
+        case .sectionHeader(let sectionIndex):
+            guard sectionIndex < sections.count,
+                  let headerView = sections[sectionIndex].headerView else { return nil }
+            headerView.removeFromSuperview()
             return headerView
 
-        case .item(_, let itemIndex):
-            // Map to the corresponding child view index
-            let childIndex = childIndexForRow(row)
-            guard childIndex < childViews.count else { return nil }
+        case .item(let sectionIndex, let itemIndex):
+            guard sectionIndex < sections.count,
+                  itemIndex < sections[sectionIndex].itemViews.count else { return nil }
 
             let cellView: NSTableCellView
             if let reused = tableView.makeView(withIdentifier: VSectionListContainerView.cellIdentifier, owner: nil) as? NSTableCellView {
@@ -320,48 +317,58 @@ final class VSectionListContainerView: FlippedView, NSTableViewDataSource, NSTab
                 cellView.identifier = VSectionListContainerView.cellIdentifier
             }
 
-            let child = childViews[childIndex]
+            let child = sections[sectionIndex].itemViews[itemIndex]
             child.removeFromSuperview()
             cellView.addSubview(child)
             child.frame = cellView.bounds
             child.autoresizingMask = [.width, .height]
-
             return cellView
         }
     }
 
     func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
-        guard row < flatRows.count else { return 44 }
+        guard row < flatRows.count else { return estimatedItemHeight }
 
         switch flatRows[row] {
-        case .sectionHeader:
-            return 32
+        case .sectionHeader(let sectionIndex):
+            guard sectionIndex < sections.count,
+                  let headerView = sections[sectionIndex].headerView else { return estimatedItemHeight }
+            return resolvedHeight(for: headerView)
 
-        case .item:
-            let childIndex = childIndexForRow(row)
-            guard childIndex < childViews.count else { return 44 }
-
-            let child = childViews[childIndex]
-            if let node = child.layoutNode {
-                if node.computedFrame.height > 0 {
-                    return node.computedFrame.height
-                }
-                if let h = node.height.resolve(relativeTo: bounds.height), h > 0 {
-                    return h
-                }
-            }
-            return 44
+        case .item(let sectionIndex, let itemIndex):
+            guard sectionIndex < sections.count,
+                  itemIndex < sections[sectionIndex].itemViews.count else { return estimatedItemHeight }
+            return resolvedHeight(for: sections[sectionIndex].itemViews[itemIndex])
         }
     }
 
-    /// Convert a flat table row index to a child view index (skipping section headers).
-    private func childIndexForRow(_ row: Int) -> Int {
-        var childIdx = 0
-        for i in 0..<row {
-            if case .item = flatRows[i] {
-                childIdx += 1
+    private func resolvedHeight(for view: NSView) -> CGFloat {
+        let explicitHeight = view.frame.size.height
+        if explicitHeight > 1 {
+            return explicitHeight
+        }
+
+        if let node = view.layoutNode {
+            if node.computedFrame.height > 0 {
+                return node.computedFrame.height
+            }
+            if let resolved = node.height.resolve(relativeTo: bounds.height), resolved > 0 {
+                return resolved
             }
         }
-        return childIdx
+
+        return estimatedItemHeight
+    }
+}
+
+private extension VSectionListFactory {
+    static func cgFloat(from value: Any?) -> CGFloat? {
+        if let value = value as? CGFloat { return value }
+        if let value = value as? Double { return CGFloat(value) }
+        if let value = value as? Int { return CGFloat(value) }
+        if let value = value as? String, let parsed = Double(value) {
+            return CGFloat(parsed)
+        }
+        return nil
     }
 }

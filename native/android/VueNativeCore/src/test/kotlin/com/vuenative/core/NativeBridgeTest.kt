@@ -278,11 +278,14 @@ class NativeBridgeTest {
 
         assertNotNull("rootView should be set", bridge.rootView)
         assertEquals("rootView should be nodeViews[1]", bridge.nodeViews[1], bridge.rootView)
+        val hostContainer = bridge.hostContainer!!
         assertEquals(
-            "hostContainer should have 1 child",
-            1,
-            bridge.hostContainer!!.childCount
+            "hostContainer should have root view plus modal container",
+            2,
+            hostContainer.childCount
         )
+        assertEquals("First child should be the root view", bridge.rootView, hostContainer.getChildAt(0))
+        assertTrue("Second child should be a modal FrameLayout", hostContainer.getChildAt(1) is FrameLayout)
     }
 
     // -------------------------------------------------------------------------

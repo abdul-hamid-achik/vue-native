@@ -1,6 +1,6 @@
 # VSectionList
 
-A high-performance, virtualized list with grouped sections. Backed by `UITableView` with sections on iOS and a sectioned `RecyclerView` adapter on Android.
+A high-performance, virtualized list with grouped sections. Backed by `UITableView` on iOS, `NSTableView` on macOS, and `RecyclerView` on Android.
 
 Use named slots to render section headers, items, and footers. Like `VList`, rows are recycled for optimal memory usage.
 
@@ -30,9 +30,9 @@ Use named slots to render section headers, items, and footers. Like `VList`, row
 | `sections` | `Section[]` | **(required)** | Array of section objects containing a title and data array |
 | `keyExtractor` | `Function` | index-based | `(item, index) => string` — unique key for each item |
 | `estimatedItemHeight` | `Number` | `44` | Estimated row height in points, used for scroll calculations |
-| `stickySectionHeaders` | `Boolean` | `true` | Whether section headers stick to the top while scrolling |
+| `stickySectionHeaders` | `Boolean` | `true` | Whether section headers stick to the top while scrolling. Currently implemented on Apple platforms |
 | `showsScrollIndicator` | `Boolean` | `true` | Shows the vertical scroll indicator |
-| `bounces` | `Boolean` | `true` | Enables bounce effect at scroll edges (iOS) |
+| `bounces` | `Boolean` | `true` | Enables bounce effect at scroll edges on Apple platforms |
 | `style` | `Object` | `{}` | Layout + appearance styles for the outer container |
 
 ### Section
@@ -48,7 +48,7 @@ interface Section {
 
 | Event | Payload | Description |
 |-------|---------|-------------|
-| `scroll` | `{ contentOffset: { x: number, y: number } }` | Emitted continuously while the user scrolls |
+| `scroll` | `{ x: number, y: number, contentWidth?: number, contentHeight?: number, layoutWidth?: number, layoutHeight?: number }` | Emitted continuously while the user scrolls |
 | `endReached` | -- | Emitted when the user scrolls near the end of the list |
 
 ## Slots
@@ -57,7 +57,7 @@ interface Section {
 |------|-------------|-------------|
 | `#sectionHeader` | `{ section, index }` | Rendered at the top of each section |
 | `#item` | `{ item, index, section }` | Rendered for each item in a section |
-| `#sectionFooter` | `{ section, index }` | Rendered at the bottom of each section |
+| `#sectionFooter` | `{ section, index }` | Rendered as a regular row after the items in each section |
 | `#header` | -- | Rendered once at the very top of the list |
 | `#footer` | -- | Rendered once at the very bottom of the list |
 | `#empty` | -- | Rendered when `sections` is empty or all sections have empty `data` |

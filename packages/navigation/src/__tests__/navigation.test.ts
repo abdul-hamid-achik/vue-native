@@ -337,6 +337,24 @@ describe('Navigation — createRouter', () => {
       expect(guard).not.toHaveBeenCalled()
       expect(router.currentRoute.value.config.name).toBe('about')
     })
+
+    it('sync guards that return without calling next do not deadlock navigation', async () => {
+      const createRouter = await getRouter()
+      const router = createRouter([
+        { name: 'home', component: HomeScreen },
+        { name: 'about', component: AboutScreen },
+      ])
+
+      router.beforeEach(() => {})
+
+      const result = await Promise.race([
+        router.push('about').then(() => 'done'),
+        new Promise(resolve => setTimeout(() => resolve('timeout'), 50)),
+      ])
+
+      expect(result).toBe('done')
+      expect(router.currentRoute.value.config.name).toBe('about')
+    })
   })
 
   // ---------------------------------------------------------------------------
@@ -430,6 +448,24 @@ describe('Navigation — createRouter', () => {
 
       await router.push('about')
       expect(router.currentRoute.value.config.name).toBe('home')
+    })
+
+    it('sync beforeResolve guards that return without calling next do not deadlock navigation', async () => {
+      const createRouter = await getRouter()
+      const router = createRouter([
+        { name: 'home', component: HomeScreen },
+        { name: 'about', component: AboutScreen },
+      ])
+
+      router.beforeResolve(() => {})
+
+      const result = await Promise.race([
+        router.push('about').then(() => 'done'),
+        new Promise(resolve => setTimeout(() => resolve('timeout'), 50)),
+      ])
+
+      expect(result).toBe('done')
+      expect(router.currentRoute.value.config.name).toBe('about')
     })
   })
 

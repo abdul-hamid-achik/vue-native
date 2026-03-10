@@ -19,11 +19,11 @@ const {
   VScrollView, VList, VModal, VActivityIndicator,
   VKeyboardAvoiding, VSafeArea, VProgressBar, VPicker: _VPicker,
   VSegmentedControl, VActionSheet: _VActionSheet, VStatusBar, VWebView,
-  VRefreshControl, VPressable, VSectionList,
+  VRefreshControl, VPressable, VSectionList, VDrawer,
   VCheckbox, VRadio, VDropdown, VVideo,
 } = await import('../components')
 
-import { createVNode, type VNode } from '@vue/runtime-core'
+import { createVNode, defineComponent, ref, type VNode } from '@vue/runtime-core'
 
 function renderComponent(vnode: VNode) {
   const root = createNativeNode('__ROOT__')
@@ -381,6 +381,26 @@ describe('Components', () => {
       const ops = mockBridge.getOpsByType('create')
       expect(ops.some(o => o.args[1] === 'VText')).toBe(true)
     })
+
+    it('uses scroll view fallback for horizontal lists on Apple platforms', async () => {
+      const previousPlatform = (globalThis as any).__PLATFORM__
+      ;(globalThis as any).__PLATFORM__ = 'macos'
+
+      renderComponent(createVNode(VList, { data: ['A'], horizontal: true }, {
+        item: ({ item }: any) => createVNode(VText, null, { default: () => item }),
+      }))
+      await nextTick()
+
+      const createOps = mockBridge.getOpsByType('create')
+      expect(createOps.some(o => o.args[1] === 'VScrollView')).toBe(true)
+      expect(createOps.some(o => o.args[1] === 'VList')).toBe(false)
+
+      if (previousPlatform === undefined) {
+        delete (globalThis as any).__PLATFORM__
+      } else {
+        ;(globalThis as any).__PLATFORM__ = previousPlatform
+      }
+    })
   })
 
   // ---------------------------------------------------------------------------
@@ -424,6 +444,106 @@ describe('Components', () => {
       const prop = ops.find(o => o.args[1] === 'visible')
       expect(prop).toBeDefined()
       expect(prop!.args[2]).toBe(false)
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // VDrawer
+  // ---------------------------------------------------------------------------
+  describe('VDrawer', () => {
+    it('reacts to open prop changes after mount', async () => {
+      const open = ref(false)
+      const Root = defineComponent({
+        render() {
+          return createVNode(VDrawer, { open: open.value }, {
+            default: () => [createVNode(VText, null, { default: () => 'Menu' })],
+          })
+        },
+      })
+
+      renderComponent(createVNode(Root))
+      await nextTick()
+
+      mockBridge.reset()
+      open.value = true
+      await nextTick()
+
+      const createOps = mockBridge.getOpsByType('create')
+      expect(createOps.some(o => o.args[1] === 'VPressable')).toBe(true)
+    })
+
+    it('closes on item press when closeOnPress is enabled', async () => {
+      const updateSpy = vi.fn()
+      const closeSpy = vi.fn()
+      const itemSpy = vi.fn()
+
+      renderComponent(createVNode(VDrawer, {
+        'open': true,
+        'onUpdate:open': updateSpy,
+        'onClose': closeSpy,
+      }, {
+        default: () => [
+          createVNode((VDrawer as any).Item, {
+            label: 'Home',
+            onPress: itemSpy,
+          }),
+        ],
+      }))
+      await nextTick()
+
+      const pressables = mockBridge.getOpsByType('create').filter(o => o.args[1] === 'VPressable')
+      const itemNodeId = pressables[pressables.length - 1].args[0]
+
+      NativeBridge.handleNativeEvent(itemNodeId, 'press', null)
+      await nextTick()
+
+      expect(itemSpy).toHaveBeenCalledTimes(1)
+      expect(updateSpy).toHaveBeenCalledWith(false)
+      expect(closeSpy).toHaveBeenCalledTimes(1)
+    })
+
+    it('does not close on item press when closeOnPress is disabled', async () => {
+      const updateSpy = vi.fn()
+      const closeSpy = vi.fn()
+      const itemSpy = vi.fn()
+
+      renderComponent(createVNode(VDrawer, {
+        'open': true,
+        'closeOnPress': false,
+        'onUpdate:open': updateSpy,
+        'onClose': closeSpy,
+      }, {
+        default: () => [
+          createVNode((VDrawer as any).Item, {
+            label: 'Home',
+            onPress: itemSpy,
+          }),
+        ],
+      }))
+      await nextTick()
+
+      const pressables = mockBridge.getOpsByType('create').filter(o => o.args[1] === 'VPressable')
+      const itemNodeId = pressables[pressables.length - 1].args[0]
+
+      NativeBridge.handleNativeEvent(itemNodeId, 'press', null)
+      await nextTick()
+
+      expect(itemSpy).toHaveBeenCalledTimes(1)
+      expect(updateSpy).not.toHaveBeenCalled()
+      expect(closeSpy).not.toHaveBeenCalled()
+    })
+
+    it('forwards style attrs to the drawer container', async () => {
+      renderComponent(createVNode(VDrawer, {
+        open: true,
+        style: { backgroundColor: '#123456' },
+      }, {
+        default: () => [createVNode(VText, null, { default: () => 'Menu' })],
+      }))
+      await nextTick()
+
+      const styleOps = mockBridge.getOpsByType('updateStyle')
+      expect(styleOps.some(o => o.args[1]?.backgroundColor === '#123456')).toBe(true)
     })
   })
 

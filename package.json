@@ -9,6 +9,7 @@
   ],
   "scripts": {
     "build": "turbo run build",
+    "build:ios": "cd native/ios/VueNativeCore && xcodebuild build -scheme VueNativeCore -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' -quiet",
     "dev": "turbo run dev",
     "test": "turbo run test && bun run test:ios && bun run test:android && bun run test:shared && bun run test:macos",
     "test:ts": "turbo run test",

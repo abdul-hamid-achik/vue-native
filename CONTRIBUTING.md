@@ -49,8 +49,13 @@ bun run typecheck    # Type-check all packages
 
 Open `native/ios/VueNativeCore/` as a Swift Package in Xcode, or build with:
 ```bash
-swift build --package-path native/ios/VueNativeCore/
+cd native/ios/VueNativeCore
+xcodebuild build \
+  -scheme VueNativeCore \
+  -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest'
 ```
+
+Do not use plain `swift build` / `swift test` for the iOS package from macOS. Those commands target the host platform by default and will not compile a `UIKit` package correctly.
 
 Lint and test:
 ```bash
@@ -58,11 +63,10 @@ Lint and test:
 cd native/ios && swiftlint lint
 
 # Test (requires iOS Simulator)
+cd ../ios/VueNativeCore
 xcodebuild test \
   -scheme VueNativeCore \
-  -sdk iphonesimulator \
-  -destination 'platform=iOS Simulator,name=iPhone 16,OS=18.0' \
-  -skipPackagePluginValidation
+  -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest'
 ```
 
 ### Android native
@@ -137,6 +141,7 @@ cd examples/counter && bun run dev
 2. Make your changes and ensure all checks pass:
    - `bun run build && bun run test && bun run typecheck` (TypeScript)
    - `cd native/ios && swiftlint lint` (Swift lint)
+   - `bun run build:ios && bun run test:ios` (iOS Swift package)
    - `cd native/android && ./gradlew :VueNativeCore:ktlintCheck :VueNativeCore:testReleaseUnitTest` (Kotlin lint + test)
 3. Keep commits focused — one logical change per commit
 4. Open a PR with a clear description of what and why

@@ -247,26 +247,39 @@ export function createRouter(optionsOrRoutes: RouterOptions | RouteConfig[]): Ro
     for (const guard of guards) {
       const result = await new Promise<false | string | void>((resolve) => {
         let called = false
-        const guardReturn = guard(to, from, (arg) => {
+        const finish = (arg?: false | string | void) => {
           if (!called) {
             called = true
             resolve(arg === false ? false : typeof arg === 'string' ? arg : undefined)
           }
-        })
-        // If guard returns a promise and doesn't call next(), auto-resolve
-        if (guardReturn instanceof Promise) {
-          guardReturn.then(() => {
-            if (!called) {
-              called = true
-              resolve(undefined)
-            }
-          }).catch((err) => {
-            if (!called) {
-              called = true
-              console.error('[VueNative] Navigation guard error:', err)
-              resolve(false)
-            }
-          })
+        }
+
+        try {
+          const guardReturn = guard(to, from, finish)
+
+          // If guard returns a promise and doesn't call next(), auto-resolve
+          if (guardReturn instanceof Promise) {
+            guardReturn.then((value) => {
+              if (!called) {
+                finish(value as false | string | void)
+              }
+            }).catch((err) => {
+              if (!called) {
+                called = true
+                console.error('[VueNative] Navigation guard error:', err)
+                resolve(false)
+              }
+            })
+            return
+          }
+
+          // Synchronous guards that return without calling next() should not deadlock navigation.
+          if (!called) {
+            finish(guardReturn as false | string | void)
+          }
+        } catch (err) {
+          console.error('[VueNative] Navigation guard error:', err)
+          finish(false)
         }
       })
       if (result === false) return false

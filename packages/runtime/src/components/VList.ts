@@ -1,5 +1,6 @@
 import { defineComponent, h, type PropType } from '@vue/runtime-core'
 import type { ViewStyle } from '../types/styles'
+import { usePlatform } from '../composables/usePlatform'
 
 /**
  * VList — A virtualized list component backed by UITableView on iOS.
@@ -64,13 +65,34 @@ export const VList = defineComponent({
   emits: ['scroll', 'endReached'],
 
   setup(props, { slots, emit }) {
+    const { isAndroid } = usePlatform()
     let lastScrollEmit = 0
+    let endReachedFired = false
 
-    const onScroll = (e: { x: number, y: number }) => {
+    const onScroll = (e: {
+      x: number
+      y: number
+      contentWidth?: number
+      layoutWidth?: number
+    }) => {
       const now = Date.now()
       if (now - lastScrollEmit >= 16) {
         lastScrollEmit = now
         emit('scroll', e)
+      }
+
+      if (props.horizontal && !isAndroid) {
+        const contentWidth = e.contentWidth ?? 0
+        const layoutWidth = e.layoutWidth ?? 0
+        const distanceFromEnd = contentWidth - layoutWidth - (e.x ?? 0)
+        const threshold = layoutWidth * 0.2
+
+        if (contentWidth > layoutWidth && distanceFromEnd < threshold && !endReachedFired) {
+          endReachedFired = true
+          emit('endReached')
+        } else if (distanceFromEnd >= threshold) {
+          endReachedFired = false
+        }
       }
     }
 
@@ -128,6 +150,32 @@ export const VList = defineComponent({
       if (slots.footer) {
         children.push(
           h('VView', { key: '__footer__', style: { flexShrink: 0 } }, slots.footer()),
+        )
+      }
+
+      if (props.horizontal && !isAndroid) {
+        return h(
+          'VScrollView',
+          {
+            style: props.style,
+            horizontal: true,
+            showsVerticalScrollIndicator: false,
+            showsHorizontalScrollIndicator: props.showsScrollIndicator,
+            bounces: props.bounces,
+            onScroll,
+          },
+          [
+            h(
+              'VView',
+              {
+                style: {
+                  flexDirection: 'row',
+                  alignItems: 'stretch',
+                },
+              },
+              children,
+            ),
+          ],
         )
       }
 

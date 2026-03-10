@@ -120,18 +120,12 @@ final class VScrollViewFactory: NativeComponentFactory {
                 let visibleSize = sv.contentView.bounds.size
 
                 let payload: [String: Any] = [
-                    "contentOffset": [
-                        "x": clipBounds.origin.x,
-                        "y": clipBounds.origin.y
-                    ],
-                    "contentSize": [
-                        "width": docSize.width,
-                        "height": docSize.height
-                    ],
-                    "layoutMeasurement": [
-                        "width": visibleSize.width,
-                        "height": visibleSize.height
-                    ]
+                    "x": clipBounds.origin.x,
+                    "y": clipBounds.origin.y,
+                    "contentWidth": docSize.width,
+                    "contentHeight": docSize.height,
+                    "layoutWidth": visibleSize.width,
+                    "layoutHeight": visibleSize.height,
                 ]
                 throttle.fire(payload)
             }

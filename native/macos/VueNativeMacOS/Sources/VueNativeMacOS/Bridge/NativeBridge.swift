@@ -56,6 +56,23 @@ public final class NativeBridge: @preconcurrency NativeEventDispatcher {
     /// Reference to the JS runtime.
     private let runtime = JSRuntime.shared
 
+    // MARK: - Teleport Support
+
+    /// Maps teleport marker IDs (start, end) for cleanup.
+    private var teleportMarkers: [Int: (start: Int, end: Int)] = [:]
+
+    /// Maps parent node IDs to their teleport containers.
+    private var teleportContainers: [Int: NSView] = [:]
+
+    /// Modal container for teleporting modal content.
+    private lazy var modalContainer: NSView = {
+        let container = FlippedView()
+        container.wantsLayer = true
+        container.layer?.backgroundColor = NSColor.clear.cgColor
+        container.translatesAutoresizingMaskIntoConstraints = false
+        return container
+    }()
+
     // MARK: - Initialization
 
     private init() {}
@@ -209,6 +226,12 @@ public final class NativeBridge: @preconcurrency NativeEventDispatcher {
                 handleRemoveEventListener(args: args)
             case "setRootView":
                 handleSetRootView(args: args)
+            case "createTeleport":
+                handleCreateTeleport(args: args)
+            case "removeTeleport":
+                handleRemoveTeleport(args: args)
+            case "teleportTo":
+                handleTeleportTo(args: args)
             case "invokeNativeModule":
                 handleInvokeNativeModule(args: args)
             case "invokeNativeModuleSync":
@@ -532,6 +555,8 @@ public final class NativeBridge: @preconcurrency NativeEventDispatcher {
 
         // Monitor dark mode changes
         setupAppearanceObserver()
+
+        installModalContainerIfNeeded()
     }
 
     /// Set up observation for dark mode (effective appearance) changes.
@@ -546,6 +571,94 @@ public final class NativeBridge: @preconcurrency NativeEventDispatcher {
             let isDark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
             self?.dispatchGlobalEvent("colorScheme:change", payload: ["colorScheme": isDark ? "dark" : "light"])
         }
+    }
+
+    // MARK: - Teleport Handlers
+
+    private func handleCreateTeleport(args: [Any]) {
+        guard args.count >= 3,
+              let parentId = asInt(args[0]),
+              let startId = asInt(args[1]),
+              let endId = asInt(args[2]) else {
+            NSLog("[VueNative macOS Bridge] Error: Invalid createTeleport args: \(args)")
+            return
+        }
+
+        guard let parentView = viewRegistry[parentId] else {
+            NSLog("[VueNative macOS Bridge] Error: Parent view not found for teleport (id: \(parentId))")
+            return
+        }
+
+        teleportMarkers[parentId] = (start: startId, end: endId)
+
+        let container = FlippedView()
+        container.wantsLayer = true
+        container.layer?.backgroundColor = NSColor.clear.cgColor
+        parentView.addSubview(container)
+        teleportContainers[parentId] = container
+    }
+
+    private func handleRemoveTeleport(args: [Any]) {
+        guard args.count >= 1,
+              let parentId = asInt(args[0]) else {
+            NSLog("[VueNative macOS Bridge] Error: Invalid removeTeleport args: \(args)")
+            return
+        }
+
+        teleportContainers.removeValue(forKey: parentId)?.removeFromSuperview()
+        teleportMarkers.removeValue(forKey: parentId)
+    }
+
+    private func handleTeleportTo(args: [Any]) {
+        guard args.count >= 2,
+              let target = args[0] as? String,
+              let nodeId = asInt(args[1]) else {
+            NSLog("[VueNative macOS Bridge] Error: Invalid teleportTo args: \(args)")
+            return
+        }
+
+        guard let targetView = getTeleportTarget(target) else {
+            NSLog("[VueNative macOS Bridge] Warning: Teleport target '\(target)' not found")
+            return
+        }
+
+        guard let childView = viewRegistry[nodeId] else {
+            NSLog("[VueNative macOS Bridge] Warning: Node view not found for teleport (id: \(nodeId))")
+            return
+        }
+
+        childView.removeFromSuperview()
+        childView.translatesAutoresizingMaskIntoConstraints = false
+        targetView.addSubview(childView)
+        NSLayoutConstraint.activate([
+            childView.topAnchor.constraint(equalTo: targetView.topAnchor),
+            childView.leadingAnchor.constraint(equalTo: targetView.leadingAnchor),
+            childView.trailingAnchor.constraint(equalTo: targetView.trailingAnchor),
+            childView.bottomAnchor.constraint(equalTo: targetView.bottomAnchor),
+        ])
+    }
+
+    private func getTeleportTarget(_ target: String) -> NSView? {
+        switch target {
+        case "root":
+            return rootView
+        case "modal":
+            installModalContainerIfNeeded()
+            return modalContainer
+        default:
+            return nil
+        }
+    }
+
+    private func installModalContainerIfNeeded() {
+        guard let rootView = rootView, modalContainer.superview == nil else { return }
+        rootView.addSubview(modalContainer)
+        NSLayoutConstraint.activate([
+            modalContainer.topAnchor.constraint(equalTo: rootView.topAnchor),
+            modalContainer.leadingAnchor.constraint(equalTo: rootView.leadingAnchor),
+            modalContainer.trailingAnchor.constraint(equalTo: rootView.trailingAnchor),
+            modalContainer.bottomAnchor.constraint(equalTo: rootView.bottomAnchor),
+        ])
     }
 
     // MARK: - Native Module Handlers
@@ -710,6 +823,9 @@ public final class NativeBridge: @preconcurrency NativeEventDispatcher {
         eventKeysPerNode.removeAll()
         nodeParent.removeAll()
         childrenOf.removeAll()
+        teleportMarkers.removeAll()
+        teleportContainers.removeAll()
+        modalContainer.removeFromSuperview()
 
         runtime.reload(bundle: bundle) { [weak self] success in
             guard let self = self else { return }
@@ -740,6 +856,9 @@ public final class NativeBridge: @preconcurrency NativeEventDispatcher {
             self.eventKeysPerNode.removeAll()
             self.nodeParent.removeAll()
             self.childrenOf.removeAll()
+            self.teleportMarkers.removeAll()
+            self.teleportContainers.removeAll()
+            self.modalContainer.removeFromSuperview()
             self.rootView = nil
         }
     }

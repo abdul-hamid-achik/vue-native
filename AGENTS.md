@@ -97,9 +97,11 @@ The `lefthook` pre-commit hook runs lint + typecheck automatically, but **you mu
 
 ```bash
 # Both must pass before committing:
-cd native/ios/VueNativeCore && swift build    # Compilation check
-cd native/ios/VueNativeCore && swift test     # XCTest suite — all tests must pass
+cd native/ios/VueNativeCore && xcodebuild build -scheme VueNativeCore -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest'
+cd native/ios/VueNativeCore && xcodebuild test -scheme VueNativeCore -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest'
 ```
+
+Do not use plain `swift build` / `swift test` for the iOS package on macOS. They target the host platform by default and fail to resolve `UIKit`. Run `xcodebuild` from inside `native/ios/VueNativeCore/`.
 
 ### Swift changes (`native/macos/` or `native/shared/`)
 
@@ -264,8 +266,9 @@ swift test --package-path native/shared/VueNativeShared   # Run shared tests
 bun run test:shared                                       # Shortcut from root
 
 # ── iOS (Swift) ─────────────────────────────────────────────
-swift build --package-path native/ios/VueNativeCore    # Build Swift package
-swift test --package-path native/ios/VueNativeCore     # Run XCTest suite
+cd native/ios/VueNativeCore && xcodebuild build -scheme VueNativeCore -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest'
+cd native/ios/VueNativeCore && xcodebuild test -scheme VueNativeCore -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest'
+bun run build:ios                                      # Shortcut from root
 bun run test:ios                                       # Shortcut from root
 
 # ── Android (Kotlin) ────────────────────────────────────────

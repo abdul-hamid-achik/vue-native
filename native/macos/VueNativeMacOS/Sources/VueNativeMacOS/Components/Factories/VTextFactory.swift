@@ -39,6 +39,7 @@ final class VTextFactory: NativeComponentFactory {
     private static var fontSizeKey: UInt8 = 0
     private static var fontWeightKey: UInt8 = 0
     private static var fontFamilyKey: UInt8 = 0
+    private static var textChildrenKey: UInt8 = 0
 
     // MARK: - NativeComponentFactory
 
@@ -60,6 +61,7 @@ final class VTextFactory: NativeComponentFactory {
 
         switch key {
         case "text":
+            storeTextChildren([], on: label)
             if let text = value as? String {
                 label.stringValue = text
             } else {
@@ -240,6 +242,31 @@ final class VTextFactory: NativeComponentFactory {
         }
     }
 
+    func insertChild(_ child: NSView, into parent: NSView, before anchor: NSView?) {
+        guard let label = parent as? NSTextField else {
+            child.removeFromSuperview()
+            return
+        }
+
+        var children = storedTextChildren(on: label)
+        if let anchor = anchor, let index = children.firstIndex(where: { $0 === anchor }) {
+            children.insert(child, at: index)
+        } else {
+            children.append(child)
+        }
+
+        storeTextChildren(children, on: label)
+        rebuildText(from: children, on: label)
+    }
+
+    func removeChild(_ child: NSView, from parent: NSView) {
+        guard let label = parent as? NSTextField else { return }
+        var children = storedTextChildren(on: label)
+        children.removeAll { $0 === child }
+        storeTextChildren(children, on: label)
+        rebuildText(from: children, on: label)
+    }
+
     // MARK: - Font rebuilding
 
     /// Rebuild the NSFont from stored fontSize, fontWeight, and fontFamily.
@@ -289,5 +316,21 @@ final class VTextFactory: NativeComponentFactory {
 
     private func storedFontFamily(on view: NSView) -> String? {
         return objc_getAssociatedObject(view, &VTextFactory.fontFamilyKey) as? String
+    }
+
+    private func storeTextChildren(_ children: [NSView], on view: NSView) {
+        objc_setAssociatedObject(view, &VTextFactory.textChildrenKey, children, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+    }
+
+    private func storedTextChildren(on view: NSView) -> [NSView] {
+        return objc_getAssociatedObject(view, &VTextFactory.textChildrenKey) as? [NSView] ?? []
+    }
+
+    private func rebuildText(from children: [NSView], on label: NSTextField) {
+        let text = children.compactMap { child -> String? in
+            (child as? NSTextField)?.stringValue
+        }.joined()
+        label.stringValue = text
+        label.layoutNode?.markDirty()
     }
 }

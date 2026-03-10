@@ -1,8 +1,15 @@
-import { defineComponent, h, ref } from '@vue/runtime-core'
+import { defineComponent, h, inject, provide, ref, watch } from '@vue/runtime-core'
 import type { PropType } from '@vue/runtime-core'
 import { VView } from './VView'
 import { VText } from './VText'
 import { VPressable } from './VPressable'
+
+const drawerContextKey = Symbol('VDrawerContext')
+
+interface DrawerContext {
+  close: () => void
+  shouldCloseOnPress: () => boolean
+}
 
 /**
  * VDrawer - Drawer navigation component (side menu)
@@ -46,8 +53,12 @@ export const VDrawer = defineComponent({
     },
   },
   emits: ['update:open', 'close'],
-  setup(props, { slots, emit }) {
+  setup(props, { attrs, slots, emit }) {
     const isOpen = ref(props.open)
+
+    watch(() => props.open, (value) => {
+      isOpen.value = value
+    })
 
     const closeDrawer = () => {
       isOpen.value = false
@@ -55,33 +66,48 @@ export const VDrawer = defineComponent({
       emit('close')
     }
 
-    const overlayStyle = {
-      position: 'absolute' as const,
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      backgroundColor: 'rgba(0, 0, 0, 0.5)',
-      opacity: isOpen.value ? 1 : 0,
-      zIndex: 999,
-    }
-
-    const drawerStyle = {
-      position: 'absolute' as const,
-      top: 0,
-      [props.position]: 0,
-      width: props.width,
-      height: '100%',
-      backgroundColor: '#fff',
-      transform: [
-        { translateX: isOpen.value ? 0 : (props.position === 'left' ? -props.width : props.width) },
-      ],
-      zIndex: 1000,
-    }
+    provide<DrawerContext>(drawerContextKey, {
+      close: closeDrawer,
+      shouldCloseOnPress: () => props.closeOnPress,
+    })
 
     return () => {
       if (!isOpen.value && !slots.default) {
         return null
+      }
+
+      const overlayStyle = {
+        position: 'absolute' as const,
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        opacity: isOpen.value ? 1 : 0,
+        zIndex: 999,
+      }
+
+      const drawerStyle = {
+        position: 'absolute' as const,
+        top: 0,
+        [props.position]: 0,
+        width: props.width,
+        height: '100%',
+        backgroundColor: '#fff',
+        transform: [
+          { translateX: isOpen.value ? 0 : (props.position === 'left' ? -props.width : props.width) },
+        ],
+        zIndex: 1000,
+      }
+
+      const drawerProps = {
+        ...attrs,
+        style: {
+          ...drawerStyle,
+          ...((attrs.style && typeof attrs.style === 'object' && !Array.isArray(attrs.style))
+            ? attrs.style as Record<string, unknown>
+            : {}),
+        },
       }
 
       return [
@@ -95,9 +121,7 @@ export const VDrawer = defineComponent({
           : null,
 
         // Drawer
-        h(VView, {
-          style: drawerStyle,
-        }, [
+        h(VView, drawerProps, [
           // Header
           slots.header ? slots.header() : null,
 
@@ -138,6 +162,16 @@ VDrawer.Item = defineComponent({
   },
   emits: ['press'],
   setup(props, { slots, emit }) {
+    const drawer = inject<DrawerContext | null>(drawerContextKey, null)
+
+    const handlePress = () => {
+      if (props.disabled) return
+      emit('press')
+      if (drawer?.shouldCloseOnPress()) {
+        drawer.close()
+      }
+    }
+
     return () => h(VPressable, {
       style: {
         flexDirection: 'row',
@@ -147,7 +181,7 @@ VDrawer.Item = defineComponent({
         borderBottomColor: '#f0f0f0',
         opacity: props.disabled ? 0.5 : 1,
       },
-      onPress: () => !props.disabled && emit('press'),
+      onPress: handlePress,
       disabled: props.disabled,
       accessibilityLabel: props.label,
       accessibilityRole: 'menuitem',

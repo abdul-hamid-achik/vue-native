@@ -8,10 +8,10 @@ final class VListFactory: NativeComponentFactory {
 
     // MARK: - Associated object keys
 
-    private static var scrollThrottleKey: UInt8 = 0
-    private static var scrollObserverKey: UInt8 = 0
-    private static var endReachedHandlerKey: UInt8 = 0
-    private static var scrollHandlerKey: UInt8 = 0
+    nonisolated(unsafe) private static var scrollThrottleKey: UInt8 = 0
+    nonisolated(unsafe) private static var scrollObserverKey: UInt8 = 0
+    nonisolated(unsafe) private static var endReachedHandlerKey: UInt8 = 0
+    nonisolated(unsafe) private static var scrollHandlerKey: UInt8 = 0
 
     // MARK: - NativeComponentFactory
 
@@ -36,14 +36,41 @@ final class VListFactory: NativeComponentFactory {
             }
             container.tableView.reloadData()
 
+        case "estimatedItemHeight":
+            container.estimatedItemHeight = Self.cgFloat(from: value) ?? 44
+
         case "scrollEnabled":
             let enabled = (value as? Bool) ?? true
             container.scrollView.verticalScrollElasticity = enabled ? .allowed : .none
-            container.scrollView.hasVerticalScroller = enabled
+            container.scrollView.horizontalScrollElasticity = enabled ? .allowed : .none
+            if container.isHorizontal {
+                container.scrollView.hasHorizontalScroller = enabled && container.showsScrollIndicator
+            } else {
+                container.scrollView.hasVerticalScroller = enabled && container.showsScrollIndicator
+            }
 
-        case "showsVerticalScrollIndicator":
+        case "showsScrollIndicator":
             let show = (value as? Bool) ?? true
-            container.scrollView.hasVerticalScroller = show
+            container.showsScrollIndicator = show
+            if container.isHorizontal {
+                container.scrollView.hasHorizontalScroller = show
+                container.scrollView.hasVerticalScroller = false
+            } else {
+                container.scrollView.hasVerticalScroller = show
+                container.scrollView.hasHorizontalScroller = false
+            }
+
+        case "bounces":
+            let bounces = (value as? Bool) ?? true
+            let elasticity: NSScrollView.Elasticity = bounces ? .allowed : .none
+            container.scrollView.verticalScrollElasticity = elasticity
+            container.scrollView.horizontalScrollElasticity = elasticity
+
+        case "horizontal":
+            let horizontal = (value as? Bool) ?? false
+            container.isHorizontal = horizontal
+            container.scrollView.hasHorizontalScroller = horizontal && container.showsScrollIndicator
+            container.scrollView.hasVerticalScroller = !horizontal && container.showsScrollIndicator
 
         default:
             StyleEngine.apply(key: key, value: value, to: view)
@@ -75,18 +102,12 @@ final class VListFactory: NativeComponentFactory {
                 let visibleSize = c.scrollView.contentView.bounds.size
 
                 let payload: [String: Any] = [
-                    "contentOffset": [
-                        "x": clipBounds.origin.x,
-                        "y": clipBounds.origin.y
-                    ],
-                    "contentSize": [
-                        "width": docSize.width,
-                        "height": docSize.height
-                    ],
-                    "layoutMeasurement": [
-                        "width": visibleSize.width,
-                        "height": visibleSize.height
-                    ]
+                    "x": clipBounds.origin.x,
+                    "y": clipBounds.origin.y,
+                    "contentWidth": docSize.width,
+                    "contentHeight": docSize.height,
+                    "layoutWidth": visibleSize.width,
+                    "layoutHeight": visibleSize.height,
                 ]
                 throttle.fire(payload)
 
@@ -197,6 +218,9 @@ final class VListContainerView: FlippedView, NSTableViewDataSource, NSTableViewD
 
     var childViews: [NSView] = []
     var itemCount: Int = 0
+    var estimatedItemHeight: CGFloat = 44
+    var showsScrollIndicator = true
+    var isHorizontal = false
 
     private static let cellIdentifier = NSUserInterfaceItemIdentifier("VListCell")
 
@@ -269,7 +293,7 @@ final class VListContainerView: FlippedView, NSTableViewDataSource, NSTableViewD
     }
 
     func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
-        guard row < childViews.count else { return 44 }
+        guard row < childViews.count else { return estimatedItemHeight }
 
         let child = childViews[row]
         if let node = child.layoutNode {
@@ -283,6 +307,18 @@ final class VListContainerView: FlippedView, NSTableViewDataSource, NSTableViewD
             }
         }
         // Default row height
-        return 44
+        return estimatedItemHeight
+    }
+}
+
+private extension VListFactory {
+    static func cgFloat(from value: Any?) -> CGFloat? {
+        if let value = value as? CGFloat { return value }
+        if let value = value as? Double { return CGFloat(value) }
+        if let value = value as? Int { return CGFloat(value) }
+        if let value = value as? String, let parsed = Double(value) {
+            return CGFloat(parsed)
+        }
+        return nil
     }
 }
