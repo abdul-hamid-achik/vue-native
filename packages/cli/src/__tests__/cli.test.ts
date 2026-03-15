@@ -33,13 +33,18 @@ const mockReadFileSync = vi.fn().mockReturnValue('')
 const mockMkdirSync = vi.fn()
 const mockCopyFileSync = vi.fn()
 
-vi.mock('node:fs', () => ({
-  existsSync: (...args: unknown[]) => mockExistsSync(...args),
-  readdirSync: (...args: unknown[]) => mockReaddirSync(...args),
-  readFileSync: (...args: unknown[]) => mockReadFileSync(...args),
-  mkdirSync: (...args: unknown[]) => mockMkdirSync(...args),
-  copyFileSync: (...args: unknown[]) => mockCopyFileSync(...args),
-}))
+vi.mock('node:fs', async () => {
+  const actual = await import('fs')
+
+  return {
+    ...actual,
+    existsSync: (...args: unknown[]) => mockExistsSync(...args),
+    readdirSync: (...args: unknown[]) => mockReaddirSync(...args),
+    readFileSync: (...args: unknown[]) => mockReadFileSync(...args),
+    mkdirSync: (...args: unknown[]) => mockMkdirSync(...args),
+    copyFileSync: (...args: unknown[]) => mockCopyFileSync(...args),
+  }
+})
 
 // ───────────────────────────────────────────────────────────────────────────
 // Mock node:child_process (used by run and dev commands)

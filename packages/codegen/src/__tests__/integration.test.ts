@@ -4,7 +4,8 @@
  * These tests verify the complete pipeline from SFC parsing to code generation
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect } from 'vitest'
+import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { parseDirectory } from '@thelacanians/vue-native-sfc-parser'
@@ -16,10 +17,25 @@ import { generateCode, validateNativeBlocks } from '@thelacanians/vue-native-cod
 function createTestDir(name: string): string {
   const testDir = join(process.cwd(), 'test-output', name)
   if (existsSync(testDir)) {
-    rmSync(testDir, { recursive: true })
+    rmSync(testDir, { recursive: true, force: true })
   }
   mkdirSync(testDir, { recursive: true })
   return testDir
+}
+
+/**
+ * Run a test with an isolated temporary directory.
+ */
+function withTestDir<T>(run: (testDir: string) => T): T {
+  const testDir = createTestDir(`integration-test-${randomUUID()}`)
+
+  try {
+    return run(testDir)
+  } finally {
+    if (existsSync(testDir)) {
+      rmSync(testDir, { recursive: true, force: true })
+    }
+  }
 }
 
 /**
@@ -36,25 +52,13 @@ function writeTestSFC(dir: string, filename: string, content: string): string {
 }
 
 describe('Integration Tests', () => {
-  let testDir: string
-
-  beforeEach(() => {
-    testDir = createTestDir('integration-test')
-  })
-
-  afterEach(() => {
-    if (existsSync(testDir)) {
-      rmSync(testDir, { recursive: true })
-    }
-  })
-
   describe('End-to-End Code Generation', () => {
-    it('should generate all files from valid SFC', () => {
+    it('should generate all files from valid SFC', () => withTestDir((testDir) => {
       const sfc = `
         <template>
           <VView><VText>Test</VText></VView>
         </template>
-        
+
         <native platform="ios">
         class TestModule: NativeModule {
           var moduleName: String { "Test" }
@@ -63,7 +67,7 @@ describe('Integration Tests', () => {
           }
         }
         </native>
-        
+
         <native platform="android">
         class TestModule: NativeModule {
           override val moduleName: String = "Test"
@@ -76,17 +80,14 @@ describe('Integration Tests', () => {
 
       writeTestSFC(testDir, 'Test.vue', sfc)
 
-      // Parse
       const parseResult = parseDirectory('app', { root: testDir })
 
       expect(parseResult.errors).toHaveLength(0)
       expect(parseResult.allNativeBlocks.length).toBe(2)
 
-      // Validate
       const validation = validateNativeBlocks(parseResult.allNativeBlocks)
       expect(validation.isValid).toBe(true)
 
-      // Generate
       const codegen = generateCode(parseResult.allNativeBlocks, {
         root: testDir,
         iosOutputDir: join(testDir, 'native', 'ios', 'GeneratedModules'),
@@ -98,9 +99,9 @@ describe('Integration Tests', () => {
       expect(codegen.stats.swiftFiles).toBeGreaterThan(0)
       expect(codegen.stats.kotlinFiles).toBeGreaterThan(0)
       expect(codegen.stats.typescriptFiles).toBeGreaterThan(0)
-    })
+    }))
 
-    it('should handle multiple components', () => {
+    it('should handle multiple components', () => withTestDir((testDir) => {
       const sfc1 = `
         <template><VView>Component 1</VView></template>
         <native platform="ios">
@@ -134,18 +135,17 @@ describe('Integration Tests', () => {
 
       const codegen = generateCode(parseResult.allNativeBlocks)
 
-      // 2 module files + 1 registration file
       expect(codegen.stats.swiftFiles).toBe(3)
       expect(codegen.stats.typescriptFiles).toBe(2)
-    })
+    }))
 
-    it('should generate compilable Swift code', () => {
+    it('should generate compilable Swift code', () => withTestDir((testDir) => {
       const sfc = `
         <template><VView>Test</VView></template>
         <native platform="ios">
         class CompilableModule: NativeModule {
           var moduleName: String { "Compilable" }
-          
+
           func invoke(method: String, args: [Any], callback: @escaping (Any?, String?) -> Void) {
             switch method {
             case "test":
@@ -155,7 +155,7 @@ describe('Integration Tests', () => {
               callback(nil, "Unknown method")
             }
           }
-          
+
           func testMethod() {
             let value = 42
             print("Test: \\(value)")
@@ -170,21 +170,20 @@ describe('Integration Tests', () => {
 
       expect(codegen.errors).toHaveLength(0)
 
-      // Check generated Swift has proper syntax
       const swiftFile = codegen.files.find(f => f.language === 'swift')
       expect(swiftFile).toBeDefined()
       expect(swiftFile!.content).toContain('class CompilableModule: NativeModule')
       expect(swiftFile!.content).toContain('var moduleName: String { "Compilable" }')
       expect(swiftFile!.content).toContain('func invoke(')
-    })
+    }))
 
-    it('should generate compilable Kotlin code', () => {
+    it('should generate compilable Kotlin code', () => withTestDir((testDir) => {
       const sfc = `
         <template><VView>Test</VView></template>
         <native platform="android">
         class CompilableModule: NativeModule {
           override val moduleName: String = "Compilable"
-          
+
           override fun invoke(method: String, args: List<Any?>, callback: (Any?, String?) -> Unit) {
             when (method) {
               "test" -> {
@@ -194,7 +193,7 @@ describe('Integration Tests', () => {
               else -> callback(null, "Unknown method")
             }
           }
-          
+
           fun testMethod() {
             val value = 42
             println("Test: $value")
@@ -209,17 +208,16 @@ describe('Integration Tests', () => {
 
       expect(codegen.errors).toHaveLength(0)
 
-      // Check generated Kotlin has proper syntax
       const kotlinFile = codegen.files.find(f => f.language === 'kotlin')
       expect(kotlinFile).toBeDefined()
       expect(kotlinFile!.content).toContain('class CompilableModule: NativeModule')
       expect(kotlinFile!.content).toContain('override val moduleName: String = "Compilable"')
       expect(kotlinFile!.content).toContain('override fun invoke(')
-    })
+    }))
   })
 
   describe('Validation Integration', () => {
-    it('should catch validation errors before generation', () => {
+    it('should catch validation errors before generation', () => withTestDir((testDir) => {
       const invalidSFC = `
         <template><VView>Test</VView></template>
         <native platform="ios">
@@ -235,9 +233,9 @@ describe('Integration Tests', () => {
 
       expect(validation.isValid).toBe(false)
       expect(validation.errors.length).toBeGreaterThan(0)
-    })
+    }))
 
-    it('should stop generation on validation errors', () => {
+    it('should stop generation on validation errors', () => withTestDir((testDir) => {
       const invalidSFC = `
         <template><VView>Test</VView></template>
         <native platform="ios">
@@ -254,12 +252,11 @@ describe('Integration Tests', () => {
       const parseResult = parseDirectory('app', { root: testDir })
       const codegen = generateCode(parseResult.allNativeBlocks)
 
-      // Should have validation errors and no files generated
       expect(codegen.errors.length).toBeGreaterThan(0)
       expect(codegen.files).toHaveLength(0)
-    })
+    }))
 
-    it('should allow generation with warnings', () => {
+    it('should allow generation with warnings', () => withTestDir((testDir) => {
       const sfcWithWarnings = `
         <template><VView>Test</VView></template>
         <native platform="ios">
@@ -277,13 +274,12 @@ describe('Integration Tests', () => {
       const parseResult = parseDirectory('app', { root: testDir })
       const codegen = generateCode(parseResult.allNativeBlocks)
 
-      // Should generate files even with warnings
       expect(codegen.files.length).toBeGreaterThan(0)
-    })
+    }))
   })
 
   describe('Cross-Platform Consistency', () => {
-    it('should warn about inconsistent module names', () => {
+    it('should warn about inconsistent module names', () => withTestDir((testDir) => {
       const sfc = `
         <template><VView>Test</VView></template>
         <native platform="ios">
@@ -310,9 +306,9 @@ describe('Integration Tests', () => {
 
       expect(validation.warnings.length).toBeGreaterThan(0)
       expect(validation.warnings.some(w => w.message.includes('module names'))).toBe(true)
-    })
+    }))
 
-    it('should generate consistent TypeScript interfaces', () => {
+    it('should generate consistent TypeScript interfaces', () => withTestDir((testDir) => {
       const sfc = `
         <template><VView>Test</VView></template>
         <native platform="ios">
@@ -353,11 +349,11 @@ describe('Integration Tests', () => {
       expect(tsFile).toBeDefined()
       expect(tsFile!.content).toContain('method1(')
       expect(tsFile!.content).toContain('method2(')
-    })
+    }))
   })
 
   describe('Performance', () => {
-    it('should parse and generate within time budget', () => {
+    it('should parse and generate within time budget', () => withTestDir((testDir) => {
       const sfc = `
         <template><VView>Test</VView></template>
         <native platform="ios">
@@ -379,13 +375,11 @@ describe('Integration Tests', () => {
 
       const duration = performance.now() - start
 
-      // Should complete in under 100ms for single file
       expect(duration).toBeLessThan(100)
       expect(codegen.files.length).toBeGreaterThan(0)
-    })
+    }))
 
-    it('should handle multiple files efficiently', () => {
-      // Create 10 SFC files
+    it('should handle multiple files efficiently', () => withTestDir((testDir) => {
       for (let i = 0; i < 10; i++) {
         const sfc = `
           <template><VView>Test ${i}</VView></template>
@@ -408,17 +402,14 @@ describe('Integration Tests', () => {
 
       const duration = performance.now() - start
 
-      // Should complete in under 500ms for 10 files
       expect(duration).toBeLessThan(500)
-      // 10 module files + 1 registration file
       expect(codegen.stats.swiftFiles).toBe(11)
       expect(codegen.stats.typescriptFiles).toBe(10)
-    })
+    }))
   })
 
   describe('Error Recovery', () => {
-    it('should recover from invalid SFC', () => {
-      // Write invalid SFC first
+    it('should recover from invalid SFC', () => withTestDir((testDir) => {
       const invalidSFC = `
         <template><VView>Test</VView></template>
         <native platform="ios">
@@ -428,10 +419,8 @@ describe('Integration Tests', () => {
       writeTestSFC(testDir, 'Test.vue', invalidSFC)
 
       let parseResult = parseDirectory('app', { root: testDir })
-      // Comment-only content is still valid (non-empty) — parser accepts it
       expect(parseResult.allNativeBlocks.length).toBe(1)
 
-      // Fix the SFC
       const validSFC = `
         <template><VView>Test</VView></template>
         <native platform="ios">
@@ -449,6 +438,6 @@ describe('Integration Tests', () => {
       const codegen = generateCode(parseResult.allNativeBlocks)
 
       expect(codegen.files.length).toBeGreaterThan(0)
-    })
+    }))
   })
 })
