@@ -37,7 +37,7 @@ jobs:
         run: bun run typecheck
 
       - name: Test
-        run: bun run test
+        run: bun run test:ts
 
       - name: Publish @thelacanians/vue-native-runtime
         run: |
