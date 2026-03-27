@@ -102,6 +102,7 @@ jobs:
 
       - name: Build VueNativeCore for iOS Simulator
         run: |
+          cd native/ios/VueNativeCore
           xcodebuild build \
             -scheme VueNativeCore \
             -sdk iphonesimulator \
