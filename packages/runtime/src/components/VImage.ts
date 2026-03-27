@@ -53,9 +53,9 @@ export const VImage = defineComponent({
       emit('load')
     }
 
-    const onError = (e: any) => {
+    const onError = (event: unknown) => {
       loading.value = false
-      emit('error', e)
+      emit('error', event)
     }
 
     expose({ loading })

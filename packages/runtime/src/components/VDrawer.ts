@@ -1,5 +1,5 @@
 import { defineComponent, h, inject, provide, ref, watch } from '@vue/runtime-core'
-import type { PropType } from '@vue/runtime-core'
+import type { PropType, VNode } from '@vue/runtime-core'
 import { VView } from './VView'
 import { VText } from './VText'
 import { VPressable } from './VPressable'
@@ -110,6 +110,16 @@ export const VDrawer = defineComponent({
         },
       }
 
+      const drawerChildren: VNode[] = []
+
+      if (slots.header) {
+        drawerChildren.push(...slots.header())
+      }
+
+      if (slots.default) {
+        drawerChildren.push(...(slots.default({ close: closeDrawer }) ?? []))
+      }
+
       return [
         // Overlay
         isOpen.value
@@ -121,13 +131,7 @@ export const VDrawer = defineComponent({
           : null,
 
         // Drawer
-        h(VView, drawerProps, [
-          // Header
-          slots.header ? slots.header() : null,
-
-          // Content
-          slots.default ? slots.default({ close: closeDrawer }) : null,
-        ]),
+        h(VView, drawerProps, () => drawerChildren),
       ]
     }
   },
@@ -136,7 +140,7 @@ export const VDrawer = defineComponent({
 /**
  * VDrawer.Item - Drawer menu item component
  */
-VDrawer.Item = defineComponent({
+export const VDrawerItem = defineComponent({
   name: 'VDrawerItem',
   props: {
     /** Icon (emoji or icon name) */
@@ -186,28 +190,35 @@ VDrawer.Item = defineComponent({
       accessibilityLabel: props.label,
       accessibilityRole: 'menuitem',
       accessibilityState: { disabled: props.disabled },
-    }, [
-      props.icon
-        ? h(VText, {
+    }, () => {
+      const children: VNode[] = []
+
+      if (props.icon) {
+        children.push(
+          h(VText, {
             style: {
               fontSize: 24,
               marginRight: 16,
               width: 32,
               textAlign: 'center',
             },
-          }, () => props.icon)
-        : null,
+          }, () => props.icon),
+        )
+      }
 
-      h(VText, {
-        style: {
-          flex: 1,
-          fontSize: 16,
-          color: props.disabled ? '#999' : '#333',
-        },
-      }, () => props.label),
+      children.push(
+        h(VText, {
+          style: {
+            flex: 1,
+            fontSize: 16,
+            color: props.disabled ? '#999' : '#333',
+          },
+        }, () => props.label),
+      )
 
-      props.badge
-        ? h(VView, {
+      if (props.badge) {
+        children.push(
+          h(VView, {
             style: {
               backgroundColor: '#007AFF',
               borderRadius: 12,
@@ -223,18 +234,23 @@ VDrawer.Item = defineComponent({
               fontSize: 12,
               fontWeight: '600',
             },
-          }, () => String(props.badge)))
-        : null,
+          }, () => String(props.badge))),
+        )
+      }
 
-      slots.default ? slots.default() : null,
-    ])
+      if (slots.default) {
+        children.push(...(slots.default() ?? []))
+      }
+
+      return children
+    })
   },
 })
 
 /**
  * VDrawer.Section - Drawer section divider
  */
-VDrawer.Section = defineComponent({
+export const VDrawerSection = defineComponent({
   name: 'VDrawerSection',
   props: {
     /** Section title */
@@ -252,9 +268,12 @@ VDrawer.Section = defineComponent({
         borderBottomWidth: 1,
         borderBottomColor: '#e0e0e0',
       },
-    }, [
-      props.title
-        ? h(VText, {
+    }, () => {
+      const children: VNode[] = []
+
+      if (props.title) {
+        children.push(
+          h(VText, {
             style: {
               fontSize: 13,
               fontWeight: '600',
@@ -262,9 +281,18 @@ VDrawer.Section = defineComponent({
               textTransform: 'uppercase',
               letterSpacing: 0.5,
             },
-          }, () => props.title)
-        : null,
-      slots.default ? slots.default() : null,
-    ])
+          }, () => props.title),
+        )
+      }
+
+      if (slots.default) {
+        children.push(...(slots.default() ?? []))
+      }
+
+      return children
+    })
   },
 })
+
+VDrawer.Item = VDrawerItem
+VDrawer.Section = VDrawerSection

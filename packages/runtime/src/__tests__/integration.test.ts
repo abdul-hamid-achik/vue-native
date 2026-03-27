@@ -16,12 +16,34 @@ const { resetNodeId } = await import('../node')
 const { h, ref, nextTick: vueNextTick, defineComponent } = await import('@vue/runtime-core')
 const { render } = await import('../renderer')
 const { createNativeNode } = await import('../node')
+const { createApp } = await import('../index')
+const { builtInComponents } = await import('../components')
 
 describe('Integration: full Vue render cycle', () => {
   beforeEach(() => {
     mockBridge.reset()
     NativeBridge.reset()
     resetNodeId()
+  })
+
+  it('registers every built-in component and drawer aliases on createApp()', () => {
+    const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const app = createApp(defineComponent({ render: () => null }))
+      const registeredComponents = (app as any)._context.components as Record<string, unknown>
+
+      for (const [name, component] of Object.entries(builtInComponents)) {
+        expect(registeredComponents[name]).toBe(component)
+      }
+
+      expect(registeredComponents['VDrawer.Item']).toBe(registeredComponents.VDrawerItem)
+      expect(registeredComponents['VDrawer.Section']).toBe(registeredComponents.VDrawerSection)
+      expect(registeredComponents.ErrorBoundary).toBeDefined()
+      expect(registeredComponents.VErrorBoundary).toBeDefined()
+      expect(consoleWarnSpy).not.toHaveBeenCalled()
+    } finally {
+      consoleWarnSpy.mockRestore()
+    }
   })
 
   it('renders a simple VView with VText child', async () => {

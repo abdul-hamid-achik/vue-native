@@ -13,19 +13,12 @@ import { createVNode, type App, type Component } from '@vue/runtime-core'
 import { baseCreateApp, render } from './renderer'
 import { createNativeNode, type NativeNode } from './node'
 import { NativeBridge } from './bridge'
-import {
-  VView, VText, VButton, VInput, VSwitch, VActivityIndicator,
-  VScrollView, VImage, VKeyboardAvoiding, VSafeArea, VSlider,
-  VList, VModal, VAlertDialog, VStatusBar, VWebView,
-  VProgressBar, VPicker, VSegmentedControl, VActionSheet,
-  VRefreshControl, VPressable, VSectionList,
-  VCheckbox, VRadio, VDropdown,
-  VVideo, VFlatList,
-  VTabBar, VDrawer,
-} from './components'
-import { vShow } from './directives/vShow'
-import { vModel } from './directives/vModel'
+import { VDrawerItem, VDrawerSection, builtInComponents } from './components'
 import { ErrorBoundary } from './errorBoundary'
+
+interface VueNativeGlobals {
+  __VN_handleError?: (errorInfo: string) => void
+}
 
 /**
  * Extended App interface with the .start() method for mounting to native.
@@ -60,45 +53,18 @@ export interface NativeApp extends App {
  * app.start()
  * ```
  */
-export function createApp(rootComponent: Component, rootProps?: Record<string, any>): NativeApp {
+export function createApp(rootComponent: Component, rootProps?: Record<string, unknown>): NativeApp {
   const app = baseCreateApp(rootComponent, rootProps) as NativeApp
 
   // Register built-in components so they can be used in templates
-  // without explicit imports
-  app.component('VView', VView)
-  app.component('VText', VText)
-  app.component('VButton', VButton)
-  app.component('VInput', VInput)
-  app.component('VSwitch', VSwitch)
-  app.component('VActivityIndicator', VActivityIndicator)
-  app.component('VScrollView', VScrollView)
-  app.component('VImage', VImage)
-  app.component('VKeyboardAvoiding', VKeyboardAvoiding)
-  app.component('VSafeArea', VSafeArea)
-  app.component('VSlider', VSlider)
-  app.component('VList', VList)
-  app.component('VModal', VModal)
-  app.component('VAlertDialog', VAlertDialog)
-  app.component('VStatusBar', VStatusBar)
-  app.component('VWebView', VWebView)
-  app.component('VProgressBar', VProgressBar)
-  app.component('VPicker', VPicker)
-  app.component('VSegmentedControl', VSegmentedControl)
-  app.component('VActionSheet', VActionSheet)
-  app.component('VRefreshControl', VRefreshControl)
-  app.component('VPressable', VPressable)
-  app.component('VSectionList', VSectionList)
-  app.component('VCheckbox', VCheckbox)
-  app.component('VRadio', VRadio)
-  app.component('VDropdown', VDropdown)
-  app.component('VVideo', VVideo)
-  app.component('VFlatList', VFlatList)
-  app.component('VTabBar', VTabBar)
-  app.component('VDrawer', VDrawer)
+  // without explicit imports.
+  for (const [name, component] of Object.entries(builtInComponents)) {
+    app.component(name, component)
+  }
+  app.component('VDrawer.Item', VDrawerItem)
+  app.component('VDrawer.Section', VDrawerSection)
   app.component('ErrorBoundary', ErrorBoundary)
   app.component('VErrorBoundary', ErrorBoundary)
-  app.directive('show', vShow)
-  app.directive('model', vModel)
 
   // Global error handler — catches unhandled errors in components,
   // formats them, and forwards to native for error overlay display.
@@ -112,7 +78,7 @@ export function createApp(rootComponent: Component, rootProps?: Record<string, a
       info,
     })
     console.error(`[VueNative] Error in ${componentName}: ${error.message}`)
-    const handleError = (globalThis as any).__VN_handleError
+    const handleError = (globalThis as typeof globalThis & VueNativeGlobals).__VN_handleError
     if (typeof handleError === 'function') {
       handleError(errorInfo)
     }
@@ -187,7 +153,8 @@ export type {
   VProgressBarProps, VPickerProps, VSegmentedControlProps, VActionSheetProps,
   VKeyboardAvoidingProps, VSafeAreaProps, VRefreshControlProps, VPressableProps,
   VCheckboxProps, VRadioProps, VDropdownProps, VSectionListProps,
-  VVideoProps,
+  VVideoProps, VFlatListProps, VTabBarProps, VDrawerProps, VDrawerItemProps,
+  VDrawerSectionProps,
 } from './types'
 
 // Built-in components (for direct import in render functions)
@@ -199,7 +166,8 @@ export {
   VRefreshControl, VPressable, VSectionList,
   VCheckbox, VRadio, VDropdown,
   VVideo, VFlatList,
-  VTabBar, VDrawer,
+  VTabBar, VDrawer, VDrawerItem, VDrawerSection,
+  builtInComponents,
 } from './components'
 export type { TabConfig } from './components/VTabBar'
 export type { AlertButton, StatusBarStyle, WebViewSource, ActionSheetAction, RadioOption, DropdownOption, FlatListRenderItemInfo } from './components'
@@ -237,6 +205,8 @@ export {
   useFileDialog,
   useDragDrop,
   useTeleport,
+  useGesture,
+  useComposedGestures,
 } from './composables'
 export type {
   TimingOptions, SpringOptions, NetworkState, ConnectionType, AppStateStatus,
@@ -260,6 +230,9 @@ export type {
   WindowInfo,
   MenuItem, MenuSection,
   OpenFileOptions, SaveFileOptions,
+  PanGestureState, PinchGestureState, RotateGestureState, SwipeGestureState,
+  TapGestureState, ForceTouchState, HoverState, GestureState, GestureConfig,
+  UseGestureReturn, UseGestureOptions, ComposedGesture,
 } from './composables'
 
 // Theme system

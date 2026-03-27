@@ -1,6 +1,23 @@
 import { defineComponent, h, ref, type PropType } from '@vue/runtime-core'
 import type { TextStyle } from '../types/styles'
 
+interface TextPayload {
+  text?: string
+}
+
+function extractText(payload: unknown): string {
+  if (typeof payload === 'string') {
+    return payload
+  }
+
+  if (typeof payload === 'object' && payload !== null && 'text' in payload) {
+    const text = (payload as TextPayload).text
+    return typeof text === 'string' ? text : ''
+  }
+
+  return ''
+}
+
 /**
  * VInput — a text input component with v-model support.
  *
@@ -76,27 +93,25 @@ export const VInput = defineComponent({
       isComposing.value = true
     }
 
-    const onCompositionend = (payload: any) => {
+    const onCompositionend = (payload: unknown) => {
       isComposing.value = false
-      const text = typeof payload === 'string' ? payload : payload?.text ?? ''
-      emit('update:modelValue', text)
+      emit('update:modelValue', extractText(payload))
     }
 
-    const onChangetext = (payload: any) => {
+    const onChangetext = (payload: unknown) => {
       if (isComposing.value) return // Skip during IME composition
-      const text = typeof payload === 'string' ? payload : payload?.text ?? ''
-      emit('update:modelValue', text)
+      emit('update:modelValue', extractText(payload))
     }
 
-    const onFocus = (payload: any) => {
+    const onFocus = (payload: unknown) => {
       emit('focus', payload)
     }
 
-    const onBlur = (payload: any) => {
+    const onBlur = (payload: unknown) => {
       emit('blur', payload)
     }
 
-    const onSubmit = (payload: any) => {
+    const onSubmit = (payload: unknown) => {
       emit('submit', payload)
     }
 

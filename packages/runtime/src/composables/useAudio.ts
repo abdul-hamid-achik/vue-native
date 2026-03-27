@@ -22,6 +22,20 @@ export interface AudioRecordResult {
   duration: number
 }
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === 'object' && value !== null ? value as Record<string, unknown> : null
+}
+
+function getNumberProp(record: Record<string, unknown> | null, key: string): number | undefined {
+  const value = record?.[key]
+  return typeof value === 'number' ? value : undefined
+}
+
+function getStringProp(record: Record<string, unknown> | null, key: string): string | undefined {
+  const value = record?.[key]
+  return typeof value === 'string' ? value : undefined
+}
+
 // ─── useAudio composable ─────────────────────────────────────────────────
 
 /**
@@ -51,7 +65,7 @@ export function useAudio() {
   const error = ref<string | null>(null)
 
   // Subscribe to progress events
-  const unsubProgress = NativeBridge.onGlobalEvent('audio:progress', (payload: any) => {
+  const unsubProgress = NativeBridge.onGlobalEvent<{ currentTime?: number, duration?: number }>('audio:progress', (payload) => {
     position.value = payload.currentTime ?? 0
     duration.value = payload.duration ?? 0
   })
@@ -61,7 +75,7 @@ export function useAudio() {
     position.value = 0
   })
 
-  const unsubError = NativeBridge.onGlobalEvent('audio:error', (payload: any) => {
+  const unsubError = NativeBridge.onGlobalEvent<{ message?: string }>('audio:error', (payload) => {
     error.value = payload.message ?? 'Unknown audio error'
     isPlaying.value = false
   })
@@ -80,9 +94,10 @@ export function useAudio() {
 
   async function play(uri: string, options: AudioPlayOptions = {}): Promise<void> {
     error.value = null
-    const result: any = await NativeBridge.invokeNativeModule('Audio', 'play', [uri, options])
-    if (result?.duration != null) {
-      duration.value = result.duration
+    const result = asRecord(await NativeBridge.invokeNativeModule('Audio', 'play', [uri, options]))
+    const audioDuration = getNumberProp(result, 'duration')
+    if (audioDuration !== undefined) {
+      duration.value = audioDuration
     }
     isPlaying.value = true
   }
@@ -114,15 +129,18 @@ export function useAudio() {
 
   async function startRecording(options: AudioRecordOptions = {}): Promise<string> {
     error.value = null
-    const result: any = await NativeBridge.invokeNativeModule('Audio', 'startRecording', [options])
+    const result = asRecord(await NativeBridge.invokeNativeModule('Audio', 'startRecording', [options]))
     isRecording.value = true
-    return result?.uri ?? ''
+    return getStringProp(result, 'uri') ?? ''
   }
 
   async function stopRecording(): Promise<AudioRecordResult> {
-    const result: any = await NativeBridge.invokeNativeModule('Audio', 'stopRecording', [])
+    const result = asRecord(await NativeBridge.invokeNativeModule('Audio', 'stopRecording', []))
     isRecording.value = false
-    return { uri: result?.uri ?? '', duration: result?.duration ?? 0 }
+    return {
+      uri: getStringProp(result, 'uri') ?? '',
+      duration: getNumberProp(result, 'duration') ?? 0,
+    }
   }
 
   async function pauseRecording(): Promise<void> {

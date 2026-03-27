@@ -56,4 +56,9 @@ export type {
   VDropdownProps,
   VSectionListProps,
   VVideoProps,
+  VFlatListProps,
+  VTabBarProps,
+  VDrawerProps,
+  VDrawerItemProps,
+  VDrawerSectionProps,
 } from './components'

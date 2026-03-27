@@ -106,3 +106,21 @@ export type { OpenFileOptions, SaveFileOptions } from './useFileDialog'
 export { useDragDrop } from './useDragDrop'
 
 export { useTeleport } from './useTeleport'
+
+export { useGesture, useComposedGestures } from './useGesture'
+export type {
+  PanGestureState,
+  PinchGestureState,
+  RotateGestureState,
+  SwipeGestureState,
+  TapGestureState,
+  ForceTouchState,
+  HoverState,
+  GestureState,
+  GestureConfig,
+  GestureHandler,
+  UseGestureReturn,
+  UseGestureOptions,
+  GestureCompositionOptions,
+  ComposedGesture,
+} from './useGesture'

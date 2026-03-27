@@ -7,49 +7,126 @@
  * use in render functions or JSX.
  */
 
-export { VView } from './VView'
-export { VText } from './VText'
-export { VButton } from './VButton'
-export { VInput } from './VInput'
-export { VSwitch } from './VSwitch'
-export { VActivityIndicator } from './VActivityIndicator'
-export { VScrollView } from './VScrollView'
-export { VImage } from './VImage'
-export { VKeyboardAvoiding } from './VKeyboardAvoiding'
-export { VSafeArea } from './VSafeArea'
-export { VSlider } from './VSlider'
-export { VList } from './VList'
-export { VModal } from './VModal'
+import type { Component } from '@vue/runtime-core'
+import { VView } from './VView'
+import { VText } from './VText'
+import { VButton } from './VButton'
+import { VInput } from './VInput'
+import { VSwitch } from './VSwitch'
+import { VActivityIndicator } from './VActivityIndicator'
+import { VScrollView } from './VScrollView'
+import { VImage } from './VImage'
+import { VKeyboardAvoiding } from './VKeyboardAvoiding'
+import { VSafeArea } from './VSafeArea'
+import { VSlider } from './VSlider'
+import { VList } from './VList'
+import { VModal } from './VModal'
+import { VAlertDialog } from './VAlertDialog'
+import { VStatusBar } from './VStatusBar'
+import { VWebView } from './VWebView'
+import { VProgressBar } from './VProgressBar'
+import { VPicker } from './VPicker'
+import { VSegmentedControl } from './VSegmentedControl'
+import { VActionSheet } from './VActionSheet'
+import { VRefreshControl } from './VRefreshControl'
+import { VPressable } from './VPressable'
+import { VSectionList } from './VSectionList'
+import { VCheckbox } from './VCheckbox'
+import { VRadio } from './VRadio'
+import { VDropdown } from './VDropdown'
+import { VVideo } from './VVideo'
+import { VFlatList } from './VFlatList'
+import { VTabBar } from './VTabBar'
+import { VDrawer, VDrawerItem, VDrawerSection } from './VDrawer'
+import { VTransition, VTransitionGroup } from './VTransition'
+import { KeepAlive } from './KeepAlive'
+import { VSuspense, defineAsyncComponent } from './VSuspense'
 
-export { VAlertDialog } from './VAlertDialog'
+export {
+  VView,
+  VText,
+  VButton,
+  VInput,
+  VSwitch,
+  VActivityIndicator,
+  VScrollView,
+  VImage,
+  VKeyboardAvoiding,
+  VSafeArea,
+  VSlider,
+  VList,
+  VModal,
+  VAlertDialog,
+  VStatusBar,
+  VWebView,
+  VProgressBar,
+  VPicker,
+  VSegmentedControl,
+  VActionSheet,
+  VRefreshControl,
+  VPressable,
+  VSectionList,
+  VCheckbox,
+  VRadio,
+  VDropdown,
+  VVideo,
+  VFlatList,
+  VTabBar,
+  VDrawer,
+  VDrawerItem,
+  VDrawerSection,
+  VTransition,
+  VTransitionGroup,
+  KeepAlive,
+  VSuspense,
+  defineAsyncComponent,
+}
+
 export type { AlertButton } from './VAlertDialog'
-
-export { VStatusBar } from './VStatusBar'
 export type { StatusBarStyle } from './VStatusBar'
-
-export { VWebView } from './VWebView'
 export type { WebViewSource } from './VWebView'
-
-export { VProgressBar } from './VProgressBar'
-export { VPicker } from './VPicker'
-export { VSegmentedControl } from './VSegmentedControl'
-export { VActionSheet } from './VActionSheet'
 export type { ActionSheetAction } from './VActionSheet'
-
-export { VRefreshControl } from './VRefreshControl'
-export { VPressable } from './VPressable'
-export { VSectionList } from './VSectionList'
-
-export { VCheckbox } from './VCheckbox'
-export { VRadio } from './VRadio'
 export type { RadioOption } from './VRadio'
-export { VDropdown } from './VDropdown'
 export type { DropdownOption } from './VDropdown'
-
-export { VVideo } from './VVideo'
-export { VFlatList } from './VFlatList'
-export { VTabBar } from './VTabBar'
-export type { TabConfig } from './VTabBar'
-export { VDrawer } from './VDrawer'
-
 export type { FlatListRenderItemInfo } from './VFlatList'
+export type { TabConfig } from './VTabBar'
+export type { AsyncComponentOptions } from './VSuspense'
+
+export const builtInComponents: Record<string, Component> = {
+  VView,
+  VText,
+  VButton,
+  VInput,
+  VSwitch,
+  VActivityIndicator,
+  VScrollView,
+  VImage,
+  VKeyboardAvoiding,
+  VSafeArea,
+  VSlider,
+  VList,
+  VModal,
+  VAlertDialog,
+  VStatusBar,
+  VWebView,
+  VProgressBar,
+  VPicker,
+  VSegmentedControl,
+  VActionSheet,
+  VRefreshControl,
+  VPressable,
+  VSectionList,
+  VCheckbox,
+  VRadio,
+  VDropdown,
+  VVideo,
+  VFlatList,
+  VTabBar,
+  VDrawer,
+  VDrawerItem,
+  VDrawerSection,
+  VTransition,
+  VTransitionGroup,
+  KeepAlive,
+  VSuspense,
+}

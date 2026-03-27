@@ -27,6 +27,15 @@ export interface VersionInfo {
 
 export type UpdateStatus = 'idle' | 'checking' | 'downloading' | 'ready' | 'error'
 
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message
+  if (typeof error === 'object' && error !== null && 'message' in error) {
+    const message = (error as { message?: unknown }).message
+    if (typeof message === 'string') return message
+  }
+  return String(error)
+}
+
 /**
  * Composable for managing Over-The-Air (OTA) JS bundle updates.
  *
@@ -94,8 +103,8 @@ export function useOTAUpdate(serverUrl: string) {
       }
       status.value = info.updateAvailable ? 'idle' : 'idle'
       return info
-    } catch (err: any) {
-      error.value = err?.message || String(err)
+    } catch (err: unknown) {
+      error.value = getErrorMessage(err)
       status.value = 'error'
       throw err
     } finally {
@@ -122,10 +131,10 @@ export function useOTAUpdate(serverUrl: string) {
     try {
       await NativeBridge.invokeNativeModule('OTA', 'downloadUpdate', [downloadUrl, expectedHash || ''])
       status.value = 'ready'
-    } catch (err: any) {
+    } catch (err: unknown) {
       // Clean up partial download to prevent corrupted bundles from being applied later
       await NativeBridge.invokeNativeModule('OTA', 'cleanupPartialDownload', []).catch(() => {})
-      error.value = err?.message || String(err)
+      error.value = getErrorMessage(err)
       status.value = 'error'
       throw err
     } finally {
@@ -143,9 +152,9 @@ export function useOTAUpdate(serverUrl: string) {
     // Verify bundle integrity before applying to prevent corrupted bundles
     try {
       await NativeBridge.invokeNativeModule('OTA', 'verifyBundle', [])
-    } catch (err: any) {
+    } catch (err: unknown) {
       status.value = 'error'
-      error.value = 'Bundle verification failed: ' + (err?.message || String(err))
+      error.value = 'Bundle verification failed: ' + getErrorMessage(err)
       throw err
     }
 
@@ -156,8 +165,8 @@ export function useOTAUpdate(serverUrl: string) {
       currentVersion.value = info.version
       availableVersion.value = null
       status.value = 'idle'
-    } catch (err: any) {
-      error.value = err?.message || String(err)
+    } catch (err: unknown) {
+      error.value = getErrorMessage(err)
       status.value = 'error'
       throw err
     }
@@ -170,8 +179,8 @@ export function useOTAUpdate(serverUrl: string) {
       const info: VersionInfo = await NativeBridge.invokeNativeModule('OTA', 'getCurrentVersion', [])
       currentVersion.value = info.version
       status.value = 'idle'
-    } catch (err: any) {
-      error.value = err?.message || String(err)
+    } catch (err: unknown) {
+      error.value = getErrorMessage(err)
       status.value = 'error'
       throw err
     }

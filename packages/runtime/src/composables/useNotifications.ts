@@ -8,21 +8,21 @@ export interface LocalNotification {
   delay?: number
   sound?: 'default' | null
   badge?: number
-  data?: Record<string, any>
+  data?: Record<string, unknown>
 }
 
 export interface NotificationPayload {
   id: string
   title: string
   body: string
-  data: Record<string, any>
+  data: Record<string, unknown>
   action?: string
 }
 
 export interface PushNotificationPayload {
   title: string
   body: string
-  data: Record<string, any>
+  data: Record<string, unknown>
   remote: true
 }
 

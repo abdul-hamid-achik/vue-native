@@ -46,12 +46,12 @@ export const VVideo = defineComponent({
     return () =>
       h('VVideo', {
         ...props,
-        onReady: (e: any) => emit('ready', e),
+        onReady: (event: unknown) => emit('ready', event),
         onPlay: () => emit('play'),
         onPause: () => emit('pause'),
         onEnd: () => emit('end'),
-        onError: (e: any) => emit('error', e),
-        onProgress: (e: any) => emit('progress', e),
+        onError: (event: unknown) => emit('error', event),
+        onProgress: (event: unknown) => emit('progress', event),
       })
   },
 })

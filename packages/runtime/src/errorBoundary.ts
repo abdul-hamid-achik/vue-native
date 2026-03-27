@@ -5,8 +5,8 @@ export const ErrorBoundary = defineComponent({
   props: {
     onError: Function as unknown as PropType<(error: Error, info: string) => void>,
     resetKeys: {
-      type: Array as PropType<any[]>,
-      default: () => [],
+      type: Array as PropType<unknown[]>,
+      default: (): unknown[] => [],
     },
   },
   setup(props, { slots }) {

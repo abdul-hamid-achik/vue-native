@@ -16,7 +16,7 @@ export interface AccessibilityProps {
   accessibilityLabel?: string
   accessibilityRole?: string
   accessibilityHint?: string
-  accessibilityState?: Record<string, any>
+  accessibilityState?: Record<string, unknown>
 }
 
 // ---------------------------------------------------------------------------
@@ -97,9 +97,9 @@ export interface VSliderProps extends AccessibilityProps {
   style?: ViewStyle
 }
 
-export interface VListProps {
-  data: any[]
-  keyExtractor?: (item: any, index: number) => string
+export interface VListProps<T = unknown> {
+  data: T[]
+  keyExtractor?: (item: T, index: number) => string
   estimatedItemHeight?: number
   showsScrollIndicator?: boolean
   bounces?: boolean
@@ -240,12 +240,59 @@ export interface VVideoProps extends AccessibilityProps {
   testID?: string
 }
 
-export interface VSectionListProps {
-  sections: Array<{ title: string, data: any[] }>
-  keyExtractor?: (item: any, index: number) => string
+export interface VSectionListSection<T = unknown> {
+  title: string
+  data: T[]
+}
+
+export interface VSectionListProps<T = unknown> {
+  sections: VSectionListSection<T>[]
+  keyExtractor?: (item: T, index: number) => string
   estimatedItemHeight?: number
   stickySectionHeaders?: boolean
   showsScrollIndicator?: boolean
   bounces?: boolean
   style?: ViewStyle
+}
+
+export interface VFlatListProps<T = unknown, TRendered = unknown> {
+  data: T[]
+  renderItem?: (info: { item: T, index: number }) => TRendered
+  keyExtractor?: (item: T, index: number) => string | number
+  itemHeight: number
+  windowSize?: number
+  style?: ViewStyle
+  showsScrollIndicator?: boolean
+  bounces?: boolean
+  headerHeight?: number
+  endReachedThreshold?: number
+}
+
+export interface VTabBarProps {
+  tabs: Array<{
+    id: string
+    label: string
+    icon?: string
+    badge?: number | string
+  }>
+  activeTab: string
+  position?: 'top' | 'bottom'
+}
+
+export interface VDrawerProps {
+  open?: boolean
+  position?: 'left' | 'right'
+  width?: number
+  closeOnPress?: boolean
+}
+
+export interface VDrawerItemProps extends AccessibilityProps {
+  icon?: string
+  label: string
+  badge?: number | string | null
+  disabled?: boolean
+}
+
+export interface VDrawerSectionProps {
+  title?: string
 }

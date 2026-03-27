@@ -15,6 +15,7 @@ import {
   defineComponent, h, ref,
   type ComputedRef,
 } from '@vue/runtime-core'
+import type { ThemeContext } from '../theme'
 
 const { createTheme, createDynamicStyleSheet } = await import('../theme')
 
@@ -29,6 +30,8 @@ const darkTheme = {
   colors: { background: '#1A1A1A', text: '#F5F5F5', primary: '#0A84FF' },
   spacing: { sm: 8, md: 16, lg: 24 },
 }
+
+type TestTheme = typeof lightTheme
 
 describe('Theme System', () => {
   beforeEach(() => {
@@ -284,7 +287,7 @@ describe('Theme System', () => {
       const { ThemeProvider, useTheme } = createTheme({ light: lightTheme, dark: darkTheme })
 
       let styles: ComputedRef<any>
-      let ctx: any
+      let ctx: ThemeContext<TestTheme> | undefined
 
       const Child = defineComponent({
         setup() {
@@ -316,7 +319,7 @@ describe('Theme System', () => {
       const { ThemeProvider, useTheme } = createTheme({ light: lightTheme, dark: darkTheme })
 
       let styles: ComputedRef<any>
-      let ctx: any
+      let ctx: ThemeContext<TestTheme> | undefined
 
       const Child = defineComponent({
         setup() {
@@ -340,14 +343,14 @@ describe('Theme System', () => {
 
       expect(styles!.value.container.backgroundColor).toBe('#FFFFFF')
 
-      ctx.toggleColorScheme()
+      ctx!.toggleColorScheme()
       expect(styles!.value.container.backgroundColor).toBe('#1A1A1A')
     })
 
     it('works with a plain ref theme', () => {
       // createDynamicStyleSheet also accepts Ref<T>
       const theme = ref(lightTheme)
-      const styles = createDynamicStyleSheet(theme as any, t => ({
+      const styles = createDynamicStyleSheet(theme, t => ({
         box: { padding: t.spacing.sm },
       }))
 
@@ -356,7 +359,7 @@ describe('Theme System', () => {
 
     it('returns frozen style objects', () => {
       const theme = ref(lightTheme)
-      const styles = createDynamicStyleSheet(theme as any, t => ({
+      const styles = createDynamicStyleSheet(theme, t => ({
         box: { padding: t.spacing.sm },
       }))
 

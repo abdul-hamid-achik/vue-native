@@ -42,9 +42,9 @@ export const VWebView = defineComponent({
         source: sanitizedSource.value,
         style: props.style,
         javaScriptEnabled: props.javaScriptEnabled,
-        onLoad: (e: any) => emit('load', e),
-        onError: (e: any) => emit('error', e),
-        onMessage: (e: any) => emit('message', e),
+        onLoad: (event: unknown) => emit('load', event),
+        onError: (event: unknown) => emit('error', event),
+        onMessage: (event: unknown) => emit('message', event),
       })
   },
 })

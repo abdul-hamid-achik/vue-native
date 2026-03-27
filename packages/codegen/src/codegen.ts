@@ -7,6 +7,10 @@ import { generateTypeScriptFile } from './generators/typescript'
 import { validateNativeBlocks } from './validator'
 import type { CodegenOptions, CodegenResult, GeneratedFile } from './types'
 
+function logInfo(message: string): void {
+  process.stdout.write(`${message}\n`)
+}
+
 /**
  * Generate code from native blocks
  *
@@ -185,7 +189,7 @@ export function writeGeneratedFiles(
       fs.writeFileSync(absolutePath, file.content, 'utf-8')
       written.push(1)
 
-      console.log(`[vue-native-codegen] Generated: ${file.outputPath}`)
+      logInfo(`[vue-native-codegen] Generated: ${file.outputPath}`)
     } catch (error) {
       errors.push({
         file: file.sourceBlock.sourceFile,

@@ -20,7 +20,17 @@
 
 export interface CapturedOperation {
   op: string
+  // Native bridge payloads are intentionally heterogeneous in tests.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   args: any[]
+}
+
+interface MockBridgeGlobals {
+  __VN_flushOperations?: (json: string) => void
+  __VN_handleEvent?: (...args: unknown[]) => void
+  __VN_resolveCallback?: (...args: unknown[]) => void
+  __VN_handleGlobalEvent?: (...args: unknown[]) => void
+  __DEV__?: boolean
 }
 
 /**
@@ -31,16 +41,17 @@ export interface CapturedOperation {
  */
 export function installMockBridge() {
   const ops: CapturedOperation[] = []
+  const mockGlobals = globalThis as typeof globalThis & MockBridgeGlobals
 
-  ;(globalThis as any).__VN_flushOperations = (json: string) => {
+  mockGlobals.__VN_flushOperations = (json: string) => {
     const parsed: CapturedOperation[] = JSON.parse(json)
     ops.push(...parsed)
   }
 
-  ;(globalThis as any).__VN_handleEvent = (..._args: any[]) => {}
-  ;(globalThis as any).__VN_resolveCallback = (..._args: any[]) => {}
-  ;(globalThis as any).__VN_handleGlobalEvent = (..._args: any[]) => {}
-  ;(globalThis as any).__DEV__ = true
+  mockGlobals.__VN_handleEvent = (..._args: unknown[]) => {}
+  mockGlobals.__VN_resolveCallback = (..._args: unknown[]) => {}
+  mockGlobals.__VN_handleGlobalEvent = (..._args: unknown[]) => {}
+  mockGlobals.__DEV__ = true
 
   /** Get a copy of all captured operations. */
   function getOps(): CapturedOperation[] {

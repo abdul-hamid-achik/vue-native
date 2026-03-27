@@ -47,8 +47,8 @@ export function useMenu() {
 
   function onMenuItemClick(callback: (id: string, title: string) => void): () => void {
     if (!isMacOS) return () => {}
-    return NativeBridge.onGlobalEvent('menu:itemClick', (payload: any) => {
-      callback(payload.id, payload.title)
+    return NativeBridge.onGlobalEvent<{ id?: string, title?: string }>('menu:itemClick', (payload) => {
+      callback(payload.id ?? '', payload.title ?? '')
     })
   }
 

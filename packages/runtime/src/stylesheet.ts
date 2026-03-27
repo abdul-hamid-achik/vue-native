@@ -122,13 +122,13 @@ export const validStyleProperties: ReadonlySet<string> = new Set([
  * Can be a ViewStyle, TextStyle, or ImageStyle from the typed interfaces,
  * or a plain record for backwards compatibility.
  */
-export type StyleProp = Record<string, any>
+export type StyleProp = Record<string, unknown>
 
 /**
  * The result type of createStyleSheet — keys are the same as the input,
  * values are frozen style objects.
  */
-export type StyleSheet<T extends Record<string, StyleProp>> = Readonly<{
+export type StyleSheet<T extends Record<string, object>> = Readonly<{
   [K in keyof T]: Readonly<T[K]>
 }>
 
@@ -163,14 +163,14 @@ export type AnyStyle = ViewStyle | TextStyle | ImageStyle
  * })
  * ```
  */
-export function createStyleSheet<T extends Record<string, StyleProp>>(
+export function createStyleSheet<T extends Record<string, object>>(
   styles: T,
 ): StyleSheet<T> {
   const isDev = typeof __DEV__ !== 'undefined' ? __DEV__ : true
 
   if (isDev) {
     for (const styleName in styles) {
-      const styleObj = styles[styleName]
+      const styleObj = styles[styleName] as Record<string, unknown>
       for (const prop in styleObj) {
         if (!validStyleProperties.has(prop)) {
           console.warn(
@@ -183,9 +183,10 @@ export function createStyleSheet<T extends Record<string, StyleProp>>(
   }
 
   // Freeze each individual style object for immutability and perf
-  const result = {} as any
+  const result = {} as { [K in keyof T]: Readonly<T[K]> }
   for (const key in styles) {
-    result[key] = Object.freeze({ ...styles[key] })
+    const styleKey = key as keyof T
+    result[styleKey] = Object.freeze({ ...styles[styleKey] }) as Readonly<T[typeof styleKey]>
   }
 
   // Freeze the container object itself

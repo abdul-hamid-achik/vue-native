@@ -6,6 +6,11 @@
  * to validate the resolved configuration without needing a real Vite build.
  */
 import { describe, it, expect } from 'vitest'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
+import { fileURLToPath, pathToFileURL } from 'node:url'
+import { build } from 'vite'
+import vue from '@vitejs/plugin-vue'
 import vueNativePlugin from '../index'
 import type { VueNativePluginOptions } from '../index'
 
@@ -55,8 +60,8 @@ describe('Config — production mode', () => {
     expect(config.build.lib.formats).toEqual(['iife'])
   })
 
-  it('sets inlineDynamicImports to true', () => {
-    expect(config.build.rollupOptions.output.inlineDynamicImports).toBe(true)
+  it('leaves inlineDynamicImports unset to avoid Rolldown warnings', () => {
+    expect(config.build.rollupOptions.output.inlineDynamicImports).toBeUndefined()
   })
 
   it('sets manualChunks to undefined (no code splitting)', () => {
@@ -114,8 +119,8 @@ describe('Config — development mode', () => {
     expect(config.build.target).toBe('es2020')
   })
 
-  it('still sets inlineDynamicImports to true', () => {
-    expect(config.build.rollupOptions.output.inlineDynamicImports).toBe(true)
+  it('still leaves inlineDynamicImports unset in development', () => {
+    expect(config.build.rollupOptions.output.inlineDynamicImports).toBeUndefined()
   })
 
   it('still disables code splitting', () => {
@@ -137,6 +142,35 @@ describe('Config — Vue alias', () => {
     const prodConfig = getPluginConfig({}, { mode: 'production' })
     expect(devConfig.resolve.alias.vue).toBe('@thelacanians/vue-native-runtime')
     expect(prodConfig.resolve.alias.vue).toBe('@thelacanians/vue-native-runtime')
+  })
+
+  it('preserves object aliases already defined by the user', () => {
+    const config = getPluginConfig({}, { mode: 'production' }, {
+      resolve: {
+        alias: {
+          '@app': '/tmp/app',
+        },
+      },
+    })
+
+    expect(config.resolve.alias['@app']).toBe('/tmp/app')
+    expect(config.resolve.alias.vue).toBe('@thelacanians/vue-native-runtime')
+  })
+
+  it('preserves array aliases already defined by the user', () => {
+    const config = getPluginConfig({}, { mode: 'production' }, {
+      resolve: {
+        alias: [
+          { find: '@app', replacement: '/tmp/app' },
+        ],
+      },
+    })
+
+    expect(Array.isArray(config.resolve.alias)).toBe(true)
+    expect(config.resolve.alias).toEqual([
+      { find: 'vue', replacement: '@thelacanians/vue-native-runtime' },
+      { find: '@app', replacement: '/tmp/app' },
+    ])
   })
 })
 
@@ -313,5 +347,75 @@ describe('Plugin shape', () => {
     expect(config.build).toHaveProperty('sourcemap')
     expect(config.build).toHaveProperty('minify')
     expect(config.build).toHaveProperty('emptyOutDir')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Real Vite integration
+// ---------------------------------------------------------------------------
+describe('Vite integration', () => {
+  it('builds a Vue Native bundle with the current Vite major', async () => {
+    const packageRoot = fileURLToPath(new URL('../..', import.meta.url))
+    const runtimeEntry = fileURLToPath(new URL('../../../runtime/src/index.ts', import.meta.url))
+    const tempRoot = await mkdtemp(join(packageRoot, 'tmp-vite-plugin-'))
+
+    try {
+      await mkdir(join(tempRoot, 'app'), { recursive: true })
+      const runtimePackageDir = join(tempRoot, 'node_modules', '@thelacanians', 'vue-native-runtime')
+      await mkdir(runtimePackageDir, { recursive: true })
+      await writeFile(
+        join(runtimePackageDir, 'package.json'),
+        JSON.stringify({
+          name: '@thelacanians/vue-native-runtime',
+          type: 'module',
+          exports: {
+            '.': './index.ts',
+          },
+        }, null, 2),
+      )
+      await writeFile(
+        join(runtimePackageDir, 'index.ts'),
+        `export * from ${JSON.stringify(pathToFileURL(runtimeEntry).href)}\n`,
+      )
+      await writeFile(
+        join(tempRoot, 'app', 'main.ts'),
+        [
+          'import { createApp } from \'vue\'',
+          'import App from \'./App.vue\'',
+          '',
+          'createApp(App).start()',
+          '',
+        ].join('\n'),
+      )
+      await writeFile(
+        join(tempRoot, 'app', 'App.vue'),
+        [
+          '<template>',
+          '  <VView :style="{ flex: 1, padding: 12 }">',
+          '    <VText>Hello from Vite 8</VText>',
+          '  </VView>',
+          '</template>',
+          '',
+        ].join('\n'),
+      )
+
+      await build({
+        root: tempRoot,
+        logLevel: 'silent',
+        plugins: [
+          vue(),
+          vueNativePlugin({
+            hotReload: false,
+            nativeCodegen: false,
+          }),
+        ],
+      })
+
+      const bundle = await readFile(join(tempRoot, 'dist', 'vue-native-bundle.js'), 'utf8')
+      expect(bundle).toContain('Hello from Vite 8')
+      expect(bundle).not.toContain('process.env.NODE_ENV')
+    } finally {
+      await rm(tempRoot, { recursive: true, force: true })
+    }
   })
 })

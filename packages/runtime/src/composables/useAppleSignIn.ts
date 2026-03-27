@@ -18,6 +18,29 @@ export interface AuthResult {
   error?: string
 }
 
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message
+  if (typeof error === 'object' && error !== null && 'message' in error) {
+    const message = (error as { message?: unknown }).message
+    if (typeof message === 'string') return message
+  }
+  return String(error)
+}
+
+function normalizeSocialUser(value: unknown, provider: SocialUser['provider']): SocialUser | null {
+  if (typeof value !== 'object' || value === null) return null
+  const payload = value as Record<string, unknown>
+  if (typeof payload.userId !== 'string') return null
+  return {
+    userId: payload.userId,
+    email: typeof payload.email === 'string' ? payload.email : undefined,
+    fullName: typeof payload.fullName === 'string' ? payload.fullName : undefined,
+    identityToken: typeof payload.identityToken === 'string' ? payload.identityToken : undefined,
+    authorizationCode: typeof payload.authorizationCode === 'string' ? payload.authorizationCode : undefined,
+    provider,
+  }
+}
+
 // ─── useAppleSignIn composable ───────────────────────────────────────────
 
 /**
@@ -49,9 +72,10 @@ export function useAppleSignIn() {
 
   // Check existing session
   NativeBridge.invokeNativeModule('SocialAuth', 'getCurrentUser', ['apple'])
-    .then((result: any) => {
-      if (result && result.userId) {
-        user.value = { ...result, provider: 'apple' }
+    .then((result) => {
+      const currentUser = normalizeSocialUser(result, 'apple')
+      if (currentUser) {
+        user.value = currentUser
         isAuthenticated.value = true
       }
     })
@@ -61,12 +85,15 @@ export function useAppleSignIn() {
     error.value = null
     try {
       const result = await NativeBridge.invokeNativeModule('SocialAuth', 'signInWithApple')
-      const socialUser: SocialUser = { ...result, provider: 'apple' }
+      const socialUser = normalizeSocialUser(result, 'apple')
+      if (!socialUser) {
+        throw new Error('Invalid Apple Sign In response.')
+      }
       user.value = socialUser
       isAuthenticated.value = true
       return { success: true, user: socialUser }
-    } catch (err: any) {
-      const message = String(err)
+    } catch (err: unknown) {
+      const message = getErrorMessage(err)
       error.value = message
       return { success: false, error: message }
     }
@@ -78,8 +105,8 @@ export function useAppleSignIn() {
       await NativeBridge.invokeNativeModule('SocialAuth', 'signOut', ['apple'])
       user.value = null
       isAuthenticated.value = false
-    } catch (err: any) {
-      error.value = String(err)
+    } catch (err: unknown) {
+      error.value = getErrorMessage(err)
     }
   }
 

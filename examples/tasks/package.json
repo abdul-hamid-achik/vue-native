@@ -12,8 +12,8 @@
   },
   "devDependencies": {
     "@thelacanians/vue-native-vite-plugin": "workspace:*",
-    "@vitejs/plugin-vue": "^5.2.0",
-    "vite": "^6.1.0",
+    "@vitejs/plugin-vue": "^6.0.5",
+    "vite": "^8.0.0",
     "vue": "^3.5.0",
     "typescript": "^5.7.0"
   }

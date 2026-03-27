@@ -27,8 +27,11 @@ export function useDragDrop() {
 
   function onDrop(callback: (files: string[]) => void): () => void {
     if (!isMacOS) return () => {}
-    return NativeBridge.onGlobalEvent('dragdrop:drop', (payload: any) => {
-      callback(payload.files || [])
+    return NativeBridge.onGlobalEvent<{ files?: unknown }>('dragdrop:drop', (payload) => {
+      const files = Array.isArray(payload.files)
+        ? payload.files.filter((file): file is string => typeof file === 'string')
+        : []
+      callback(files)
     })
   }
 

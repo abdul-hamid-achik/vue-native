@@ -8,11 +8,11 @@ export interface ExecuteResult {
   insertId?: number
 }
 
-export type Row = Record<string, any>
+export type Row = Record<string, unknown>
 
 export interface TransactionContext {
-  execute: (sql: string, params?: any[]) => Promise<ExecuteResult>
-  query: <T extends Row = Row>(sql: string, params?: any[]) => Promise<T[]>
+  execute: (sql: string, params?: unknown[]) => Promise<ExecuteResult>
+  query: <T extends Row = Row>(sql: string, params?: unknown[]) => Promise<T[]>
 }
 
 // ─── useDatabase composable ───────────────────────────────────────────────
@@ -52,12 +52,12 @@ export function useDatabase(name: string = 'default') {
     isOpen.value = true
   }
 
-  async function execute(sql: string, params?: any[]): Promise<ExecuteResult> {
+  async function execute(sql: string, params?: unknown[]): Promise<ExecuteResult> {
     await ensureOpen()
     return NativeBridge.invokeNativeModule('Database', 'execute', [name, sql, params ?? []])
   }
 
-  async function query<T extends Row = Row>(sql: string, params?: any[]): Promise<T[]> {
+  async function query<T extends Row = Row>(sql: string, params?: unknown[]): Promise<T[]> {
     await ensureOpen()
     return NativeBridge.invokeNativeModule('Database', 'query', [name, sql, params ?? []])
   }
@@ -70,10 +70,10 @@ export function useDatabase(name: string = 'default') {
     await NativeBridge.invokeNativeModule('Database', 'execute', [name, 'BEGIN TRANSACTION', []])
     try {
       const ctx: TransactionContext = {
-        execute: async (sql: string, params?: any[]): Promise<ExecuteResult> => {
+        execute: async (sql: string, params?: unknown[]): Promise<ExecuteResult> => {
           return NativeBridge.invokeNativeModule('Database', 'execute', [name, sql, params ?? []])
         },
-        query: async <T extends Row = Row>(sql: string, params?: any[]): Promise<T[]> => {
+        query: async <T extends Row = Row>(sql: string, params?: unknown[]): Promise<T[]> => {
           return NativeBridge.invokeNativeModule('Database', 'query', [name, sql, params ?? []])
         },
       }

@@ -18,6 +18,11 @@ interface SimulatorInfo {
   name: string
   udid: string
   state: string
+  isAvailable?: boolean
+}
+
+interface SimulatorListResponse {
+  devices?: Record<string, SimulatorInfo[]>
 }
 
 function detectIOSSimulators(): SimulatorInfo[] {
@@ -26,11 +31,11 @@ function detectIOSSimulators(): SimulatorInfo[] {
       stdio: 'pipe',
       encoding: 'utf8',
     })
-    const data = JSON.parse(output)
+    const data = JSON.parse(output) as SimulatorListResponse
     const simulators: SimulatorInfo[] = []
     for (const [runtime, devices] of Object.entries(data.devices ?? {})) {
       if (!runtime.includes('iOS')) continue
-      for (const device of devices as any[]) {
+      for (const device of devices) {
         if (device.isAvailable !== false) {
           simulators.push({
             name: device.name,

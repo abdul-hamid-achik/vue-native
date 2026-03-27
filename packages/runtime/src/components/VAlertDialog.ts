@@ -5,6 +5,11 @@ export interface AlertButton {
   style?: 'default' | 'cancel' | 'destructive'
 }
 
+interface AlertActionPayload {
+  index?: number
+  label?: string
+}
+
 /**
  * Native alert dialog component.
  *
@@ -66,9 +71,9 @@ export const VAlertDialog = defineComponent({
         title: props.title,
         message: props.message,
         buttons: resolvedButtons,
-        onConfirm: (e: any) => emit('confirm', e),
+        onConfirm: (event: unknown) => emit('confirm', event),
         onCancel: () => emit('cancel'),
-        onAction: (e: any) => emit('action', e),
+        onAction: (event: AlertActionPayload | unknown) => emit('action', event),
       })
     }
   },

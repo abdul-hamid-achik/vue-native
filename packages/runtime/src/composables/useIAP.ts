@@ -32,6 +32,15 @@ export interface TransactionUpdate {
   error?: string
 }
 
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message
+  if (typeof error === 'object' && error !== null && 'message' in error) {
+    const message = (error as { message?: unknown }).message
+    if (typeof message === 'string') return message
+  }
+  return String(error)
+}
+
 // ─── useIAP composable ───────────────────────────────────────────────────
 
 /**
@@ -67,7 +76,7 @@ export function useIAP() {
   // Initialize billing client
   NativeBridge.invokeNativeModule('IAP', 'initialize')
     .then(() => { isReady.value = true })
-    .catch((err: any) => { error.value = String(err) })
+    .catch((err: unknown) => { error.value = getErrorMessage(err) })
 
   async function getProducts(skus: string[]): Promise<Product[]> {
     error.value = null
@@ -76,8 +85,8 @@ export function useIAP() {
       const productList = result as Product[]
       products.value = productList
       return productList
-    } catch (err: any) {
-      error.value = String(err)
+    } catch (err: unknown) {
+      error.value = getErrorMessage(err)
       return []
     }
   }
@@ -86,8 +95,8 @@ export function useIAP() {
     error.value = null
     try {
       return await NativeBridge.invokeNativeModule('IAP', 'purchase', [sku])
-    } catch (err: any) {
-      error.value = String(err)
+    } catch (err: unknown) {
+      error.value = getErrorMessage(err)
       return null
     }
   }
@@ -96,8 +105,8 @@ export function useIAP() {
     error.value = null
     try {
       return await NativeBridge.invokeNativeModule('IAP', 'restorePurchases')
-    } catch (err: any) {
-      error.value = String(err)
+    } catch (err: unknown) {
+      error.value = getErrorMessage(err)
       return []
     }
   }
@@ -106,8 +115,8 @@ export function useIAP() {
     error.value = null
     try {
       return await NativeBridge.invokeNativeModule('IAP', 'getActiveSubscriptions')
-    } catch (err: any) {
-      error.value = String(err)
+    } catch (err: unknown) {
+      error.value = getErrorMessage(err)
       return []
     }
   }

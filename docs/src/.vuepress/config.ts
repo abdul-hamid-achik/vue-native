@@ -163,6 +163,14 @@ export default defineUserConfig({
           ],
         },
         {
+          text: 'Transition & State',
+          children: [
+            '/components/VTransition.md',
+            '/components/KeepAlive.md',
+            '/components/VSuspense.md',
+          ],
+        },
+        {
           text: 'Navigation',
           children: [
             '/components/VNavigationBar.md',
@@ -253,6 +261,7 @@ export default defineUserConfig({
             '/composables/useShare.md',
             '/composables/useLinking.md',
             '/composables/useAnimation.md',
+            '/composables/useGesture.md',
             '/composables/useNotifications.md',
             '/composables/useI18n.md',
             '/composables/usePerformance.md',

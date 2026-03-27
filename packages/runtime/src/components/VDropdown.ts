@@ -5,6 +5,14 @@ export interface DropdownOption {
   value: string
 }
 
+function extractDropdownValue(payload: unknown): string | undefined {
+  const nextValue = typeof payload === 'object' && payload !== null && 'value' in payload
+    ? (payload as { value?: unknown }).value
+    : payload
+
+  return typeof nextValue === 'string' ? nextValue : undefined
+}
+
 /**
  * VDropdown — a dropdown/picker selection component.
  *
@@ -48,8 +56,8 @@ export const VDropdown = defineComponent({
   },
   emits: ['update:modelValue', 'change'],
   setup(props, { emit }) {
-    const onChange = (payload: any) => {
-      const value = payload?.value ?? payload
+    const onChange = (payload: unknown) => {
+      const value = extractDropdownValue(payload)
       emit('update:modelValue', value)
       emit('change', value)
     }

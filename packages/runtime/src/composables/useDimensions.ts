@@ -7,6 +7,18 @@ export interface Dimensions {
   scale: number
 }
 
+interface DeviceInfoPayload {
+  screenWidth?: number
+  screenHeight?: number
+  scale?: number
+}
+
+interface DimensionsChangePayload {
+  width?: number
+  height?: number
+  scale?: number
+}
+
 /**
  * Reactive screen dimensions composable.
  *
@@ -25,7 +37,7 @@ export function useDimensions() {
 
   onMounted(async () => {
     try {
-      const info = await NativeBridge.invokeNativeModule('DeviceInfo', 'getInfo', [])
+      const info: DeviceInfoPayload = await NativeBridge.invokeNativeModule('DeviceInfo', 'getInfo', [])
       width.value = info?.screenWidth || 0
       height.value = info?.screenHeight || 0
       scale.value = info?.scale || 1
@@ -35,7 +47,7 @@ export function useDimensions() {
   })
 
   // Listen for orientation/resize changes
-  const cleanup = NativeBridge.onGlobalEvent('dimensionsChange', (payload: any) => {
+  const cleanup = NativeBridge.onGlobalEvent<DimensionsChangePayload>('dimensionsChange', (payload) => {
     if (payload.width != null) width.value = payload.width
     if (payload.height != null) height.value = payload.height
     if (payload.scale != null) scale.value = payload.scale

@@ -389,6 +389,8 @@ describe('create command', () => {
       expect(pkgJson.dependencies).toHaveProperty('@thelacanians/vue-native-navigation')
       expect(pkgJson.dependencies).toHaveProperty('vue')
       expect(pkgJson.devDependencies).toHaveProperty('@thelacanians/vue-native-vite-plugin')
+      expect(pkgJson.devDependencies['@vitejs/plugin-vue']).toBe('^6.0.5')
+      expect(pkgJson.devDependencies['vite']).toBe('^8.0.0')
       expect(pkgJson.devDependencies).toHaveProperty('vite')
       expect(pkgJson.devDependencies).toHaveProperty('typescript')
     })

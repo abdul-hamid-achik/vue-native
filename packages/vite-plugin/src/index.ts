@@ -25,6 +25,7 @@
 import { parseDirectory, type NativeBlock } from '@thelacanians/vue-native-sfc-parser'
 import { generateCode, writeGeneratedFiles, type CodegenResult } from '@thelacanians/vue-native-codegen'
 import fg from 'fast-glob'
+import type { ConfigEnv, LibraryFormats, ResolvedConfig, UserConfig, ViteDevServer } from 'vite'
 
 export interface VueNativePluginOptions {
   /**
@@ -106,6 +107,42 @@ interface CodegenState {
   blocks: NativeBlock[]
 }
 
+type AliasEntry = {
+  find: string | RegExp
+  replacement: string
+}
+
+type AliasConfig = Record<string, string> | AliasEntry[]
+
+function mergeAliases(existingAlias: AliasConfig | undefined): AliasConfig {
+  const replacement = '@thelacanians/vue-native-runtime'
+
+  if (Array.isArray(existingAlias)) {
+    return [
+      { find: 'vue', replacement },
+      ...existingAlias.filter(alias => alias.find !== 'vue'),
+    ]
+  }
+
+  return {
+    ...(existingAlias ?? {}),
+    vue: replacement,
+  }
+}
+
+function logInfo(message: string): void {
+  process.stdout.write(`${message}\n`)
+}
+
+function resolveLibEntry(config: UserConfig): string {
+  const lib = config.build?.lib
+  if (lib && typeof lib === 'object' && typeof lib.entry === 'string') {
+    return lib.entry
+  }
+
+  return 'app/main.ts'
+}
+
 export default function vueNativePlugin(options: VueNativePluginOptions = {}) {
   const {
     platform = 'ios',
@@ -180,7 +217,7 @@ export default function vueNativePlugin(options: VueNativePluginOptions = {}) {
       state.lastResult = codegenResult
       state.lastError = null
 
-      console.log(`[vue-native] Generated ${codegenResult.stats.swiftFiles} Swift, ${codegenResult.stats.kotlinFiles} Kotlin, ${codegenResult.stats.typescriptFiles} TypeScript files`)
+      logInfo(`[vue-native] Generated ${codegenResult.stats.swiftFiles} Swift, ${codegenResult.stats.kotlinFiles} Kotlin, ${codegenResult.stats.typescriptFiles} TypeScript files`)
 
       return codegenResult
     } catch (error) {
@@ -197,18 +234,14 @@ export default function vueNativePlugin(options: VueNativePluginOptions = {}) {
      * Modify Vite's resolved config to set up aliases, defines, and build
      * settings appropriate for a native iOS or Android target.
      */
-    config(config: any, env: { mode: string }) {
+    config(config: UserConfig, env: ConfigEnv): UserConfig {
       const isDev = env.mode !== 'production'
 
       return {
         resolve: {
-          alias: {
-            // Redirect all 'vue' imports to the native runtime.
-            // This means when @vitejs/plugin-vue compiles SFCs and they
-            // import from 'vue', they actually get '@thelacanians/vue-native-runtime'
-            // which uses the native renderer instead of the DOM renderer.
-            vue: '@thelacanians/vue-native-runtime',
-          },
+          // Redirect all 'vue' imports to the native runtime while preserving
+          // any aliases already defined by the user.
+          alias: mergeAliases(config.resolve?.alias as AliasConfig | undefined),
         },
 
         define: {
@@ -232,18 +265,17 @@ export default function vueNativePlugin(options: VueNativePluginOptions = {}) {
 
           // IIFE output for embedding in native app
           lib: {
-            entry: config.build?.lib?.entry || 'app/main.ts',
-            formats: ['iife'] as any,
+            entry: resolveLibEntry(config),
+            formats: ['iife'] satisfies LibraryFormats[],
             name: globalName,
             fileName: () => 'vue-native-bundle.js',
           },
 
           rollupOptions: {
             output: {
-              // Ensure everything is inlined into a single file
-              inlineDynamicImports: true,
-
-              // Disable code splitting — we need a single bundle file
+              // Disable code splitting — Vite's IIFE lib build already emits a
+              // single bundle, and explicitly setting inlineDynamicImports now
+              // triggers Rolldown warnings on Vite 8.
               manualChunks: undefined,
             },
           },
@@ -267,11 +299,11 @@ export default function vueNativePlugin(options: VueNativePluginOptions = {}) {
      * Called after Vite config is resolved.
      * Store project root and run initial codegen.
      */
-    async configResolved(config: any) {
+    async configResolved(config: ResolvedConfig) {
       projectRoot = config.root || process.cwd()
 
       if (nativeCodegen) {
-        console.log('[vue-native] Running initial code generation...')
+        logInfo('[vue-native] Running initial code generation...')
         await runCodegen(projectRoot)
       }
     },
@@ -280,13 +312,13 @@ export default function vueNativePlugin(options: VueNativePluginOptions = {}) {
      * Called when Vite dev server starts.
      * Run initial codegen.
      */
-    async configureServer(server: any) {
+    async configureServer(server: ViteDevServer) {
       if (!nativeCodegen) return
 
       // Watch for SFC changes
       server.watcher.on('change', async (file: string) => {
         if (file.endsWith('.vue')) {
-          console.log('[vue-native] SFC changed, regenerating code...')
+          logInfo('[vue-native] SFC changed, regenerating code...')
           await runCodegen(projectRoot)
 
           // Notify HMR about codegen update

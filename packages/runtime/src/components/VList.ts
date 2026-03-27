@@ -1,4 +1,4 @@
-import { defineComponent, h, type PropType } from '@vue/runtime-core'
+import { defineComponent, h, type PropType, type VNode } from '@vue/runtime-core'
 import type { ViewStyle } from '../types/styles'
 import { usePlatform } from '../composables/usePlatform'
 
@@ -28,13 +28,13 @@ export const VList = defineComponent({
   props: {
     /** Array of data items to render */
     data: {
-      type: Array as () => any[],
+      type: Array as PropType<unknown[]>,
       required: true,
     },
     /** Extract a unique key from each item. Defaults to index as string. */
     keyExtractor: {
-      type: Function as unknown as () => (item: any, index: number) => string,
-      default: (_item: any, index: number) => String(index),
+      type: Function as PropType<(item: unknown, index: number) => string>,
+      default: (_item: unknown, index: number) => String(index),
     },
     /** Estimated height per row in points. Used before layout runs. Default: 44 */
     estimatedItemHeight: {
@@ -115,7 +115,7 @@ export const VList = defineComponent({
         }
       }
 
-      const children: any[] = []
+      const children: VNode[] = []
 
       // Header slot
       if (slots.header) {

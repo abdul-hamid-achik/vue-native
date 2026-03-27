@@ -1,4 +1,4 @@
-import { defineComponent, h } from '@vue/runtime-core'
+import { defineComponent, h, type PropType, type VNode } from '@vue/runtime-core'
 
 /**
  * VSectionList — A sectioned list component backed by UITableView with sections on iOS.
@@ -26,7 +26,7 @@ import { defineComponent, h } from '@vue/runtime-core'
 
 interface Section {
   title: string
-  data: any[]
+  data: unknown[]
 }
 
 export const VSectionList = defineComponent({
@@ -35,13 +35,13 @@ export const VSectionList = defineComponent({
   props: {
     /** Array of section objects, each with a title and data array */
     sections: {
-      type: Array as () => Section[],
+      type: Array as PropType<Section[]>,
       required: true,
     },
     /** Extract a unique key from each item. Defaults to index as string. */
     keyExtractor: {
-      type: Function as unknown as () => (item: any, index: number) => string,
-      default: (_item: any, index: number) => String(index),
+      type: Function as PropType<(item: unknown, index: number) => string>,
+      default: (_item: unknown, index: number) => String(index),
     },
     /** Estimated height per row in points. Default: 44 */
     estimatedItemHeight: {
@@ -75,7 +75,7 @@ export const VSectionList = defineComponent({
     return () => {
       const sections = props.sections ?? []
 
-      const children: any[] = []
+      const children: VNode[] = []
 
       // Header slot
       if (slots.header) {

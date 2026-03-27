@@ -30,6 +30,15 @@ export interface CreateEventOptions {
   calendarId?: string
 }
 
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message
+  if (typeof error === 'object' && error !== null && 'message' in error) {
+    const message = (error as { message?: unknown }).message
+    if (typeof message === 'string') return message
+  }
+  return String(error)
+}
+
 // ─── useCalendar composable ───────────────────────────────────────────────
 
 /**
@@ -50,8 +59,8 @@ export function useCalendar() {
       const result: { granted: boolean } = await NativeBridge.invokeNativeModule('Calendar', 'requestAccess')
       hasAccess.value = result.granted
       return result.granted
-    } catch (e: any) {
-      error.value = e?.message || String(e)
+    } catch (e: unknown) {
+      error.value = getErrorMessage(e)
       return false
     }
   }

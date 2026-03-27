@@ -53,7 +53,7 @@ import {
   inject, provide, computed, defineComponent, ref,
   type InjectionKey, type Ref, type ComputedRef,
 } from '@vue/runtime-core'
-import { createStyleSheet, type AnyStyle } from './stylesheet'
+import { createStyleSheet, type AnyStyle, type StyleSheet } from './stylesheet'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -61,9 +61,9 @@ import { createStyleSheet, type AnyStyle } from './stylesheet'
 
 export type ColorScheme = 'light' | 'dark'
 
-export interface ThemeDefinition {
-  light: Record<string, any>
-  dark: Record<string, any>
+export interface ThemeDefinition<T extends Record<string, unknown> = Record<string, unknown>> {
+  light: T
+  dark: T
 }
 
 export interface ThemeContext<T> {
@@ -87,7 +87,7 @@ export interface ThemeContext<T> {
  * Returns a `ThemeProvider` component (wraps children with provide) and a
  * `useTheme` composable for consuming the theme in any descendant component.
  */
-export function createTheme<T extends Record<string, any>>(definition: { light: T, dark: T }) {
+export function createTheme<T extends Record<string, unknown>>(definition: ThemeDefinition<T>) {
   const key: InjectionKey<ThemeContext<T>> = Symbol('vue-native-theme')
 
   const ThemeProvider = defineComponent({
@@ -99,7 +99,7 @@ export function createTheme<T extends Record<string, any>>(definition: { light: 
       },
     },
     setup(props, { slots }) {
-      const colorScheme = ref<ColorScheme>(props.initialColorScheme) as Ref<ColorScheme>
+      const colorScheme = ref(props.initialColorScheme as ColorScheme)
 
       const theme = computed<T>(() => {
         return colorScheme.value === 'dark' ? definition.dark : definition.light
@@ -157,11 +157,11 @@ export function createTheme<T extends Record<string, any>>(definition: { light: 
  * ```
  */
 export function createDynamicStyleSheet<
-  T extends Record<string, any>,
+  T extends Record<string, unknown>,
   S extends Record<string, AnyStyle>,
 >(
   theme: ComputedRef<T> | Ref<T>,
   factory: (themeValue: T) => S,
-): ComputedRef<{ readonly [K in keyof S]: Readonly<S[K]> }> {
-  return computed(() => createStyleSheet(factory(theme.value))) as any
+): ComputedRef<StyleSheet<S>> {
+  return computed(() => createStyleSheet(factory(theme.value)))
 }

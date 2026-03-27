@@ -1,12 +1,30 @@
 import { defineComponent, h, ref, computed, type PropType, type VNode } from '@vue/runtime-core'
 import type { ViewStyle } from '../types/styles'
 
+interface KeyedItem {
+  id?: string | number
+  key?: string | number
+}
+
 /**
  * Information provided to the renderItem function.
  */
-export interface FlatListRenderItemInfo<T = any> {
+export interface FlatListRenderItemInfo<T = unknown> {
   item: T
   index: number
+}
+
+function getDefaultItemKey(item: unknown, index: number): string | number {
+  if (typeof item === 'object' && item !== null) {
+    const keyedItem = item as KeyedItem
+    return keyedItem.id ?? keyedItem.key ?? index
+  }
+
+  return index
+}
+
+function resolveFlexValue(style?: ViewStyle): number {
+  return typeof style?.flex === 'number' ? style.flex : 1
 }
 
 /**
@@ -71,7 +89,7 @@ export const VFlatList = defineComponent({
   props: {
     /** Array of data items to render. */
     data: {
-      type: Array as PropType<any[]>,
+      type: Array as PropType<unknown[]>,
       required: true,
     },
     /**
@@ -79,13 +97,13 @@ export const VFlatList = defineComponent({
      * If not provided, the `#item` slot is used instead.
      */
     renderItem: {
-      type: Function as PropType<(info: FlatListRenderItemInfo) => VNode>,
+      type: Function as PropType<(info: FlatListRenderItemInfo<unknown>) => VNode>,
       default: undefined,
     },
     /** Extract a unique key from each item. Defaults to item.id, item.key, or index. */
     keyExtractor: {
-      type: Function as PropType<(item: any, index: number) => string | number>,
-      default: (item: any, index: number) => item?.id ?? item?.key ?? index,
+      type: Function as PropType<(item: unknown, index: number) => string | number>,
+      default: getDefaultItemKey,
     },
     /** Fixed height for each item in points. Required for virtualization math. */
     itemHeight: {
@@ -231,7 +249,7 @@ export const VFlatList = defineComponent({
         return h(
           'VScrollView',
           {
-            style: { ...props.style, flex: (props.style as any)?.flex ?? 1 },
+            style: { ...props.style, flex: resolveFlexValue(props.style) },
             showsVerticalScrollIndicator: props.showsScrollIndicator,
             bounces: props.bounces,
           },
@@ -255,7 +273,7 @@ export const VFlatList = defineComponent({
       return h(
         'VScrollView',
         {
-          style: { ...props.style, flex: (props.style as any)?.flex ?? 1 },
+          style: { ...props.style, flex: resolveFlexValue(props.style) },
           showsVerticalScrollIndicator: props.showsScrollIndicator,
           bounces: props.bounces,
           onScroll,

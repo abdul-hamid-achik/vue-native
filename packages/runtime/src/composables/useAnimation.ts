@@ -43,7 +43,7 @@ export interface KeyframeStep {
 export interface SequenceAnimation {
   type: 'timing' | 'spring'
   viewId: number
-  toStyles: Record<string, any>
+  toStyles: Record<string, unknown>
   options: TimingConfig | SpringConfig
 }
 
@@ -61,19 +61,31 @@ export type SpringOptions = SpringConfig
  * const myView = ref()  // template ref
  * await timing(myView, { opacity: 1 }, { duration: 300 })
  */
-export type AnimationTarget = number | Ref<any> | NativeNode | { id: number }
+type AnimatableNode = NativeNode | { id: number }
+type AnimationTargetRef = Ref<AnimatableNode | null | undefined>
+
+export type AnimationTarget = number | AnimationTargetRef | AnimatableNode
+
+function hasViewId(value: unknown): value is { id: number } {
+  return typeof value === 'object'
+    && value !== null
+    && 'id' in value
+    && typeof (value as { id?: unknown }).id === 'number'
+}
+
+function isAnimationRef(target: AnimationTarget): target is AnimationTargetRef {
+  return typeof target === 'object' && target !== null && 'value' in target
+}
 
 /** Resolve an AnimationTarget to a numeric node ID. */
 function resolveViewId(target: AnimationTarget): number {
   if (typeof target === 'number') return target
-  // Ref<NativeNode> — unwrap .value
-  if (target && typeof target === 'object' && 'value' in target) {
-    const val = (target as Ref<any>).value
-    if (val && typeof val.id === 'number') return val.id
+  if (isAnimationRef(target)) {
+    const val = target.value
+    if (hasViewId(val)) return val.id
     throw new Error('[VueNative] Animation target ref has no .value.id — is the ref attached to a component?')
   }
-  // NativeNode or { id: number }
-  if (target && typeof (target as any).id === 'number') return (target as any).id
+  if (hasViewId(target)) return target.id
   throw new Error('[VueNative] Invalid animation target. Pass a number, template ref, or NativeNode.')
 }
 
@@ -112,11 +124,11 @@ function resolveViewId(target: AnimationTarget): number {
  * ])
  */
 export function useAnimation() {
-  function timing(target: AnimationTarget, toStyles: Record<string, any>, config: TimingConfig = {}): Promise<void> {
+  function timing(target: AnimationTarget, toStyles: Record<string, unknown>, config: TimingConfig = {}): Promise<void> {
     return NativeBridge.invokeNativeModule('Animation', 'timing', [resolveViewId(target), toStyles, config])
   }
 
-  function spring(target: AnimationTarget, toStyles: Record<string, any>, config: SpringConfig = {}): Promise<void> {
+  function spring(target: AnimationTarget, toStyles: Record<string, unknown>, config: SpringConfig = {}): Promise<void> {
     return NativeBridge.invokeNativeModule('Animation', 'spring', [resolveViewId(target), toStyles, config])
   }
 

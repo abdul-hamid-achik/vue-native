@@ -1,3 +1,26 @@
+import { resetNodeId } from './node'
+
+export type EventCallback<T = unknown> = {
+  bivarianceHack(payload: T): void
+}['bivarianceHack']
+
+interface NativeBridgeGlobals {
+  __DEV__?: boolean
+  __VN_flushOperations?: (json: string) => void
+  __VN_handleEvent?: (nodeId: number, eventName: string, payload: unknown) => void
+  __VN_resolveCallback?: (callbackId: number, result: unknown, error: unknown) => void
+  __VN_handleGlobalEvent?: (eventName: string, payloadJSON: string) => void
+  __VN_teardown?: () => void
+}
+
+interface PendingCallback {
+  resolve: (result: unknown) => void
+  reject: (error: unknown) => void
+  timeoutId: ReturnType<typeof setTimeout>
+}
+
+const bridgeGlobals = globalThis as typeof globalThis & NativeBridgeGlobals
+
 /**
  * NativeBridge -- the communication layer between JavaScript and Swift/UIKit.
  *
@@ -18,11 +41,9 @@
  * minimizing JS-to-native context switches.
  */
 
-export type EventCallback = (payload: any) => void
-
 export interface BridgeOperation {
   op: string
-  args: any[]
+  args: unknown[]
 }
 
 class NativeBridgeImpl {
@@ -36,11 +57,7 @@ class NativeBridgeImpl {
   private eventHandlers = new Map<string, EventCallback>()
 
   /** Pending async callbacks from native module invocations */
-  private pendingCallbacks = new Map<number, {
-    resolve: (result: any) => void
-    reject: (error: any) => void
-    timeoutId: ReturnType<typeof setTimeout>
-  }>()
+  private pendingCallbacks = new Map<number, PendingCallback>()
 
   /** Auto-incrementing callback ID for async native module calls.
    *  Wraps around at MAX_SAFE_CALLBACK_ID to prevent overflow. */
@@ -53,7 +70,7 @@ class NativeBridgeImpl {
   private static readonly MAX_PENDING_CALLBACKS = 1000
 
   /** Global event listeners: eventName -> Set of callbacks */
-  private globalEventHandlers = new Map<string, Set<(payload: any) => void>>()
+  private globalEventHandlers = new Map<string, Set<EventCallback>>()
 
   // ---------------------------------------------------------------------------
   // Operation batching
@@ -64,7 +81,7 @@ class NativeBridgeImpl {
    * If this is the first operation in the current microtask cycle,
    * schedule a flush via queueMicrotask.
    */
-  private enqueue(op: string, args: any[]): void {
+  private enqueue(op: string, args: unknown[]): void {
     this.pendingOps.push({ op, args })
     if (!this.flushScheduled) {
       this.flushScheduled = true
@@ -84,7 +101,7 @@ class NativeBridgeImpl {
     this.pendingOps = []
 
     const json = JSON.stringify(ops)
-    const flushFn = (globalThis as any).__VN_flushOperations
+    const flushFn = bridgeGlobals.__VN_flushOperations
     if (typeof flushFn === 'function') {
       try {
         flushFn(json)
@@ -162,7 +179,7 @@ class NativeBridgeImpl {
    * Update a single property on a native view.
    * Swift handler: handleUpdateProp(args: [nodeId, key, value])
    */
-  updateProp(nodeId: number, key: string, value: any): void {
+  updateProp(nodeId: number, key: string, value: unknown): void {
     this.enqueue('updateProp', [nodeId, key, value])
   }
 
@@ -173,7 +190,7 @@ class NativeBridgeImpl {
    * Each style property update is sent as a dictionary with one key,
    * matching the Swift side which iterates over the dictionary entries.
    */
-  updateStyle(nodeId: number, key: string, value: any): void {
+  updateStyle(nodeId: number, key: string, value: unknown): void {
     this.enqueue('updateStyle', [nodeId, { [key]: value }])
   }
 
@@ -184,7 +201,7 @@ class NativeBridgeImpl {
    * More efficient than calling updateStyle() per property — sends one op
    * instead of N ops, reducing JSON overhead and bridge dispatch.
    */
-  updateStyles(nodeId: number, styles: Record<string, any>): void {
+  updateStyles(nodeId: number, styles: Record<string, unknown>): void {
     this.enqueue('updateStyle', [nodeId, styles])
   }
 
@@ -226,7 +243,7 @@ class NativeBridgeImpl {
    * The native side will call __VN_handleEvent when this event fires.
    * Swift handler: handleAddEventListener(args: [nodeId, eventName])
    */
-  addEventListener(nodeId: number, eventName: string, callback: EventCallback): void {
+  addEventListener<T = unknown>(nodeId: number, eventName: string, callback: EventCallback<T>): void {
     const key = `${nodeId}:${eventName}`
     this.eventHandlers.set(key, callback)
     this.enqueue('addEventListener', [nodeId, eventName])
@@ -246,7 +263,7 @@ class NativeBridgeImpl {
    * Called from Swift via globalThis.__VN_handleEvent when a native event fires.
    * Looks up the registered handler and invokes it with the event payload.
    */
-  handleNativeEvent(nodeId: number, eventName: string, payload: any): void {
+  handleNativeEvent(nodeId: number, eventName: string, payload: unknown): void {
     const key = `${nodeId}:${eventName}`
     const handler = this.eventHandlers.get(key)
     if (handler) {
@@ -286,8 +303,17 @@ class NativeBridgeImpl {
    * a crash or unregistered module), the Promise rejects with a clear error instead
    * of hanging forever.
    */
-  invokeNativeModule(moduleName: string, methodName: string, args: any[] = [], timeoutMs = 30_000): Promise<any> {
-    return new Promise((resolve, reject) => {
+  // Native module results are intentionally dynamic; callers often narrow them
+  // ad hoc based on the module contract rather than a shared generated type.
+  invokeNativeModule(
+    moduleName: string,
+    methodName: string,
+    args: unknown[] = [],
+    timeoutMs = 30_000,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ): Promise<any> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return new Promise<any>((resolve, reject) => {
       const callbackId = this.nextCallbackId
       if (this.nextCallbackId >= NativeBridgeImpl.MAX_CALLBACK_ID) {
         this.nextCallbackId = 1
@@ -317,7 +343,11 @@ class NativeBridgeImpl {
         }
       }
 
-      this.pendingCallbacks.set(callbackId, { resolve, reject, timeoutId })
+      this.pendingCallbacks.set(callbackId, {
+        resolve: result => resolve(result),
+        reject: error => reject(error),
+        timeoutId,
+      })
       this.enqueue('invokeNativeModule', [moduleName, methodName, args, callbackId])
     })
   }
@@ -327,7 +357,7 @@ class NativeBridgeImpl {
    * This sends the operation immediately and expects no callback.
    * Use sparingly -- prefer the async variant.
    */
-  invokeNativeModuleSync(moduleName: string, methodName: string, args: any[] = []): void {
+  invokeNativeModuleSync(moduleName: string, methodName: string, args: unknown[] = []): void {
     this.enqueue('invokeNativeModuleSync', [moduleName, methodName, args])
   }
 
@@ -335,7 +365,7 @@ class NativeBridgeImpl {
    * Called from Swift via globalThis.__VN_resolveCallback when an async
    * native module invocation completes.
    */
-  resolveCallback(callbackId: number, result: any, error: any): void {
+  resolveCallback(callbackId: number, result: unknown, error: unknown): void {
     const pending = this.pendingCallbacks.get(callbackId)
     if (!pending) {
       console.warn(
@@ -387,7 +417,7 @@ class NativeBridgeImpl {
    * Register a handler for a push-based global event from native.
    * Returns an unsubscribe function.
    */
-  onGlobalEvent(eventName: string, handler: (payload: any) => void): () => void {
+  onGlobalEvent<T = unknown>(eventName: string, handler: EventCallback<T>): () => void {
     if (!this.globalEventHandlers.has(eventName)) {
       this.globalEventHandlers.set(eventName, new Set())
     }
@@ -401,7 +431,7 @@ class NativeBridgeImpl {
    * Called from Swift via globalThis.__VN_handleGlobalEvent when a push event fires.
    */
   handleGlobalEvent(eventName: string, payloadJSON: string): void {
-    let payload: any
+    let payload: unknown = {}
     try {
       payload = JSON.parse(payloadJSON)
     } catch {
@@ -442,8 +472,8 @@ class NativeBridgeImpl {
 
 // Provide a fallback for __DEV__ if not defined (e.g. during testing).
 // Avoids referencing `process` which does not exist in JavaScriptCore.
-if (typeof (globalThis as any).__DEV__ === 'undefined') {
-  ;(globalThis as any).__DEV__ = true
+if (typeof bridgeGlobals.__DEV__ === 'undefined') {
+  bridgeGlobals.__DEV__ = true
 }
 
 /**
@@ -452,13 +482,12 @@ if (typeof (globalThis as any).__DEV__ === 'undefined') {
 export const NativeBridge = new NativeBridgeImpl()
 
 // Register global entry points that Swift/Kotlin calls into
-;(globalThis as any).__VN_handleEvent = NativeBridge.handleNativeEvent.bind(NativeBridge)
-;(globalThis as any).__VN_resolveCallback = NativeBridge.resolveCallback.bind(NativeBridge)
-;(globalThis as any).__VN_handleGlobalEvent = NativeBridge.handleGlobalEvent.bind(NativeBridge)
+bridgeGlobals.__VN_handleEvent = NativeBridge.handleNativeEvent.bind(NativeBridge)
+bridgeGlobals.__VN_resolveCallback = NativeBridge.resolveCallback.bind(NativeBridge)
+bridgeGlobals.__VN_handleGlobalEvent = NativeBridge.handleGlobalEvent.bind(NativeBridge)
 
 // Teardown function called by native before hot reload to reset all JS state
-import { resetNodeId } from './node'
-;(globalThis as any).__VN_teardown = () => {
+bridgeGlobals.__VN_teardown = () => {
   NativeBridge.reset()
   resetNodeId()
 }

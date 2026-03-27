@@ -10,6 +10,28 @@ import type {
   ParseError,
 } from './types'
 
+interface ErrorWithLocation {
+  loc?: {
+    start?: {
+      line?: number
+      column?: number
+    }
+  }
+}
+
+function getParseErrorLocation(error: unknown): { line?: number, column?: number } {
+  if (typeof error !== 'object' || error === null) return {}
+  const location = (error as ErrorWithLocation).loc?.start
+  return {
+    line: location?.line,
+    column: location?.column,
+  }
+}
+
+function createEmptyDescriptor(filename: string) {
+  return parse('', { filename }).descriptor
+}
+
 /**
  * Parse a single Vue SFC file and extract <native> blocks
  *
@@ -31,11 +53,12 @@ export function parseSFC(
 
   // Convert parse errors to our format
   for (const error of parseErrors) {
+    const location = getParseErrorLocation(error)
     errors.push({
       file: sourceFile,
       message: error.message,
-      line: (error as any).loc?.start.line,
-      column: (error as any).loc?.start.column,
+      line: location.line,
+      column: location.column,
     })
   }
 
@@ -75,12 +98,12 @@ export function parseSFCFile(
     source = readFileSync(absolutePath, 'utf-8')
   } catch (error) {
     return {
-      descriptor: null as any,
+      descriptor: createEmptyDescriptor(absolutePath),
       nativeBlocks: [],
       sourceFile: absolutePath,
       errors: [{
         file: absolutePath,
-        message: `Failed to read file: ${(error as Error).message}`,
+        message: `Failed to read file: ${error instanceof Error ? error.message : String(error)}`,
       }],
     }
   }

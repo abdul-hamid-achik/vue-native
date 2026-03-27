@@ -6,6 +6,9 @@ import { existsSync } from 'node:fs'
 import pc from 'picocolors'
 
 const VERSION = '0.4.14'
+const JS_PACKAGE_VERSION = '^0.5.0'
+const VITE_PLUGIN_VUE_VERSION = '^6.0.5'
+const VITE_VERSION = '^8.0.0'
 
 type Template = 'blank' | 'tabs' | 'drawer'
 
@@ -40,14 +43,14 @@ export const createCommand = new Command('create')
           typecheck: 'tsc --noEmit',
         },
         dependencies: {
-          '@thelacanians/vue-native-runtime': '^0.4.0',
-          '@thelacanians/vue-native-navigation': '^0.4.0',
+          '@thelacanians/vue-native-runtime': JS_PACKAGE_VERSION,
+          '@thelacanians/vue-native-navigation': JS_PACKAGE_VERSION,
           'vue': '^3.5.0',
         },
         devDependencies: {
-          '@thelacanians/vue-native-vite-plugin': '^0.4.0',
-          '@vitejs/plugin-vue': '^5.0.0',
-          'vite': '^6.1.0',
+          '@thelacanians/vue-native-vite-plugin': JS_PACKAGE_VERSION,
+          '@vitejs/plugin-vue': VITE_PLUGIN_VUE_VERSION,
+          'vite': VITE_VERSION,
           'typescript': '^5.7.0',
         },
       }, null, 2))

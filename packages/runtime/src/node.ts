@@ -3,6 +3,8 @@ import { markRaw } from '@vue/reactivity'
 export interface NativeNode {
   id: number
   type: string // 'VView', 'VText', 'VButton', '__TEXT__', '__COMMENT__', '__ROOT__'
+  // Props are an open-ended bridge payload surface shared with native code.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   props: Record<string, any>
   children: NativeNode[]
   parent: NativeNode | null

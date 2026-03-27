@@ -91,3 +91,93 @@ import AppKit
         ] as [String: Any])
     }
 }
+
+// MARK: - RotationGestureWrapper
+
+/// ObjC-compatible wrapper for NSRotationGestureRecognizer action handlers.
+@objc final class RotationGestureWrapper: NSObject {
+    private let handler: (Any?) -> Void
+
+    init(handler: @escaping (Any?) -> Void) {
+        self.handler = handler
+        super.init()
+    }
+
+    @objc func handle(_ recognizer: NSRotationGestureRecognizer) {
+        let stateStr: String
+        switch recognizer.state {
+        case .began:    stateStr = "began"
+        case .changed:  stateStr = "changed"
+        case .ended:    stateStr = "ended"
+        default:        stateStr = "cancelled"
+        }
+        handler([
+            "rotation": recognizer.rotation,
+            "state": stateStr
+        ] as [String: Any])
+    }
+}
+
+// MARK: - DoubleClickWrapper
+
+/// ObjC-compatible wrapper for double-click gesture handlers.
+@objc final class DoubleClickWrapper: NSObject {
+    private let handler: (Any?) -> Void
+
+    init(handler: @escaping (Any?) -> Void) {
+        self.handler = handler
+        super.init()
+    }
+
+    @objc func handleGesture(_ gesture: NSClickGestureRecognizer) {
+        let location = gesture.location(in: gesture.view)
+        let payload: [String: Any] = [
+            "locationX": location.x,
+            "locationY": location.y
+        ]
+        handler(payload)
+    }
+}
+
+// MARK: - HoverWrapper
+
+/// Wrapper for hover gesture handlers (tracking area based).
+@objc final class HoverWrapper: NSObject {
+    private let handler: (Any?) -> Void
+
+    init(handler: @escaping (Any?) -> Void) {
+        self.handler = handler
+        super.init()
+    }
+
+    func handleHover(location: NSPoint, isEntering: Bool) {
+        let payload: [String: Any] = [
+            "locationX": location.x,
+            "locationY": location.y,
+            "state": isEntering ? "entered" : "exited"
+        ]
+        handler(payload)
+    }
+}
+
+// MARK: - PressureWrapper
+
+/// Wrapper for pressure/force gesture handlers (Force Touch on macOS).
+@objc final class PressureWrapper: NSObject {
+    private let handler: (Any?) -> Void
+
+    init(handler: @escaping (Any?) -> Void) {
+        self.handler = handler
+        super.init()
+    }
+
+    func handlePressure(pressure: CGFloat, location: NSPoint, stage: Int) {
+        let payload: [String: Any] = [
+            "force": pressure,
+            "locationX": location.x,
+            "locationY": location.y,
+            "stage": stage
+        ]
+        handler(payload)
+    }
+}

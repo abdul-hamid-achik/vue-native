@@ -67,7 +67,7 @@ export const VTabBar = defineComponent({
         flexDirection: 'row',
         height: 60,
       },
-    }, props.tabs.map((tab) => {
+    }, () => props.tabs.map((tab) => {
       const isActive = activeTab.value === tab.id
       return h(VPressable, {
         key: tab.id,

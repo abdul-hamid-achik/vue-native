@@ -19,7 +19,8 @@ const {
   VScrollView, VList, VModal, VActivityIndicator,
   VKeyboardAvoiding, VSafeArea, VProgressBar, VPicker: _VPicker,
   VSegmentedControl, VActionSheet: _VActionSheet, VStatusBar, VWebView,
-  VRefreshControl, VPressable, VSectionList, VDrawer,
+  VRefreshControl, VPressable, VSectionList, VTabBar, VDrawer,
+  VDrawerItem, VDrawerSection,
   VCheckbox, VRadio, VDropdown, VVideo,
 } = await import('../components')
 
@@ -448,6 +449,45 @@ describe('Components', () => {
   })
 
   // ---------------------------------------------------------------------------
+  // VTabBar
+  // ---------------------------------------------------------------------------
+  describe('VTabBar', () => {
+    it('renders pressable tabs for each config entry', async () => {
+      renderComponent(createVNode(VTabBar, {
+        tabs: [
+          { id: 'home', label: 'Home' },
+          { id: 'settings', label: 'Settings', badge: 2 },
+        ],
+        activeTab: 'home',
+      }))
+      await nextTick()
+
+      const createOps = mockBridge.getOpsByType('create')
+      expect(createOps.some(o => o.args[1] === 'VView')).toBe(true)
+      expect(createOps.filter(o => o.args[1] === 'VPressable')).toHaveLength(2)
+    })
+
+    it('emits change when a tab is pressed', async () => {
+      const changeSpy = vi.fn()
+
+      renderComponent(createVNode(VTabBar, {
+        tabs: [
+          { id: 'home', label: 'Home' },
+          { id: 'settings', label: 'Settings' },
+        ],
+        activeTab: 'home',
+        onChange: changeSpy,
+      }))
+      await nextTick()
+
+      const pressables = mockBridge.getOpsByType('create').filter(o => o.args[1] === 'VPressable')
+      NativeBridge.handleNativeEvent(pressables[1].args[0], 'press', null)
+
+      expect(changeSpy).toHaveBeenCalledWith('settings')
+    })
+  })
+
+  // ---------------------------------------------------------------------------
   // VDrawer
   // ---------------------------------------------------------------------------
   describe('VDrawer', () => {
@@ -544,6 +584,25 @@ describe('Components', () => {
 
       const styleOps = mockBridge.getOpsByType('updateStyle')
       expect(styleOps.some(o => o.args[1]?.backgroundColor === '#123456')).toBe(true)
+    })
+
+    it('exports VDrawerItem as a direct component alias', async () => {
+      renderComponent(createVNode(VDrawerItem, { label: 'Home' }))
+      await nextTick()
+
+      const createOps = mockBridge.getOpsByType('create')
+      expect(createOps.some(o => o.args[1] === 'VPressable')).toBe(true)
+      expect(createOps.some(o => o.args[1] === 'VText')).toBe(true)
+    })
+
+    it('exports VDrawerSection as a direct component alias', async () => {
+      renderComponent(createVNode(VDrawerSection, { title: 'Navigation' }, {
+        default: () => [createVNode(VText, null, { default: () => 'Home' })],
+      }))
+      await nextTick()
+
+      const createOps = mockBridge.getOpsByType('create')
+      expect(createOps.filter(o => o.args[1] === 'VText').length).toBeGreaterThanOrEqual(2)
     })
   })
 

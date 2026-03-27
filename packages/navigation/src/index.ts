@@ -8,6 +8,7 @@ import {
   provide,
   inject,
   onUnmounted,
+  type App,
   type Component,
   type InjectionKey,
   type ComputedRef,
@@ -17,12 +18,15 @@ import {
 import { NativeBridge } from '@thelacanians/vue-native-runtime'
 
 // These globals exist at runtime in JavaScriptCore (polyfilled) but are not in ES2020 lib
-declare const console: { warn(...args: any[]): void, error(...args: any[]): void }
+declare const console: { warn(...args: unknown[]): void, error(...args: unknown[]): void }
 declare function setTimeout(cb: () => void, ms: number): number
 declare function clearTimeout(id: number): void
 declare const __DEV__: boolean
 
 // ─── Types ───────────────────────────────────────────────────────────────────
+
+export type RouteParams = Record<string, unknown>
+export type NavigationGuardResult = false | string | void
 
 export interface RouteConfig {
   name: string
@@ -50,7 +54,7 @@ export interface NavigateOptions {
 
 export interface RouteEntry {
   config: RouteConfig
-  params: Record<string, any>
+  params: RouteParams
   key: number
   /** Shared element IDs associated with this navigation transition. */
   sharedElements?: string[]
@@ -58,7 +62,7 @@ export interface RouteEntry {
 
 export interface RouteLocation {
   name: string
-  params: Record<string, any>
+  params: RouteParams
   options: RouteOptions
 }
 
@@ -70,17 +74,17 @@ export interface RouterInstance {
   /** Whether inactive screens should be unmounted to save memory. */
   unmountInactiveScreens: boolean
   /** Push a new route onto the stack. */
-  navigate(name: string, params?: Record<string, any>, options?: NavigateOptions): Promise<void>
+  navigate(name: string, params?: RouteParams, options?: NavigateOptions): Promise<void>
   /** Alias for navigate — preferred name in new API. */
-  push(name: string, params?: Record<string, any>, options?: NavigateOptions): Promise<void>
+  push(name: string, params?: RouteParams, options?: NavigateOptions): Promise<void>
   /** Pop the current route off the stack. */
   goBack(): Promise<void>
   /** Alias for goBack — preferred name in new API. */
   pop(): Promise<void>
   /** Replace the current route without adding to the stack. */
-  replace(name: string, params?: Record<string, any>): Promise<void>
+  replace(name: string, params?: RouteParams): Promise<void>
   /** Reset the stack to a single route. */
-  reset(name: string, params?: Record<string, any>): Promise<void>
+  reset(name: string, params?: RouteParams): Promise<void>
   /** Whether there is a previous route to go back to. */
   canGoBack: ComputedRef<boolean>
   /** Register a global before guard. Returns unsubscribe function. */
@@ -96,7 +100,7 @@ export interface RouterInstance {
   /** Restore navigation state from a serialized snapshot. */
   restoreState(state: NavigationState): void
   /** Install into a Vue app (app.use(router)). */
-  install(app: any): void
+  install(app: App): void
   /** Parent router, if this is a nested navigator. */
   parent?: RouterInstance
   /** Route map for state restoration validation. */
@@ -107,7 +111,7 @@ export type NavigationGuard = (
   to: RouteEntry,
   from: RouteEntry,
   next: (arg?: false | string) => void,
-) => void | Promise<void>
+) => NavigationGuardResult | Promise<NavigationGuardResult>
 
 export type AfterGuard = (to: RouteEntry, from: RouteEntry) => void
 
@@ -142,8 +146,17 @@ export interface RouterOptions {
 }
 
 export interface NavigationState {
-  stack: Array<{ name: string, params: Record<string, any> }>
+  stack: Array<{ name: string, params: RouteParams }>
   index: number
+}
+
+function getStringProp(value: unknown, key: string): string | undefined {
+  if (typeof value !== 'object' || value === null) {
+    return undefined
+  }
+
+  const property = (value as Record<string, unknown>)[key]
+  return typeof property === 'string' ? property : undefined
 }
 
 export interface DrawerScreenConfig {
@@ -243,11 +256,11 @@ export function createRouter(optionsOrRoutes: RouterOptions | RouteConfig[]): Ro
     guards: NavigationGuard[],
     to: RouteEntry,
     from: RouteEntry,
-  ): Promise<false | string | void> {
+  ): Promise<NavigationGuardResult> {
     for (const guard of guards) {
-      const result = await new Promise<false | string | void>((resolve) => {
+      const result = await new Promise<NavigationGuardResult>((resolve) => {
         let called = false
-        const finish = (arg?: false | string | void) => {
+        const finish = (arg?: NavigationGuardResult) => {
           if (!called) {
             called = true
             resolve(arg === false ? false : typeof arg === 'string' ? arg : undefined)
@@ -261,7 +274,7 @@ export function createRouter(optionsOrRoutes: RouterOptions | RouteConfig[]): Ro
           if (guardReturn instanceof Promise) {
             guardReturn.then((value) => {
               if (!called) {
-                finish(value as false | string | void)
+                finish(value)
               }
             }).catch((err) => {
               if (!called) {
@@ -275,7 +288,7 @@ export function createRouter(optionsOrRoutes: RouterOptions | RouteConfig[]): Ro
 
           // Synchronous guards that return without calling next() should not deadlock navigation.
           if (!called) {
-            finish(guardReturn as false | string | void)
+            finish(guardReturn)
           }
         } catch (err) {
           console.error('[VueNative] Navigation guard error:', err)
@@ -289,7 +302,7 @@ export function createRouter(optionsOrRoutes: RouterOptions | RouteConfig[]): Ro
 
   // ── Navigation methods ─────────────────────────────────────────────────────
 
-  async function navigate(name: string, params: Record<string, any> = {}, options?: NavigateOptions, _redirectDepth = 0): Promise<void> {
+  async function navigate(name: string, params: RouteParams = {}, options?: NavigateOptions, _redirectDepth = 0): Promise<void> {
     if (_redirectDepth > 20) {
       console.warn('[vue-native/navigation] Circular redirect detected (depth > 20), aborting navigation')
       return
@@ -357,7 +370,7 @@ export function createRouter(optionsOrRoutes: RouterOptions | RouteConfig[]): Ro
     afterGuards.forEach(guard => guard(to, from))
   }
 
-  async function replace(name: string, params: Record<string, any> = {}, _redirectDepth = 0): Promise<void> {
+  async function replace(name: string, params: RouteParams = {}, _redirectDepth = 0): Promise<void> {
     if (_redirectDepth > 20) {
       console.warn('[vue-native/navigation] Circular redirect detected (depth > 20), aborting navigation')
       return
@@ -389,7 +402,7 @@ export function createRouter(optionsOrRoutes: RouterOptions | RouteConfig[]): Ro
     afterGuards.forEach(guard => guard(to, from))
   }
 
-  async function reset(name: string, params: Record<string, any> = {}, _redirectDepth = 0): Promise<void> {
+  async function reset(name: string, params: RouteParams = {}, _redirectDepth = 0): Promise<void> {
     if (_redirectDepth > 20) {
       console.warn('[vue-native/navigation] Circular redirect detected (depth > 20), aborting navigation')
       return
@@ -570,7 +583,7 @@ export function createRouter(optionsOrRoutes: RouterOptions | RouteConfig[]): Ro
     // Restore state on creation
     restoring = true
     NativeBridge.invokeNativeModule('AsyncStorage', 'getItem', [persistKey])
-      .then((json: any) => {
+      .then((json) => {
         if (typeof json === 'string' && json.length > 0) {
           try {
             const saved = JSON.parse(json) as NavigationState
@@ -595,7 +608,7 @@ export function createRouter(optionsOrRoutes: RouterOptions | RouteConfig[]): Ro
     unmountInactiveScreens: _unmountInactive,
     canGoBack,
     navigate,
-    push: (name: string, params?: Record<string, any>, options?: NavigateOptions) => navigate(name, params, options),
+    push: (name: string, params?: RouteParams, options?: NavigateOptions) => navigate(name, params, options),
     goBack,
     pop: goBack,
     replace,
@@ -608,7 +621,7 @@ export function createRouter(optionsOrRoutes: RouterOptions | RouteConfig[]): Ro
     restoreState,
     parent: parentRouter,
     _routeMap: routeMap,
-    install(app: any) {
+    install(app: App) {
       app.provide(ROUTER_KEY, router)
     },
   }
@@ -618,12 +631,17 @@ export function createRouter(optionsOrRoutes: RouterOptions | RouteConfig[]): Ro
   if (linkingConfig) {
     // Check for initial URL that launched the app
     NativeBridge.invokeNativeModule('Linking', 'getInitialURL', [])
-      .then((url: any) => { if (url) handleURL(url as string) })
+      .then((url) => {
+        if (typeof url === 'string' && url.length > 0) {
+          handleURL(url)
+        }
+      })
       .catch(() => {})
 
     // Listen for incoming URLs while app is running
-    NativeBridge.onGlobalEvent('url', (payload: any) => {
-      if (payload?.url) handleURL(payload.url as string)
+    NativeBridge.onGlobalEvent('url', (payload) => {
+      const url = getStringProp(payload, 'url')
+      if (url) handleURL(url)
     })
   }
 
@@ -820,7 +838,7 @@ export const RouterView = defineComponent({
             },
             [
               h(RouteProvider, { entry }, () =>
-                h(entry.config.component as any, { routeParams: entry.params }),
+                h(entry.config.component, { routeParams: entry.params }),
               ),
             ],
           )
@@ -1107,7 +1125,7 @@ export function createTabNavigator() {
                   ? { flex: 1 }
                   : { width: 0, height: 0, overflow: 'hidden' },
               },
-              [h(s.component as any)],
+              [h(s.component)],
             )
           })
 
@@ -1224,7 +1242,7 @@ export function createDrawerNavigator() {
 
         // ── Default drawer content (list of screens) ────────────────────
         const drawerMenu = props.drawerContent
-          ? h(props.drawerContent as any, {
+          ? h(props.drawerContent, {
               screens,
               activeScreen: activeScreen.value,
               onSelect: (name: string) => {
@@ -1307,7 +1325,7 @@ export function createDrawerNavigator() {
             style: isActive
               ? { flex: 1 }
               : { width: 0, height: 0, overflow: 'hidden' },
-          }, [h(s.component as any)])
+          }, [h(s.component)])
         })
 
         return h('VView', { style: { flex: 1 } }, [

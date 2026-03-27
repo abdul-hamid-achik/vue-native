@@ -18,6 +18,10 @@ function toEventName(key: string): string {
   return key.slice(2).toLowerCase()
 }
 
+function isEventHandler(value: unknown): value is (payload: unknown) => void {
+  return typeof value === 'function'
+}
+
 /**
  * Diff two style objects and send changed properties to native as a single
  * batched `updateStyle` operation. Instead of sending one bridge op per
@@ -28,13 +32,13 @@ function toEventName(key: string): string {
  */
 function patchStyle(
   nodeId: number,
-  prevStyle: Record<string, any> | null | undefined,
-  nextStyle: Record<string, any> | null | undefined,
+  prevStyle: unknown,
+  nextStyle: unknown,
 ): void {
   try {
-    const prev = prevStyle || {}
-    const next = nextStyle || {}
-    const changes: Record<string, any> = {}
+    const prev = typeof prevStyle === 'object' && prevStyle !== null ? prevStyle as Record<string, unknown> : {}
+    const next = typeof nextStyle === 'object' && nextStyle !== null ? nextStyle as Record<string, unknown> : {}
+    const changes: Record<string, unknown> = {}
     let hasChanges = false
 
     // Collect changed or new properties
@@ -120,8 +124,8 @@ const nodeOps: RendererOptions<NativeNode, NativeNode> = {
   patchProp(
     el: NativeNode,
     key: string,
-    prevValue: any,
-    nextValue: any,
+    prevValue: unknown,
+    nextValue: unknown,
   ): void {
     try {
       // Event handlers: keys starting with "on" followed by uppercase letter
@@ -134,7 +138,7 @@ const nodeOps: RendererOptions<NativeNode, NativeNode> = {
         }
 
         // Register new handler if provided
-        if (nextValue) {
+        if (isEventHandler(nextValue)) {
           NativeBridge.addEventListener(el.id, eventName, nextValue)
         }
         return

@@ -131,8 +131,8 @@ export interface ViewStyle {
   accessibilityLabel?: string
   accessibilityRole?: string
   accessibilityHint?: string
-  accessibilityState?: Record<string, any>
-  accessibilityValue?: Record<string, any>
+  accessibilityState?: Record<string, unknown>
+  accessibilityValue?: Record<string, unknown>
   accessible?: boolean
   importantForAccessibility?: ImportantForAccessibility
 }

@@ -2,6 +2,8 @@ import type { NativeBlock } from '@thelacanians/vue-native-sfc-parser'
 import type { GeneratedFile, CodegenOptions, MethodSignature } from '../types'
 import * as path from 'path'
 
+type MethodParameter = MethodSignature['params'][number]
+
 /**
  * Generate TypeScript composable file from native blocks
  */
@@ -58,7 +60,7 @@ function generateTypeScriptContent(
   // Generate method signatures for the interface
   const interfaceMethods = methods.map((method) => {
     const params = method.params
-      .map((p: any) => `${p.name}${p.optional ? '?' : ''}: ${swiftToTsType(p.type)}`)
+      .map((p: MethodParameter) => `${p.name}${p.optional ? '?' : ''}: ${swiftToTsType(p.type)}`)
       .join(', ')
     const returnType = method.isAsync
       ? `Promise<${swiftToTsType(method.returnType)}>`
@@ -69,9 +71,9 @@ function generateTypeScriptContent(
   // Generate method implementations
   const implMethods = methods.map((method) => {
     const params = method.params
-      .map((p: any) => `${p.name}${p.optional ? '?' : ''}: ${swiftToTsType(p.type)}`)
+      .map((p: MethodParameter) => `${p.name}${p.optional ? '?' : ''}: ${swiftToTsType(p.type)}`)
       .join(', ')
-    const args = method.params.map((p: any) => p.name).join(', ')
+    const args = method.params.map((p: MethodParameter) => p.name).join(', ')
 
     return `    ${method.name}(${params}) {
       return NativeBridge.invokeNativeModule('${moduleName}', '${method.name}', [${args}])

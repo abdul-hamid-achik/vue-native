@@ -62,6 +62,39 @@ final class VViewFactory: NativeComponentFactory {
             view.addGestureRecognizer(mag)
             GestureStorage.storeObject(magWrapper, for: view, event: event)
 
+        // MARK: Rotation
+        case "rotate":
+            let rotationWrapper = RotationGestureWrapper(handler: handler)
+            let rotation = NSRotationGestureRecognizer(
+                target: rotationWrapper,
+                action: #selector(RotationGestureWrapper.handle(_:))
+            )
+            view.addGestureRecognizer(rotation)
+            GestureStorage.storeObject(rotationWrapper, for: view, event: event)
+
+        // MARK: Double Click / Double Tap
+        case "doubleTap":
+            let wrapper = DoubleClickWrapper(handler: handler)
+            let click = NSClickGestureRecognizer(
+                target: wrapper,
+                action: #selector(DoubleClickWrapper.handleGesture(_:))
+            )
+            click.numberOfClicksRequired = 2
+            view.addGestureRecognizer(click)
+            GestureStorage.storeObject(wrapper, for: view, event: event)
+
+        // MARK: Hover
+        case "hover":
+            let hoverWrapper = HoverWrapper(handler: handler)
+            GestureStorage.storeObject(hoverWrapper, for: view, event: event)
+            attachHoverHandler(to: view, wrapper: hoverWrapper)
+
+        // MARK: Force Touch / Pressure
+        case "forceTouch":
+            let pressureWrapper = PressureWrapper(handler: handler)
+            GestureStorage.storeObject(pressureWrapper, for: view, event: event)
+            attachPressureHandler(to: view, wrapper: pressureWrapper)
+
         default:
             break
         }
@@ -88,12 +121,159 @@ final class VViewFactory: NativeComponentFactory {
                 if recognizer is NSMagnificationGestureRecognizer {
                     view.removeGestureRecognizer(recognizer)
                 }
+            case "rotate":
+                if recognizer is NSRotationGestureRecognizer {
+                    view.removeGestureRecognizer(recognizer)
+                }
+            case "doubleTap" where recognizer is NSClickGestureRecognizer:
+                let click = recognizer as! NSClickGestureRecognizer
+                if click.numberOfClicksRequired == 2 {
+                    view.removeGestureRecognizer(recognizer)
+                }
             default:
                 break
             }
         }
     }
+
+    // MARK: - Hover Helper
+
+    private func attachHoverHandler(to view: NSView, wrapper: HoverWrapper) {
+        let trackingView = HoverTrackingView(wrapper: wrapper)
+        objc_setAssociatedObject(view, &hoverTrackingKey, trackingView, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        trackingView.attach(to: view)
+    }
+
+    // MARK: - Pressure Helper
+
+    private func attachPressureHandler(to view: NSView, wrapper: PressureWrapper) {
+        let pressureView = PressureTrackingView(wrapper: wrapper)
+        objc_setAssociatedObject(view, &pressureTrackingKey, pressureView, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        pressureView.attach(to: view)
+    }
 }
+
+// MARK: - HoverTrackingView
+
+/// Custom NSView that handles hover events via tracking area
+private class HoverTrackingView: NSView {
+    private let wrapper: HoverWrapper
+    private weak var targetView: NSView?
+    private var trackingArea: NSTrackingArea?
+
+    init(wrapper: HoverWrapper) {
+        self.wrapper = wrapper
+        super.init(frame: .zero)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    func attach(to view: NSView) {
+        targetView = view
+        updateTrackingAreas()
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+
+        if let existing = trackingArea {
+            removeTrackingArea(existing)
+        }
+
+        if let target = targetView {
+            let area = NSTrackingArea(
+                rect: target.bounds,
+                options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways, .inVisibleRect],
+                owner: self,
+                userInfo: nil
+            )
+            addTrackingArea(area)
+            trackingArea = area
+        }
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        guard let target = targetView else { return }
+        let location = convert(event.locationInWindow, from: nil)
+        wrapper.handleHover(location: location, isEntering: true)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        guard let target = targetView else { return }
+        let location = convert(event.locationInWindow, from: nil)
+        wrapper.handleHover(location: location, isEntering: false)
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        guard let target = targetView else { return }
+        let location = convert(event.locationInWindow, from: nil)
+        wrapper.handleHover(location: location, isEntering: true)
+    }
+}
+
+// MARK: - PressureTrackingView
+
+/// Custom NSView that handles Force Touch / pressure events
+private class PressureTrackingView: NSView {
+    private let wrapper: PressureWrapper
+    private weak var targetView: NSView?
+
+    init(wrapper: PressureWrapper) {
+        self.wrapper = wrapper
+        super.init(frame: .zero)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    func attach(to view: NSView) {
+        targetView = view
+    }
+
+    override func touchesBegan(with event: NSEvent) {
+        super.touchesBegan(with: event)
+        handlePressure(event: event)
+    }
+
+    override func touchesMoved(with event: NSEvent) {
+        super.touchesMoved(with: event)
+        handlePressure(event: event)
+    }
+
+    override func touchesEnded(with event: NSEvent) {
+        super.touchesEnded(with: event)
+        handlePressure(event: event)
+    }
+
+    private func handlePressure(event: NSEvent) {
+        guard let target = targetView else { return }
+
+        // Get pressure information (macOS 10.10.3+)
+        let pressure = CGFloat(event.pressure)
+        let location = event.locationInWindow
+        let locationInView = target.convert(location, from: nil)
+
+        // Pressure stages: 0 = no touch, 1-2 = light touch, 3+ = force touch
+        let stage: Int
+        if event.stage == 0 && pressure == 0 {
+            stage = 0
+        } else if event.stage == 1 {
+            stage = 1
+        } else if event.stage == 2 {
+            stage = 2
+        } else {
+            stage = Int(event.stage)
+        }
+
+        wrapper.handlePressure(pressure: pressure, location: locationInView, stage: stage)
+    }
+}
+
+private var hoverTrackingKey: UInt8 = 0
+private var pressureTrackingKey: UInt8 = 0
 
 // MARK: - GestureStorage
 

@@ -87,6 +87,51 @@ final class VViewFactory: NativeComponentFactory {
             view.isUserInteractionEnabled = true
             GestureStorage.storeObject(pinchWrapper, for: view, event: event)
 
+        // MARK: Rotation
+        case "rotate":
+            let rotationWrapper = RotationWrapper(handler: handler)
+            let rotation = UIRotationGestureRecognizer(
+                target: rotationWrapper,
+                action: #selector(RotationWrapper.handle(_:))
+            )
+            view.addGestureRecognizer(rotation)
+            view.isUserInteractionEnabled = true
+            GestureStorage.storeObject(rotationWrapper, for: view, event: event)
+
+        // MARK: Double Tap
+        case "doubleTap":
+            let wrapper = DoubleTapWrapper(handler: handler)
+            let tapRecognizer = UITapGestureRecognizer(
+                target: wrapper,
+                action: #selector(DoubleTapWrapper.handleGesture(_:))
+            )
+            tapRecognizer.numberOfTapsRequired = 2
+            view.addGestureRecognizer(tapRecognizer)
+            view.isUserInteractionEnabled = true
+            GestureStorage.storeObject(wrapper, for: view, event: event)
+
+        // MARK: Force Touch (3D Touch)
+        case "forceTouch":
+            let wrapper = ForceTouchWrapper(handler: handler)
+            // Force touch is handled via touch events, not gesture recognizers
+            // We store the wrapper and will handle it in a custom touch handler
+            GestureStorage.storeObject(wrapper, for: view, event: event)
+            // Enable force touch on the view
+            view.isUserInteractionEnabled = true
+            attachForceTouchHandler(to: view, wrapper: wrapper)
+
+        // MARK: Hover (iOS 13+)
+        case "hover":
+            if #available(iOS 13.0, *) {
+                let hoverWrapper = HoverWrapper(handler: handler)
+                let hover = UIHoverGestureRecognizer(
+                    target: hoverWrapper,
+                    action: #selector(HoverWrapper.handleGesture(_:))
+                )
+                view.addGestureRecognizer(hover)
+                GestureStorage.storeObject(hoverWrapper, for: view, event: event)
+            }
+
         default:
             break
         }
@@ -97,23 +142,90 @@ final class VViewFactory: NativeComponentFactory {
         // Remove matching gesture recognizers
         view.gestureRecognizers?.forEach { recognizer in
             switch event {
-            case "press"      where recognizer is UITapGestureRecognizer:
-                view.removeGestureRecognizer(recognizer)
+            case "press":
+                if let tap = recognizer as? UITapGestureRecognizer, tap.numberOfTapsRequired == 1 {
+                    view.removeGestureRecognizer(recognizer)
+                }
             case "longpress"  where recognizer is UILongPressGestureRecognizer:
                 view.removeGestureRecognizer(recognizer)
             case "pan"        where recognizer is UIPanGestureRecognizer:
                 view.removeGestureRecognizer(recognizer)
-            case "swipeLeft", "swipeRight", "swipeUp", "swipeDown"
-                              where recognizer is UISwipeGestureRecognizer:
+            case "swipeLeft"   where recognizer is UISwipeGestureRecognizer:
+                view.removeGestureRecognizer(recognizer)
+            case "swipeRight"  where recognizer is UISwipeGestureRecognizer:
+                view.removeGestureRecognizer(recognizer)
+            case "swipeUp"     where recognizer is UISwipeGestureRecognizer:
+                view.removeGestureRecognizer(recognizer)
+            case "swipeDown"   where recognizer is UISwipeGestureRecognizer:
                 view.removeGestureRecognizer(recognizer)
             case "pinch"      where recognizer is UIPinchGestureRecognizer:
                 view.removeGestureRecognizer(recognizer)
+            case "rotate"     where recognizer is UIRotationGestureRecognizer:
+                view.removeGestureRecognizer(recognizer)
+            case "doubleTap":
+                if let tap = recognizer as? UITapGestureRecognizer, tap.numberOfTapsRequired == 2 {
+                    view.removeGestureRecognizer(recognizer)
+                }
+            case "hover":
+                if #available(iOS 13.0, *) {
+                    if recognizer is UIHoverGestureRecognizer {
+                        view.removeGestureRecognizer(recognizer)
+                    }
+                }
             default:
                 break
             }
         }
     }
+
+    // MARK: - Force Touch Helper
+
+    private func attachForceTouchHandler(to view: UIView, wrapper: ForceTouchWrapper) {
+        // ForceTouchHandler is attached via associated object
+        let handler = ForceTouchHandlerView(wrapper: wrapper)
+        objc_setAssociatedObject(view, &forceTouchHandlerKey, handler, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        handler.attach(to: view)
+    }
 }
+
+// MARK: - ForceTouchHandlerView
+
+/// Custom UIView subclass that monitors force touch events
+private class ForceTouchHandlerView: UIView {
+    private let wrapper: ForceTouchWrapper
+    private weak var targetView: UIView?
+
+    init(wrapper: ForceTouchWrapper) {
+        self.wrapper = wrapper
+        super.init(frame: .zero)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    func attach(to view: UIView) {
+        targetView = view
+    }
+
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+        super.touchesMoved(touches, with: event)
+        guard let touch = touches.first else { return }
+        let force = touch.force
+        let location = touch.location(in: targetView)
+        wrapper.handleTouch(force: force, location: location)
+    }
+
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        super.touchesBegan(touches, with: event)
+        guard let touch = touches.first else { return }
+        let force = touch.force
+        let location = touch.location(in: targetView)
+        wrapper.handleTouch(force: force, location: location)
+    }
+}
+
+private var forceTouchHandlerKey: UInt8 = 0
 
 // MARK: - GestureStorage
 

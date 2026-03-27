@@ -32,8 +32,11 @@ export const VSwitch = defineComponent({
   },
   emits: ['update:modelValue', 'change'],
   setup(props, { emit }) {
-    const onChange = (payload: any) => {
-      const value = typeof payload === 'boolean' ? payload : !!(payload?.value ?? payload)
+    const onChange = (payload: unknown) => {
+      const nextValue = typeof payload === 'object' && payload !== null && 'value' in payload
+        ? (payload as { value?: unknown }).value
+        : payload
+      const value = typeof nextValue === 'boolean' ? nextValue : Boolean(nextValue)
       emit('update:modelValue', value)
       emit('change', value)
     }

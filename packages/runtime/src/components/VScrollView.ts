@@ -65,7 +65,7 @@ export const VScrollView = defineComponent({
   setup(props, { slots, emit }) {
     let lastScrollEmit = 0
 
-    const onScroll = (payload: any) => {
+    const onScroll = (payload: unknown) => {
       const now = Date.now()
       if (now - lastScrollEmit >= props.scrollEventThrottle) {
         lastScrollEmit = now

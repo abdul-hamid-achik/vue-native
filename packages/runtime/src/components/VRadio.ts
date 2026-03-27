@@ -5,6 +5,14 @@ export interface RadioOption {
   value: string
 }
 
+function extractRadioValue(payload: unknown): string | undefined {
+  const nextValue = typeof payload === 'object' && payload !== null && 'value' in payload
+    ? (payload as { value?: unknown }).value
+    : payload
+
+  return typeof nextValue === 'string' ? nextValue : undefined
+}
+
 /**
  * VRadio — a radio button group component.
  *
@@ -44,8 +52,8 @@ export const VRadio = defineComponent({
   },
   emits: ['update:modelValue', 'change'],
   setup(props, { emit }) {
-    const onChange = (payload: any) => {
-      const value = payload?.value ?? payload
+    const onChange = (payload: unknown) => {
+      const value = extractRadioValue(payload)
       emit('update:modelValue', value)
       emit('change', value)
     }

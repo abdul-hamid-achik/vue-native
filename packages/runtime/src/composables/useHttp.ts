@@ -8,18 +8,19 @@ interface RequestInit {
   method?: string
   headers?: Record<string, string>
   body?: string
+  signal?: unknown
 }
 
 interface FetchHeaders {
   entries?(): Iterable<[string, string]>
   forEach?(callback: (value: string, key: string) => void): void
-  [key: string]: any
+  [key: string]: unknown
 }
 
 interface FetchResponse {
   status: number
   ok: boolean
-  json(): Promise<any>
+  json(): Promise<unknown>
   headers?: FetchHeaders
 }
 
@@ -31,8 +32,12 @@ declare function fetch(
 // AbortController may be available in newer JSC runtimes (iOS 15+).
 // Declare it here since the ES2020 lib doesn't include it.
 declare class AbortController {
-  readonly signal: any
+  readonly signal: unknown
   abort(): void
+}
+
+declare global {
+  var __VN_configurePins: ((pinsJson: string) => void) | undefined
 }
 
 export interface HttpRequestConfig {
@@ -52,11 +57,27 @@ export interface HttpRequestConfig {
   pins?: Record<string, string[]>
 }
 
-export interface HttpResponse<T = any> {
+export interface HttpResponse<T = unknown> {
   data: T
   status: number
   ok: boolean
   headers: Record<string, string>
+}
+
+interface RequestOptions {
+  body?: unknown
+  headers?: Record<string, string>
+}
+
+interface QueryRequestOptions {
+  params?: Record<string, string>
+  headers?: Record<string, string>
+}
+
+function isQueryRequestOptions(
+  value: QueryRequestOptions | Record<string, string>,
+): value is QueryRequestOptions {
+  return 'params' in value || 'headers' in value
 }
 
 /**
@@ -72,7 +93,7 @@ export function useHttp(config: HttpRequestConfig = {}) {
   // iOS: uses __VN_configurePins (registered in JSPolyfills.registerFetch).
   // Android: uses Http module's configurePins method via the bridge.
   if (config.pins && Object.keys(config.pins).length > 0) {
-    const configurePins = (globalThis as any).__VN_configurePins
+    const configurePins = globalThis.__VN_configurePins
     if (typeof configurePins === 'function') {
       configurePins(JSON.stringify(config.pins))
     } else {
@@ -112,10 +133,10 @@ export function useHttp(config: HttpRequestConfig = {}) {
     return result
   }
 
-  async function request<T = any>(
+  async function request<T = unknown>(
     method: string,
     url: string,
-    options: { body?: any, headers?: Record<string, string> } = {},
+    options: RequestOptions = {},
   ): Promise<HttpResponse<T>> {
     const fullUrl = config.baseURL ? `${config.baseURL}${url}` : url
     loading.value = true
@@ -148,7 +169,7 @@ export function useHttp(config: HttpRequestConfig = {}) {
       }
 
       if (controller) {
-        (fetchOptions as any).signal = controller.signal
+        fetchOptions.signal = controller.signal
       }
 
       if (options.body !== undefined) {
@@ -156,7 +177,7 @@ export function useHttp(config: HttpRequestConfig = {}) {
       }
 
       const response = await fetch(fullUrl, fetchOptions)
-      const data: T = await response.json()
+      const data = await response.json() as T
       const responseHeaders = parseResponseHeaders(response)
 
       if (!isMounted) {
@@ -196,26 +217,23 @@ export function useHttp(config: HttpRequestConfig = {}) {
   return {
     loading,
     error,
-    get: <T = any>(url: string, options?: { params?: Record<string, string>, headers?: Record<string, string> } | Record<string, string>) => {
-      // Backward compat: if second arg looks like plain headers (no params/headers keys), treat as headers
-      if (options && !('params' in options) && !('headers' in options)) {
-        return request<T>('GET', url, { headers: options as Record<string, string> })
-      }
-      const opts = options as { params?: Record<string, string>, headers?: Record<string, string> } | undefined
-      return request<T>('GET', buildUrl(url, opts?.params), { headers: opts?.headers })
+    get: <T = unknown>(url: string, options?: QueryRequestOptions | Record<string, string>) => {
+      const normalizedOptions = options
+        ? (isQueryRequestOptions(options) ? options : { headers: options })
+        : undefined
+      return request<T>('GET', buildUrl(url, normalizedOptions?.params), { headers: normalizedOptions?.headers })
     },
-    post: <T = any>(url: string, body?: any, headers?: Record<string, string>) =>
+    post: <T = unknown>(url: string, body?: unknown, headers?: Record<string, string>) =>
       request<T>('POST', url, { body, headers }),
-    put: <T = any>(url: string, body?: any, headers?: Record<string, string>) =>
+    put: <T = unknown>(url: string, body?: unknown, headers?: Record<string, string>) =>
       request<T>('PUT', url, { body, headers }),
-    patch: <T = any>(url: string, body?: any, headers?: Record<string, string>) =>
+    patch: <T = unknown>(url: string, body?: unknown, headers?: Record<string, string>) =>
       request<T>('PATCH', url, { body, headers }),
-    delete: <T = any>(url: string, options?: { params?: Record<string, string>, headers?: Record<string, string> } | Record<string, string>) => {
-      if (options && !('params' in options) && !('headers' in options)) {
-        return request<T>('DELETE', url, { headers: options as Record<string, string> })
-      }
-      const opts = options as { params?: Record<string, string>, headers?: Record<string, string> } | undefined
-      return request<T>('DELETE', buildUrl(url, opts?.params), { headers: opts?.headers })
+    delete: <T = unknown>(url: string, options?: QueryRequestOptions | Record<string, string>) => {
+      const normalizedOptions = options
+        ? (isQueryRequestOptions(options) ? options : { headers: options })
+        : undefined
+      return request<T>('DELETE', buildUrl(url, normalizedOptions?.params), { headers: normalizedOptions?.headers })
     },
   }
 }

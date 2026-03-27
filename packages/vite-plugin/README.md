@@ -62,8 +62,8 @@ export default defineConfig({
 
 ## Peer dependencies
 
-- `vite` ^6.0.0
-- `@vitejs/plugin-vue` ^5.0.0
+- `vite` ^7.0.0 or ^8.0.0
+- `@vitejs/plugin-vue` ^5.2.0 or ^6.0.0
 
 ## License
 

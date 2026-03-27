@@ -24,6 +24,15 @@ export interface BLECharacteristicChange {
 
 export type BLEState = 'poweredOn' | 'poweredOff' | 'unauthorized' | 'unsupported' | 'resetting' | 'unknown'
 
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message
+  if (typeof error === 'object' && error !== null && 'message' in error) {
+    const message = (error as { message?: unknown }).message
+    if (typeof message === 'string') return message
+  }
+  return String(error)
+}
+
 // ─── useBluetooth composable ──────────────────────────────────────────────
 
 /**
@@ -100,8 +109,8 @@ export function useBluetooth() {
     error.value = null
     try {
       await NativeBridge.invokeNativeModule('Bluetooth', 'startScan', [serviceUUIDs])
-    } catch (e: any) {
-      error.value = e?.message || String(e)
+    } catch (e: unknown) {
+      error.value = getErrorMessage(e)
       isScanning.value = false
     }
   }
