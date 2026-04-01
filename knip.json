@@ -5,9 +5,7 @@
       "ignoreDependencies": ["@vue/shared"]
     },
     "packages/navigation": {},
-    "packages/vite-plugin": {
-      "ignoreDependencies": ["vite"]
-    },
+    "packages/vite-plugin": {},
     "packages/cli": {},
     "examples/*": {},
     "examples/native-blocks-demo": {
@@ -22,6 +20,6 @@
     "tools/**",
     "**/*.d.ts"
   ],
-  "exclude": ["classMembers", "exports", "types"],
+  "exclude": ["classMembers", "exports", "types", "duplicates"],
   "ignoreBinaries": ["maestro", "swift"]
 }

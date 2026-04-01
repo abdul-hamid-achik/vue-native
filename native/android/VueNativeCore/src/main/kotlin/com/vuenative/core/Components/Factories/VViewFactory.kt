@@ -10,7 +10,6 @@ import com.google.android.flexbox.FlexDirection
 import com.google.android.flexbox.FlexboxLayout
 import kotlin.math.abs
 import kotlin.math.atan2
-import kotlin.math.sqrt
 
 class VViewFactory : NativeComponentFactory {
     override fun createView(context: Context): View {
@@ -200,14 +199,14 @@ class VViewFactory : NativeComponentFactory {
                     if (isTracking && event.pointerCount == 2) {
                         val currentAngle = calculateAngle(event)
                         val deltaAngle = currentAngle - previousAngle
-                        
+
                         // Normalize angle to -PI to PI range
                         val normalizedDelta = when {
                             deltaAngle > Math.PI -> deltaAngle - (2 * Math.PI).toFloat()
                             deltaAngle < -Math.PI -> deltaAngle + (2 * Math.PI).toFloat()
                             else -> deltaAngle
                         }
-                        
+
                         onRotation(normalizedDelta)
                         previousAngle = currentAngle
                     }
@@ -221,10 +220,10 @@ class VViewFactory : NativeComponentFactory {
 
         private fun calculateAngle(event: MotionEvent): Float {
             if (event.pointerCount < 2) return 0f
-            
+
             val dx = event.getX(1) - event.getX(0)
             val dy = event.getY(1) - event.getY(0)
-            
+
             return atan2(dy, dx)
         }
     }
