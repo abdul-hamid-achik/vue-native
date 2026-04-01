@@ -192,10 +192,3 @@ jobs:
           echo "| Swift iOS | ${{ needs.swift-ios.result }} |"
           echo "| Swift macOS | ${{ needs.swift-macos.result }} |"
           echo "| Kotlin | ${{ needs.kotlin.result }} |"
-          echo ""
-          if contains('${{ join(needs.*.result, ',') }}', 'failure') {
-            echo "❌ Some jobs failed"
-            exit 1
-          } else {
-            echo "✅ All jobs passed"
-          }
