@@ -35,8 +35,8 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@thelacanians/vue-native-sfc-parser": "workspace:*",
-    "@thelacanians/vue-native-codegen": "workspace:*",
+    "@thelacanians/vue-native-sfc-parser": "^0.0.1",
+    "@thelacanians/vue-native-codegen": "^0.0.1",
     "fast-glob": "^3.3.2"
   },
   "peerDependencies": {

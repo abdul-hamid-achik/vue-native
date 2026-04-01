@@ -33,7 +33,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@thelacanians/vue-native-sfc-parser": "workspace:*"
+    "@thelacanians/vue-native-sfc-parser": "^0.0.1"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

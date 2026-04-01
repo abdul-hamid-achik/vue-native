@@ -10,6 +10,10 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+  TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+
 jobs:
   # ── TypeScript (lint, typecheck, build, test) ───────────
   typescript:
@@ -22,6 +26,14 @@ jobs:
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
+
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -41,12 +53,22 @@ jobs:
       - name: Dead code check
         run: bun run knip
 
-  # ── Swift / iOS (lint, build, test VueNativeCore) ───────
-  swift:
+  # ── Swift / iOS (build & test VueNativeCore) ───────────
+  swift-ios:
     runs-on: macos-14
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Cache Swift packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Developer/Xcode/DerivedData
+            native/ios/VueNativeCore/.build
+          key: ${{ runner.os }}-swift-${{ hashFiles('native/ios/VueNativeCore/Package.swift') }}
+          restore-keys: |
+            ${{ runner.os }}-swift-
 
       - name: Install SwiftLint
         run: brew install swiftlint
@@ -83,6 +105,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Cache Swift packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Developer/Xcode/DerivedData
+            native/shared/VueNativeShared/.build
+            native/macos/VueNativeMacOS/.build
+          key: ${{ runner.os }}-swift-${{ hashFiles('native/shared/VueNativeShared/Package.swift', 'native/macos/VueNativeMacOS/Package.swift') }}
+          restore-keys: |
+            ${{ runner.os }}-swift-
+
       - name: Build VueNativeShared
         run: |
           cd native/shared/VueNativeShared
@@ -103,12 +136,23 @@ jobs:
           cd native/macos/VueNativeMacOS
           swift test
 
-  # ── Kotlin / Android (lint, build, test VueNativeCore) ──
+  # ── Kotlin / Android (build & test VueNativeCore) ───────────
   kotlin:
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Cache Gradle packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            native/android/.gradle
+          key: ${{ runner.os }}-gradle-${{ hashFiles('native/android/build.gradle.kts', 'native/android/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
 
       - uses: actions/setup-java@v4
         with:
@@ -129,3 +173,29 @@ jobs:
       - name: Test VueNativeCore
         run: ./gradlew :VueNativeCore:testReleaseUnitTest
         working-directory: native/android
+
+  # ── Visual report for PRs ──────────────────────────────
+  summary:
+    name: CI Summary
+    runs-on: ubuntu-latest
+    needs: [typescript, swift-ios, swift-macos, kotlin]
+    if: always()
+
+    steps:
+      - name: CI Summary
+        run: |
+          echo "## CI Results"
+          echo ""
+          echo "| Job | Status |"
+          echo "|-----|--------|"
+          echo "| TypeScript | ${{ needs.typescript.result }} |"
+          echo "| Swift iOS | ${{ needs.swift-ios.result }} |"
+          echo "| Swift macOS | ${{ needs.swift-macos.result }} |"
+          echo "| Kotlin | ${{ needs.kotlin.result }} |"
+          echo ""
+          if contains('${{ join(needs.*.result, ',') }}', 'failure') {
+            echo "❌ Some jobs failed"
+            exit 1
+          } else {
+            echo "✅ All jobs passed"
+          }

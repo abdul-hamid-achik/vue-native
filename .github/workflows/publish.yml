@@ -2,21 +2,167 @@ name: Publish
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches: [main]
+  workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   id-token: write
   packages: write
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+  TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+
 jobs:
-  # ── npm packages (TypeScript) ───────────────────────────
-  npm:
+  # ── Check if there are changeset changes ────────────────
+  changesets:
+    name: Changeset Status
+    runs-on: ubuntu-latest
+    outputs:
+      hasChangesets: ${{ steps.changesets.outputs.hasChangesets }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Check for changesets
+        id: changesets
+        run: |
+          echo "Checking for changesets..."
+          CHANGESET_COUNT=$(ls -1 .changeset/*.md 2>/dev/null | wc -l)
+          if [ "$CHANGESET_COUNT" -gt 0 ]; then
+            echo "hasChangesets=true" >> $GITHUB_OUTPUT
+            echo "Found $CHANGESET_COUNT changeset(s)"
+            bunx changeset status --verbose
+          else
+            echo "hasChangesets=false" >> $GITHUB_OUTPUT
+            echo "No changesets found"
+          fi
+
+  # ── TypeScript validation ────────────────────────────────
+  validate:
+    name: Validate
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Lint
+        run: bun run lint
+
+      - name: Type check
+        run: bun run typecheck
+
+      - name: Build
+        run: bun run build
+
+      - name: Test
+        run: bun run test:ts
+
+  # ── Native builds validation ─────────────────────────────
+  native-builds:
+    name: Native Builds
+    runs-on: macos-14
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache Swift packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Developer/Xcode/DerivedData
+            native/ios/VueNativeCore/.build
+            native/shared/VueNativeShared/.build
+            native/macos/VueNativeMacOS/.build
+          key: ${{ runner.os }}-swift-${{ hashFiles('native/ios/VueNativeCore/Package.swift', 'native/shared/VueNativeShared/Package.swift', 'native/macos/VueNativeMacOS/Package.swift') }}
+          restore-keys: |
+            ${{ runner.os }}-swift-
+
+      - name: Build VueNativeCore for iOS Simulator
+        run: |
+          cd native/ios/VueNativeCore
+          xcodebuild build \
+            -scheme VueNativeCore \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -skipPackagePluginValidation
+
+      - name: Build VueNativeMacOS
+        run: |
+          cd native/macos/VueNativeMacOS
+          swift build
+
+  # ── Android build validation ─────────────────────────────
+  android-build:
+    name: Android Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache Gradle packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            native/android/.gradle
+          key: ${{ runner.os }}-gradle-${{ hashFiles('native/android/build.gradle.kts', 'native/android/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Build VueNativeCore
+        run: ./gradlew :VueNativeCore:assembleRelease
+        working-directory: native/android
+
+  # ── Publish packages (only on push to main with changesets) ──
+  publish:
+    name: Publish Packages
+    runs-on: ubuntu-latest
+    needs: [changesets, validate, native-builds, android-build]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changesets.outputs.hasChangesets == 'true'
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -27,114 +173,69 @@ jobs:
           node-version: 22
           registry-url: https://registry.npmjs.org
 
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
       - name: Build all packages
         run: bun run build
 
-      - name: Typecheck
-        run: bun run typecheck
-
-      - name: Test
-        run: bun run test:ts
-
-      - name: Publish @thelacanians/vue-native-runtime
+      - name: Configure git
         run: |
-          OUTPUT=$(npm publish --access public --provenance 2>&1) && exit 0
-          if echo "$OUTPUT" | grep -q "You cannot publish over the previously published"; then
-            echo "::warning::Version already published, skipping"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Version bump
+        run: |
+          bunx changeset version
+          # Check if there are changes to commit
+          if git diff --quiet HEAD -- .; then
+            echo "No version changes needed"
           else
-            echo "$OUTPUT" >&2
-            exit 1
+            git add .
+            git commit -m "chore: bump versions [skip ci]"
+            git push
           fi
-        working-directory: packages/runtime
+
+      - name: Publish to npm
+        run: bunx changeset publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      - name: Publish @thelacanians/vue-native-navigation
-        run: |
-          OUTPUT=$(npm publish --access public --provenance 2>&1) && exit 0
-          if echo "$OUTPUT" | grep -q "You cannot publish over the previously published"; then
-            echo "::warning::Version already published, skipping"
-          else
-            echo "$OUTPUT" >&2
-            exit 1
-          fi
-        working-directory: packages/navigation
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      - name: Publish @thelacanians/vue-native-vite-plugin
-        run: |
-          OUTPUT=$(npm publish --access public --provenance 2>&1) && exit 0
-          if echo "$OUTPUT" | grep -q "You cannot publish over the previously published"; then
-            echo "::warning::Version already published, skipping"
-          else
-            echo "$OUTPUT" >&2
-            exit 1
-          fi
-        working-directory: packages/vite-plugin
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      - name: Publish @thelacanians/vue-native-cli
-        run: |
-          OUTPUT=$(npm publish --access public --provenance 2>&1) && exit 0
-          if echo "$OUTPUT" | grep -q "You cannot publish over the previously published"; then
-            echo "::warning::Version already published, skipping"
-          else
-            echo "$OUTPUT" >&2
-            exit 1
-          fi
-        working-directory: packages/cli
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-  # ── Swift Package (iOS) ────────────────────────────────
-  # SPM resolves directly from the git tag — no publish step needed.
-  # This job validates the tagged code builds correctly.
-  swift:
-    runs-on: macos-14
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Build VueNativeCore for iOS Simulator
-        run: |
-          cd native/ios/VueNativeCore
-          xcodebuild build \
-            -scheme VueNativeCore \
-            -sdk iphonesimulator \
-            -destination 'generic/platform=iOS Simulator' \
-            -configuration Release \
-            -skipPackagePluginValidation
-
-  # ── Maven artifact (Android) ────────────────────────────
-  android:
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-java@v4
+      - name: Setup Java for Android
+        if: needs.android-build.result == 'success'
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 17
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
-
-      - name: Publish VueNativeCore to GitHub Packages
+      - name: Publish Android to GitHub Packages
+        if: needs.android-build.result == 'success'
         run: |
-          OUTPUT=$(./gradlew :VueNativeCore:publishReleasePublicationToGitHubPackagesRepository 2>&1) && exit 0
-          if echo "$OUTPUT" | grep -q "status code 409"; then
-            echo "::warning::Version already published to GitHub Packages, skipping"
-          else
-            echo "$OUTPUT" >&2
-            exit 1
-          fi
+          ./gradlew :VueNativeCore:publishReleasePublicationToGitHubPackagesRepository
         working-directory: native/android
         env:
           GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get new version
+        id: version
+        run: |
+          VERSION=$(node -p "require('./packages/runtime/package.json').version")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+
+      - name: Create GitHub Release
+        if: steps.version.outputs.version != ''
+        run: |
+          git tag -a v${{ steps.version.outputs.version }} -m "Release v${{ steps.version.outputs.version }}"
+          git push origin v${{ steps.version.outputs.version }}
+        env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
