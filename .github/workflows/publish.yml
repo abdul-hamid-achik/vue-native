@@ -90,7 +90,7 @@ jobs:
   # ── Native builds validation ─────────────────────────────
   native-builds:
     name: Native Builds
-    runs-on: macos-14
+    runs-on: macos-15
 
     steps:
       - uses: actions/checkout@v4
