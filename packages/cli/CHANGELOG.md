@@ -1,5 +1,14 @@
 # @thelacanians/vue-native-cli
 
+## 0.6.3
+
+### Patch Changes
+
+- 4bdb630: Fix `workspace:*` protocol that caused `npm error Unsupported URL Type "workspace:"` when installing packages globally. Replaced with `^0.0.1` semver ranges for internal dependencies (sfc-parser, codegen) that are bundled into dist at build time.
+- Updated dependencies [4bdb630]
+  - @thelacanians/vue-native-sfc-parser@0.0.2
+  - @thelacanians/vue-native-codegen@0.0.2
+
 ## 0.5.0
 
 ### Minor Changes
