@@ -5,8 +5,8 @@ import { fileURLToPath } from 'node:url'
 import { existsSync } from 'node:fs'
 import pc from 'picocolors'
 
-const VERSION = '0.4.14'
-const JS_PACKAGE_VERSION = '^0.5.0'
+const VERSION = '0.6.2'
+const JS_PACKAGE_VERSION = '^0.6.2'
 const VITE_PLUGIN_VUE_VERSION = '^6.0.5'
 const VITE_VERSION = '^8.0.0'
 
