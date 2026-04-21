@@ -37,7 +37,9 @@ export function useNetwork() {
       isConnected.value = status.isConnected
       connectionType.value = status.connectionType
     }
-  }).catch(() => {})
+  }).catch((err: unknown) => {
+    if (__DEV__) console.warn('[vue-native] Network.getStatus failed:', err)
+  })
 
   onUnmounted(unsubscribe)
 

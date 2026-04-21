@@ -2,13 +2,37 @@ import { Command } from 'commander'
 import { cp, mkdir, writeFile } from 'node:fs/promises'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import pc from 'picocolors'
+import { ConfigError } from '../config.js'
 
 const VERSION = '0.6.2'
-const JS_PACKAGE_VERSION = '^0.6.2'
-const VITE_PLUGIN_VUE_VERSION = '^6.0.5'
-const VITE_VERSION = '^8.0.0'
+
+function getTemplateVersions() {
+  // Derive versions from the CLI's own package.json if available
+  try {
+    const cliDir = dirname(dirname(fileURLToPath(import.meta.url)))
+    const pkg = JSON.parse(readFileSync(join(cliDir, 'package.json'), 'utf8'))
+    const jsVersion = `^${pkg.version}`
+    const viteDevDep = pkg.devDependencies?.vite
+    const viteVuePluginDevDep = pkg.devDependencies?.['@vitejs/plugin-vue']
+    return {
+      JS_PACKAGE_VERSION: jsVersion,
+      VITE_PLUGIN_VUE_VERSION: viteVuePluginDevDep ?? '^6.0.5',
+      VITE_VERSION: viteDevDep ?? '^8.0.0',
+    }
+  } catch {
+    return {
+      JS_PACKAGE_VERSION: `^${VERSION}`,
+      VITE_PLUGIN_VUE_VERSION: '^6.0.5',
+      VITE_VERSION: '^8.0.0',
+    }
+  }
+}
+
+const { JS_PACKAGE_VERSION, VITE_PLUGIN_VUE_VERSION, VITE_VERSION } = getTemplateVersions()
+
+const VALID_NAME = /^[a-zA-Z0-9_-]+$/i
 
 type Template = 'blank' | 'tabs' | 'drawer'
 
@@ -19,8 +43,15 @@ export const createCommand = new Command('create')
   .action(async (name: string, options: { template: string }) => {
     const template = options.template as Template
     if (!['blank', 'tabs', 'drawer'].includes(template)) {
-      console.error(pc.red(`Invalid template "${template}". Choose: blank, tabs, drawer`))
-      process.exit(1)
+      throw new ConfigError(
+        `Invalid template "${template}". Choose: blank, tabs, drawer`,
+      )
+    }
+
+    if (!VALID_NAME.test(name)) {
+      throw new ConfigError(
+        `Project name "${name}" must match /^[a-zA-Z0-9_-]+$/i`,
+      )
     }
 
     const dir = join(process.cwd(), name)
@@ -533,8 +564,9 @@ local.properties
       console.log(pc.dim('    cd android && gradle wrapper && cd ..'))
       console.log(pc.white('    vue-native run android\n'))
     } catch (err) {
-      console.error(pc.red(`Error creating project: ${(err as Error).message}`))
-      process.exit(1)
+      throw new ConfigError(
+        `Error creating project: ${(err as Error).message}`,
+      )
     }
   })
 

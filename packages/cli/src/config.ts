@@ -1,7 +1,6 @@
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import pc from 'picocolors'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -55,6 +54,13 @@ export function defineConfig(config: VueNativeConfig): VueNativeConfig {
   return config
 }
 
+export class ConfigError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'ConfigError'
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Validation
 // ---------------------------------------------------------------------------
@@ -64,18 +70,35 @@ function validateConfig(config: unknown): config is VueNativeConfig {
   const c = config as Record<string, unknown>
 
   if (typeof c.name !== 'string' || c.name.length === 0) {
-    console.error(pc.red('  Config error: "name" is required and must be a non-empty string.'))
-    return false
+    throw new ConfigError(
+      'Config error: "name" is required and must be a non-empty string.',
+    )
   }
 
-  if (typeof c.bundleId !== 'string' || !/^[a-z][a-z0-9]*(\.[a-z][a-z0-9]*)+$/i.test(c.bundleId)) {
-    console.error(pc.red('  Config error: "bundleId" must be a valid reverse-domain identifier (e.g. com.example.myapp).'))
-    return false
+  if (
+    typeof c.bundleId !== 'string'
+    || !/^[a-z][a-z0-9]*(\.[a-z][a-z0-9]*)+$/i.test(c.bundleId)
+  ) {
+    throw new ConfigError(
+      'Config error: "bundleId" must be a valid reverse-domain identifier (e.g. com.example.myapp).',
+    )
   }
 
   if (typeof c.version !== 'string' || c.version.length === 0) {
-    console.error(pc.red('  Config error: "version" is required (e.g. "1.0.0").'))
-    return false
+    throw new ConfigError('Config error: "version" is required (e.g. "1.0.0").')
+  }
+
+  if (c.plugins !== undefined) {
+    if (!Array.isArray(c.plugins)) {
+      throw new ConfigError('Config error: "plugins" must be an array of strings.')
+    }
+    for (const plugin of c.plugins) {
+      if (typeof plugin !== 'string') {
+        throw new ConfigError(
+          'Config error: "plugins" must be an array of strings.',
+        )
+      }
+    }
   }
 
   return true
@@ -114,7 +137,7 @@ export async function loadConfig(cwd: string): Promise<ResolvedConfig | null> {
     const raw = mod.default ?? mod
 
     if (!validateConfig(raw)) {
-      process.exit(1)
+      throw new ConfigError(`Invalid configuration in ${configPath}`)
     }
 
     // Resolve defaults
@@ -137,8 +160,9 @@ export async function loadConfig(cwd: string): Promise<ResolvedConfig | null> {
 
     return resolved
   } catch (err) {
-    console.error(pc.red(`  Failed to load config from ${configPath}:`))
-    console.error(pc.red(`  ${(err as Error).message}`))
-    process.exit(1)
+    if (err instanceof ConfigError) throw err
+    throw new ConfigError(
+      `Failed to load config from ${configPath}: ${(err as Error).message}`,
+    )
   }
 }

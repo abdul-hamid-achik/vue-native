@@ -66,7 +66,9 @@ export function usePerformance() {
   // Auto-cleanup on unmount
   onUnmounted(() => {
     if (isProfiling.value) {
-      NativeBridge.invokeNativeModule('Performance', 'stopProfiling', []).catch(() => {})
+      NativeBridge.invokeNativeModule('Performance', 'stopProfiling', []).catch((err: unknown) => {
+        if (__DEV__) console.warn('[vue-native] Performance.stopProfiling failed:', err)
+      })
       isProfiling.value = false
     }
     if (unsubscribe) {

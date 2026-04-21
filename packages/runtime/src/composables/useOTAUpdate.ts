@@ -86,7 +86,9 @@ export function useOTAUpdate(serverUrl: string) {
   // Fetch current version on init
   NativeBridge.invokeNativeModule('OTA', 'getCurrentVersion', []).then((info: VersionInfo) => {
     currentVersion.value = info.version
-  }).catch(() => {})
+  }).catch((err: unknown) => {
+    if (__DEV__) console.warn('[vue-native] OTA.getCurrentVersion failed:', err)
+  })
 
   async function checkForUpdate(): Promise<UpdateInfo> {
     isChecking.value = true
@@ -133,7 +135,9 @@ export function useOTAUpdate(serverUrl: string) {
       status.value = 'ready'
     } catch (err: unknown) {
       // Clean up partial download to prevent corrupted bundles from being applied later
-      await NativeBridge.invokeNativeModule('OTA', 'cleanupPartialDownload', []).catch(() => {})
+      await NativeBridge.invokeNativeModule('OTA', 'cleanupPartialDownload', []).catch((err: unknown) => {
+        if (__DEV__) console.warn('[vue-native] OTA.cleanupPartialDownload failed:', err)
+      })
       error.value = getErrorMessage(err)
       status.value = 'error'
       throw err

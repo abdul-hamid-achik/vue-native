@@ -153,7 +153,9 @@ export function useWebSocket(url: string, options: WebSocketOptions = {}) {
     // Close connection if still open
     if (status.value === 'OPEN' || status.value === 'CONNECTING') {
       reconnectAttempts = maxReconnectAttempts // Prevent reconnect
-      NativeBridge.invokeNativeModule('WebSocket', 'close', [connectionId, 1000, '']).catch(() => {})
+      NativeBridge.invokeNativeModule('WebSocket', 'close', [connectionId, 1000, '']).catch((err: unknown) => {
+        if (__DEV__) console.warn('[vue-native] WebSocket.close failed:', err)
+      })
     }
     // Unsubscribe from all events
     unsubscribers.forEach(unsub => unsub())

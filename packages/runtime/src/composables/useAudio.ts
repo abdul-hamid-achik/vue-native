@@ -86,9 +86,13 @@ export function useAudio() {
     unsubComplete()
     unsubError()
     // Stop playback and recording to free resources
-    NativeBridge.invokeNativeModule('Audio', 'stop', []).catch(() => {})
+    NativeBridge.invokeNativeModule('Audio', 'stop', []).catch((err: unknown) => {
+      if (__DEV__) console.warn('[vue-native] Audio.stop failed:', err)
+    })
     if (isRecording.value) {
-      NativeBridge.invokeNativeModule('Audio', 'stopRecording', []).catch(() => {})
+      NativeBridge.invokeNativeModule('Audio', 'stopRecording', []).catch((err: unknown) => {
+        if (__DEV__) console.warn('[vue-native] Audio.stopRecording failed:', err)
+      })
     }
   })
 

@@ -3,6 +3,7 @@ import { spawn, execSync } from 'node:child_process'
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import pc from 'picocolors'
+import { ConfigError } from '../config.js'
 
 function findAppPath(_buildDir: string): string | null {
   // Look for .app bundle in DerivedData or build directory
@@ -84,8 +85,7 @@ export const runCommand = new Command('run')
     activity: string
   }) => {
     if (platform !== 'ios' && platform !== 'android' && platform !== 'macos') {
-      console.error(pc.red('Platform must be "ios", "android", or "macos"'))
-      process.exit(1)
+      throw new ConfigError('Platform must be "ios", "android", or "macos"')
     }
 
     const cwd = process.cwd()
@@ -98,8 +98,7 @@ export const runCommand = new Command('run')
       execSync('bun run vite build', { cwd, stdio: 'inherit' })
       console.log(pc.green('  ✓ Bundle built\n'))
     } catch {
-      console.error(pc.red('  ✗ Bundle build failed'))
-      process.exit(1)
+      throw new ConfigError('Bundle build failed')
     }
 
     if (platform === 'ios') {
@@ -248,9 +247,9 @@ function runAndroid(
   // Find gradlew
   const gradlew = join(androidDir, 'gradlew')
   if (!existsSync(gradlew)) {
-    console.error(pc.red('  ✗ gradlew not found in android/ directory'))
-    console.log(pc.dim('  Make sure your Android project has the Gradle wrapper.\n'))
-    process.exit(1)
+    throw new ConfigError(
+      'gradlew not found in android/ directory. Make sure your Android project has the Gradle wrapper.',
+    )
   }
 
   // Build with Gradle

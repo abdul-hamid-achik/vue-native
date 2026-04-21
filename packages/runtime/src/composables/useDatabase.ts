@@ -82,7 +82,9 @@ export function useDatabase(name: string = 'default') {
       await NativeBridge.invokeNativeModule('Database', 'execute', [name, 'COMMIT', []])
     } catch (err) {
       // Best-effort rollback; suppress rollback errors to surface the original failure
-      await NativeBridge.invokeNativeModule('Database', 'execute', [name, 'ROLLBACK', []]).catch(() => {})
+      await NativeBridge.invokeNativeModule('Database', 'execute', [name, 'ROLLBACK', []]).catch((err: unknown) => {
+        if (__DEV__) console.warn('[vue-native] Database ROLLBACK failed:', err)
+      })
       throw err
     }
   }
@@ -96,7 +98,9 @@ export function useDatabase(name: string = 'default') {
 
   onUnmounted(() => {
     if (opened) {
-      NativeBridge.invokeNativeModule('Database', 'close', [name]).catch(() => {})
+      NativeBridge.invokeNativeModule('Database', 'close', [name]).catch((err: unknown) => {
+        if (__DEV__) console.warn('[vue-native] Database.close failed:', err)
+      })
       opened = false
       isOpen.value = false
     }

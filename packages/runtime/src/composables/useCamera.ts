@@ -95,7 +95,9 @@ export function useCamera() {
 
   onUnmounted(() => {
     // Stop QR scanning if running
-    NativeBridge.invokeNativeModule('Camera', 'stopQRScan').catch(() => {})
+    NativeBridge.invokeNativeModule('Camera', 'stopQRScan').catch((err: unknown) => {
+      if (__DEV__) console.warn('[vue-native] Camera.stopQRScan failed:', err)
+    })
     // Clean up all QR event listeners
     qrCleanups.forEach(fn => fn())
     qrCleanups.length = 0

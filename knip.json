@@ -17,8 +17,7 @@
   "ignore": [
     "native/**",
     "docs/**",
-    "tools/**",
-    "**/*.d.ts"
+    "tools/**"
   ],
   "exclude": ["classMembers", "exports", "types", "duplicates"],
   "ignoreBinaries": ["maestro", "swift"]

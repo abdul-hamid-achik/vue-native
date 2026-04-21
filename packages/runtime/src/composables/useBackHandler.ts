@@ -29,7 +29,9 @@ export function useBackHandler(handler: () => boolean): void {
       const handled = handler()
       if (!handled) {
         // Handler did not consume the back press — invoke default native back behavior
-        NativeBridge.invokeNativeModule('BackHandler', 'exitApp', []).catch(() => {})
+        NativeBridge.invokeNativeModule('BackHandler', 'exitApp', []).catch((err: unknown) => {
+          if (__DEV__) console.warn('[vue-native] BackHandler.exitApp failed:', err)
+        })
       }
     })
   })

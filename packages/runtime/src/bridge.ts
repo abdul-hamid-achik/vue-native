@@ -314,6 +314,20 @@ class NativeBridgeImpl {
   ): Promise<any> {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return new Promise<any>((resolve, reject) => {
+      // Wraparound safety: if the id is already in use, reject the orphaned
+      // callback before overwriting to prevent ID collision and leaked promises.
+      if (this.pendingCallbacks.has(this.nextCallbackId)) {
+        const orphaned = this.pendingCallbacks.get(this.nextCallbackId)
+        if (orphaned) {
+          clearTimeout(orphaned.timeoutId)
+          orphaned.reject(
+            new Error(
+              '[VueNative] Native bridge callback ID overflow — orphaned callback was rejected',
+            ),
+          )
+        }
+      }
+
       const callbackId = this.nextCallbackId
       if (this.nextCallbackId >= NativeBridgeImpl.MAX_CALLBACK_ID) {
         this.nextCallbackId = 1

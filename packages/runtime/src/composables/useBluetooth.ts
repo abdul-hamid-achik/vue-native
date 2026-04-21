@@ -168,7 +168,9 @@ export function useBluetooth() {
 
   onUnmounted(() => {
     if (isScanning.value) {
-      NativeBridge.invokeNativeModule('Bluetooth', 'stopScan').catch(() => {})
+      NativeBridge.invokeNativeModule('Bluetooth', 'stopScan').catch((err: unknown) => {
+        if (__DEV__) console.warn('[vue-native] Bluetooth.stopScan failed:', err)
+      })
     }
     cleanups.forEach(fn => fn())
     cleanups.length = 0

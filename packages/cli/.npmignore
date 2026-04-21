@@ -1,0 +1,17 @@
+native/.build/
+native/**/.swiftpm/
+native/**/DerivedData/
+native/**/.gradle/
+node_modules/
+dist/
+.git/
+.github/
+*.test.ts
+*.test.js
+__tests__/
+coverage/
+.eslintrc*
+prettier.config.*
+vitest.config.*
+tsconfig.json
+.env*

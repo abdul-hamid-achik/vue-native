@@ -5,6 +5,7 @@ import pc from 'picocolors'
 import { parseDirectory } from '@thelacanians/vue-native-sfc-parser'
 import { generateCode, writeGeneratedFiles, cleanGeneratedFiles, validateNativeBlocks, formatValidationErrors } from '@thelacanians/vue-native-codegen'
 import type { CodegenOptions } from '@thelacanians/vue-native-codegen'
+import { ConfigError } from '../config.js'
 
 export const generateCommand = new Command('generate')
   .description('Generate native code from <native> blocks in Vue SFC files')
@@ -37,9 +38,9 @@ export const generateCommand = new Command('generate')
 
     // Check if app directory exists
     if (!existsSync(appDir)) {
-      console.error(pc.red(`Error: App directory not found at ${appDir}`))
-      console.error(pc.yellow('Make sure you run this command from your project root.'))
-      process.exit(1)
+      throw new ConfigError(
+        `App directory not found at ${appDir}. Make sure you run this command from your project root.`,
+      )
     }
 
     // Build codegen options
@@ -107,7 +108,7 @@ export const generateCommand = new Command('generate')
         if (!validation.isValid) {
           console.log(pc.red('\n❌ Validation failed:'))
           console.log(formatValidationErrors(validation))
-          process.exit(1)
+          throw new ConfigError('Validation failed')
         }
 
         if (validation.warnings.length > 0) {
@@ -138,7 +139,7 @@ export const generateCommand = new Command('generate')
           codegenResult.errors.forEach((err) => {
             console.log(pc.red(`  - ${err.file} ${err.message}`))
           })
-          process.exit(1)
+          throw new ConfigError('Code generation failed')
         }
 
         // Write files
@@ -150,7 +151,7 @@ export const generateCommand = new Command('generate')
           writeResult.errors.forEach((err) => {
             console.log(pc.red(`  - ${err.message}`))
           })
-          process.exit(1)
+          throw new ConfigError('Failed to write generated files')
         }
 
         // Summary
@@ -171,10 +172,10 @@ export const generateCommand = new Command('generate')
 
         console.log(pc.green('🎉 Ready to build!\n'))
       } catch (error) {
-        console.error(pc.red('\n❌ Fatal error:'))
-        console.error(pc.red((error as Error).message))
-        console.error(pc.dim((error as Error).stack || ''))
-        process.exit(1)
+        if (error instanceof ConfigError) throw error
+        throw new ConfigError(
+          (error as Error).message || 'Unknown generation error',
+        )
       }
     }
 

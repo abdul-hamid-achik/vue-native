@@ -79,7 +79,9 @@ export function useAppleSignIn() {
         isAuthenticated.value = true
       }
     })
-    .catch(() => {})
+    .catch((err: unknown) => {
+      if (__DEV__) console.warn('[vue-native] SocialAuth.getCurrentUser failed:', err)
+    })
 
   async function signIn(): Promise<AuthResult> {
     error.value = null

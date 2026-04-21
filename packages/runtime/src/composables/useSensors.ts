@@ -36,7 +36,10 @@ export function useAccelerometer(options: SensorOptions = {}) {
     .then((result: { available: boolean }) => {
       isAvailable.value = result.available
     })
-    .catch(() => {})
+    .catch((err: unknown) => {
+      if (__DEV__) console.warn('[vue-native] Sensors.isAvailable(accelerometer) failed:', err)
+      isAvailable.value = false
+    })
 
   function start() {
     if (running) return
@@ -50,7 +53,9 @@ export function useAccelerometer(options: SensorOptions = {}) {
 
     NativeBridge.invokeNativeModule('Sensors', 'startAccelerometer', [
       options.interval ?? 100,
-    ]).catch(() => {})
+    ]).catch((err: unknown) => {
+      if (__DEV__) console.warn('[vue-native] Sensors.startAccelerometer failed:', err)
+    })
   }
 
   function stop() {
@@ -58,7 +63,9 @@ export function useAccelerometer(options: SensorOptions = {}) {
     running = false
     unsubscribe?.()
     unsubscribe = null
-    NativeBridge.invokeNativeModule('Sensors', 'stopAccelerometer').catch(() => {})
+    NativeBridge.invokeNativeModule('Sensors', 'stopAccelerometer').catch((err: unknown) => {
+      if (__DEV__) console.warn('[vue-native] Sensors.stopAccelerometer failed:', err)
+    })
   }
 
   onUnmounted(() => {
@@ -90,7 +97,10 @@ export function useGyroscope(options: SensorOptions = {}) {
     .then((result: { available: boolean }) => {
       isAvailable.value = result.available
     })
-    .catch(() => {})
+    .catch((err: unknown) => {
+      if (__DEV__) console.warn('[vue-native] Sensors.isAvailable(gyroscope) failed:', err)
+      isAvailable.value = false
+    })
 
   function start() {
     if (running) return
@@ -104,7 +114,9 @@ export function useGyroscope(options: SensorOptions = {}) {
 
     NativeBridge.invokeNativeModule('Sensors', 'startGyroscope', [
       options.interval ?? 100,
-    ]).catch(() => {})
+    ]).catch((err: unknown) => {
+      if (__DEV__) console.warn('[vue-native] Sensors.startGyroscope failed:', err)
+    })
   }
 
   function stop() {
@@ -112,7 +124,9 @@ export function useGyroscope(options: SensorOptions = {}) {
     running = false
     unsubscribe?.()
     unsubscribe = null
-    NativeBridge.invokeNativeModule('Sensors', 'stopGyroscope').catch(() => {})
+    NativeBridge.invokeNativeModule('Sensors', 'stopGyroscope').catch((err: unknown) => {
+      if (__DEV__) console.warn('[vue-native] Sensors.stopGyroscope failed:', err)
+    })
   }
 
   onUnmounted(() => {

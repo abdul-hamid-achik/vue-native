@@ -3,6 +3,7 @@ import { spawn, execSync } from 'node:child_process'
 import { existsSync, readdirSync, mkdirSync, copyFileSync } from 'node:fs'
 import { join, basename } from 'node:path'
 import pc from 'picocolors'
+import { ConfigError } from '../config.js'
 
 function findXcodeProject(iosDir: string): { path: string, isWorkspace: boolean } | null {
   if (!existsSync(iosDir)) return null
@@ -72,8 +73,7 @@ export const buildCommand = new Command('build')
     aab?: boolean
   }) => {
     if (platform !== 'ios' && platform !== 'android' && platform !== 'macos') {
-      console.error(pc.red('Platform must be "ios", "android", or "macos"'))
-      process.exit(1)
+      throw new ConfigError('Platform must be "ios", "android", or "macos"')
     }
 
     const cwd = process.cwd()
@@ -87,8 +87,7 @@ export const buildCommand = new Command('build')
       execSync('bun run vite build --mode production', { cwd, stdio: 'inherit' })
       console.log(pc.green('  ✓ Bundle built\n'))
     } catch {
-      console.error(pc.red('  ✗ Bundle build failed'))
-      process.exit(1)
+      throw new ConfigError('Bundle build failed')
     }
 
     if (platform === 'ios') {
@@ -214,11 +213,10 @@ function buildAndroid(
   // Find gradlew
   const gradlew = join(androidDir, 'gradlew')
   if (!existsSync(gradlew)) {
-    console.error(pc.red('  ✗ gradlew not found in android/ directory'))
-    console.log(pc.dim('  Make sure your Android project has the Gradle wrapper.\n'))
-    process.exit(1)
+    throw new ConfigError(
+      'gradlew not found in android/ directory. Make sure your Android project has the Gradle wrapper.',
+    )
   }
-
   const gradleTask = options.aab ? 'bundleRelease' : 'assembleRelease'
   const artifactType = options.aab ? 'AAB' : 'APK'
 
