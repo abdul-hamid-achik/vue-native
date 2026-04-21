@@ -175,7 +175,7 @@ function runIOS(
   xcodebuild.on('close', (code) => {
     if (code !== 0) {
       console.error(pc.red(`  ✗ Build failed (exit code ${code})`))
-      process.exit(1)
+      throw new ConfigError(`iOS build failed with exit code ${code}`)
     }
 
     console.log(pc.green('  ✓ Build successful\n'))
@@ -210,7 +210,7 @@ function runIOS(
         console.log(pc.green('  ✓ App installed'))
       } catch (err) {
         console.error(pc.red(`  ✗ Failed to install app: ${(err as Error).message}`))
-        process.exit(1)
+        throw new ConfigError(`iOS app install failed: ${(err as Error).message}`)
       }
 
       console.log(pc.white(`  Launching ${bundleId}...`))
@@ -219,7 +219,7 @@ function runIOS(
         console.log(pc.green(`  ✓ App launched on ${simulatorName}\n`))
       } catch (err) {
         console.error(pc.red(`  ✗ Failed to launch app: ${(err as Error).message}`))
-        process.exit(1)
+        throw new ConfigError(`iOS app launch failed: ${(err as Error).message}`)
       }
     } else {
       console.log(pc.yellow('  Could not locate .app bundle in DerivedData.'))
@@ -297,7 +297,7 @@ function runAndroid(
   gradle.on('close', (code) => {
     if (code !== 0) {
       console.error(pc.red(`  ✗ Gradle build failed (exit code ${code})`))
-      process.exit(1)
+      throw new ConfigError(`Android Gradle build failed with exit code ${code}`)
     }
 
     console.log(pc.green('  ✓ Build successful\n'))
@@ -318,7 +318,7 @@ function runAndroid(
     } catch (err) {
       console.error(pc.red(`  ✗ Failed to install APK: ${(err as Error).message}`))
       console.log(pc.dim('  Make sure an emulator is running or a device is connected (adb devices).\n'))
-      process.exit(1)
+      throw new ConfigError(`APK install failed: ${(err as Error).message}`)
     }
 
     // Launch app
@@ -329,7 +329,7 @@ function runAndroid(
       console.log(pc.green(`  ✓ App launched\n`))
     } catch (err) {
       console.error(pc.red(`  ✗ Failed to launch app: ${(err as Error).message}`))
-      process.exit(1)
+      throw new ConfigError(`App launch failed: ${(err as Error).message}`)
     }
   })
 }
@@ -393,7 +393,7 @@ function runMacOS(
   xcodebuild.on('close', (code) => {
     if (code !== 0) {
       console.error(pc.red(`  ✗ Build failed (exit code ${code})`))
-      process.exit(1)
+      throw new ConfigError(`macOS build failed with exit code ${code}`)
     }
 
     console.log(pc.green('  ✓ Build successful\n'))

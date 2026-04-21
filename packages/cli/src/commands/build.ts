@@ -179,7 +179,7 @@ function buildIOS(
   xcodebuild.on('close', (code) => {
     if (code !== 0) {
       console.error(pc.red(`  ✗ Archive failed (exit code ${code})`))
-      process.exit(1)
+      throw new ConfigError(`iOS archive failed with exit code ${code}`)
     }
 
     console.log(pc.green('  ✓ Archive successful\n'))
@@ -266,7 +266,7 @@ function buildAndroid(
   gradle.on('close', (code) => {
     if (code !== 0) {
       console.error(pc.red(`  ✗ Gradle build failed (exit code ${code})`))
-      process.exit(1)
+      throw new ConfigError(`Android Gradle build failed with exit code ${code}`)
     }
 
     console.log(pc.green('  ✓ Build successful\n'))
@@ -376,7 +376,7 @@ function buildMacOS(
   xcodebuild.on('close', (code) => {
     if (code !== 0) {
       console.error(pc.red(`  ✗ Archive failed (exit code ${code})`))
-      process.exit(1)
+      throw new ConfigError(`macOS archive failed with exit code ${code}`)
     }
 
     console.log(pc.green('  ✓ Archive successful\n'))

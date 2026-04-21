@@ -564,7 +564,9 @@ export function createRouter(optionsOrRoutes: RouterOptions | RouteConfig[]): Ro
       persistTimer = null
       const stateJson = JSON.stringify(getState())
       NativeBridge.invokeNativeModule('AsyncStorage', 'setItem', [persistKey, stateJson])
-        .catch(() => {})
+        .catch((err) => {
+          if (__DEV__) console.warn('[vue-native] Failed to persist navigation state:', err)
+        })
     }, 300)
   }
 
@@ -593,7 +595,9 @@ export function createRouter(optionsOrRoutes: RouterOptions | RouteConfig[]): Ro
           }
         }
       })
-      .catch(() => {})
+      .catch((err) => {
+        if (__DEV__) console.warn('[vue-native] Failed to restore navigation state:', err)
+      })
       .finally(() => {
         restoring = false
         restoreComplete = true
@@ -636,7 +640,9 @@ export function createRouter(optionsOrRoutes: RouterOptions | RouteConfig[]): Ro
           handleURL(url)
         }
       })
-      .catch(() => {})
+      .catch((err) => {
+        if (__DEV__) console.warn('[vue-native] Failed to get initial URL:', err)
+      })
 
     // Listen for incoming URLs while app is running
     NativeBridge.onGlobalEvent('url', (payload) => {
