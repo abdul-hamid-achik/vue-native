@@ -88,7 +88,9 @@ tools/
 # All three must pass before committing:
 bun run lint              # ESLint — fix errors, don't ignore warnings
 bun run typecheck         # tsc --noEmit via turbo — zero errors required
-bun test                  # Bun test runner (640+ tests, 0 failures required)
+bun run test              # Turbo orchestrated tests via Vitest across packages — 0 failures required
+                          # NOTE: Do NOT use `bun test` directly — it uses Bun's built-in runner
+                          # which behaves differently (e.g., `node:fs` module resolution).
 ```
 
 The `lefthook` pre-commit hook runs lint + typecheck automatically, but **you must also run tests manually** before pushing. The hook does NOT run tests.

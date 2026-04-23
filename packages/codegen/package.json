@@ -1,6 +1,6 @@
 {
   "name": "@thelacanians/vue-native-codegen",
-  "version": "0.0.2",
+  "version": "0.6.4",
   "description": "Code generator for Vue Native <native> blocks - generates Swift, Kotlin, and TypeScript code",
   "license": "MIT",
   "author": "Vue Native Contributors",
@@ -36,7 +36,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@thelacanians/vue-native-sfc-parser": "^0.0.2"
+    "@thelacanians/vue-native-sfc-parser": "^0.6.4"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

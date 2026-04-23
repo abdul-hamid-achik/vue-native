@@ -1,6 +1,6 @@
 {
   "name": "@thelacanians/vue-native-sfc-parser",
-  "version": "0.0.2",
+  "version": "0.6.4",
   "description": "Vue Native SFC parser for extracting <native> blocks",
   "license": "MIT",
   "author": "Vue Native Contributors",

@@ -5,6 +5,31 @@ All notable changes to Vue Native are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.4] - 2026-04-22
+
+### Security
+
+- Remove accidentally committed `.env` file containing npm token.
+
+### Fixed
+
+- **Bridge callback ID wraparound race condition**: orphaned callbacks are now rejected before the ID is reused, preventing leaked promises.
+- **Empty catch blocks**: replaced 15+ `.catch(() => {})` swallowing async errors in composables with `__DEV__` warnings.
+- **CLI hard errors**: replaced all `process.exit(1)` with typed `ConfigError` throws across `config.ts`, `create.ts`, `build.ts`, `run.ts`, `generate.ts`, and `cli.ts`.
+- **CLI scaffolding**: template versions are now derived dynamically from `package.json`; project name validation added (`/^[a-zA-Z0-9_-]+$/i`).
+
+### Added
+
+- `iOSRAFHelper.swift`: CADisplayLink-based `requestAnimationFrame` / `cancelAnimationFrame` polyfill for iOS.
+- `IOSModuleDefaults.swift`: iOS-specific default module registry extension.
+- Missing `env.d.ts` and `tsconfig.json` in example apps (`auth-flow`, `camera-app`, `chat`, `social`, `tasks`).
+- `VDrawer.md` and `useTeleport.md` documentation pages.
+
+### Changed
+
+- `vitest` bumped to `^4.0.18` in navigation package.
+- All workspace packages bumped to `0.6.4`.
+
 ## [0.4.3] - 2026-02-24
 
 ### Fixed
