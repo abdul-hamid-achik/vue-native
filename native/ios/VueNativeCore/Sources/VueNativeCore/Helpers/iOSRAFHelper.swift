@@ -6,7 +6,7 @@ import VueNativeShared
 /// iOS-specific requestAnimationFrame helper using CADisplayLink.
 /// Registers requestAnimationFrame/cancelAnimationFrame on the JS context
 /// and manages the display link lifecycle.
-enum iOSRAFHelper {
+enum IOSRAFHelper {
 
     /// Active display link for requestAnimationFrame. Accessed only from main thread.
     private static var displayLink: CADisplayLink?
@@ -118,7 +118,7 @@ private final class DisplayLinkTarget: NSObject {
             return
         }
         let timestamp = link.timestamp * 1000.0 // Convert to milliseconds
-        iOSRAFHelper.fireRAFCallbacks(runtime: runtime, timestamp: timestamp)
+        IOSRAFHelper.fireRAFCallbacks(runtime: runtime, timestamp: timestamp)
     }
 }
 #endif
