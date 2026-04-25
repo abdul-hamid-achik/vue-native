@@ -65,8 +65,9 @@ jobs:
         with:
           path: |
             ~/Library/Developer/Xcode/DerivedData
+            .build
             native/ios/VueNativeCore/.build
-          key: ${{ runner.os }}-swift-${{ hashFiles('native/ios/VueNativeCore/Package.swift') }}
+          key: ${{ runner.os }}-swift-${{ hashFiles('Package.swift', 'native/ios/VueNativeCore/Package.swift') }}
           restore-keys: |
             ${{ runner.os }}-swift-
 
@@ -78,9 +79,17 @@ jobs:
           cd native/ios
           swiftlint lint --reporter github-actions-logging
 
-      - name: Build VueNativeCore for iOS Simulator
+      - name: Build VueNativeCore for iOS Simulator (in-repo package)
         run: |
           cd native/ios/VueNativeCore
+          xcodebuild build \
+            -scheme VueNativeCore \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -skipPackagePluginValidation
+
+      - name: Validate root Package.swift (consumer-facing SPM target)
+        run: |
           xcodebuild build \
             -scheme VueNativeCore \
             -sdk iphonesimulator \
