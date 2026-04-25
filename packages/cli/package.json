@@ -26,7 +26,7 @@
     "native"
   ],
   "scripts": {
-    "prebuild": "rm -rf native && cp -r ../../native native",
+    "prebuild": "rm -rf native && rsync -a --exclude='.build/' --exclude='build/' --exclude='.gradle/' --exclude='.swiftpm/' --exclude='DerivedData/' --exclude='node_modules/' --exclude='.idea/' --exclude='build-tools/' --exclude='platform-tools/' --exclude='platforms/' --exclude='licenses/' --exclude='*.xcuserdata' --exclude='*.xcuserstate' --exclude='local.properties' --exclude='*.aar' --exclude='*.apk' --exclude='*.aab' ../../native/ native/",
     "build": "tsup",
     "dev": "tsup --watch",
     "test": "vitest run",
