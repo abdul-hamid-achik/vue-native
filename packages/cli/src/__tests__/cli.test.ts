@@ -807,18 +807,7 @@ describe('create command', () => {
 
   describe('invalid template', () => {
     it('rejects unknown template names', async () => {
-      const mockExit = vi.spyOn(process, 'exit').mockImplementation((() => {
-        throw new Error('process.exit')
-      }) as () => never)
-
-      try {
-        await runCreate('my-app', 'invalid-template')
-      } catch {
-        // Expected process.exit to throw
-      }
-
-      expect(mockExit).toHaveBeenCalledWith(1)
-      mockExit.mockRestore()
+      await expect(runCreate('my-app', 'invalid-template')).rejects.toThrow(/Invalid template/)
     })
   })
 })
@@ -991,19 +980,8 @@ describe('run command', () => {
   }
 
   it('rejects invalid platform names', async () => {
-    const mockExit = vi.spyOn(process, 'exit').mockImplementation((() => {
-      throw new Error('process.exit')
-    }) as () => never)
-
     const runCmd = await importRunCommand()
-    try {
-      await runCmd.parseAsync(['node', 'run', 'windows'])
-    } catch {
-      // Expected process.exit
-    }
-
-    expect(mockExit).toHaveBeenCalledWith(1)
-    mockExit.mockRestore()
+    await expect(runCmd.parseAsync(['node', 'run', 'windows'])).rejects.toThrow(/Platform must be/)
   })
 
   describe('iOS platform', () => {
@@ -1130,10 +1108,6 @@ describe('run command', () => {
     })
 
     it('exits with error when gradlew is not found', async () => {
-      const mockExit = vi.spyOn(process, 'exit').mockImplementation((() => {
-        throw new Error('process.exit')
-      }) as () => never)
-
       mockExecSync.mockImplementation(() => '')
       // android/ dir exists, but no gradlew
       mockExistsSync.mockImplementation((path: string) => {
@@ -1142,14 +1116,7 @@ describe('run command', () => {
       })
 
       const runCmd = await importRunCommand()
-      try {
-        await runCmd.parseAsync(['node', 'run', 'android'])
-      } catch {
-        // Expected process.exit
-      }
-
-      expect(mockExit).toHaveBeenCalledWith(1)
-      mockExit.mockRestore()
+      await expect(runCmd.parseAsync(['node', 'run', 'android'])).rejects.toThrow(/gradlew not found/)
     })
 
     it('spawns gradlew assembleDebug when Android project exists', async () => {
@@ -1315,19 +1282,8 @@ describe('build command', () => {
   }
 
   it('rejects invalid platform names', async () => {
-    const mockExit = vi.spyOn(process, 'exit').mockImplementation((() => {
-      throw new Error('process.exit')
-    }) as () => never)
-
     const buildCmd = await importBuildCommand()
-    try {
-      await buildCmd.parseAsync(['node', 'build', 'windows'])
-    } catch {
-      // Expected process.exit
-    }
-
-    expect(mockExit).toHaveBeenCalledWith(1)
-    mockExit.mockRestore()
+    await expect(buildCmd.parseAsync(['node', 'build', 'windows'])).rejects.toThrow(/Platform must be/)
   })
 
   describe('iOS build', () => {
@@ -1467,10 +1423,6 @@ describe('build command', () => {
     })
 
     it('exits with error when gradlew is not found', async () => {
-      const mockExit = vi.spyOn(process, 'exit').mockImplementation((() => {
-        throw new Error('process.exit')
-      }) as () => never)
-
       mockExecSync.mockImplementation(() => '')
       mockExistsSync.mockImplementation((path: string) => {
         if (typeof path === 'string' && path.endsWith('/android')) return true
@@ -1478,14 +1430,7 @@ describe('build command', () => {
       })
 
       const buildCmd = await importBuildCommand()
-      try {
-        await buildCmd.parseAsync(['node', 'build', 'android'])
-      } catch {
-        // Expected process.exit
-      }
-
-      expect(mockExit).toHaveBeenCalledWith(1)
-      mockExit.mockRestore()
+      await expect(buildCmd.parseAsync(['node', 'build', 'android'])).rejects.toThrow(/gradlew not found/)
     })
 
     it('spawns gradlew assembleRelease by default', async () => {
