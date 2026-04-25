@@ -1,5 +1,7 @@
 # @thelacanians/vue-native-runtime
 
+## 0.6.5
+
 ## 0.6.3
 
 ## 0.5.0

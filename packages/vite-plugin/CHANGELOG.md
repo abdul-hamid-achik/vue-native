@@ -1,5 +1,7 @@
 # @thelacanians/vue-native-vite-plugin
 
+## 0.6.5
+
 ## 0.6.3
 
 ### Patch Changes
