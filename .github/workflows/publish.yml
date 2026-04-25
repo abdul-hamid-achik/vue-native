@@ -241,10 +241,46 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Version: $VERSION"
 
-      - name: Create GitHub Release
+      - name: Tag release
         if: steps.version.outputs.version != ''
         run: |
           git tag -a v${{ steps.version.outputs.version }} -m "Release v${{ steps.version.outputs.version }}"
           git push origin v${{ steps.version.outputs.version }}
+
+      - name: Extract release notes from CHANGELOG
+        id: notes
+        if: steps.version.outputs.version != ''
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          # Pull the section for this version from the runtime CHANGELOG
+          # (the fixed-group packages share the same version, so any of them works).
+          NOTES=$(awk -v ver="## $VERSION" '
+            $0 == ver {flag=1; next}
+            /^## / && flag {exit}
+            flag {print}
+          ' packages/runtime/CHANGELOG.md)
+          if [ -z "$NOTES" ]; then
+            NOTES="Release v$VERSION"
+          fi
+          {
+            echo "notes<<RELEASE_NOTES_EOF"
+            echo "$NOTES"
+            echo ""
+            echo "## Published packages"
+            echo "- \`@thelacanians/vue-native-runtime@$VERSION\`"
+            echo "- \`@thelacanians/vue-native-navigation@$VERSION\`"
+            echo "- \`@thelacanians/vue-native-vite-plugin@$VERSION\`"
+            echo "- \`@thelacanians/vue-native-cli@$VERSION\`"
+            echo "- \`com.vuenative:core:$VERSION\` (GitHub Packages, Maven)"
+            echo "RELEASE_NOTES_EOF"
+          } >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        if: steps.version.outputs.version != ''
+        run: |
+          gh release create "v${{ steps.version.outputs.version }}" \
+            --title "v${{ steps.version.outputs.version }}" \
+            --notes "${{ steps.notes.outputs.notes }}" \
+            --latest
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
