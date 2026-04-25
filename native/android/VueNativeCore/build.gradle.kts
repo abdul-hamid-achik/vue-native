@@ -5,6 +5,20 @@ plugins {
     id("org.jlleitschuh.gradle.ktlint")
 }
 
+// Single source of truth for the published version: packages/runtime/package.json.
+// Falls back to 0.0.0-SNAPSHOT when the JS workspace isn't present (standalone Android builds).
+val publishedVersion: String = run {
+    val pkgJson = rootProject.file("../../packages/runtime/package.json")
+    if (!pkgJson.exists()) {
+        "0.0.0-SNAPSHOT"
+    } else {
+        Regex("\"version\"\\s*:\\s*\"([^\"]+)\"")
+            .find(pkgJson.readText())
+            ?.groupValues?.get(1)
+            ?: "0.0.0-SNAPSHOT"
+    }
+}
+
 android {
     namespace = "com.vuenative.core"
     compileSdk = 35
@@ -119,7 +133,7 @@ afterEvaluate {
             create<MavenPublication>("release") {
                 groupId = "com.vuenative"
                 artifactId = "core"
-                version = "0.6.2"
+                version = publishedVersion
                 from(components["release"])
             }
         }

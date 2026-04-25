@@ -6,31 +6,32 @@ import { existsSync, readFileSync } from 'node:fs'
 import pc from 'picocolors'
 import { ConfigError } from '../config.js'
 
-const VERSION = '0.6.2'
-
 function getTemplateVersions() {
-  // Derive versions from the CLI's own package.json if available
+  // Derive versions from the CLI's own package.json. The CLI is in the
+  // changesets `fixed` group with runtime/navigation/vite-plugin, so its
+  // version is also the iOS SPM tag and the Android Maven artifact version.
   try {
     const cliDir = dirname(dirname(fileURLToPath(import.meta.url)))
     const pkg = JSON.parse(readFileSync(join(cliDir, 'package.json'), 'utf8'))
-    const jsVersion = `^${pkg.version}`
     const viteDevDep = pkg.devDependencies?.vite
     const viteVuePluginDevDep = pkg.devDependencies?.['@vitejs/plugin-vue']
     return {
-      JS_PACKAGE_VERSION: jsVersion,
+      NATIVE_VERSION: pkg.version,
+      JS_PACKAGE_VERSION: `^${pkg.version}`,
       VITE_PLUGIN_VUE_VERSION: viteVuePluginDevDep ?? '^6.0.5',
       VITE_VERSION: viteDevDep ?? '^8.0.0',
     }
   } catch {
     return {
-      JS_PACKAGE_VERSION: `^${VERSION}`,
+      NATIVE_VERSION: '0.0.0',
+      JS_PACKAGE_VERSION: '^0.0.0',
       VITE_PLUGIN_VUE_VERSION: '^6.0.5',
       VITE_VERSION: '^8.0.0',
     }
   }
 }
 
-const { JS_PACKAGE_VERSION, VITE_PLUGIN_VUE_VERSION, VITE_VERSION } = getTemplateVersions()
+const { NATIVE_VERSION, JS_PACKAGE_VERSION, VITE_PLUGIN_VUE_VERSION, VITE_VERSION } = getTemplateVersions()
 
 const VALID_NAME = /^[a-zA-Z0-9_-]+$/i
 
@@ -134,7 +135,7 @@ options:
 packages:
   VueNativeCore:
     url: https://github.com/abdul-hamid-achik/vue-native
-    from: "${VERSION}"
+    from: "${NATIVE_VERSION}"
 
 targets:
   ${xcodeProjectName}:
@@ -377,7 +378,7 @@ android {
 }
 
 dependencies {
-    implementation("com.vuenative:core:${VERSION}")
+    implementation("com.vuenative:core:${NATIVE_VERSION}")
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("com.google.android.material:material:1.12.0")
     implementation("androidx.core:core-ktx:1.15.0")
