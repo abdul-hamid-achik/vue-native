@@ -1,12 +1,12 @@
 # Vue Native
 
-Build native iOS and Android apps with Vue 3. Write Vue components, render real native views — no WebView, no compromise.
+Build native iOS, Android, and macOS apps with Vue 3. Write Vue components, render real native views — no WebView, no compromise.
 
 ## Features
 
 - **Vue 3 First** — Composition API, `<script setup>`, `ref`, `computed`, `watch` — all just work
-- **Real Native UI** — Every component maps to native UIKit (iOS) or Android Views. No DOM, no WebView
-- **Cross-Platform** — Same Vue code targets both iOS and Android from a single codebase
+- **Real Native UI** — Every component maps to native UIKit (iOS), Android Views, or AppKit (macOS). No DOM, no WebView
+- **Cross-Platform** — Same Vue code targets iOS, Android, and macOS from a single codebase
 - **28+ Built-in Components** — VView, VText, VButton, VInput, VScrollView, VImage, VList, VModal, and more
 - **Native Modules** — Haptics, AsyncStorage, Clipboard, Network, Camera, Geolocation, and more
 - **Navigation** — Stack navigation via `@thelacanians/vue-native-navigation`
@@ -16,15 +16,15 @@ Build native iOS and Android apps with Vue 3. Write Vue components, render real 
 
 ## Platform Support
 
-| Feature | iOS | Android |
-|---------|-----|---------|
-| All 28+ components | ✅ | ✅ |
-| Native Modules | ✅ | ✅ |
-| Navigation | ✅ | ✅ |
-| Hot Reload | ✅ | ✅ |
-| Dark Mode | ✅ | ✅ |
-| JS Engine | JavaScriptCore | V8 (J2V8) |
-| Layout | Yoga/FlexLayout | FlexboxLayout |
+| Feature | iOS | Android | macOS |
+|---------|-----|---------|-------|
+| All 28+ components | ✅ | ✅ | ✅ |
+| Native Modules | ✅ | ✅ | ✅ |
+| Navigation | ✅ | ✅ | ✅ |
+| Hot Reload | ✅ | ✅ | ✅ |
+| Dark Mode | ✅ | ✅ | ✅ |
+| JS Engine | JavaScriptCore | V8 (J2V8) | JavaScriptCore |
+| Layout | Yoga/FlexLayout | FlexboxLayout | LayoutNode |
 
 ## Requirements
 
@@ -37,6 +37,11 @@ Build native iOS and Android apps with Vue 3. Write Vue components, render real 
 - Android 5.0+ (API 21+)
 - Android Studio Hedgehog+
 - Kotlin 1.9+
+
+### macOS
+- macOS 15.0+
+- Xcode 16+
+- Swift 6.0+ toolchain
 
 ### Shared
 - Node.js 18+ / Bun
@@ -61,6 +66,8 @@ my-app/
 ├── ios/               # Xcode project
 │   ├── AppDelegate.swift
 │   └── SceneDelegate.swift
+├── android/           # Android Gradle project
+│   └── app/
 ├── dist/              # Built JS bundle (auto-generated)
 └── vite.config.ts
 ```
@@ -98,8 +105,10 @@ const styles = createStyleSheet({
 
 ```bash
 bun run dev      # Start Vite watch mode + dev server
-# Open ios/ in Xcode and run on simulator
+# Open ios/ in Xcode or android/ in Android Studio and run on simulator/emulator
 ```
+
+macOS runtime support is available through `VueNativeMacOS`; the CLI can run an existing macOS Xcode project, but `vue-native create` does not scaffold the macOS app shell yet.
 
 ## Components
 

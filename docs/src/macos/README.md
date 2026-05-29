@@ -19,12 +19,18 @@ Vue Native on macOS uses the same architecture as iOS:
 
 ## Quick Start
 
+`vue-native create` does not scaffold a macOS app shell yet. Start with the shared Vue app, add a macOS Xcode target manually, then use the CLI to build the bundle and run that target:
+
 ```bash
-vue-native create my-mac-app --platforms macos
+vue-native create my-mac-app
 cd my-mac-app
 vue-native dev
+
+# after adding macos/
 vue-native run macos
 ```
+
+See [macOS Setup](./setup.md) for the manual app-shell steps.
 
 ## Key Differences from iOS
 

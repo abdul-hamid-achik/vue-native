@@ -24,7 +24,7 @@ export interface VueNativeConfig {
   android?: {
     /** Minimum Android SDK version. Default: 21. */
     minSdk?: number
-    /** Target Android SDK version. Default: 34. */
+    /** Target Android SDK version. Default: 35. */
     targetSdk?: number
     /** Android package name (defaults to bundleId). */
     packageName?: string
@@ -152,7 +152,7 @@ export async function loadConfig(cwd: string): Promise<ResolvedConfig | null> {
       },
       android: {
         minSdk: config.android?.minSdk ?? 21,
-        targetSdk: config.android?.targetSdk ?? 34,
+        targetSdk: config.android?.targetSdk ?? 35,
         packageName: config.android?.packageName ?? config.bundleId,
       },
       plugins: config.plugins ?? [],

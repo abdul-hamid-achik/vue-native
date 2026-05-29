@@ -1,6 +1,6 @@
 # Managed Workflow
 
-Vue Native's managed workflow provides a zero-config development experience similar to Expo. The CLI handles project scaffolding, native project generation, simulator management, and hot reload.
+Vue Native's managed workflow provides a low-config development experience similar to Expo. The CLI handles iOS and Android project scaffolding, native project generation, simulator management, and hot reload.
 
 ## Creating a Project
 
@@ -41,6 +41,10 @@ All templates include:
 - `vue-native.config.ts` configuration file
 - `.gitignore` with common exclusions
 
+::: note macOS
+The CLI can run and build an existing macOS Xcode project, but `vue-native create` does not scaffold a macOS app shell yet. Use the [macOS Setup](/macos/setup.md) guide to add that target manually.
+:::
+
 ## Project Configuration
 
 Configure your app with `vue-native.config.ts` in the project root:
@@ -57,7 +61,7 @@ export default defineConfig({
   },
   android: {
     minSdk: 21,
-    targetSdk: 34,
+    targetSdk: 35,
   },
 })
 ```
@@ -72,7 +76,7 @@ export default defineConfig({
 | `ios.deploymentTarget` | `string` | No | Minimum iOS version (default: `"16.0"`) |
 | `ios.scheme` | `string` | No | Xcode scheme name (defaults to sanitized `name`) |
 | `android.minSdk` | `number` | No | Minimum Android SDK (default: `21`) |
-| `android.targetSdk` | `number` | No | Target Android SDK (default: `34`) |
+| `android.targetSdk` | `number` | No | Target Android SDK (default: `35`) |
 | `android.packageName` | `string` | No | Android package (defaults to `bundleId`) |
 | `plugins` | `string[]` | No | Vue Native plugins to include |
 

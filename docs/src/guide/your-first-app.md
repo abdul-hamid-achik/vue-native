@@ -7,7 +7,7 @@ This guide walks you through building a complete Vue Native app from scratch —
 - Node.js 18+ or [Bun](https://bun.sh)
 - **iOS:** Xcode 15+, iOS 16+ Simulator
 - **Android:** Android Studio, API 21+ emulator
-- **macOS:** Xcode 15+, macOS 13.0+
+- **macOS:** Xcode 16+, macOS 15.0+
 
 ## Part 1: Project Setup & Your First Screen
 

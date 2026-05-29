@@ -399,7 +399,7 @@ Google Play requires AAB (Android App Bundle) format, not APK. The AAB format le
 |--------|--------------|
 | **Missing Data Safety form** | Complete the Data Safety section in Google Play Console, declaring all data your app collects |
 | **Excessive permissions** | Only declare permissions your app uses. Remove unused permission declarations. |
-| **Target API level too low** | Set `targetSdk = 34` (or the current requirement) in `build.gradle.kts` |
+| **Target API level too low** | Set `targetSdk = 35` (or the current Google Play requirement) in `build.gradle.kts` |
 | **Crashes on launch** | Test on multiple emulator configurations. Ensure the JS bundle is in `assets/`. |
 | **Missing privacy policy** | Provide a privacy policy URL in the store listing |
 | **Deceptive behavior** | Be transparent about what data you collect and how. Match your Data Safety declaration. |

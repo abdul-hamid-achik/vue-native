@@ -1,10 +1,10 @@
 # Android Guide
 
-Vue Native targets **Android 7.0+ (API 24)** using Android Views, V8/J2V8, and FlexboxLayout.
+Vue Native targets **Android 5.0+ (API 21)** using Android Views, V8/J2V8, and FlexboxLayout.
 
 ## Requirements
 
-- Android 7.0+ (API 24+), targeting API 35
+- Android 5.0+ (API 21+), targeting API 35
 - Android Studio Ladybug+
 - JDK 17 (bundled with Android Studio)
 

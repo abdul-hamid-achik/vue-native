@@ -273,7 +273,7 @@ describe('config', () => {
         },
         android: {
           minSdk: config.android?.minSdk ?? 21,
-          targetSdk: config.android?.targetSdk ?? 34,
+          targetSdk: config.android?.targetSdk ?? 35,
           packageName: config.android?.packageName ?? config.bundleId,
         },
         plugins: config.plugins ?? [],
@@ -282,7 +282,7 @@ describe('config', () => {
       expect(resolved.ios.deploymentTarget).toBe('16.0')
       expect(resolved.ios.scheme).toBe('TestApp')
       expect(resolved.android.minSdk).toBe(21)
-      expect(resolved.android.targetSdk).toBe(34)
+      expect(resolved.android.targetSdk).toBe(35)
       expect(resolved.android.packageName).toBe('com.example.test')
       expect(resolved.plugins).toEqual([])
     })
@@ -306,7 +306,7 @@ describe('config', () => {
         },
         android: {
           minSdk: config.android?.minSdk ?? 21,
-          targetSdk: config.android?.targetSdk ?? 34,
+          targetSdk: config.android?.targetSdk ?? 35,
           packageName: config.android?.packageName ?? config.bundleId,
         },
         plugins: config.plugins ?? [],
@@ -753,6 +753,7 @@ describe('create command', () => {
       expect(appGradleCall).toBeDefined()
       const content = appGradleCall![1] as string
       expect(content).toContain('compileSdk = 35')
+      expect(content).toContain('minSdk = 21')
       expect(content).toContain('targetSdk = 35')
       expect(content).toContain('appcompat')
       expect(content).toContain('material')

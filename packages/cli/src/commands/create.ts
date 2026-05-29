@@ -347,7 +347,7 @@ android {
 
     defaultConfig {
         applicationId = "${androidPkg}"
-        minSdk = 24
+        minSdk = 21
         targetSdk = 35
         versionCode = 1
         versionName = "1.0"
@@ -502,7 +502,7 @@ export default defineConfig({
     deploymentTarget: '16.0',
   },
   android: {
-    minSdk: 24,
+    minSdk: 21,
     targetSdk: 35,
   },
 })

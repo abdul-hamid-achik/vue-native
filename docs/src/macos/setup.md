@@ -22,25 +22,25 @@ bun --version             # 1.3+
 After installing Xcode, open it once and accept the license.
 :::
 
-## Quick start (CLI)
-
-The fastest path — the CLI handles everything:
+## Quick start
 
 ```bash
-# 1. Scaffold project with macOS platform
-npx @thelacanians/vue-native-cli create my-mac-app --platforms macos
+# 1. Scaffold the shared Vue app plus iOS/Android native shells
+npx @thelacanians/vue-native-cli create my-mac-app
 cd my-mac-app
 bun install
 
-# 2. Build JS bundle + run macOS app
+# 2. Add a macOS Xcode project using the manual steps below
+
+# 3. Build JS bundle + run the macOS app
 vue-native run macos
 ```
 
-`vue-native run macos` does all of the following automatically:
+`vue-native create` does not scaffold a macOS app shell yet. Once you add a `macos/` Xcode project, `vue-native run macos` does the following:
+
 1. Runs `vite build` to produce `dist/vue-native-bundle.js`
-2. Generates the Xcode project from `macos/project.yml` via XcodeGen
-3. Builds the app with `xcodebuild`
-4. Launches the `.app` bundle
+2. Builds the existing macOS project with `xcodebuild`
+3. Launches the `.app` bundle
 
 If you want to understand what happens under the hood (or run steps manually), read on.
 
@@ -48,17 +48,15 @@ If you want to understand what happens under the hood (or run steps manually), r
 
 ### 1. Create a new Xcode project
 
-You can either use the CLI scaffold or create the project manually.
-
-**Using the CLI:**
+Use the CLI for the shared Vue project:
 
 ```bash
-npx @thelacanians/vue-native-cli create my-mac-app --platforms macos
+npx @thelacanians/vue-native-cli create my-mac-app
 cd my-mac-app
 bun install
 ```
 
-This generates:
+This generates the Vue app plus iOS and Android shells:
 
 ```
 my-mac-app/
@@ -66,19 +64,15 @@ my-mac-app/
     main.ts
     App.vue
     pages/Home.vue
-  macos/               # Native Xcode project
-    project.yml        # XcodeGen spec
-    Sources/
-      Info.plist
-      AppDelegate.swift
-      MainWindowController.swift
+  ios/                 # iOS native project
+  android/             # Android native project
   dist/                # Built JS bundle (generated)
   vite.config.ts
   vue-native.config.ts
   package.json
 ```
 
-**Creating manually in Xcode:**
+Then create the macOS shell manually in Xcode:
 
 1. Open Xcode, select **File > New > Project**
 2. Under **macOS**, choose **App**
