@@ -1,15 +1,14 @@
 {
+  "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "target": "ES2020",
-    "module": "ES2020",
-    "moduleResolution": "bundler",
-    "strict": true,
-    "jsx": "preserve",
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "noEmit": true
+    "outDir": "./dist",
+    "rootDir": ".",
+    "types": [],
+    "paths": {
+      "vue": ["../../packages/runtime/src"],
+      "@thelacanians/vue-native-runtime": ["../../packages/runtime/src"]
+    }
   },
-  "include": ["app/**/*.ts", "app/**/*.vue"]
+  "include": ["app/**/*", "env.d.ts", "vite.config.ts"],
+  "exclude": ["node_modules", "dist"]
 }

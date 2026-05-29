@@ -39,17 +39,21 @@ jobs:
 
       - name: Check for changesets
         id: changesets
+        shell: bash
         run: |
           echo "Checking for changesets..."
-          CHANGESET_COUNT=$(ls -1 .changeset/*.md 2>/dev/null | wc -l)
-          if [ "$CHANGESET_COUNT" -gt 0 ]; then
-            echo "hasChangesets=true" >> $GITHUB_OUTPUT
-            echo "Found $CHANGESET_COUNT changeset(s)"
-            bunx changeset status --verbose
-          else
-            echo "hasChangesets=false" >> $GITHUB_OUTPUT
+          mapfile -t CHANGESET_FILES < <(find .changeset -maxdepth 1 -type f -name '*.md' ! -name 'README.md' | sort)
+
+          if [ "${#CHANGESET_FILES[@]}" -eq 0 ]; then
+            echo "hasChangesets=false" >> "$GITHUB_OUTPUT"
             echo "No changesets found"
+            exit 0
           fi
+
+          echo "hasChangesets=true" >> "$GITHUB_OUTPUT"
+          echo "Found ${#CHANGESET_FILES[@]} changeset(s):"
+          printf '  %s\n' "${CHANGESET_FILES[@]}"
+          bunx changeset status --verbose
 
   # ── TypeScript validation ────────────────────────────────
   validate:
@@ -86,6 +90,9 @@ jobs:
 
       - name: Test
         run: bun run test:ts
+
+      - name: Dead code check
+        run: bun run knip
 
   # ── Native builds validation ─────────────────────────────
   native-builds:
@@ -125,10 +132,25 @@ jobs:
             -destination 'generic/platform=iOS Simulator' \
             -skipPackagePluginValidation
 
+      - name: Build VueNativeShared
+        run: |
+          cd native/shared/VueNativeShared
+          swift build
+
+      - name: Test VueNativeShared
+        run: |
+          cd native/shared/VueNativeShared
+          swift test
+
       - name: Build VueNativeMacOS
         run: |
           cd native/macos/VueNativeMacOS
           swift build
+
+      - name: Test VueNativeMacOS
+        run: |
+          cd native/macos/VueNativeMacOS
+          swift test
 
   # ── Android build validation ─────────────────────────────
   android-build:
@@ -157,8 +179,16 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
 
+      - name: Lint Kotlin
+        run: ./gradlew :VueNativeCore:ktlintCheck
+        working-directory: native/android
+
       - name: Build VueNativeCore
         run: ./gradlew :VueNativeCore:assembleRelease
+        working-directory: native/android
+
+      - name: Test VueNativeCore
+        run: ./gradlew :VueNativeCore:testReleaseUnitTest
         working-directory: native/android
 
   # ── Publish packages (only on push to main with changesets) ──
@@ -192,6 +222,17 @@ jobs:
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
+
+      - name: Verify npm token
+        run: |
+          if [ -z "${NODE_AUTH_TOKEN:-}" ]; then
+            echo "NPM_TOKEN is not configured. Refusing to version or publish."
+            exit 1
+          fi
+
+          npm whoami --registry=https://registry.npmjs.org
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Configure git
         run: |
