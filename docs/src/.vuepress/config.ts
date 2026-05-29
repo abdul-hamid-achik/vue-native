@@ -318,6 +318,9 @@ export default defineUserConfig({
         '/macos/setup.md',
         '/macos/VueNativeWindowController.md',
       ],
+      '/architecture/': [
+        '/architecture/dual-thread.md',
+      ],
     },
   }),
 })
