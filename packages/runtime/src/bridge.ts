@@ -9,7 +9,7 @@ interface NativeBridgeGlobals {
   __VN_flushOperations?: (json: string) => void
   __VN_handleEvent?: (nodeId: number, eventName: string, payload: unknown) => void
   __VN_resolveCallback?: (callbackId: number, result: unknown, error: unknown) => void
-  __VN_handleGlobalEvent?: (eventName: string, payloadJSON: string) => void
+  __VN_handleGlobalEvent?: (eventName: string, payloadJSON: string) => boolean
   __VN_teardown?: () => void
 }
 
@@ -444,7 +444,7 @@ class NativeBridgeImpl {
   /**
    * Called from Swift via globalThis.__VN_handleGlobalEvent when a push event fires.
    */
-  handleGlobalEvent(eventName: string, payloadJSON: string): void {
+  handleGlobalEvent(eventName: string, payloadJSON: string): boolean {
     let payload: unknown = {}
     try {
       payload = JSON.parse(payloadJSON)
@@ -452,15 +452,19 @@ class NativeBridgeImpl {
       payload = {}
     }
     const handlers = this.globalEventHandlers.get(eventName)
-    if (handlers) {
-      handlers.forEach((h) => {
-        try {
-          h(payload)
-        } catch (err) {
-          console.error(`[VueNative] Error in global event handler "${eventName}":`, err)
-        }
-      })
+    if (!handlers || handlers.size === 0) {
+      return false
     }
+
+    handlers.forEach((h) => {
+      try {
+        h(payload)
+      } catch (err) {
+        console.error(`[VueNative] Error in global event handler "${eventName}":`, err)
+      }
+    })
+
+    return true
   }
 
   // ---------------------------------------------------------------------------

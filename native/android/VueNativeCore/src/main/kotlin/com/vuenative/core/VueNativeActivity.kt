@@ -72,6 +72,7 @@ abstract class VueNativeActivity : AppCompatActivity() {
 
         // Provide Activity reference for modules that need it (e.g. PermissionsModule)
         PermissionsModule.setActivity(this)
+        BackHandlerModule.setActivity(this)
 
         // Capture launch intent deep link URL for the LinkingModule
         intent?.data?.toString()?.let { url ->
@@ -148,6 +149,7 @@ abstract class VueNativeActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         PermissionsModule.setActivity(null)
+        BackHandlerModule.setActivity(null)
         hotReloadManager?.disconnect()
         runtime.release()
         super.onDestroy()
@@ -158,12 +160,17 @@ abstract class VueNativeActivity : AppCompatActivity() {
         PermissionsModule.onPermissionsResult(requestCode, permissions, grantResults)
     }
 
-    @Suppress("DEPRECATION")
     override fun onBackPressed() {
-        // Let JS handle back navigation — do not call super.onBackPressed()
-        runtime.executeVoidScript(
-            "if(typeof __VN_handleGlobalEvent==='function')" +
-            "__VN_handleGlobalEvent('hardware:backPress','{}')"
-        )
+        runtime.dispatchGlobalEvent("hardware:backPress", "{}") { handled ->
+            if (!handled) {
+                performDefaultBackAction()
+            }
+        }
+    }
+
+    protected open fun performDefaultBackAction() {
+        if (!isFinishing) {
+            finish()
+        }
     }
 }

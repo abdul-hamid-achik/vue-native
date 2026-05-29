@@ -68,16 +68,7 @@ class JSRuntime(private val context: Context) {
             }
         }
         bridge.onDispatchGlobalEvent = { eventName, payloadJson ->
-            jsHandler.post {
-                try {
-                    v8?.executeVoidScript(
-                        "if(typeof __VN_handleGlobalEvent==='function')" +
-                        "__VN_handleGlobalEvent(${encodeJs(eventName)},${encodeJs(payloadJson)})"
-                    )
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error dispatching global event $eventName", e)
-                }
-            }
+            dispatchGlobalEvent(eventName, payloadJson)
         }
     }
 
@@ -156,6 +147,29 @@ class JSRuntime(private val context: Context) {
                 v8?.executeVoidScript(script)
             } catch (e: Exception) {
                 Log.e(TAG, "Script error: ${e.message}")
+            }
+        }
+    }
+
+    /** Dispatch a global event to JS and optionally report whether JS had a listener. */
+    fun dispatchGlobalEvent(
+        eventName: String,
+        payloadJson: String,
+        onHandled: ((Boolean) -> Unit)? = null
+    ) {
+        jsHandler.post {
+            val handled = try {
+                v8?.executeBooleanScript(
+                    "typeof __VN_handleGlobalEvent==='function' && " +
+                        "__VN_handleGlobalEvent(${encodeJs(eventName)},${encodeJs(payloadJson)}) === true"
+                ) ?: false
+            } catch (e: Exception) {
+                Log.e(TAG, "Error dispatching global event $eventName", e)
+                false
+            }
+
+            if (onHandled != null) {
+                mainHandler.post { onHandled(handled) }
             }
         }
     }

@@ -44,5 +44,6 @@ useBackHandler(handler: () => boolean): void
 ## Notes
 
 - The handler is automatically registered on `onMounted` and cleaned up on `onUnmounted`.
-- Only the most recently registered handler is active — if multiple components register handlers, only the one currently mounted and registered last will fire.
+- If no handler is registered, Android performs the default back action and finishes the current Activity.
+- If multiple components register handlers, each mounted handler receives the event. Prefer one owner for modal or navigation back behavior to avoid conflicting actions.
 - Useful for preventing accidental navigation when the user has unsaved changes, or for closing modals/drawers before navigating back.

@@ -40,6 +40,7 @@ class NativeModuleRegistry private constructor(private val context: Context) {
             HttpModule(),
             BiometryModule(),
             CameraModule(),
+            BackHandlerModule(),
             SecureStorageModule(),
             WebSocketModule(),
             FileSystemModule(),

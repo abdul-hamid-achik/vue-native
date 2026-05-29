@@ -165,7 +165,8 @@ describe('NativeBridge', () => {
     it('handleGlobalEvent parses JSON payload', () => {
       const handler = vi.fn()
       NativeBridge.onGlobalEvent('test', handler)
-      NativeBridge.handleGlobalEvent('test', '{"key":"value","num":42}')
+      const handled = NativeBridge.handleGlobalEvent('test', '{"key":"value","num":42}')
+      expect(handled).toBe(true)
       expect(handler).toHaveBeenCalledWith({ key: 'value', num: 42 })
     })
 
@@ -174,6 +175,19 @@ describe('NativeBridge', () => {
       NativeBridge.onGlobalEvent('test', handler)
       expect(() => NativeBridge.handleGlobalEvent('test', 'invalid json')).not.toThrow()
       expect(handler).toHaveBeenCalledWith({})
+    })
+
+    it('handleGlobalEvent returns false when no handler is registered', () => {
+      const handled = NativeBridge.handleGlobalEvent('hardware:backPress', '{}')
+      expect(handled).toBe(false)
+    })
+
+    it('handleGlobalEvent returns false after the last handler is removed', () => {
+      const unsubscribe = NativeBridge.onGlobalEvent('hardware:backPress', vi.fn())
+      unsubscribe()
+
+      const handled = NativeBridge.handleGlobalEvent('hardware:backPress', '{}')
+      expect(handled).toBe(false)
     })
   })
 

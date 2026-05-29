@@ -142,9 +142,10 @@ describe('Bridge resilience', () => {
       })
       NativeBridge.onGlobalEvent('test', goodHandler)
 
-      NativeBridge.handleGlobalEvent('test', '{}')
+      const handled = NativeBridge.handleGlobalEvent('test', '{}')
 
       // The good handler should still fire despite the bad one throwing
+      expect(handled).toBe(true)
       expect(goodHandler).toHaveBeenCalledWith({})
       expect(errorSpy).toHaveBeenCalled()
 

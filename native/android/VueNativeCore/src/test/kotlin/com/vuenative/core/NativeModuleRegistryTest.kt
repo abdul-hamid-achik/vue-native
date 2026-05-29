@@ -175,7 +175,7 @@ class NativeModuleRegistryTest {
         // java.security.KeyStoreException in Robolectric, halting the forEach loop).
         // Modules registered in order: Haptics, AsyncStorage, Clipboard, DeviceInfo,
         // Network, AppState, Linking, Share, Animation, Keyboard, Permissions,
-        // Geolocation, Notifications, Http, Biometry, Camera, SecureStorage(throws)...
+        // Geolocation, Notifications, Http, Biometry, Camera, BackHandler, SecureStorage(throws)...
         assertNotNull("Haptics module should be registered", registry.getModule("Haptics"))
         assertNotNull("AsyncStorage module should be registered", registry.getModule("AsyncStorage"))
         assertNotNull("Clipboard module should be registered", registry.getModule("Clipboard"))
@@ -183,6 +183,7 @@ class NativeModuleRegistryTest {
         assertNotNull("Network module should be registered", registry.getModule("Network"))
         assertNotNull("Animation module should be registered", registry.getModule("Animation"))
         assertNotNull("Http module should be registered", registry.getModule("Http"))
+        assertNotNull("BackHandler module should be registered", registry.getModule("BackHandler"))
     }
 
     // -------------------------------------------------------------------------
