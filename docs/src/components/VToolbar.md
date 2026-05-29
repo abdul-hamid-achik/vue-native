@@ -37,7 +37,7 @@ function onItemClick(e: { id: string }) {
 |------|------|---------|-------------|
 | `items` | `ToolbarItem[]` | **required** | Array of toolbar item descriptors |
 | `displayMode` | `'iconOnly' \| 'labelOnly' \| 'iconAndLabel'` | `'iconAndLabel'` | Controls how each toolbar item renders its icon and label |
-| `showsBaselineSeparator` | `boolean` | `true` | Whether to draw the thin separator line below the toolbar |
+| `showsBaselineSeparator` | `boolean` | `true` | Whether to draw the thin separator line below the toolbar on macOS versions that still support it |
 
 ### ToolbarItem
 
@@ -143,7 +143,7 @@ function handleItem(e: { id: string }) {
 ## Notes
 
 - `VToolbar` renders a zero-size placeholder `FlippedView` in the layout tree. The actual `NSToolbar` is attached directly to the window, outside the normal view hierarchy. The placeholder does **not** affect the layout of sibling components.
-- The toolbar is created (or rebuilt) the first time the placeholder view is added to a window. If `items` is updated before the view appears in a window, the toolbar creation is deferred until the window is available.
+- The toolbar is created (or rebuilt) the first time the placeholder view is added to a window. If `items`, `displayMode`, or event listeners are updated before the view appears in a window, those values are retained and applied when the window is available.
 - Only one `VToolbar` should be used per window. Mounting multiple instances will overwrite the window's toolbar each time.
 - SF Symbol names can be verified in the macOS **SF Symbols** app. Only symbols available on macOS 11+ are supported without a version guard.
-- `displayMode` changes applied before the view is in a window are ignored. Set `displayMode` after the component has mounted, or ensure the view is in a window first.
+- `showsBaselineSeparator` maps to `NSToolbar.showsBaselineSeparator`, which AppKit no longer supports on macOS 15 and newer. Vue Native keeps the prop for API compatibility, but it is a no-op on the current macOS target.

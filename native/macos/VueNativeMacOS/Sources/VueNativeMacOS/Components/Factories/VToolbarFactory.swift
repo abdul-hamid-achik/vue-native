@@ -20,12 +20,18 @@ final class VToolbarFactory: NativeComponentFactory {
     private static var toolbarItemsKey: UInt8 = 0
     private static var toolbarKey: UInt8 = 0
     private static var itemClickHandlerKey: UInt8 = 0
+    private static var displayModeKey: UInt8 = 0
+    private static var showsBaselineSeparatorKey: UInt8 = 0
 
     // MARK: - NativeComponentFactory
 
     func createView() -> NSView {
-        let view = FlippedView()
+        let view = ToolbarPlaceholderView()
         view.ensureLayoutNode()
+        view.onMoveToWindow = { [weak self, weak view] in
+            guard let self, let view, view.window != nil else { return }
+            self.rebuildToolbar(for: view)
+        }
         return view
     }
 
@@ -40,28 +46,18 @@ final class VToolbarFactory: NativeComponentFactory {
             rebuildToolbar(for: view)
 
         case "displayMode":
-            guard let toolbar = objc_getAssociatedObject(
-                view, &VToolbarFactory.toolbarKey
-            ) as? NSToolbar else { return }
-
-            if let mode = value as? String {
-                switch mode {
-                case "iconOnly":
-                    toolbar.displayMode = .iconOnly
-                case "labelOnly":
-                    toolbar.displayMode = .labelOnly
-                case "iconAndLabel":
-                    toolbar.displayMode = .iconAndLabel
-                default:
-                    toolbar.displayMode = .default
-                }
-            }
+            objc_setAssociatedObject(
+                view, &VToolbarFactory.displayModeKey,
+                value as? String, .OBJC_ASSOCIATION_RETAIN_NONATOMIC
+            )
+            updateExistingToolbar(for: view)
 
         case "showsBaselineSeparator":
-            guard let toolbar = objc_getAssociatedObject(
-                view, &VToolbarFactory.toolbarKey
-            ) as? NSToolbar else { return }
-            toolbar.showsBaselineSeparator = (value as? Bool) ?? true
+            objc_setAssociatedObject(
+                view, &VToolbarFactory.showsBaselineSeparatorKey,
+                value as? Bool, .OBJC_ASSOCIATION_RETAIN_NONATOMIC
+            )
+            updateExistingToolbar(for: view)
 
         default:
             StyleEngine.apply(key: key, value: value, to: view)
@@ -75,6 +71,7 @@ final class VToolbarFactory: NativeComponentFactory {
                 view, &VToolbarFactory.itemClickHandlerKey,
                 handler as AnyObject, .OBJC_ASSOCIATION_RETAIN_NONATOMIC
             )
+            updateExistingToolbar(for: view)
 
         default:
             break
@@ -88,6 +85,7 @@ final class VToolbarFactory: NativeComponentFactory {
                 view, &VToolbarFactory.itemClickHandlerKey,
                 nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC
             )
+            updateExistingToolbar(for: view)
 
         default:
             break
@@ -97,12 +95,7 @@ final class VToolbarFactory: NativeComponentFactory {
     // MARK: - Toolbar management
 
     private func rebuildToolbar(for view: NSView) {
-        guard let window = view.window else {
-            // View not yet in a window — defer until it appears.
-            // We'll use viewDidMoveToWindow in the observation.
-            setupWindowObserver(for: view)
-            return
-        }
+        guard let window = view.window else { return }
 
         let items = objc_getAssociatedObject(
             view, &VToolbarFactory.toolbarItemsKey
@@ -123,8 +116,7 @@ final class VToolbarFactory: NativeComponentFactory {
 
         let toolbar = NSToolbar(identifier: "VueNativeToolbar-\(ObjectIdentifier(view).hashValue)")
         toolbar.delegate = delegate
-        toolbar.displayMode = .default
-        toolbar.showsBaselineSeparator = true
+        applyStoredOptions(to: toolbar, for: view)
 
         objc_setAssociatedObject(
             view, &VToolbarFactory.toolbarKey,
@@ -134,21 +126,51 @@ final class VToolbarFactory: NativeComponentFactory {
         window.toolbar = toolbar
     }
 
-    private func setupWindowObserver(for view: NSView) {
-        // Observe when the view moves to a window
-        let observer = NotificationCenter.default.addObserver(
-            forName: NSView.frameDidChangeNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self, weak view] _ in
-            guard let self = self, let view = view, view.window != nil else { return }
-            self.rebuildToolbar(for: view)
+    private func updateExistingToolbar(for view: NSView) {
+        guard objc_getAssociatedObject(
+            view, &VToolbarFactory.toolbarKey
+        ) is NSToolbar else {
+            return
         }
-        // Store observer to keep it alive; will be replaced on next call
-        objc_setAssociatedObject(
-            view, &VToolbarFactory.toolbarDelegateKey,
-            observer, .OBJC_ASSOCIATION_RETAIN_NONATOMIC
-        )
+        rebuildToolbar(for: view)
+    }
+
+    private func applyStoredOptions(to toolbar: NSToolbar, for view: NSView) {
+        let mode = objc_getAssociatedObject(
+            view, &VToolbarFactory.displayModeKey
+        ) as? String
+
+        switch mode {
+        case "iconOnly":
+            toolbar.displayMode = .iconOnly
+        case "labelOnly":
+            toolbar.displayMode = .labelOnly
+        case "iconAndLabel", nil:
+            toolbar.displayMode = .iconAndLabel
+        default:
+            toolbar.displayMode = .default
+        }
+
+        let showsBaselineSeparator = (
+            objc_getAssociatedObject(
+                view, &VToolbarFactory.showsBaselineSeparatorKey
+            ) as? Bool
+        ) ?? true
+
+        if #unavailable(macOS 15.0) {
+            toolbar.showsBaselineSeparator = showsBaselineSeparator
+        }
+    }
+}
+
+// MARK: - ToolbarPlaceholderView
+
+private final class ToolbarPlaceholderView: FlippedView {
+    var onMoveToWindow: (() -> Void)?
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        onMoveToWindow?()
     }
 }
 

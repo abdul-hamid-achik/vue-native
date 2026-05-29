@@ -5,6 +5,17 @@ import XCTest
 @MainActor
 final class ComponentFactoryTests: XCTestCase {
 
+    private func makeWindow() -> NSWindow {
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 320, height: 240),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = FlippedView(frame: window.contentView?.bounds ?? .zero)
+        return window
+    }
+
     func testVListFactoryAppliesPublicProps() {
         let factory = VListFactory()
         guard let container = factory.createView() as? VListContainerView else {
@@ -76,5 +87,69 @@ final class ComponentFactoryTests: XCTestCase {
         XCTAssertEqual(payload["layoutHeight"] as? CGFloat, 240)
         XCTAssertNil(payload["contentOffset"])
         XCTAssertNil(payload["layoutMeasurement"])
+    }
+
+    func testVToolbarAttachesWhenItemsArriveBeforeWindow() {
+        let factory = VToolbarFactory()
+        let view = factory.createView()
+        let window = makeWindow()
+
+        factory.updateProp(view: view, key: "displayMode", value: "labelOnly")
+        factory.updateProp(view: view, key: "showsBaselineSeparator", value: false)
+        factory.updateProp(
+            view: view,
+            key: "items",
+            value: [["id": "new", "label": "New", "icon": "doc.badge.plus"]]
+        )
+
+        XCTAssertNil(window.toolbar)
+
+        window.contentView?.addSubview(view)
+
+        guard let toolbar = window.toolbar else {
+            return XCTFail("Expected toolbar after placeholder moved to a window")
+        }
+
+        XCTAssertEqual(toolbar.displayMode, .labelOnly)
+        let defaultIdentifiers = toolbar.delegate?
+            .toolbarDefaultItemIdentifiers?(toolbar)
+            .map { $0.rawValue }
+        XCTAssertEqual(defaultIdentifiers, ["new"])
+    }
+
+    func testVToolbarRebuildsWhenItemClickHandlerArrivesAfterItems() {
+        let factory = VToolbarFactory()
+        let view = factory.createView()
+        let window = makeWindow()
+        var payload: [String: Any]?
+
+        window.contentView?.addSubview(view)
+        factory.updateProp(
+            view: view,
+            key: "items",
+            value: [["id": "new", "label": "New"]]
+        )
+        factory.addEventListener(view: view, event: "itemClick") { eventPayload in
+            payload = eventPayload as? [String: Any]
+        }
+
+        guard let toolbar = window.toolbar else {
+            return XCTFail("Expected toolbar")
+        }
+
+        let itemIdentifier = NSToolbarItem.Identifier("new")
+        if !toolbar.items.contains(where: { $0.itemIdentifier == itemIdentifier }) {
+            toolbar.insertItem(withItemIdentifier: itemIdentifier, at: 0)
+        }
+
+        guard let toolbarItem = toolbar.items.first(where: { $0.itemIdentifier == itemIdentifier }),
+              let target = toolbarItem.target as? NSObject,
+              let action = toolbarItem.action else {
+            return XCTFail("Expected toolbar item target and action")
+        }
+
+        target.perform(action, with: toolbarItem)
+
+        XCTAssertEqual(payload?["id"] as? String, "new")
     }
 }
