@@ -1,4 +1,4 @@
-import { defineComponent, h, ref, type VNode, type PropType } from '@vue/runtime-core'
+import { BaseTransition, defineComponent, h, ref, type VNode, type PropType } from '@vue/runtime-core'
 import { useAnimation, Easing } from '../composables/useAnimation'
 
 export type TransitionMode = 'in-out' | 'out-in' | 'default'
@@ -33,6 +33,20 @@ function resolveAnimationTarget(el: unknown): number | undefined {
   return undefined
 }
 
+function getElementFromVNode(vnode: VNode): number | undefined {
+  try {
+    const el = vnode.el
+    if (!el) return undefined
+    return resolveAnimationTarget(el)
+  } catch {
+    return undefined
+  }
+}
+
+function resolveTransitionTarget(el: unknown): number | undefined {
+  return resolveAnimationTarget(el) ?? getElementFromVNode(el as VNode)
+}
+
 export const VTransition = defineComponent({
   name: 'VTransition',
   props: {
@@ -61,18 +75,8 @@ export const VTransition = defineComponent({
     const isLeaving = ref(false)
     const hasEntered = ref(!transitionProps.appear)
 
-    function getElementFromVNode(vnode: VNode): number | undefined {
-      try {
-        const el = vnode.el
-        if (!el) return undefined
-        return resolveAnimationTarget(el)
-      } catch {
-        return undefined
-      }
-    }
-
     async function doEnter(el: unknown) {
-      const viewId = getElementFromVNode(el as VNode)
+      const viewId = resolveTransitionTarget(el)
       if (!viewId) return
 
       isAppearing.value = true
@@ -96,7 +100,7 @@ export const VTransition = defineComponent({
     }
 
     async function doLeave(el: unknown) {
-      const viewId = getElementFromVNode(el as VNode)
+      const viewId = resolveTransitionTarget(el)
       if (!viewId) return
 
       isLeaving.value = true
@@ -170,7 +174,7 @@ export const VTransition = defineComponent({
       const hasDefault = children.length > 0
 
       if (!hasDefault) {
-        return h('', {}, [])
+        return null
       }
 
       let finalChildren = children
@@ -189,7 +193,7 @@ export const VTransition = defineComponent({
         }
       }
 
-      return h('Transition', {
+      return h(BaseTransition, {
         name: transitionProps.name || 'v',
         appear: transitionProps.appear,
         persist: transitionProps.persist || transitionProps.name === 'persist',
@@ -225,8 +229,14 @@ export const VTransitionGroup = defineComponent({
       // Move animations - handled natively
     }
 
+    function onBeforeEnter(el: unknown) {
+      const viewId = resolveTransitionTarget(el)
+      if (!viewId) return
+      timing(viewId, { opacity: 0 }, { duration: 0 }).catch(() => {})
+    }
+
     function onEnter(el: unknown, done: () => void) {
-      const viewId = resolveAnimationTarget(el as { el: unknown })
+      const viewId = resolveTransitionTarget(el)
       if (!viewId) {
         done()
         return
@@ -238,7 +248,7 @@ export const VTransitionGroup = defineComponent({
     }
 
     function onLeave(el: unknown, done: () => void) {
-      const viewId = resolveAnimationTarget(el as { el: unknown })
+      const viewId = resolveTransitionTarget(el)
       if (!viewId) {
         done()
         return
@@ -250,6 +260,7 @@ export const VTransitionGroup = defineComponent({
     }
 
     expose({
+      onBeforeEnter,
       onEnter,
       onLeave,
       onMove,
@@ -257,16 +268,16 @@ export const VTransitionGroup = defineComponent({
 
     return () => {
       const children = slots.default?.() ?? []
-      return h('TransitionGroup', {
-        tag: groupProps.tag,
+      return h(groupProps.tag || 'VView', {}, children.map((child, index) => h(BaseTransition, {
+        key: child.key ?? index,
         name: groupProps.name,
         appear: groupProps.appear,
         persist: groupProps.persist,
-        moveClass: groupProps.moveClass,
+        css: false,
+        onBeforeEnter,
         onEnter,
         onLeave,
-        onMove,
-      }, () => children)
+      }, () => [child])))
     }
   },
 })

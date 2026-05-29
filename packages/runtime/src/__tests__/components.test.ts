@@ -22,6 +22,7 @@ const {
   VRefreshControl, VPressable, VSectionList, VTabBar, VDrawer,
   VDrawerItem, VDrawerSection,
   VCheckbox, VRadio, VDropdown, VVideo,
+  VTransition, VTransitionGroup,
 } = await import('../components')
 
 import { createVNode, defineComponent, ref, type VNode } from '@vue/runtime-core'
@@ -484,6 +485,36 @@ describe('Components', () => {
       NativeBridge.handleNativeEvent(pressables[1].args[0], 'press', null)
 
       expect(changeSpy).toHaveBeenCalledWith('settings')
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // VTransition
+  // ---------------------------------------------------------------------------
+  describe('VTransition', () => {
+    it('does not create a native Transition element', async () => {
+      const child = createVNode(VView)
+      renderComponent(createVNode(VTransition, null, { default: () => [child] }))
+      await nextTick()
+
+      const createTypes = mockBridge.getOpsByType('create').map(o => o.args[1])
+      expect(createTypes).toContain('VView')
+      expect(createTypes).not.toContain('Transition')
+    })
+
+    it('renders VTransitionGroup as a native container without TransitionGroup nodes', async () => {
+      renderComponent(createVNode(VTransitionGroup, { tag: 'VView' }, {
+        default: () => [
+          createVNode(VText, { key: 'a' }, { default: () => 'A' }),
+          createVNode(VText, { key: 'b' }, { default: () => 'B' }),
+        ],
+      }))
+      await nextTick()
+
+      const createTypes = mockBridge.getOpsByType('create').map(o => o.args[1])
+      expect(createTypes).toContain('VView')
+      expect(createTypes.filter(type => type === 'VText')).toHaveLength(2)
+      expect(createTypes).not.toContain('TransitionGroup')
     })
   })
 

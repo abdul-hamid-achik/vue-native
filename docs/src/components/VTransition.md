@@ -128,7 +128,7 @@ const show = ref(false)
 
 ## VTransitionGroup
 
-Animate multiple elements as they're added, removed, or reordered.
+Animate multiple keyed elements as they're added or removed.
 
 ### Basic Usage
 
@@ -174,16 +174,16 @@ function removeItem(id) {
 
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
+| `tag` | `string` | `'VView'` | Native container element to render |
 | `duration` | `number` | `300` | Animation duration in milliseconds |
-| `name` | `string` | `'list'` | Transition name |
-| `enterFrom` | `StyleProp` | -- | Initial style for entering items |
-| `leaveTo` | `StyleProp` | -- | Target style for leaving items |
-| `move` | `boolean` | `true` | Animate items when they move |
-| `easing` | `string` | `'ease'` | Animation easing function |
+| `name` | `string` | `'v'` | Transition name passed to Vue's transition hooks |
+| `appear` | `boolean` | `false` | Animate items on initial mount |
+| `persist` | `boolean` | `false` | Keep leaving items mounted while the leave hook runs |
+| `moveClass` | `string` | `''` | Reserved for future move-animation support |
 
-### Animating Lists
+### Reordering Lists
 
-The `move` prop enables FLIP-style animations when items change position:
+Items should be keyed so Vue can track additions and removals correctly. Reordering is supported by Vue's keyed diffing, but Vue Native does not yet run FLIP-style move animations for reordered items.
 
 ```vue
 <script setup>
@@ -201,7 +201,7 @@ function shuffle() {
   <VView :style="{ flex: 1, padding: 20 }">
     <VButton title="Shuffle" :onPress="shuffle" />
     
-    <VTransitionGroup :duration="250" :move="true">
+    <VTransitionGroup :duration="250">
       <VView 
         v-for="(item, index) in items" 
         :key="item"
