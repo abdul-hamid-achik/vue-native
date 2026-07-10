@@ -1,4 +1,4 @@
-// swift-tools-version: 6.0
+// swift-tools-version: 5.9
 //
 // Root Swift package — this is the package external SPM consumers resolve
 // when adding `https://github.com/abdul-hamid-achik/vue-native` as a dependency.
@@ -12,7 +12,7 @@ let package = Package(
     name: "VueNativeCore",
     platforms: [
         .iOS(.v16),
-        .macOS(.v15)
+        .macOS("15.0")
     ],
     products: [
         .library(name: "VueNativeCore", targets: ["VueNativeCore"]),
@@ -25,10 +25,7 @@ let package = Package(
     targets: [
         .target(
             name: "VueNativeShared",
-            path: "native/shared/VueNativeShared/Sources/VueNativeShared",
-            swiftSettings: [
-                .swiftLanguageMode(.v5)
-            ]
+            path: "native/shared/VueNativeShared/Sources/VueNativeShared"
         ),
         .target(
             name: "VueNativeCore",
@@ -39,9 +36,6 @@ let package = Package(
             path: "native/ios/VueNativeCore/Sources/VueNativeCore",
             resources: [
                 .copy("Resources/vue-native-placeholder.js")
-            ],
-            swiftSettings: [
-                .swiftLanguageMode(.v5)
             ]
         ),
         .target(
@@ -50,34 +44,22 @@ let package = Package(
             path: "native/macos/VueNativeMacOS/Sources/VueNativeMacOS",
             resources: [
                 .copy("Resources/vue-native-placeholder.js")
-            ],
-            swiftSettings: [
-                .swiftLanguageMode(.v5)
             ]
         ),
         .testTarget(
             name: "VueNativeCoreTests",
             dependencies: ["VueNativeCore"],
-            path: "native/ios/VueNativeCore/Tests/VueNativeCoreTests",
-            swiftSettings: [
-                .swiftLanguageMode(.v5)
-            ]
+            path: "native/ios/VueNativeCore/Tests/VueNativeCoreTests"
         ),
         .testTarget(
             name: "VueNativeSharedTests",
             dependencies: ["VueNativeShared"],
-            path: "native/shared/VueNativeShared/Tests/VueNativeSharedTests",
-            swiftSettings: [
-                .swiftLanguageMode(.v5)
-            ]
+            path: "native/shared/VueNativeShared/Tests/VueNativeSharedTests"
         ),
         .testTarget(
             name: "VueNativeMacOSTests",
             dependencies: ["VueNativeMacOS"],
-            path: "native/macos/VueNativeMacOS/Tests/VueNativeMacOSTests",
-            swiftSettings: [
-                .swiftLanguageMode(.v5)
-            ]
+            path: "native/macos/VueNativeMacOS/Tests/VueNativeMacOSTests"
         )
     ]
 )
