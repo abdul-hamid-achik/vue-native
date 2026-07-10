@@ -12,10 +12,10 @@ The Vue Native build system uses Vite with a custom plugin to produce an optimiz
 bun run build
 ```
 
-This runs the Vite build with the `@vue-native/vite-plugin`, which:
+This runs the Vite build with `@thelacanians/vue-native-vite-plugin`, which:
 
 - Compiles your Vue 3 SFCs into render functions
-- Tree-shakes unused exports from `@vue-native/runtime`
+- Tree-shakes unused exports from `@thelacanians/vue-native-runtime`
 - Minifies the output with esbuild
 - Produces a single `dist/vue-native-bundle.js` file in IIFE format
 
@@ -407,10 +407,10 @@ Google Play requires AAB (Android App Bundle) format, not APK. The AAB format le
 
 ## OTA Updates (Post-Release)
 
-Once your app is live, you can ship JavaScript bundle updates without going through store review using the `useOTAUpdate` composable. OTA updates only affect the JS bundle -- native code changes still require a store update.
+The `useOTAUpdate` composable can deliver compatible JavaScript bundles to installed iOS and Android apps. OTA delivery does not exempt an app from Apple App Store or Google Play rules for downloaded code; confirm the current policies and your app's permitted update scope before shipping. Native code changes always require a store release.
 
 ```ts
-import { useOTAUpdate } from '@vue-native/runtime'
+import { useOTAUpdate } from '@thelacanians/vue-native-runtime'
 
 const { checkForUpdate, downloadUpdate, applyUpdate } = useOTAUpdate(
   'https://updates.yourapp.com/api/check'
@@ -425,10 +425,10 @@ if (info.updateAvailable) {
 }
 ```
 
-OTA updates include SHA-256 hash verification to ensure bundle integrity. The native module verifies the hash before saving the downloaded bundle.
+OTA metadata must include a version, URL, and SHA-256 digest. Native code verifies the digest before staging, immediately before apply, and during startup selection. Missing or tampered applied files fall back to the embedded bundle. A digest is not a publisher signature; see the [security guide](/guide/security.md#ota-update-verification) for the threat-model limits.
 
 ::: tip
-OTA updates are ideal for bug fixes, UI tweaks, and feature additions that do not require new native code. For changes that add new native modules or update native dependencies, you must submit a new version through the app stores.
+Use OTA only for changes compatible with native APIs already installed on the device, and only where store policy permits it. New native modules, permissions, entitlements, SDKs, or dependencies require a new store release.
 :::
 
 For full API documentation, see the [useOTAUpdate composable reference](/composables/useOTAUpdate.md).

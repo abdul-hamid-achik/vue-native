@@ -5,7 +5,7 @@ import FeedScreen from './screens/FeedScreen.vue'
 import ExploreScreen from './screens/ExploreScreen.vue'
 import ProfileScreen from './screens/ProfileScreen.vue'
 
-export const { TabNavigator, useActiveTab } = createTabNavigator()
+export const { TabNavigator } = createTabNavigator()
 
 export const tabs = [
   { name: 'feed', label: 'Feed', icon: '🏠', component: FeedScreen },

@@ -18,7 +18,7 @@ final class DragDropModule: NativeModule {
     }
 
     func invoke(method: String, args: [Any], callback: @escaping (Any?, String?) -> Void) {
-        DispatchQueue.main.async { [weak self] in
+        DispatchQueue.main.async {
             switch method {
             case "enableDropZone":
                 guard args.first is Int else {

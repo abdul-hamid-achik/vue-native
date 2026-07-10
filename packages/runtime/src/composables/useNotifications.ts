@@ -20,10 +20,16 @@ export interface NotificationPayload {
 }
 
 export interface PushNotificationPayload {
+  id?: string
   title: string
   body: string
   data: Record<string, unknown>
   remote: true
+  action?: string
+}
+
+export interface PushRegistrationError {
+  message: string
 }
 
 /**
@@ -117,11 +123,18 @@ export function useNotifications() {
     return unsubscribe
   }
 
+  /** Listen for APNs/FCM registration failures forwarded by the native host. */
+  function onPushError(handler: (error: PushRegistrationError) => void): () => void {
+    const unsubscribe = NativeBridge.onGlobalEvent('push:error', handler)
+    onUnmounted(unsubscribe)
+    return unsubscribe
+  }
+
   return {
     // Local
     isGranted, requestPermission, getPermissionStatus,
     scheduleLocal, cancel, cancelAll, onNotification,
     // Push
-    pushToken, registerForPush, getToken, onPushToken, onPushReceived,
+    pushToken, registerForPush, getToken, onPushToken, onPushReceived, onPushError,
   }
 }

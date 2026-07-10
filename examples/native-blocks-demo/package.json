@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "generate": "vue-native generate"
+    "generate": "vue-native generate",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "vue": "^3.4.0",

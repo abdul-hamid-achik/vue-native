@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import { generateCode } from '../codegen'
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { cleanGeneratedFiles, generateCode, hasGeneratedArtifacts, writeGeneratedFiles } from '../codegen'
 import { generateSwiftFile, generateSwiftRegistration } from '../generators/swift'
 import { generateKotlinFile, generateKotlinRegistration } from '../generators/kotlin'
 import { generateTypeScriptFile } from '../generators/typescript'
@@ -43,7 +46,7 @@ class HapticsModule: NativeModule {
 class HapticsModule: NativeModule {
   override val moduleName: String = "Haptics"
   
-  override fun invoke(method: String, args: List<Any?>, callback: (Any?, String?) -> Unit) {
+  override fun invoke(method: String, args: List<Any?>, bridge: NativeBridge, callback: (Any?, String?) -> Unit) {
     when (method) {
       "vibrate" -> {
         val style = args[0] as? String ?: "medium"
@@ -75,6 +78,7 @@ class HapticsModule: NativeModule {
       expect(file.content).toContain('class HapticsModule: NativeModule')
       expect(file.content).toContain('var moduleName: String { "Haptics" }')
       expect(file.content).toContain('Auto-Generated Code')
+      expect(file.content.match(/class HapticsModule: NativeModule/g)).toHaveLength(1)
       expect(file.outputPath).toContain('GeneratedModules/HapticsModule.swift')
     })
 
@@ -115,6 +119,8 @@ class HapticsModule: NativeModule {
       expect(file.content).toContain('override val moduleName: String = "Haptics"')
       expect(file.content).toContain('Auto-Generated Code')
       expect(file.content).toContain('package com.vuenative.core.GeneratedModules')
+      expect(file.content).toContain('import com.vuenative.core.NativeModule')
+      expect(file.content.match(/class HapticsModule: NativeModule/g)).toHaveLength(1)
       expect(file.outputPath).toContain('GeneratedModules/HapticsModule.kt')
     })
 
@@ -136,6 +142,8 @@ class HapticsModule: NativeModule {
       expect(file.content).toContain('export function useTestComponent()')
       expect(file.content).toContain('export interface TestComponentModule')
       expect(file.content).toContain('NativeBridge.invokeNativeModule')
+      expect(file.content).toContain('import { NativeBridge } from \'@thelacanians/vue-native-runtime\'')
+      expect(file.content).not.toContain('from \'../bridge\'')
       expect(file.outputPath).toContain('generated/useTestComponent.ts')
     })
 
@@ -143,7 +151,37 @@ class HapticsModule: NativeModule {
       const file = generateTypeScriptFile([mockSwiftBlock], 'TestComponent')
 
       expect(file.content).toContain('interface TestComponentModule')
-      expect(file.content).toContain('vibrate(')
+      expect(file.content).toContain('vibrate(style: string): Promise<void>')
+    })
+
+    it('uses invoke case names while borrowing helper parameter types', () => {
+      const patternBlock: NativeBlock = {
+        ...mockSwiftBlock,
+        content: `
+class CustomHapticsModule: NativeModule {
+  var moduleName: String { "CustomHaptics" }
+  func invoke(method: String, args: [Any], callback: @escaping (Any?, String?) -> Void) {
+    switch method {
+    case "pattern":
+      let pattern = args[0] as? [Int] ?? []
+      playPattern(pattern)
+      callback(nil, nil)
+    default:
+      callback(nil, "Unknown method")
+    }
+  }
+  private func playPattern(_ pattern: [Int]) {}
+  private func internalOnly() {}
+}
+        `.trim(),
+      }
+
+      const file = generateTypeScriptFile([patternBlock], 'CustomHaptics')
+
+      expect(file.content).toContain('pattern(pattern: number[]): Promise<void>')
+      expect(file.content).toContain('invokeNativeModule(\'CustomHaptics\', \'pattern\', [pattern])')
+      expect(file.content).not.toContain('playPattern(')
+      expect(file.content).not.toContain('internalOnly(')
     })
 
     it('should throw when no blocks found for component', () => {
@@ -157,8 +195,9 @@ class HapticsModule: NativeModule {
     it('should generate Swift registration code', () => {
       const registration = generateSwiftRegistration([mockSwiftBlock])
 
-      expect(registration).toContain('registerGeneratedModules()')
-      expect(registration).toContain('register("Haptics", module: HapticsModule())')
+      expect(registration).toContain('registerGeneratedModules')
+      expect(registration).toContain('extension NativeModuleRegistry')
+      expect(registration).toContain('register(HapticsModule())')
     })
 
     it('should handle multiple modules', () => {
@@ -175,8 +214,8 @@ class CameraModule: NativeModule {
 
       const registration = generateSwiftRegistration([mockSwiftBlock, block2])
 
-      expect(registration).toContain('register("Haptics", module: HapticsModule())')
-      expect(registration).toContain('register("Camera", module: CameraModule())')
+      expect(registration).toContain('register(HapticsModule())')
+      expect(registration).toContain('register(CameraModule())')
     })
   })
 
@@ -184,8 +223,11 @@ class CameraModule: NativeModule {
     it('should generate Kotlin registration code', () => {
       const registration = generateKotlinRegistration([mockKotlinBlock])
 
-      expect(registration).toContain('registerGeneratedModules()')
-      expect(registration).toContain('register("Haptics", HapticsModule())')
+      expect(registration).toContain('registerGeneratedModules')
+      expect(registration).toContain('fun NativeModuleRegistry.registerGeneratedModules(context: android.content.Context, bridge: NativeBridge)')
+      expect(registration).toContain('import com.vuenative.core.GeneratedModules.*')
+      expect(registration).toContain('registerAndInitialize(HapticsModule(), bridge, context)')
+      expect(registration).not.toContain('module.initialize(context, bridge)')
     })
   })
 
@@ -232,9 +274,9 @@ class CameraModule: NativeModule {
       expect(result.stats.typescriptFiles).toBe(0)
     })
 
-    it('should group blocks by component for TypeScript generation', () => {
+    it('should group cross-platform blocks by module for TypeScript generation', () => {
       const block2: NativeBlock = {
-        ...mockSwiftBlock,
+        ...mockKotlinBlock,
         componentName: 'TestComponent', // Same component
       }
 
@@ -242,6 +284,38 @@ class CameraModule: NativeModule {
 
       // Should generate one composable for the component
       expect(result.stats.typescriptFiles).toBe(1)
+    })
+
+    it('generates separate composables for multiple modules in one SFC', () => {
+      const cameraBlock: NativeBlock = {
+        ...mockSwiftBlock,
+        content: `
+class CameraModule: NativeModule {
+  var moduleName: String { "Camera" }
+  func invoke(method: String, args: [Any], callback: @escaping (Any?, String?) -> Void) {
+    switch method {
+    case "takePhoto":
+      callback(takePhoto(), nil)
+    default:
+      callback(nil, "Unknown method")
+    }
+  }
+  func takePhoto() -> String { "photo.jpg" }
+}
+        `.trim(),
+        componentName: mockSwiftBlock.componentName,
+      }
+
+      const result = generateCode([mockSwiftBlock, cameraBlock])
+      const typeScriptFiles = result.files.filter(file => file.language === 'typescript')
+
+      expect(typeScriptFiles).toHaveLength(2)
+      const haptics = typeScriptFiles.find(file => file.outputPath.endsWith('useHaptics.ts'))
+      const camera = typeScriptFiles.find(file => file.outputPath.endsWith('useCamera.ts'))
+      expect(haptics?.content).toContain('invokeNativeModule(\'Haptics\', \'vibrate\'')
+      expect(haptics?.content).not.toContain('takePhoto')
+      expect(camera?.content).toContain('invokeNativeModule(\'Camera\', \'takePhoto\'')
+      expect(camera?.content).not.toContain('vibrate')
     })
 
     it('should handle macOS blocks', () => {
@@ -255,6 +329,68 @@ class CameraModule: NativeModule {
       // macOS blocks generate Swift files (module + registration)
       expect(result.stats.swiftFiles).toBeGreaterThanOrEqual(1)
       expect(result.files.some(f => f.platform === 'macos' || f.sourceBlock.platform === 'macos')).toBe(true)
+      expect(result.files.some(f => f.outputPath.includes('native/macos/VueNativeMacOS'))).toBe(true)
+    })
+
+    it('overwrites platform registries with empty registries when all blocks are removed', () => {
+      const result = generateCode([])
+      const registries = result.files.filter(file => file.outputPath.includes('GeneratedModuleRegistry'))
+
+      expect(registries).toHaveLength(3)
+      expect(registries.map(file => file.platform).sort()).toEqual(['android', 'ios', 'macos'])
+      const androidRegistry = registries.find(file => file.platform === 'android')
+      expect(androidRegistry?.content).toContain('No generated Android modules.')
+      expect(androidRegistry?.content).not.toContain('GeneratedModules.*')
+    })
+
+    it('prunes stale generated files while preserving handwritten files', () => {
+      const root = mkdtempSync(join(tmpdir(), 'vue-native-codegen-'))
+      const iosOutputDir = 'ios/GeneratedModules'
+      const androidOutputDir = 'android/GeneratedModules'
+      const macosOutputDir = 'macos/GeneratedModules'
+      const options = { iosOutputDir, androidOutputDir, macosOutputDir, generateTypeScript: false }
+
+      try {
+        const generatedDir = join(root, iosOutputDir)
+        mkdirSync(generatedDir, { recursive: true })
+        const generatedFile = join(generatedDir, 'StaleModule.swift')
+        const handwrittenFile = join(generatedDir, 'Handwritten.swift')
+        writeFileSync(generatedFile, '// Auto-Generated Code\nfinal class StaleModule {}\n')
+        writeFileSync(handwrittenFile, 'final class Handwritten {}\n')
+
+        const oldRegistration = join(root, iosOutputDir, 'GeneratedModuleRegistry.swift')
+        writeFileSync(oldRegistration, '// Auto-generated module registration\n')
+
+        cleanGeneratedFiles(options, root)
+
+        expect(existsSync(generatedFile)).toBe(false)
+        expect(existsSync(oldRegistration)).toBe(false)
+        expect(readFileSync(handwrittenFile, 'utf-8')).toContain('Handwritten')
+
+        const result = generateCode([], options)
+        writeGeneratedFiles(result, root)
+        expect(readFileSync(oldRegistration, 'utf-8')).toContain('registerGeneratedModules')
+      } finally {
+        rmSync(root, { recursive: true, force: true })
+      }
+    })
+
+    it('detects generator-owned artifacts without mistaking handwritten files for them', () => {
+      const root = mkdtempSync(join(tmpdir(), 'vue-native-codegen-'))
+      const outputDir = 'generated/ios'
+      const generatedFile = join(root, outputDir, 'GeneratedModule.swift')
+      const handwrittenFile = join(root, outputDir, 'Handwritten.swift')
+
+      try {
+        mkdirSync(join(root, outputDir), { recursive: true })
+        writeFileSync(handwrittenFile, 'final class Handwritten {}\n')
+        expect(hasGeneratedArtifacts({ iosOutputDir: outputDir }, root)).toBe(false)
+
+        writeFileSync(generatedFile, '// Auto-Generated Code\nfinal class GeneratedModule {}\n')
+        expect(hasGeneratedArtifacts({ iosOutputDir: outputDir }, root)).toBe(true)
+      } finally {
+        rmSync(root, { recursive: true, force: true })
+      }
     })
   })
 
@@ -299,7 +435,7 @@ class TestModule: NativeModule {
 class TestModule: NativeModule {
   override val moduleName: String = "Test"
 
-  override fun invoke(method: String, args: List<Any?>, callback: (Any?, String?) -> Unit) {
+  override fun invoke(method: String, args: List<Any?>, bridge: NativeBridge, callback: (Any?, String?) -> Unit) {
     when (method) {
       "fetch" -> fetch(args[0] as String)
       "save" -> save(args[0] as String)

@@ -197,6 +197,19 @@ describe('NativeBridge', () => {
       expect(result).toBeInstanceOf(Promise)
     })
 
+    it('routes the deprecated sync alias through the result-bearing async operation', async () => {
+      const promise = NativeBridge.invokeNativeModuleSync('DeviceInfo', 'getInfo')
+      expect(promise).toBeInstanceOf(Promise)
+
+      await nextTick()
+      const [operation] = mockBridge.getOpsByType('invokeNativeModule')
+      expect(operation.args.slice(0, 3)).toEqual(['DeviceInfo', 'getInfo', []])
+      expect(mockBridge.getOpsByType('invokeNativeModuleSync')).toHaveLength(0)
+
+      NativeBridge.resolveCallback(operation.args[3] as number, { name: 'Phone' }, null)
+      await expect(promise).resolves.toEqual({ name: 'Phone' })
+    })
+
     it('resolveCallback resolves the pending Promise', async () => {
       let callbackId: number | undefined
 

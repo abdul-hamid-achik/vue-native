@@ -78,6 +78,112 @@ tools/
 
 ---
 
+## Progress, changelog, and backlog notes
+
+Deep reviews and long-running uncommitted work need a local handoff trail. Keep that trail outside the repository so it can guide future work without becoming a release artifact:
+
+```bash
+~/notes/projects/vue-native/
+```
+
+This is the canonical handoff location. `~/notes/vue-native-backlog/` is a
+legacy compatibility mirror only; new notes should be organized under the
+project-specific directory above.
+
+These notes are for agents and maintainers continuing the same branch. They should answer four questions quickly:
+
+- What changed in the current uncommitted tree?
+- What was reviewed and what validation passed?
+- What is still risky, blocked, or unverified?
+- What should the next agent do first?
+
+### Current local notes
+
+- `~/notes/projects/vue-native/progress-2026-07-10.md`
+- `~/notes/projects/vue-native/handoff-2026-07-09.md`
+- `~/notes/projects/vue-native/CHANGELOG-draft-2026-07-09.md`
+- Historical notes: `~/notes/projects/vue-native/archive/2026-05-26/` and `~/notes/projects/vue-native/archive/2026-07-09/`
+
+### When to create or update notes
+
+Update the notes whenever you do any of the following:
+
+- Perform a broad codebase review or audit.
+- Touch more than one platform or package in one task.
+- Leave work uncommitted with known follow-ups.
+- Run only a subset of the required quality gates.
+- Discover a blocker that future agents need to know about.
+
+Prefer updating the latest progress file in `~/notes/projects/vue-native/` over creating a duplicate. Create a new dated file only when starting a distinct review, release draft, or investigation.
+
+### Required note types
+
+Use these names by default:
+
+```bash
+~/notes/projects/vue-native/CHANGELOG-draft-YYYY-MM-DD.md
+~/notes/projects/vue-native/progress-YYYY-MM-DD.md
+```
+
+`CHANGELOG-draft-*` should be release-note shaped:
+
+- Added
+- Changed
+- Fixed
+- Tests and validation
+- Known risks before commit
+
+`progress-*` should be handoff shaped:
+
+- Review scope
+- Current uncommitted work summary
+- Feature map
+- Findings with priority (`P1`, `P2`, `P3`)
+- Validation results
+- Blocked or not-run checks
+- Suggested next work
+
+### Workflow for future agents
+
+Before changing code:
+
+1. Run `git status --short` to understand the current working tree.
+2. Read the latest `~/notes/projects/vue-native/progress-*.md`.
+3. Confirm whether any listed blocker affects the requested task.
+4. Avoid reverting existing uncommitted work unless the user explicitly asks.
+
+After changing code:
+
+1. Update the latest progress file with what changed.
+2. Move resolved findings out of the active backlog or mark them resolved with the validation that proved it.
+3. Add new validation results, including exact commands and whether they passed, failed, or were blocked.
+4. Keep `CHANGELOG-draft-*` aligned with user-facing changes.
+
+Do not commit files from `~/notes`; they are local working notes, not repository artifacts.
+
+### Current review objectives and open risks
+
+The active review tracks broad uncommitted cross-platform hardening: runtime
+lifecycle and event behavior, native bridge cleanup, Android layout and module
+ownership, Apple certificate pinning, macOS exports, generated native-module
+registration, release automation, documentation, and examples.
+
+Primary objectives:
+
+- Preserve cross-platform parity for runtime APIs, native modules, and generated module registration.
+- Keep every TypeScript and native platform gate green after the final integrated diff.
+- Record device-only or external-service verification that cannot be proven in unit tests.
+- Keep a clear handoff before any commit or push.
+
+Current release risks from the notes:
+
+- Physical-device app-shell smoke tests have not been run for iOS, Android, or macOS.
+- Certificate pinning has deterministic key-vector coverage but still needs a live TLS fixture smoke test.
+- Android camera capture and biometric authentication require documented Activity-level integrations in an app host.
+- Multi-registry publication is not atomic; a failure after one registry publishes requires deliberate manual recovery.
+
+---
+
 ## Pre-commit and pre-push checklist
 
 **IMPORTANT:** Before committing or pushing ANY changes, you MUST verify the affected code passes all quality gates. Failing to do so will break CI and block other contributors.
@@ -93,7 +199,11 @@ bun run test              # Turbo orchestrated tests via Vitest across packages 
                           # which behaves differently (e.g., `node:fs` module resolution).
 ```
 
-The `lefthook` pre-commit hook runs lint + typecheck automatically, but **you must also run tests manually** before pushing. The hook does NOT run tests.
+The Lefthook pre-commit hook runs lint + typecheck. The pre-push hook runs the
+complete `bun run check:ts` gate (lint, typecheck, native-module contract
+check, build, integrated packed-scaffold smoke, TypeScript tests, Knip, and
+hook validation). Native gates remain explicit and must be run for
+every affected platform before pushing.
 
 ### Swift changes (`native/ios/` or `native/shared/`)
 

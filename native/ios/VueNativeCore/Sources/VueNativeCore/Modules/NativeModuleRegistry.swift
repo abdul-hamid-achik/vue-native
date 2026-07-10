@@ -15,11 +15,26 @@ final class NativeModuleRegistry {
     // MARK: - Registration
 
     func register(_ module: NativeModule) {
-        modules[module.moduleName] = module
+        let previous = modules.updateValue(module, forKey: module.moduleName)
+        if let previous, previous !== module {
+            previous.destroy()
+        }
+    }
+
+    /// Destroy and unregister every module in the current snapshot.
+    func removeAll() {
+        let registeredModules = Array(modules.values)
+        modules.removeAll(keepingCapacity: true)
+        registeredModules.forEach { $0.destroy() }
     }
 
     /// Register all built-in modules.
     func registerDefaults() {
+        // A process-wide registry can be initialized by more than one native
+        // host. Start from an exact snapshot so removed generated modules and
+        // host-bound observer modules cannot survive reinitialization.
+        removeAll()
+
         register(HapticsModule())
         register(AsyncStorageModule())
         register(ClipboardModule())
@@ -34,14 +49,14 @@ final class NativeModuleRegistry {
         // Phase 2 modules
         register(PermissionsModule())
         register(GeolocationModule(bridge: bridge))
-        register(CameraModule())
+        register(CameraModule(bridge: bridge))
         register(NotificationsModule(bridge: bridge))
         register(BiometryModule())
         register(SecureStorageModule())
         register(WebSocketModule(bridge: bridge))
         register(FileSystemModule())
         register(SensorsModule(bridge: bridge))
-        register(AudioModule())
+        register(AudioModule(bridge: bridge))
         register(DatabaseModule())
         register(PerformanceModule(bridge: bridge))
         if #available(iOS 13.0, *) {

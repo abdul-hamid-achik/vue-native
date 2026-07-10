@@ -37,6 +37,9 @@ import { VDropdown } from './VDropdown'
 import { VVideo } from './VVideo'
 import { VFlatList } from './VFlatList'
 import { VTabBar } from './VTabBar'
+import { VToolbar } from './VToolbar'
+import { VSplitView } from './VSplitView'
+import { VOutlineView } from './VOutlineView'
 import { VDrawer, VDrawerItem, VDrawerSection } from './VDrawer'
 import { VTransition, VTransitionGroup } from './VTransition'
 import { KeepAlive } from './KeepAlive'
@@ -72,6 +75,9 @@ export {
   VVideo,
   VFlatList,
   VTabBar,
+  VToolbar,
+  VSplitView,
+  VOutlineView,
   VDrawer,
   VDrawerItem,
   VDrawerSection,
@@ -90,6 +96,9 @@ export type { RadioOption } from './VRadio'
 export type { DropdownOption } from './VDropdown'
 export type { FlatListRenderItemInfo } from './VFlatList'
 export type { TabConfig } from './VTabBar'
+export type { ToolbarItem } from './VToolbar'
+export type { OutlineNode } from './VOutlineView'
+export type { TransitionProps, TransitionMode } from './VTransition'
 export type { AsyncComponentOptions } from './VSuspense'
 
 export const builtInComponents: Record<string, Component> = {
@@ -122,11 +131,17 @@ export const builtInComponents: Record<string, Component> = {
   VVideo,
   VFlatList,
   VTabBar,
+  VToolbar,
+  VSplitView,
+  VOutlineView,
   VDrawer,
   VDrawerItem,
   VDrawerSection,
   VTransition,
   VTransitionGroup,
   KeepAlive,
-  VSuspense,
+  // Vue types Suspense separately from ordinary components even though it is
+  // valid in the global component registry and handled specially by the
+  // renderer at runtime.
+  VSuspense: VSuspense as unknown as Component,
 }

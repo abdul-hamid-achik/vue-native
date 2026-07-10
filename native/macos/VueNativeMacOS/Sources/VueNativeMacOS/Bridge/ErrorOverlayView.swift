@@ -96,8 +96,8 @@ final class ErrorOverlayView: FlippedView {
         removeFromSuperview()
     }
 
-    static func show(error: String) {
-        DispatchQueue.main.async {
+    nonisolated static func show(error: String) {
+        Task { @MainActor in
             guard let window = NSApp.mainWindow ?? NSApp.windows.first else { return }
 
             // Remove any existing overlay

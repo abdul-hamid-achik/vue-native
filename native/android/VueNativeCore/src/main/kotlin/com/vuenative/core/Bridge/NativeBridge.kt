@@ -94,6 +94,9 @@ class NativeBridge(private val context: Context) {
     /** Called when a module dispatches a global event to JS (eventName, payloadJson). */
     var onDispatchGlobalEvent: ((eventName: String, payloadJson: String) -> Unit)? = null
 
+    @Volatile
+    private var isActive = true
+
     private val componentRegistry: ComponentRegistry by lazy { ComponentRegistry.getInstance(context) }
 
     // -------------------------------------------------------------------------
@@ -102,6 +105,8 @@ class NativeBridge(private val context: Context) {
 
     /** Called from JS thread via __VN_flushOperations. Parses JSON and dispatches to main. */
     fun processOperations(json: String) {
+        if (!isActive) return
+
         val operations: JSONArray = try {
             JSONArray(json)
         } catch (e: Exception) {
@@ -116,6 +121,8 @@ class NativeBridge(private val context: Context) {
         }
 
         mainHandler.post {
+            if (!isActive) return@post
+
             var needsLayout = false
             for (op in ops) {
                 try {
@@ -235,50 +242,92 @@ class NativeBridge(private val context: Context) {
         val childId = args.getInt(1)
         val parent = nodeViews[parentId] ?: return
         val child = nodeViews[childId] ?: return
-        nodeParents[childId] = parentId
-        nodeChildren.getOrPut(parentId) { mutableListOf() }.add(childId)
-
-        val factory = componentRegistry.factoryForView(parent)
-        if (factory != null) {
-            val idx = (parent as? ViewGroup)?.childCount ?: 0
-            factory.insertChild(parent, child, idx)
-        } else {
-            (parent as? ViewGroup)?.addView(child)
-        }
+        val insertIndex = prepareChildForInsertion(parentId, childId)
+        insertChild(parent, child, insertIndex)
     }
 
     private fun handleInsertBefore(args: JSONArray) {
         val parentId = args.getInt(0)
         val childId = args.getInt(1)
         val anchorId = args.getInt(2)
+        // Vue can emit an insertBefore operation as part of keyed diffing even
+        // when the child is already its own anchor. Detaching it in that case
+        // would incorrectly move it to the end of the parent.
+        if (childId == anchorId) return
         val parent = nodeViews[parentId] ?: return
         val child = nodeViews[childId] ?: return
-        val anchor = nodeViews[anchorId] ?: return
-        nodeParents[childId] = parentId
-        // Insert into nodeChildren at the correct position (before anchorId)
+        // The native View hierarchy is not always the logical child hierarchy:
+        // RecyclerView-backed lists keep their item views in an adapter, and
+        // scroll/modal factories use internal content containers. Derive the
+        // insertion coordinate from nodeChildren instead of ViewGroup children.
+        val insertIndex = prepareChildForInsertion(parentId, childId, anchorId)
+        insertChild(parent, child, insertIndex)
+    }
+
+    /**
+     * Update the bridge's logical parent indexes and detach a child from its
+     * current native owner before a move/reparent. Vue represents keyed moves as
+     * insertBefore/appendChild without a preceding removeChild, so native code
+     * must make the move explicit instead of attempting to add an already-parented
+     * Android View.
+     *
+     * @return the logical index at which the child should be inserted.
+     */
+    private fun prepareChildForInsertion(parentId: Int, childId: Int, anchorId: Int? = null): Int {
+        val child = nodeViews[childId] ?: return 0
+        detachChildFromCurrentParent(childId, child)
+
         val siblings = nodeChildren.getOrPut(parentId) { mutableListOf() }
-        val anchorIndex = siblings.indexOf(anchorId)
-        if (anchorIndex >= 0) {
-            siblings.add(anchorIndex, childId)
-        } else {
-            siblings.add(childId)
+        // Be defensive against registries built by older bridge versions and
+        // duplicate operations in a batch.
+        siblings.removeAll { it == childId }
+
+        val insertIndex = anchorId
+            ?.let { siblings.indexOf(it) }
+            ?.takeIf { it >= 0 }
+            ?: siblings.size
+        siblings.add(insertIndex, childId)
+        nodeParents[childId] = parentId
+        return insertIndex
+    }
+
+    /** Detach a child for a move without destroying its node registry entries. */
+    private fun detachChildFromCurrentParent(childId: Int, child: View) {
+        val previousParentId = nodeParents.remove(childId)
+        if (previousParentId != null) {
+            nodeChildren[previousParentId]?.removeAll { it == childId }
+            nodeViews[previousParentId]?.let { previousParent ->
+                val factory = componentRegistry.factoryForView(previousParent)
+                if (factory != null) {
+                    factory.removeChild(previousParent, child)
+                } else {
+                    (previousParent as? ViewGroup)?.removeView(child)
+                }
+            }
         }
 
-        val vg = parent as? ViewGroup ?: return
-        val anchorIdx = vg.indexOfChild(anchor)
-        val insertIdx = if (anchorIdx < 0) vg.childCount else anchorIdx
+        // RecyclerView items and factory-owned containers are not necessarily
+        // direct children of their logical parent. Remove any remaining physical
+        // parent so a subsequent ViewGroup.addView cannot throw.
+        (child.parent as? ViewGroup)?.removeView(child)
+    }
 
+    private fun insertChild(parent: View, child: View, index: Int) {
         val factory = componentRegistry.factoryForView(parent)
         if (factory != null) {
-            factory.insertChild(parent, child, insertIdx)
-        } else {
-            vg.addView(child, insertIdx)
+            factory.insertChild(parent, child, index)
+            return
+        }
+
+        (parent as? ViewGroup)?.let { viewGroup ->
+            viewGroup.addView(child, index.coerceIn(0, viewGroup.childCount))
         }
     }
 
     private fun handleRemoveChild(args: JSONArray) {
         val childId = args.getInt(0)
         val child = nodeViews[childId] ?: return
+        val removingRoot = child === rootView
         val parentId = nodeParents[childId]
         val parent = parentId?.let { nodeViews[it] }
 
@@ -289,17 +338,28 @@ class NativeBridge(private val context: Context) {
             } else {
                 (parent as? ViewGroup)?.removeView(child)
             }
-        } else {
-            (child.parent as? ViewGroup)?.removeView(child)
         }
+
+        // Some factories use an internal content container, and list rows may
+        // still be attached to a recycled holder. Always detach the physical view
+        // after updating the factory's logical state.
+        (child.parent as? ViewGroup)?.removeView(child)
 
         // Remove child from parent's nodeChildren list
         if (parentId != null) {
-            nodeChildren[parentId]?.remove(childId)
+            nodeChildren[parentId]?.removeAll { it == childId }
         }
 
         // Recursively clean up descendants
         cleanupNode(childId)
+
+        if (removingRoot) {
+            // The modal host is a sibling of the root in hostContainer. Leaving
+            // it behind after app.unmount() would create an invisible, clickable
+            // full-screen view that blocks the next native screen.
+            (modalContainer.parent as? ViewGroup)?.removeView(modalContainer)
+            rootView = null
+        }
     }
 
     private fun cleanupNode(nodeId: Int) {
@@ -515,9 +575,29 @@ class NativeBridge(private val context: Context) {
 
     private fun buildArgsList(arr: JSONArray?): List<Any?> {
         arr ?: return emptyList()
-        return (0 until arr.length()).map { i ->
-            if (arr.isNull(i)) null else arr.get(i)
+        return (0 until arr.length()).map { index ->
+            jsonValueToKotlin(arr.opt(index))
         }
+    }
+
+    /**
+     * org.json containers are an implementation detail of the batched bridge.
+     * Native module APIs consume ordinary Kotlin collections, so recursively
+     * normalize nested values before crossing the module boundary.
+     */
+    private fun jsonValueToKotlin(value: Any?): Any? = when (value) {
+        null, JSONObject.NULL -> null
+        is JSONArray -> (0 until value.length()).map { index ->
+            jsonValueToKotlin(value.opt(index))
+        }
+        is JSONObject -> buildMap {
+            val keys = value.keys()
+            while (keys.hasNext()) {
+                val key = keys.next()
+                put(key, jsonValueToKotlin(value.opt(key)))
+            }
+        }
+        else -> value
     }
 
     // -------------------------------------------------------------------------
@@ -526,6 +606,12 @@ class NativeBridge(private val context: Context) {
 
     /** Clear all registries. Called during hot reload after JS teardown. Must run on main thread. */
     fun clearAllRegistries() {
+        teleportContainers.values.forEach { container ->
+            (container.parent as? ViewGroup)?.removeView(container)
+        }
+        teleportContainers.clear()
+        teleportMarkers.clear()
+
         // Destroy all views via their factories before clearing maps
         for ((_, view) in nodeViews) {
             val factory = componentRegistry.factoryForView(view)
@@ -537,7 +623,25 @@ class NativeBridge(private val context: Context) {
         eventKeysPerNode.clear()
         nodeParents.clear()
         nodeChildren.clear()
+        (modalContainer.parent as? ViewGroup)?.removeView(modalContainer)
         rootView = null
+    }
+
+    /**
+     * Permanently detach this bridge from its Activity host.
+     *
+     * A JS runtime owns exactly one NativeBridge, so Activity teardown can
+     * invalidate queued UI batches and release every factory-owned resource
+     * without affecting a replacement Activity's bridge.
+     */
+    fun destroyHost() {
+        isActive = false
+        mainHandler.removeCallbacksAndMessages(null)
+        clearAllRegistries()
+        hostContainer?.removeAllViews()
+        hostContainer = null
+        onFireEvent = null
+        onDispatchGlobalEvent = null
     }
 
     // -------------------------------------------------------------------------

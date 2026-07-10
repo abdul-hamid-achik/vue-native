@@ -8,6 +8,8 @@ import Foundation
 public enum BundleSource {
     /// Load from an embedded resource in the app bundle.
     case embedded(name: String)
+    /// Load a previously verified bundle from the app's private storage.
+    case file(url: URL)
     /// Load from a development server URL (for live reload).
     case devServer(url: URL)
 }
@@ -47,6 +49,35 @@ public final class JSRuntime: @unchecked Sendable {
 
     private init() {}
 
+    /// Install a new, fully configured JSContext. Must run on `jsQueue`.
+    private func installFreshContext() {
+        dispatchPrecondition(condition: .onQueue(jsQueue))
+
+        context = JSContext()
+        context.exceptionHandler = { [weak self] _, exception in
+            guard let exception = exception else { return }
+            let message = exception.toString() ?? "Unknown JS error"
+            let line = exception.objectForKeyedSubscript("line")?.toInt32() ?? 0
+            let column = exception.objectForKeyedSubscript("column")?.toInt32() ?? 0
+            let stack = exception.objectForKeyedSubscript("stack")?.toString() ?? ""
+            NSLog("[VueNative JS Error] \(message) at line \(line):\(column)")
+            if !stack.isEmpty {
+                NSLog("[VueNative JS Stack] \(stack)")
+            }
+            #if DEBUG
+            let fullMessage = stack.isEmpty ? message : "\(message)\n\n\(stack)"
+            Task { @MainActor in
+                ErrorOverlayView.show(error: fullMessage)
+            }
+            #endif
+            _ = self
+        }
+
+        context.evaluateScript("var globalThis = this;")
+        JSPolyfills.register(in: self)
+        isInitialized = true
+    }
+
     /// Initialize the JS runtime. Creates the JSContext on the JS queue,
     /// configures exception handling, and registers polyfills.
     /// Must be called before any other method.
@@ -58,34 +89,50 @@ public final class JSRuntime: @unchecked Sendable {
                 return
             }
 
-            // Create the JSContext
-            self.context = JSContext()
+            self.installFreshContext()
+            completion?()
+        }
+    }
 
-            // Configure exception handler
-            self.context.exceptionHandler = { [weak self] context, exception in
-                guard let exception = exception else { return }
-                let message = exception.toString() ?? "Unknown JS error"
-                let line = exception.objectForKeyedSubscript("line")?.toInt32() ?? 0
-                let column = exception.objectForKeyedSubscript("column")?.toInt32() ?? 0
-                let stack = exception.objectForKeyedSubscript("stack")?.toString() ?? ""
-                NSLog("[VueNative JS Error] \(message) at line \(line):\(column)")
-                if !stack.isEmpty {
-                    NSLog("[VueNative JS Stack] \(stack)")
+    /// Initialize a clean JavaScript world for a newly installed native host.
+    /// Unlike `initialize`, this deliberately replaces an existing singleton
+    /// context so scene/controller replacement cannot inherit the previous
+    /// Vue app, globals, or queued microtasks.
+    public func initializeForHost(completion: (() -> Void)? = nil) {
+        jsQueue.async { [weak self] in
+            guard let self else { return }
+
+            if self.isInitialized {
+                if let teardown = self.context?.objectForKeyedSubscript("__VN_teardown"),
+                   !teardown.isUndefined {
+                    teardown.call(withArguments: [])
+                    self.context?.evaluateScript("void 0;")
                 }
-                #if DEBUG
-                let fullMessage = stack.isEmpty ? message : "\(message)\n\n\(stack)"
-                ErrorOverlayView.show(error: fullMessage)
-                #endif
-                _ = self // prevent unused warning
+                JSPolyfills.reset()
             }
 
-            // Set globalThis = global object
-            self.context.evaluateScript("var globalThis = this;")
+            self.installFreshContext()
+            completion?()
+        }
+    }
 
-            // Register polyfills
-            JSPolyfills.register(in: self)
+    /// Discard the current JavaScript world and install a clean context.
+    ///
+    /// This is used by production fallback paths after a bundle throws during
+    /// evaluation. Reusing that context would preserve partial globals,
+    /// microtasks, and bridge stubs from the failed bundle.
+    public func recreate(completion: (() -> Void)? = nil) {
+        jsQueue.async { [weak self] in
+            guard let self else { return }
 
-            self.isInitialized = true
+            if let teardown = self.context?.objectForKeyedSubscript("__VN_teardown"),
+               !teardown.isUndefined {
+                teardown.call(withArguments: [])
+                self.context?.evaluateScript("void 0;")
+            }
+
+            JSPolyfills.reset()
+            self.installFreshContext()
             completion?()
         }
     }
@@ -254,6 +301,9 @@ public final class JSRuntime: @unchecked Sendable {
             case .embedded(let name):
                 self.loadEmbeddedBundle(name: name, completion: completion)
 
+            case .file(let url):
+                self.loadFileBundle(url: url, displayName: url.lastPathComponent, completion: completion)
+
             case .devServer(let url):
                 self.loadDevServerBundle(url: url, completion: completion)
             }
@@ -296,16 +346,55 @@ public final class JSRuntime: @unchecked Sendable {
             return
         }
 
+        loadFileBundle(url: url, displayName: name, completion: completion)
+    }
+
+    private func loadFileBundle(url: URL, displayName: String, completion: ((Bool) -> Void)?) {
         do {
             let script = try String(contentsOf: url, encoding: .utf8)
-            NSLog("[VueNative] Loading bundle: \(name) (\(script.count) bytes)")
+            guard !script.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                NSLog("[VueNative] Error loading bundle '\(displayName)': file is empty")
+                completion?(false)
+                return
+            }
+            NSLog("[VueNative] Loading bundle: \(displayName) (\(script.count) bytes)")
+            let previousExceptionHandler = self.context.exceptionHandler
+            var evaluationError: String?
+            self.context.exceptionHandler = { context, exception in
+                evaluationError = exception?.toString() ?? "unknown JavaScript error"
+                previousExceptionHandler?(context, exception)
+            }
+            defer {
+                self.context.exceptionHandler = previousExceptionHandler
+            }
+            self.context.exception = nil
             self.context.evaluateScript(script, withSourceURL: url)
+            if let evaluationError {
+                NSLog(
+                    "[VueNative] Bundle '%@' evaluation failed: %@",
+                    displayName,
+                    evaluationError
+                )
+                self.context.exception = nil
+                completion?(false)
+                return
+            }
             // Force microtask drain after bundle load
             self.context.evaluateScript("void 0;")
+            if let evaluationError {
+                NSLog(
+                    "[VueNative] Bundle '%@' microtask evaluation failed: %@",
+                    displayName,
+                    evaluationError
+                )
+                self.context.exception = nil
+                completion?(false)
+                return
+            }
             NSLog("[VueNative] Bundle loaded successfully")
             completion?(true)
         } catch {
-            NSLog("[VueNative] Error loading bundle '\(name)': \(error.localizedDescription)")
+            NSLog("[VueNative] Error loading bundle '\(displayName)': \(error.localizedDescription)")
             completion?(false)
         }
     }
@@ -352,7 +441,12 @@ public final class JSRuntime: @unchecked Sendable {
     /// Reload the runtime with a new JavaScript bundle string.
     /// Creates a fresh JSContext, re-registers polyfills, and evaluates the bundle.
     /// Calls completion on the JS queue with success/failure.
-    public func reload(bundle: String, completion: ((Bool) -> Void)? = nil) {
+    public func reload(
+        bundle: String,
+        teardownOldContext: Bool = true,
+        prepareContext: ((JSContext) -> Void)? = nil,
+        completion: ((Bool) -> Void)? = nil
+    ) {
         jsQueue.async { [weak self] in
             guard let self = self else {
                 completion?(false)
@@ -362,7 +456,8 @@ public final class JSRuntime: @unchecked Sendable {
             NSLog("[VueNative] Hot reload: tearing down old context...")
 
             // Tear down old Vue app gracefully
-            if let teardown = self.context?.objectForKeyedSubscript("__VN_teardown"),
+            if teardownOldContext,
+               let teardown = self.context?.objectForKeyedSubscript("__VN_teardown"),
                !teardown.isUndefined {
                 teardown.call(withArguments: [])
                 self.context?.evaluateScript("void 0;")
@@ -370,25 +465,8 @@ public final class JSRuntime: @unchecked Sendable {
 
             // Reset polyfill state (timers, RAF, display link) before creating new context
             JSPolyfills.reset()
-
-            // Create fresh context
-            self.context = JSContext()
-            self.context.exceptionHandler = { [weak self] _, exception in
-                guard let exception = exception else { return }
-                let message = exception.toString() ?? "Unknown JS error"
-                let line = exception.objectForKeyedSubscript("line")?.toInt32() ?? 0
-                let stack = exception.objectForKeyedSubscript("stack")?.toString() ?? ""
-                NSLog("[VueNative JS Error] \(message) at line \(line)")
-                #if DEBUG
-                let fullMessage = stack.isEmpty ? message : "\(message)\n\n\(stack)"
-                ErrorOverlayView.show(error: fullMessage)
-                #endif
-                _ = self
-            }
-
-            // Re-register globalThis and polyfills
-            self.context.evaluateScript("var globalThis = this;")
-            JSPolyfills.register(in: self)
+            self.installFreshContext()
+            prepareContext?(self.context)
 
             NSLog("[VueNative] Hot reload: evaluating new bundle (\(bundle.count) bytes)...")
             self.context.evaluateScript(bundle)

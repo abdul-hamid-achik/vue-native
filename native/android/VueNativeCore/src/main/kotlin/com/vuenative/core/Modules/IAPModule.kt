@@ -48,7 +48,7 @@ class IAPModule : NativeModule, PurchasesUpdatedListener {
                     callback(null, "purchase: expected SKU string")
                     return
                 }
-                handlePurchase(sku, bridge, callback)
+                handlePurchase(sku, callback)
             }
             "restorePurchases" -> handleRestorePurchases(callback)
             "getActiveSubscriptions" -> handleGetActiveSubscriptions(callback)
@@ -66,7 +66,11 @@ class IAPModule : NativeModule, PurchasesUpdatedListener {
 
         billingClient = BillingClient.newBuilder(ctx)
             .setListener(this)
-            .enablePendingPurchases()
+            .enablePendingPurchases(
+                PendingPurchasesParams.newBuilder()
+                    .enableOneTimeProducts()
+                    .build(),
+            )
             .build()
 
         billingClient?.startConnection(object : BillingClientStateListener {
@@ -136,7 +140,7 @@ class IAPModule : NativeModule, PurchasesUpdatedListener {
 
     // ── Purchase ────────────────────────────────────────────────────────────
 
-    private fun handlePurchase(sku: String, bridge: NativeBridge, callback: (Any?, String?) -> Unit) {
+    private fun handlePurchase(sku: String, callback: (Any?, String?) -> Unit) {
         val client = billingClient ?: run {
             callback(null, "IAP: not initialized")
             return
@@ -311,7 +315,12 @@ class IAPModule : NativeModule, PurchasesUpdatedListener {
     )
 
     override fun destroy() {
+        mainHandler.removeCallbacksAndMessages(null)
         billingClient?.endConnection()
         billingClient = null
+        pendingPurchaseCallback = null
+        cachedProducts.clear()
+        context = null
+        bridge = null
     }
 }

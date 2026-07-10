@@ -37,6 +37,24 @@ final class AnimationModule: NativeModule {
                 callback(nil, "Invalid args"); return
             }
             runParallel(animationsData: animationsData, callback: callback)
+        case "measureView":
+            guard let viewId = args.first.flatMap({ coerceInt($0) }) else {
+                callback(nil, "measureView: invalid view ID")
+                return
+            }
+            DispatchQueue.main.async { [weak self] in
+                guard let view = self?.viewLookup(viewId) else {
+                    callback(nil, "measureView: view \(viewId) not found")
+                    return
+                }
+                let frame = view.convert(view.bounds, to: view.window?.contentView)
+                callback([
+                    "x": frame.origin.x,
+                    "y": frame.origin.y,
+                    "width": frame.size.width,
+                    "height": frame.size.height,
+                ], nil)
+            }
         default:
             callback(nil, "AnimationModule: unknown method '\(method)'")
         }

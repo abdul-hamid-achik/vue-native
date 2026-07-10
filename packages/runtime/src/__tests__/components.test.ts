@@ -22,10 +22,21 @@ const {
   VRefreshControl, VPressable, VSectionList, VTabBar, VDrawer,
   VDrawerItem, VDrawerSection,
   VCheckbox, VRadio, VDropdown, VVideo,
-  VTransition, VTransitionGroup,
+  VToolbar, VSplitView, VOutlineView,
+  VTransition, VTransitionGroup, KeepAlive, VSuspense, defineAsyncComponent,
 } = await import('../components')
 
-import { createVNode, defineComponent, ref, type VNode } from '@vue/runtime-core'
+import {
+  createVNode,
+  defineComponent,
+  onActivated,
+  onDeactivated,
+  onMounted,
+  onUnmounted,
+  ref,
+  type Component,
+  type VNode,
+} from '@vue/runtime-core'
 
 function renderComponent(vnode: VNode) {
   const root = createNativeNode('__ROOT__')
@@ -138,6 +149,25 @@ describe('Components', () => {
       expect(prop).toBeDefined()
       expect(prop!.args[2]).toBe(0.5)
     })
+
+    it('renders the title shorthand as VText when no default slot is provided', async () => {
+      renderComponent(createVNode(VButton, { title: 'Save' }))
+      await nextTick()
+
+      expect(mockBridge.getOpsByType('create').some(o => o.args[1] === 'VText')).toBe(true)
+      expect(mockBridge.getOpsByType('createText').some(o => o.args[1] === 'Save')).toBe(true)
+    })
+
+    it('prefers default slot content over the title shorthand', async () => {
+      renderComponent(createVNode(VButton, { title: 'Ignored' }, {
+        default: () => createVNode(VText, null, { default: () => 'Custom' }),
+      }))
+      await nextTick()
+
+      const text = mockBridge.getOpsByType('createText').map(o => o.args[1])
+      expect(text).toContain('Custom')
+      expect(text).not.toContain('Ignored')
+    })
   })
 
   // ---------------------------------------------------------------------------
@@ -197,6 +227,15 @@ describe('Components', () => {
       expect(valueProp!.args[2]).toBe(true)
     })
 
+    it('forwards onTintColor as a native prop instead of an event listener', async () => {
+      renderComponent(createVNode(VSwitch, { onTintColor: '#34C759' }))
+      await nextTick()
+
+      const propOps = mockBridge.getOpsByType('updateProp')
+      expect(propOps.find(op => op.args[1] === 'onTintColor')?.args[2]).toBe('#34C759')
+      expect(mockBridge.getOpsByType('addEventListener').some(op => op.args[1] === 'tintColor')).toBe(false)
+    })
+
     it('registers change event handler', async () => {
       renderComponent(createVNode(VSwitch, { 'onUpdate:modelValue': vi.fn() }))
       await nextTick()
@@ -223,6 +262,24 @@ describe('Components', () => {
       expect(ops.find(o => o.args[1] === 'value')?.args[2]).toBe(0.5)
       expect(ops.find(o => o.args[1] === 'minimumValue')?.args[2]).toBe(0)
       expect(ops.find(o => o.args[1] === 'maximumValue')?.args[2]).toBe(10)
+    })
+
+    it('extracts the numeric value from native change payloads', async () => {
+      const updateModelValue = vi.fn()
+      const change = vi.fn()
+      renderComponent(createVNode(VSlider, {
+        'onUpdate:modelValue': updateModelValue,
+        'onChange': change,
+      }))
+      await nextTick()
+
+      const changeListener = mockBridge.getOpsByType('addEventListener')
+        .find(op => op.args[1] === 'change')
+      expect(changeListener).toBeDefined()
+
+      NativeBridge.handleNativeEvent(changeListener!.args[0], 'change', { value: 0.75 })
+      expect(updateModelValue).toHaveBeenCalledWith(0.75)
+      expect(change).toHaveBeenCalledWith(0.75)
     })
   })
 
@@ -470,14 +527,16 @@ describe('Components', () => {
 
     it('emits change when a tab is pressed', async () => {
       const changeSpy = vi.fn()
+      const updateSpy = vi.fn()
 
       renderComponent(createVNode(VTabBar, {
-        tabs: [
-          { id: 'home', label: 'Home' },
-          { id: 'settings', label: 'Settings' },
+        'tabs': [
+          { name: 'home', label: 'Home' },
+          { name: 'settings', label: 'Settings' },
         ],
-        activeTab: 'home',
-        onChange: changeSpy,
+        'modelValue': 'home',
+        'onChange': changeSpy,
+        'onUpdate:modelValue': updateSpy,
       }))
       await nextTick()
 
@@ -485,6 +544,41 @@ describe('Components', () => {
       NativeBridge.handleNativeEvent(pressables[1].args[0], 'press', null)
 
       expect(changeSpy).toHaveBeenCalledWith('settings')
+      expect(updateSpy).toHaveBeenCalledWith('settings')
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // macOS components
+  // ---------------------------------------------------------------------------
+  describe('macOS-specific components', () => {
+    it('renders VToolbar intrinsic element', async () => {
+      renderComponent(createVNode(VToolbar, {
+        items: [{ id: 'new', label: 'New', icon: 'doc.badge.plus' }],
+      }))
+      await nextTick()
+
+      const createOps = mockBridge.getOpsByType('create')
+      expect(createOps.some(o => o.args[1] === 'VToolbar')).toBe(true)
+    })
+
+    it('renders VSplitView children', async () => {
+      const child = createVNode(VView)
+      renderComponent(createVNode(VSplitView, { direction: 'horizontal' }, { default: () => [child] }))
+      await nextTick()
+
+      const createOps = mockBridge.getOpsByType('create')
+      expect(createOps.some(o => o.args[1] === 'VSplitView')).toBe(true)
+    })
+
+    it('renders VOutlineView intrinsic element', async () => {
+      renderComponent(createVNode(VOutlineView, {
+        data: [{ id: 'src', label: 'src' }],
+      }))
+      await nextTick()
+
+      const createOps = mockBridge.getOpsByType('create')
+      expect(createOps.some(o => o.args[1] === 'VOutlineView')).toBe(true)
     })
   })
 
@@ -516,6 +610,120 @@ describe('Components', () => {
       expect(createTypes.filter(type => type === 'VText')).toHaveLength(2)
       expect(createTypes).not.toContain('TransitionGroup')
     })
+
+    it('animates normal show and hide flows through the native Animation module', async () => {
+      const animation = vi.spyOn(NativeBridge, 'invokeNativeModule').mockResolvedValue(undefined)
+      const show = ref(false)
+      const Root = defineComponent({
+        render() {
+          return createVNode(VTransition, {
+            show: show.value,
+            duration: 25,
+            enterFrom: { opacity: 0, translateY: 10 },
+            enterTo: { opacity: 1, translateY: 0 },
+            leaveTo: { opacity: 0, translateY: -10 },
+            easing: 'easeInOut',
+          }, {
+            default: () => [createVNode(VView)],
+          })
+        },
+      })
+
+      renderComponent(createVNode(Root))
+      await nextTick()
+
+      show.value = true
+      await nextTick()
+      await nextTick()
+      expect(animation).toHaveBeenCalledWith(
+        'Animation',
+        'timing',
+        expect.arrayContaining([expect.any(Number), { opacity: 1, translateY: 0 }]),
+      )
+
+      animation.mockClear()
+      show.value = false
+      await nextTick()
+      await nextTick()
+      expect(animation).toHaveBeenCalledWith(
+        'Animation',
+        'timing',
+        expect.arrayContaining([expect.any(Number), { opacity: 0, translateY: -10 }]),
+      )
+      animation.mockRestore()
+    })
+  })
+
+  describe('renderer-native state components', () => {
+    it('KeepAlive preserves instances and runs activate/deactivate lifecycle hooks', async () => {
+      const events: string[] = []
+      const makeComponent = (name: string) => defineComponent({
+        name,
+        setup() {
+          onMounted(() => events.push(`${name}:mounted`))
+          onUnmounted(() => events.push(`${name}:unmounted`))
+          onActivated(() => events.push(`${name}:activated`))
+          onDeactivated(() => events.push(`${name}:deactivated`))
+          return () => createVNode(VText, null, { default: () => name })
+        },
+      })
+      const A = makeComponent('A')
+      const B = makeComponent('B')
+      const current = ref<'A' | 'B'>('A')
+      const Root = defineComponent({
+        render() {
+          const component = current.value === 'A' ? A : B
+          return createVNode(KeepAlive, null, {
+            default: () => [createVNode(component, { key: current.value })],
+          })
+        },
+      })
+
+      const root = renderComponent(createVNode(Root))
+      await nextTick()
+      current.value = 'B'
+      await nextTick()
+      current.value = 'A'
+      await nextTick()
+
+      expect(events.filter(event => event === 'A:mounted')).toHaveLength(1)
+      expect(events).toContain('A:deactivated')
+      expect(events.filter(event => event === 'A:activated').length).toBeGreaterThanOrEqual(2)
+      expect(events).not.toContain('A:unmounted')
+
+      render(null, root)
+      await nextTick()
+      expect(events).toContain('A:unmounted')
+      expect(events).toContain('B:unmounted')
+    })
+
+    it('VSuspense renders fallback and defineAsyncComponent unwraps module defaults', async () => {
+      type AsyncModule = {
+        default: Component
+        [Symbol.toStringTag]: 'Module'
+      }
+      let resolveLoader!: (component: AsyncModule) => void
+      const Loaded = defineComponent({
+        render: () => createVNode(VText, null, { default: () => 'Loaded' }),
+      })
+      const AsyncChild = defineAsyncComponent(() => new Promise<AsyncModule>((resolve) => {
+        resolveLoader = resolve
+      }))
+
+      renderComponent(createVNode(VSuspense, null, {
+        default: () => createVNode(AsyncChild),
+        fallback: () => createVNode(VText, null, { default: () => 'Loading' }),
+      }))
+      await nextTick()
+
+      expect(mockBridge.getOpsByType('createText').some(op => op.args[1] === 'Loading')).toBe(true)
+
+      resolveLoader({ default: Loaded, [Symbol.toStringTag]: 'Module' })
+      await nextTick()
+      await nextTick()
+
+      expect(mockBridge.getOpsByType('createText').some(op => op.args[1] === 'Loaded')).toBe(true)
+    })
   })
 
   // ---------------------------------------------------------------------------
@@ -524,9 +732,10 @@ describe('Components', () => {
   describe('VDrawer', () => {
     it('reacts to open prop changes after mount', async () => {
       const open = ref(false)
+      const openSpy = vi.fn()
       const Root = defineComponent({
         render() {
-          return createVNode(VDrawer, { open: open.value }, {
+          return createVNode(VDrawer, { open: open.value, onOpen: openSpy }, {
             default: () => [createVNode(VText, null, { default: () => 'Menu' })],
           })
         },
@@ -541,6 +750,7 @@ describe('Components', () => {
 
       const createOps = mockBridge.getOpsByType('create')
       expect(createOps.some(o => o.args[1] === 'VPressable')).toBe(true)
+      expect(openSpy).toHaveBeenCalledTimes(1)
     })
 
     it('closes on item press when closeOnPress is enabled', async () => {
@@ -615,6 +825,53 @@ describe('Components', () => {
 
       const styleOps = mockBridge.getOpsByType('updateStyle')
       expect(styleOps.some(o => o.args[1]?.backgroundColor === '#123456')).toBe(true)
+    })
+
+    it('supports a custom backdrop color without forcing outside-press close', async () => {
+      renderComponent(createVNode(VDrawer, {
+        open: true,
+        overlayColor: '#112233',
+        closeOnPressOutside: false,
+      }, {
+        default: () => [createVNode(VText, null, { default: () => 'Menu' })],
+      }))
+      await nextTick()
+
+      const styleOps = mockBridge.getOpsByType('updateStyle')
+      expect(styleOps.some(o => o.args[1]?.backgroundColor === '#112233')).toBe(true)
+      expect(mockBridge.getOpsByType('addEventListener').some(o => o.args[1] === 'press')).toBe(false)
+    })
+
+    it('renders footer content after the default slot', async () => {
+      renderComponent(createVNode(VDrawer, { open: true }, {
+        default: () => createVNode(VText, null, { default: () => 'Menu' }),
+        footer: () => createVNode(VText, null, { default: () => 'Version 1' }),
+      }))
+      await nextTick()
+
+      const text = mockBridge.getOpsByType('createText').map(o => o.args[1])
+      expect(text).toContain('Menu')
+      expect(text).toContain('Version 1')
+    })
+
+    it('exposes active drawer items as selected', async () => {
+      renderComponent(createVNode(VDrawerItem, { label: 'Home', active: true }))
+      await nextTick()
+
+      expect(mockBridge.getOpsByType('updateProp').some(o =>
+        o.args[1] === 'accessibilityState'
+        && o.args[2]?.disabled === false
+        && o.args[2]?.selected === true,
+      )).toBe(true)
+      expect(mockBridge.getOpsByType('updateStyle')
+        .some(o => o.args[1]?.backgroundColor === '#EAF3FF')).toBe(true)
+    })
+
+    it('renders a zero-valued badge', async () => {
+      renderComponent(createVNode(VDrawerItem, { label: 'Inbox', badge: 0 }))
+      await nextTick()
+
+      expect(mockBridge.getOpsByType('createText').some(o => o.args[1] === '0')).toBe(true)
     })
 
     it('exports VDrawerItem as a direct component alias', async () => {
@@ -1121,6 +1378,58 @@ describe('Components', () => {
       const visibleProp = ops.find(o => o.args[1] === 'visible')
       expect(visibleProp).toBeDefined()
       expect(visibleProp!.args[2]).toBe(false)
+    })
+
+    it('configures content and handlers before presenting', async () => {
+      const { VAlertDialog } = await import('../components/VAlertDialog')
+      renderComponent(createVNode(VAlertDialog, {
+        visible: true,
+        title: 'Confirm',
+        message: 'Continue?',
+        buttons: [{ label: 'OK' }],
+        onConfirm: vi.fn(),
+      }))
+      await nextTick()
+
+      const ops = mockBridge.getOps()
+      const visibleIndex = ops.findIndex(op => op.op === 'updateProp' && op.args[1] === 'visible')
+      const titleIndex = ops.findIndex(op => op.op === 'updateProp' && op.args[1] === 'title')
+      const messageIndex = ops.findIndex(op => op.op === 'updateProp' && op.args[1] === 'message')
+      const buttonsIndex = ops.findIndex(op => op.op === 'updateProp' && op.args[1] === 'buttons')
+      const confirmIndex = ops.findIndex(op => op.op === 'addEventListener' && op.args[1] === 'confirm')
+
+      expect(visibleIndex).toBeGreaterThan(titleIndex)
+      expect(visibleIndex).toBeGreaterThan(messageIndex)
+      expect(visibleIndex).toBeGreaterThan(buttonsIndex)
+      expect(visibleIndex).toBeGreaterThan(confirmIndex)
+    })
+  })
+
+  describe('VActionSheet', () => {
+    it('configures content and handlers before presenting', async () => {
+      renderComponent(createVNode(_VActionSheet, {
+        visible: true,
+        title: 'Choose',
+        message: 'Select an action',
+        actions: [{ label: 'Edit' }, { label: 'Cancel', style: 'cancel' }],
+        onAction: vi.fn(),
+        onCancel: vi.fn(),
+      }))
+      await nextTick()
+
+      const ops = mockBridge.getOps()
+      const visibleIndex = ops.findIndex(op => op.op === 'updateProp' && op.args[1] === 'visible')
+      const titleIndex = ops.findIndex(op => op.op === 'updateProp' && op.args[1] === 'title')
+      const messageIndex = ops.findIndex(op => op.op === 'updateProp' && op.args[1] === 'message')
+      const actionsIndex = ops.findIndex(op => op.op === 'updateProp' && op.args[1] === 'actions')
+      const actionHandlerIndex = ops.findIndex(op => op.op === 'addEventListener' && op.args[1] === 'action')
+      const cancelHandlerIndex = ops.findIndex(op => op.op === 'addEventListener' && op.args[1] === 'cancel')
+
+      expect(visibleIndex).toBeGreaterThan(titleIndex)
+      expect(visibleIndex).toBeGreaterThan(messageIndex)
+      expect(visibleIndex).toBeGreaterThan(actionsIndex)
+      expect(visibleIndex).toBeGreaterThan(actionHandlerIndex)
+      expect(visibleIndex).toBeGreaterThan(cancelHandlerIndex)
     })
   })
 })

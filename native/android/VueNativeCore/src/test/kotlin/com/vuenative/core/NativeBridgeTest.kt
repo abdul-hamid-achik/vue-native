@@ -2,8 +2,10 @@ package com.vuenative.core
 
 import android.content.Context
 import android.os.Looper
+import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import androidx.recyclerview.widget.RecyclerView
 import androidx.test.core.app.ApplicationProvider
 import com.google.android.flexbox.FlexboxLayout
 import org.junit.After
@@ -134,6 +136,22 @@ class NativeBridgeTest {
         assertEquals("Parent ViewGroup should have 0 children", 0, parent.childCount)
     }
 
+    @Test
+    fun testRemovingRootDetachesTheModalHost() {
+        bridge.processOperations(
+            """[
+            {"op":"create","args":[1,"__ROOT__"]},
+            {"op":"setRootView","args":[1]},
+            {"op":"removeChild","args":[1]}
+        ]"""
+        )
+        flush()
+
+        assertNull(bridge.rootView)
+        assertEquals(0, bridge.hostContainer?.childCount)
+        assertFalse(bridge.nodeViews.containsKey(1))
+    }
+
     // -------------------------------------------------------------------------
     // insertBefore
     // -------------------------------------------------------------------------
@@ -160,6 +178,118 @@ class NativeBridgeTest {
         assertTrue("child3 should be before child2", idx3 < idx2)
         assertEquals("child3 should be at index 0", 0, idx3)
         assertEquals("child2 should be at index 1", 1, idx2)
+    }
+
+    @Test
+    fun testInsertBeforeMovesExistingChildWithoutDuplicatingIt() {
+        bridge.processOperations(
+            """[
+            {"op":"create","args":[1,"VView"]},
+            {"op":"create","args":[2,"VView"]},
+            {"op":"create","args":[3,"VView"]},
+            {"op":"create","args":[4,"VView"]},
+            {"op":"appendChild","args":[1,2]},
+            {"op":"appendChild","args":[1,3]},
+            {"op":"appendChild","args":[1,4]},
+            {"op":"insertBefore","args":[1,4,2]}
+        ]"""
+        )
+        flush()
+
+        val parent = bridge.nodeViews[1] as ViewGroup
+        assertEquals(3, parent.childCount)
+        assertEquals(bridge.nodeViews[4], parent.getChildAt(0))
+        assertEquals(bridge.nodeViews[2], parent.getChildAt(1))
+        assertEquals(bridge.nodeViews[3], parent.getChildAt(2))
+        assertEquals(listOf(4, 2, 3), bridge.nodeChildren[1])
+    }
+
+    @Test
+    fun testInsertBeforeSelfLeavesTheChildOrderUnchanged() {
+        bridge.processOperations(
+            """[
+            {"op":"create","args":[1,"VView"]},
+            {"op":"create","args":[2,"VView"]},
+            {"op":"create","args":[3,"VView"]},
+            {"op":"appendChild","args":[1,2]},
+            {"op":"appendChild","args":[1,3]},
+            {"op":"insertBefore","args":[1,2,2]}
+        ]"""
+        )
+        flush()
+
+        val parent = bridge.nodeViews[1] as ViewGroup
+        assertEquals(listOf(2, 3), bridge.nodeChildren[1])
+        assertEquals(bridge.nodeViews[2], parent.getChildAt(0))
+        assertEquals(bridge.nodeViews[3], parent.getChildAt(1))
+    }
+
+    @Test
+    fun testAppendChildReparentsAndCleansOldIndexes() {
+        bridge.processOperations(
+            """[
+            {"op":"create","args":[1,"VView"]},
+            {"op":"create","args":[2,"VView"]},
+            {"op":"create","args":[3,"VView"]},
+            {"op":"appendChild","args":[1,3]},
+            {"op":"appendChild","args":[2,3]}
+        ]"""
+        )
+        flush()
+
+        val firstParent = bridge.nodeViews[1] as ViewGroup
+        val secondParent = bridge.nodeViews[2] as ViewGroup
+        val child = bridge.nodeViews[3]
+        assertEquals(0, firstParent.childCount)
+        assertEquals(1, secondParent.childCount)
+        assertEquals(child, secondParent.getChildAt(0))
+        assertEquals(2, bridge.nodeParents[3])
+        assertFalse(bridge.nodeChildren[1]?.contains(3) == true)
+        assertEquals(listOf(3), bridge.nodeChildren[2])
+
+        // Removing the former parent must not clean up a node that was moved.
+        bridge.processOperations("""[{"op":"removeChild","args":[1]}]""")
+        flush()
+        assertNotNull(bridge.nodeViews[3])
+        assertEquals(2, bridge.nodeParents[3])
+    }
+
+    @Test
+    fun testRecyclerBackedListsUseLogicalChildIndexesForMoves() {
+        assertLogicalListMove("VList", VListFactory::class.java)
+        assertLogicalListMove("VSectionList", VSectionListFactory::class.java)
+    }
+
+    private fun assertLogicalListMove(type: String, factoryClass: Class<*>) {
+        bridge.processOperations(
+            """[
+            {"op":"create","args":[10,"$type"]},
+            {"op":"create","args":[11,"VView"]},
+            {"op":"create","args":[12,"VView"]},
+            {"op":"create","args":[13,"VView"]},
+            {"op":"appendChild","args":[10,11]},
+            {"op":"appendChild","args":[10,12]},
+            {"op":"appendChild","args":[10,13]},
+            {"op":"insertBefore","args":[10,13,11]}
+        ]"""
+        )
+        flush()
+
+        val list = bridge.nodeViews[10] as RecyclerView
+        assertEquals(3, list.adapter?.itemCount)
+        assertEquals(listOf(13, 11, 12), bridge.nodeChildren[10])
+
+        val factory = ComponentRegistry.getInstance(context).factoryForView(list)!!
+        val field = factoryClass.getDeclaredField("childViews")
+        field.isAccessible = true
+        @Suppress("UNCHECKED_CAST")
+        val rows = (field.get(factory) as Map<RecyclerView, MutableList<View>>)[list]!!
+        assertEquals(
+            listOf(bridge.nodeViews[13], bridge.nodeViews[11], bridge.nodeViews[12]),
+            rows,
+        )
+
+        bridge.clearAllRegistries()
     }
 
     // -------------------------------------------------------------------------
@@ -398,6 +528,84 @@ class NativeBridgeTest {
         bridge.processOperations("""[{"op":"create","args":[1,"VView"]}]""")
         flush()
         assertNotNull(bridge.nodeViews[1])
+    }
+
+    @Test
+    fun testNativeModuleArgsUseRecursiveKotlinCollections() {
+        var capturedArgs: List<Any?>? = null
+        val module = object : NativeModule {
+            override val moduleName = "ArgumentCapture"
+
+            override fun invoke(
+                method: String,
+                args: List<Any?>,
+                bridge: NativeBridge,
+                callback: (result: Any?, error: String?) -> Unit,
+            ) {
+                capturedArgs = args
+                callback(true, null)
+            }
+        }
+        NativeModuleRegistry.getInstance(context).register(module)
+
+        bridge.processOperations(
+            """[{"op":"invokeNativeModule","args":["ArgumentCapture","capture",[{"title":"Hello","options":{"enabled":true,"count":2},"items":["one",{"id":3},null]}],7]}]""",
+        )
+        flush()
+
+        val root = capturedArgs?.single() as? Map<*, *>
+        assertNotNull("Object args should become Kotlin maps", root)
+        assertEquals("Hello", root?.get("title"))
+        assertEquals(mapOf("enabled" to true, "count" to 2), root?.get("options"))
+        assertEquals(listOf("one", mapOf("id" to 3), null), root?.get("items"))
+    }
+
+    @Test
+    fun testDestroyHostCancelsQueuedOperationsAndReleasesNativeState() {
+        val staleBridge = NativeBridge(context)
+        val staleContainer = FrameLayout(context)
+        staleBridge.hostContainer = staleContainer
+
+        // Leave the operation queued on the main handler, then destroy the
+        // owning Activity/bridge before that batch can run.
+        staleBridge.processOperations("""[{"op":"create","args":[99,"VView"]}]""")
+        staleBridge.destroyHost()
+        flush()
+
+        assertFalse(staleBridge.nodeViews.containsKey(99))
+        assertTrue(staleBridge.nodeParents.isEmpty())
+        assertTrue(staleBridge.nodeChildren.isEmpty())
+        assertNull(staleBridge.rootView)
+        assertNull(staleBridge.hostContainer)
+        assertEquals(0, staleContainer.childCount)
+
+        // Once detached, future batches from a late JS callback are ignored.
+        staleBridge.processOperations("""[{"op":"create","args":[100,"VView"]}]""")
+        flush()
+        assertFalse(staleBridge.nodeViews.containsKey(100))
+    }
+
+    @Test
+    fun testClearAllRegistriesDetachesAndClearsTeleportState() {
+        bridge.processOperations(
+            """[
+                {"op":"create","args":[1,"VView"]},
+                {"op":"createTeleport","args":[1,10,11]}
+            ]""",
+        )
+        flush()
+
+        val parent = bridge.nodeViews[1] as ViewGroup
+        assertEquals(1, parent.childCount)
+
+        bridge.clearAllRegistries()
+
+        assertEquals(0, parent.childCount)
+        for (fieldName in listOf("teleportContainers", "teleportMarkers")) {
+            val field = NativeBridge::class.java.getDeclaredField(fieldName)
+            field.isAccessible = true
+            assertTrue((field.get(bridge) as Map<*, *>).isEmpty())
+        }
     }
 
     // -------------------------------------------------------------------------

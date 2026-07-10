@@ -188,4 +188,13 @@ class VVideoFactory : NativeComponentFactory {
     private fun fireEvent(view: View, event: String, payload: Any?) {
         handlers[view]?.get(event)?.invoke(payload)
     }
+
+    override fun destroyView(view: View) {
+        val frame = view as? FrameLayout ?: return
+        cleanupPlayer(frame)
+        handlers.remove(frame)
+        autoplayFlags.remove(frame)
+        loopFlags.remove(frame)
+        mutedFlags.remove(frame)
+    }
 }

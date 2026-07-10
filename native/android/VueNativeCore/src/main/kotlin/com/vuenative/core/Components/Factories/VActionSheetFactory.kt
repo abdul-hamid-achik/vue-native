@@ -15,6 +15,7 @@ class VActionSheetFactory : NativeComponentFactory {
     private val props = mutableMapOf<View, SheetProps>()
     private val actionHandlers = mutableMapOf<View, (Any?) -> Unit>()
     private val cancelHandlers = mutableMapOf<View, (Any?) -> Unit>()
+    private val dialogs = mutableMapOf<View, AlertDialog>()
 
     override fun createView(context: Context): View = View(context).apply {
         layoutParams = ViewGroup.LayoutParams(0, 0)
@@ -25,7 +26,11 @@ class VActionSheetFactory : NativeComponentFactory {
         val p = props.getOrPut(view) { SheetProps() }
         when (key) {
             "visible" -> {
-                if (value == true || value == "true") showSheet(view, p)
+                if (value == true || value == "true") {
+                    showSheet(view, p)
+                } else {
+                    dialogs.remove(view)?.dismiss()
+                }
             }
             "title" -> p.title = value?.toString() ?: ""
             "message" -> p.message = value?.toString() ?: ""
@@ -44,25 +49,42 @@ class VActionSheetFactory : NativeComponentFactory {
 
     private fun showSheet(view: View, p: SheetProps) {
         val ctx = view.context
-        val items = p.actions.map { it["label"] ?: "" }.toTypedArray()
-        val cancelIdx = p.actions.indexOfFirst { it["style"] == "cancel" }
+        dialogs.remove(view)?.dismiss()
 
-        AlertDialog.Builder(ctx)
+        val selectableActions = p.actions.withIndex()
+            .filterNot { it.value["style"] == "cancel" }
+        val items = selectableActions.map { it.value["label"] ?: "" }.toTypedArray()
+        val cancelLabel = p.actions.firstOrNull { it["style"] == "cancel" }
+            ?.get("label")
+            ?: "Cancel"
+
+        val dialog = AlertDialog.Builder(ctx)
             .setTitle(p.title.ifEmpty { null })
             .setMessage(p.message.ifEmpty { null })
             .setItems(items) { _, which ->
-                val action = p.actions.getOrNull(which)
-                if (action?.get("style") == "cancel") {
-                    cancelHandlers[view]?.invoke(null)
-                } else {
-                    actionHandlers[view]?.invoke(mapOf("label" to (action?.get("label") ?: ""), "index" to which))
-                }
+                val indexedAction = selectableActions.getOrNull(which)
+                val action = indexedAction?.value
+                actionHandlers[view]?.invoke(
+                    mapOf(
+                        "label" to (action?.get("label") ?: ""),
+                        "index" to (indexedAction?.index ?: which)
+                    )
+                )
             }
-            .setNegativeButton("Cancel") { d, _ ->
+            .setNegativeButton(cancelLabel) { d, _ ->
                 d.dismiss()
                 cancelHandlers[view]?.invoke(null)
             }
-            .show()
+            .setOnCancelListener {
+                cancelHandlers[view]?.invoke(null)
+            }
+            .create()
+
+        dialog.setOnDismissListener {
+            dialogs.remove(view, dialog)
+        }
+        dialogs[view] = dialog
+        dialog.show()
     }
 
     override fun addEventListener(view: View, event: String, handler: (Any?) -> Unit) {
@@ -76,5 +98,12 @@ class VActionSheetFactory : NativeComponentFactory {
             "action" -> actionHandlers.remove(view)
             "cancel" -> cancelHandlers.remove(view)
         }
+    }
+
+    override fun destroyView(view: View) {
+        dialogs.remove(view)?.dismiss()
+        props.remove(view)
+        actionHandlers.remove(view)
+        cancelHandlers.remove(view)
     }
 }

@@ -230,7 +230,7 @@ describe('CLI Command Tests', () => {
         <native platform="android">
         class TestModule: NativeModule {
           override val moduleName: String = "AndroidModule"
-          override fun invoke(method: String, args: List<Any?>, callback: (Any?, String?) -> Unit) {
+          override fun invoke(method: String, args: List<Any?>, bridge: NativeBridge, callback: (Any?, String?) -> Unit) {
             callback(null, null)
           }
         }

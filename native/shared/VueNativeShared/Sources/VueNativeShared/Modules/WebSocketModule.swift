@@ -209,4 +209,16 @@ public final class WebSocketModule: NativeModule {
     }
 
     public func invokeSync(method: String, args: [Any]) -> Any? { nil }
+
+    public func destroy() {
+        let activeConnections = Array(connections.values)
+        let activeSessions = Array(sessions.values)
+        connections.removeAll()
+        sessions.removeAll()
+
+        activeConnections.forEach {
+            $0.cancel(with: .goingAway, reason: nil)
+        }
+        activeSessions.forEach { $0.invalidateAndCancel() }
+    }
 }

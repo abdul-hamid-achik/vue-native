@@ -58,4 +58,10 @@ class VSwitchFactory : NativeComponentFactory {
             sw.setOnCheckedChangeListener(null)
         }
     }
+
+    override fun destroyView(view: View) {
+        val sw = view as? SwitchCompat ?: return
+        sw.setOnCheckedChangeListener(null)
+        changeHandlers.remove(sw)
+    }
 }

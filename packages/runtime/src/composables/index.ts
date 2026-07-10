@@ -27,7 +27,12 @@ export { useCamera } from './useCamera'
 export type { CameraOptions, CameraResult, VideoCaptureOptions, VideoCaptureResult, QRCodeResult } from './useCamera'
 
 export { useNotifications } from './useNotifications'
-export type { LocalNotification, NotificationPayload, PushNotificationPayload } from './useNotifications'
+export type {
+  LocalNotification,
+  NotificationPayload,
+  PushNotificationPayload,
+  PushRegistrationError,
+} from './useNotifications'
 
 export { useBiometry } from './useBiometry'
 export type { BiometryType, BiometryResult } from './useBiometry'

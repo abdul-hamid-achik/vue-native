@@ -4,7 +4,7 @@ This guide walks you through building a complete Vue Native app from scratch —
 
 ## Prerequisites
 
-- Node.js 18+ or [Bun](https://bun.sh)
+- [Bun](https://bun.sh) 1.3+ (Node.js 20.19+ is also needed only if you choose npm/npx commands)
 - **iOS:** Xcode 15+, iOS 16+ Simulator
 - **Android:** Android Studio, API 21+ emulator
 - **macOS:** Xcode 16+, macOS 15.0+
@@ -265,7 +265,7 @@ import { createRouter, RouterView } from '@thelacanians/vue-native-navigation'
 import HomeView from './views/HomeView.vue'
 import DetailView from './views/DetailView.vue'
 
-const { router } = createRouter([
+const router = createRouter([
   { name: 'home', component: HomeView },
   { name: 'detail', component: DetailView },
 ])

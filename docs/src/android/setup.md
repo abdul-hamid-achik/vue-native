@@ -9,7 +9,7 @@ This guide walks through every step to get a Vue Native app building and running
 | **Android Studio** | Ladybug+ | [developer.android.com/studio](https://developer.android.com/studio) |
 | **Android SDK** | API 35 | Via Android Studio SDK Manager |
 | **JDK** | 17 | Bundled with Android Studio |
-| **Bun** (or Node 18+) | 1.3+ | `curl -fsSL https://bun.sh/install \| bash` |
+| **Bun** | 1.3+ | `curl -fsSL https://bun.sh/install \| bash` |
 
 ### Android Studio setup
 
@@ -102,12 +102,12 @@ my-app/
     pages/Home.vue
   android/                       # Native Gradle project
     build.gradle.kts             # Root Gradle config (AGP 8.7.3, Kotlin 2.0.21)
-    settings.gradle.kts          # Includes :app, repositories
+    settings.gradle.kts          # Includes :app and local :VueNativeCore modules
     gradle.properties            # JVM args, AndroidX flags
-    gradle/wrapper/              # Gradle 8.11.1 wrapper
+    gradle/wrapper/              # Gradle 8.11.1 wrapper properties and JAR
     gradlew                      # Gradle wrapper script
     app/
-      build.gradle.kts           # App module: compileSdk 35, minSdk 24
+      build.gradle.kts           # App module: compileSdk 35, minSdk 21
       proguard-rules.pro
       src/main/
         AndroidManifest.xml
@@ -118,11 +118,18 @@ my-app/
         res/xml/network_security_config.xml
       src/debug/res/xml/
         network_security_config.xml  # Allows cleartext for dev server
+  native/
+    android/
+      VueNativeCore/             # Bundled runtime, linked as :VueNativeCore
   dist/                          # Built JS bundle (generated)
   vite.config.ts
   vue-native.config.ts
   package.json
 ```
+
+The scaffold links the bundled `native/android/VueNativeCore` source as a local
+Gradle module. It does not download VueNativeCore from GitHub Packages, so a
+GitHub username, token, or package-registry credential is not required.
 
 ### 2. Build the JS bundle
 
@@ -165,9 +172,9 @@ cd android
 
 This:
 - Downloads Gradle 8.11.1 (first run only)
-- Resolves dependencies from Google, Maven Central, JitPack, and GitHub Packages
+- Resolves third-party dependencies from Google, Maven Central, and JitPack
 - Compiles Kotlin sources
-- Links the VueNativeCore library
+- Builds and links the bundled `:VueNativeCore` Gradle module
 - Packages the JS bundle from `assets/`
 - Signs with the debug keystore
 - Outputs: `app/build/outputs/apk/debug/app-debug.apk`

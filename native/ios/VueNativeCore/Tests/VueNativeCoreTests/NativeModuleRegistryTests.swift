@@ -105,6 +105,31 @@ final class NativeModuleRegistryTests: XCTestCase {
         XCTAssertNil(mock1.lastMethod, "First mock should NOT have been invoked")
     }
 
+    func testRegisterDestroysReplacedModule() {
+        let first = MockNativeModule(name: "LifecycleModule")
+        let replacement = MockNativeModule(name: "LifecycleModule")
+
+        moduleRegistry.register(first)
+        moduleRegistry.register(replacement)
+
+        XCTAssertEqual(first.destroyCallCount, 1)
+        XCTAssertEqual(replacement.destroyCallCount, 0)
+
+        moduleRegistry.removeAll()
+        XCTAssertEqual(replacement.destroyCallCount, 1)
+    }
+
+    func testRegisteringSameInstanceDoesNotDestroyIt() {
+        let module = MockNativeModule(name: "SameInstanceModule")
+
+        moduleRegistry.register(module)
+        moduleRegistry.register(module)
+
+        XCTAssertEqual(module.destroyCallCount, 0)
+        moduleRegistry.removeAll()
+        XCTAssertEqual(module.destroyCallCount, 1)
+    }
+
     // MARK: - Individual Known Modules Can Be Registered
 
     func testKnownModulesCanBeRegisteredIndividually() {
@@ -183,6 +208,7 @@ private final class MockNativeModule: NativeModule {
     var lastMethod: String?
     var lastArgs: [Any]?
     var resultToReturn: Any?
+    var destroyCallCount = 0
 
     init(name: String) {
         self.moduleName = name
@@ -198,6 +224,10 @@ private final class MockNativeModule: NativeModule {
         lastMethod = method
         lastArgs = args
         return resultToReturn
+    }
+
+    func destroy() {
+        destroyCallCount += 1
     }
 }
 #endif

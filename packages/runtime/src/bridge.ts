@@ -22,6 +22,43 @@ interface PendingCallback {
 const bridgeGlobals = globalThis as typeof globalThis & NativeBridgeGlobals
 
 /**
+ * Vue apps mounted through createApp().start() register their unmount callback
+ * here so the native hot-reload hook can dispose Vue effects before the bridge
+ * state and node IDs are reset.
+ */
+const appTeardowns = new Set<() => void>()
+
+/**
+ * Register a mounted Vue app for native-triggered teardown.
+ *
+ * This intentionally lives next to the global bridge hook rather than in the
+ * app entry point: native owns the hook and must be able to invoke it without
+ * introducing a circular import back into index.ts.
+ */
+export function registerAppTeardown(teardown: () => void): () => void {
+  appTeardowns.add(teardown)
+
+  return () => {
+    appTeardowns.delete(teardown)
+  }
+}
+
+function teardownMountedApps(): void {
+  const teardowns = [...appTeardowns]
+  appTeardowns.clear()
+
+  for (const teardown of teardowns) {
+    try {
+      teardown()
+    } catch (err) {
+      // A failed component cleanup must not prevent the bridge from resetting
+      // or leave other mounted apps alive during a hot reload.
+      console.error('[VueNative] Error unmounting app during teardown:', err)
+    }
+  }
+}
+
+/**
  * NativeBridge -- the communication layer between JavaScript and Swift/UIKit.
  *
  * All renderer operations (create, update, insert, remove) are batched into
@@ -367,12 +404,17 @@ class NativeBridgeImpl {
   }
 
   /**
-   * Invoke a native module method synchronously.
-   * This sends the operation immediately and expects no callback.
-   * Use sparingly -- prefer the async variant.
+   * @deprecated Native module invocations cannot safely return a value through
+   * the batched JSON bridge. This compatibility alias now uses the reliable
+   * asynchronous callback path; migrate callers to invokeNativeModule().
    */
-  invokeNativeModuleSync(moduleName: string, methodName: string, args: unknown[] = []): void {
-    this.enqueue('invokeNativeModuleSync', [moduleName, methodName, args])
+  invokeNativeModuleSync(
+    moduleName: string,
+    methodName: string,
+    args: unknown[] = [],
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ): Promise<any> {
+    return this.invokeNativeModule(moduleName, methodName, args)
   }
 
   /**
@@ -506,6 +548,7 @@ bridgeGlobals.__VN_handleGlobalEvent = NativeBridge.handleGlobalEvent.bind(Nativ
 
 // Teardown function called by native before hot reload to reset all JS state
 bridgeGlobals.__VN_teardown = () => {
+  teardownMountedApps()
   NativeBridge.reset()
   resetNodeId()
 }

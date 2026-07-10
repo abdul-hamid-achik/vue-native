@@ -72,4 +72,13 @@ class VImageFactory : NativeComponentFactory {
             "error" -> errorHandlers.remove(iv)
         }
     }
+
+    override fun destroyView(view: View) {
+        val iv = view as? ImageView ?: return
+        loadHandlers.remove(iv)
+        errorHandlers.remove(iv)
+        // Replacing the request with an empty source cancels any in-flight Coil load.
+        iv.load(null)
+        iv.setImageDrawable(null)
+    }
 }

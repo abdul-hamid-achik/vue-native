@@ -35,6 +35,7 @@ class VModalFactory : NativeComponentFactory {
                     dialogs[view]?.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
                 }
             }
+            else -> StyleEngine.apply(key, value, getOrCreateContent(view))
         }
     }
 
@@ -45,15 +46,7 @@ class VModalFactory : NativeComponentFactory {
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
         dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
 
-        val content = contentContainers.getOrPut(view) {
-            FlexboxLayout(ctx).apply {
-                flexDirection = FlexDirection.COLUMN
-                layoutParams = ViewGroup.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT
-                )
-            }
-        }
+        val content = getOrCreateContent(view)
         (content.parent as? ViewGroup)?.removeView(content)
         dialog.setContentView(content)
         dialog.setOnDismissListener { dismissHandlers[view]?.invoke(null) }
@@ -75,11 +68,7 @@ class VModalFactory : NativeComponentFactory {
     }
 
     override fun insertChild(parent: View, child: View, index: Int) {
-        val container = contentContainers.getOrPut(parent) {
-            FlexboxLayout(parent.context).apply {
-                flexDirection = FlexDirection.COLUMN
-            }
-        }
+        val container = getOrCreateContent(parent)
         val lp = StyleEngine.buildFlexLayoutParams(child)
         if (index >= container.childCount) {
             container.addView(child, lp)
@@ -91,6 +80,17 @@ class VModalFactory : NativeComponentFactory {
     override fun removeChild(parent: View, child: View) {
         contentContainers[parent]?.removeView(child)
     }
+
+    private fun getOrCreateContent(placeholder: View): FlexboxLayout =
+        contentContainers.getOrPut(placeholder) {
+            VueNativeFlexboxLayout(placeholder.context).apply {
+                flexDirection = FlexDirection.COLUMN
+                layoutParams = ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+            }
+        }
 
     /**
      * Clean up all state associated with a modal view when it is removed from the tree.

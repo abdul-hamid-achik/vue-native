@@ -43,7 +43,12 @@ final class AppStateModule: NSObject, NativeModule {
     }
 
     deinit {
+        destroy()
+    }
+
+    func destroy() {
         observers.forEach { NotificationCenter.default.removeObserver($0) }
+        observers.removeAll()
     }
 
     func invoke(method: String, args: [Any], callback: @escaping (Any?, String?) -> Void) {

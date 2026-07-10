@@ -110,4 +110,19 @@ public final class PerformanceModule: NSObject, NativeModule {
         }
         return 0
     }
+
+    public func destroy() {
+        let cleanup = {
+            self.isProfiling = false
+            self.metricsTimer?.invalidate()
+            self.metricsTimer = nil
+            self.fpsProvider = nil
+        }
+
+        if Thread.isMainThread {
+            cleanup()
+        } else {
+            DispatchQueue.main.sync(execute: cleanup)
+        }
+    }
 }

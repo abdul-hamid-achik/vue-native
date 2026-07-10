@@ -31,6 +31,10 @@ open class VueNativeWindowController: NSWindowController {
 
     private let runtime = JSRuntime.shared
     private let bridge  = NativeBridge.shared
+    private let hostID = UUID()
+    private var resizeObserver: NSObjectProtocol?
+    private var lastDimensions: (width: CGFloat, height: CGFloat, scale: CGFloat)?
+    private var hasLoadedBundle = false
 
     // MARK: - Convenience initializer
 
@@ -45,7 +49,9 @@ open class VueNativeWindowController: NSWindowController {
         window.title = "Vue Native"
 
         // Use a FlippedView as the content view so all coordinates are top-left origin.
-        let flippedContent = FlippedView(frame: window.contentView!.bounds)
+        let initialBounds = window.contentView?.bounds
+            ?? NSRect(x: 0, y: 0, width: 800, height: 600)
+        let flippedContent = FlippedView(frame: initialBounds)
         flippedContent.autoresizingMask = [.width, .height]
         window.contentView = flippedContent
 
@@ -62,13 +68,62 @@ open class VueNativeWindowController: NSWindowController {
         contentView.layer?.backgroundColor = NSColor.black.cgColor
 
         // Initialize JS engine first, then bridge.
-        runtime.initialize { [weak self] in
-            guard let self = self else { return }
-            self.bridge.initialize(contentView: contentView)
+        runtime.initializeForHost { [weak self] in
             DispatchQueue.main.async {
+                guard let self else { return }
+                self.bridge.initialize(contentView: contentView, hostID: self.hostID)
                 self.loadBundle()
             }
         }
+
+        if let window {
+            resizeObserver = NotificationCenter.default.addObserver(
+                forName: NSWindow.didResizeNotification,
+                object: window,
+                queue: .main
+            ) { [weak self] _ in
+                self?.emitDimensionsIfNeeded()
+            }
+        }
+    }
+
+    deinit {
+        if let resizeObserver {
+            NotificationCenter.default.removeObserver(resizeObserver)
+        }
+        let hostID = hostID
+        Task { @MainActor in
+            let bridge = NativeBridge.shared
+            if bridge.releaseHost(hostID: hostID) {
+                JSRuntime.shared.invalidate()
+            }
+        }
+    }
+
+    private func emitDimensionsIfNeeded() {
+        guard hasLoadedBundle else { return }
+        guard let contentView = window?.contentView else { return }
+        let size = contentView.bounds.size
+        guard size.width > 0, size.height > 0 else { return }
+        let scale = window?.screen?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 1
+        let dimensions = (width: size.width, height: size.height, scale: scale)
+
+        if let previous = lastDimensions,
+           previous.width == dimensions.width,
+           previous.height == dimensions.height,
+           previous.scale == dimensions.scale {
+            return
+        }
+
+        lastDimensions = dimensions
+        bridge.dispatchGlobalEvent(
+            "dimensionsChange",
+            payload: [
+                "width": dimensions.width,
+                "height": dimensions.height,
+                "scale": dimensions.scale,
+            ]
+        )
     }
 
     // MARK: - Bundle loading
@@ -83,9 +138,17 @@ open class VueNativeWindowController: NSWindowController {
     }
 
     private func loadEmbeddedBundle() {
-        runtime.loadBundle(source: .embedded(name: bundleName)) { success in
+        runtime.loadBundle(source: .embedded(name: bundleName)) { [weak self] success in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.hasLoadedBundle = success
+                if success {
+                    self.window?.contentView?.layoutSubtreeIfNeeded()
+                    self.emitDimensionsIfNeeded()
+                }
+            }
             if !success {
-                NSLog("[VueNative macOS] ERROR: Failed to load bundle '%@'", self.bundleName)
+                NSLog("[VueNative macOS] ERROR: Failed to load bundle '%@'", self?.bundleName ?? "unknown")
             }
         }
     }

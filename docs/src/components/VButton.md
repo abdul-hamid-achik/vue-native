@@ -2,11 +2,13 @@
 
 A pressable container view. Maps to a `UIControl`-based view on iOS and a custom touch delegate on Android.
 
-Unlike web buttons, `VButton` is a layout container -- place `VText` or other views inside it.
+Use the `title` prop for a simple text button, or place `VText` and other views inside the default slot for richer content.
 
 ## Usage
 
 ```vue
+<VButton title="Save" :onPress="handleSave" />
+
 <VButton
   :style="{ backgroundColor: '#007AFF', padding: 12, borderRadius: 8 }"
   :onPress="handlePress"
@@ -19,6 +21,8 @@ Unlike web buttons, `VButton` is a layout container -- place `VText` or other vi
 
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
+| `title` | `string` | -- | Convenience label rendered when no default slot is provided |
+| `titleStyle` | `TextStyle` | -- | Styles applied to the generated title text |
 | `style` | `StyleProp` | -- | Layout + appearance styles |
 | `disabled` | `boolean` | `false` | Disable press interactions |
 | `activeOpacity` | `number` | `0.7` | Opacity when the button is pressed (0.0 to 1.0) |
@@ -29,9 +33,7 @@ Unlike web buttons, `VButton` is a layout container -- place `VText` or other vi
 | `accessibilityHint` | `string` | -- | Additional accessibility context |
 | `accessibilityState` | `object` | -- | Accessibility state (e.g. `{ disabled: true }`) |
 
-::: warning
-VButton uses **props** for press handlers (`:onPress`, `:onLongPress`), not Vue events (`@press`). This is because native press handling is passed directly to the native view factory.
-:::
+In templates, `@press="handler"` and `:onPress="handler"` both bind the native press handler; likewise, `@long-press` and `:onLongPress` are equivalent. Render functions should pass `onPress` and `onLongPress` props.
 
 ## Example
 

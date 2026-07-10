@@ -99,6 +99,7 @@ interface QRCodeResult {
 |----------|---------|
 | iOS | Camera uses `UIImagePickerController`. Image library uses `PHPickerViewController` (no permission dialog required for selection). Requires `NSCameraUsageDescription` in `Info.plist` for camera access. |
 | Android | Requires Activity-level integration. The base `CameraModule` is a stub — override your `VueNativeActivity` subclass with `registerForActivityResult` to provide camera and gallery intents. |
+| macOS | Photo capture and image selection are supported. Video capture and QR scanning return an explicit unsupported error. |
 
 ## Example
 

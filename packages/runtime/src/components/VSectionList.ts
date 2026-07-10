@@ -1,7 +1,7 @@
 import { defineComponent, h, type PropType, type VNode } from '@vue/runtime-core'
 
 /**
- * VSectionList — A sectioned list component backed by UITableView with sections on iOS.
+ * VSectionList — A sectioned native list with grouped sections.
  *
  * Renders grouped data with section headers. Each section has a title and
  * an array of data items rendered via the #item slot.

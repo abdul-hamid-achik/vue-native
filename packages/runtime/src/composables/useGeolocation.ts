@@ -1,4 +1,4 @@
-import { ref, onUnmounted } from '@vue/runtime-core'
+import { getCurrentInstance, ref, onUnmounted } from '@vue/runtime-core'
 import { NativeBridge } from '../bridge'
 
 export interface GeoCoordinates {
@@ -24,6 +24,32 @@ export function useGeolocation() {
   const coords = ref<GeoCoordinates | null>(null)
   const error = ref<string | null>(null)
   let watchId: number | null = null
+  let unsubscribePosition: (() => void) | null = null
+  let unsubscribeError: (() => void) | null = null
+  let isDisposed = false
+
+  function removeWatchListeners(): void {
+    unsubscribePosition?.()
+    unsubscribeError?.()
+    unsubscribePosition = null
+    unsubscribeError = null
+  }
+
+  // Lifecycle hooks must be registered synchronously during setup. Registering
+  // after watchPosition() awaits loses the active Vue instance and leaks both
+  // native listeners and the continuous location watch.
+  if (getCurrentInstance()) {
+    onUnmounted(() => {
+      isDisposed = true
+      removeWatchListeners()
+      const activeWatchId = watchId
+      watchId = null
+      if (activeWatchId !== null) {
+        void NativeBridge.invokeNativeModule('Geolocation', 'clearWatch', [activeWatchId])
+          .catch(() => undefined)
+      }
+    })
+  }
 
   async function getCurrentPosition(): Promise<GeoCoordinates> {
     try {
@@ -41,21 +67,24 @@ export function useGeolocation() {
   async function watchPosition(): Promise<number> {
     try {
       error.value = null
+      if (watchId !== null) {
+        await clearWatch(watchId)
+      }
+      removeWatchListeners()
+
       const id: number = await NativeBridge.invokeNativeModule('Geolocation', 'watchPosition')
+      if (isDisposed) {
+        await NativeBridge.invokeNativeModule('Geolocation', 'clearWatch', [id])
+        return id
+      }
       watchId = id
 
-      const unsubscribe = NativeBridge.onGlobalEvent('location:update', (payload: GeoCoordinates) => {
+      unsubscribePosition = NativeBridge.onGlobalEvent('location:update', (payload: GeoCoordinates) => {
         coords.value = payload
       })
 
-      const unsubscribeError = NativeBridge.onGlobalEvent('location:error', (payload: { message: string }) => {
+      unsubscribeError = NativeBridge.onGlobalEvent('location:error', (payload: { message: string }) => {
         error.value = payload.message
-      })
-
-      onUnmounted(() => {
-        unsubscribe()
-        unsubscribeError()
-        if (watchId !== null) clearWatch(watchId)
       })
 
       return id
@@ -68,7 +97,10 @@ export function useGeolocation() {
 
   async function clearWatch(id: number): Promise<void> {
     await NativeBridge.invokeNativeModule('Geolocation', 'clearWatch', [id])
-    watchId = null
+    if (watchId === id) {
+      watchId = null
+      removeWatchListeners()
+    }
   }
 
   return { coords, error, getCurrentPosition, watchPosition, clearWatch }

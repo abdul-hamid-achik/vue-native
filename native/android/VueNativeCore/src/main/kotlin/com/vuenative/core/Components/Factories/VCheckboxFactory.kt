@@ -90,4 +90,8 @@ class VCheckboxFactory : NativeComponentFactory {
         checkbox?.setOnCheckedChangeListener(null)
         container.setOnClickListener(null)
     }
+
+    override fun destroyView(view: View) {
+        removeEventListener(view, "change")
+    }
 }

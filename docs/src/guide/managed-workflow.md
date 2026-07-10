@@ -66,6 +66,11 @@ export default defineConfig({
 })
 ```
 
+The CLI validates this file on `dev`, `run`, and `build`. `bundleId`,
+`ios.scheme`, and `android.packageName` provide launch/build defaults. Native
+deployment targets are written into the generated Xcode/Gradle files at
+scaffold time; if you change those values later, update the native project too.
+
 ### Configuration Reference
 
 | Field | Type | Required | Description |
@@ -78,7 +83,7 @@ export default defineConfig({
 | `android.minSdk` | `number` | No | Minimum Android SDK (default: `21`) |
 | `android.targetSdk` | `number` | No | Target Android SDK (default: `35`) |
 | `android.packageName` | `string` | No | Android package (defaults to `bundleId`) |
-| `plugins` | `string[]` | No | Vue Native plugins to include |
+| `plugins` | `string[]` | No | Reserved metadata for future plugin automation; plugins are not installed automatically |
 
 ## Development Server
 

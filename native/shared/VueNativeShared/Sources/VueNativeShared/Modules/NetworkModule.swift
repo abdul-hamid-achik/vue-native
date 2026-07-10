@@ -56,4 +56,9 @@ public final class NetworkModule: NativeModule {
     }
 
     public func invokeSync(method: String, args: [Any]) -> Any? { nil }
+
+    public func destroy() {
+        monitor.pathUpdateHandler = nil
+        monitor.cancel()
+    }
 }

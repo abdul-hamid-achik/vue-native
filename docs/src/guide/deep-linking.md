@@ -25,13 +25,14 @@ Add your custom scheme to `Info.plist` under `CFBundleURLTypes`:
 </array>
 ```
 
-Then wire your `SceneDelegate` to pass the URL to `LinkingModule.initialURL` so the JavaScript layer can read it on launch:
+Seed a cold-start URL before creating the Vue Native view controller, and forward later URLs through the public `NativeBridge` host-integration API:
 
 ```swift
 // SceneDelegate.swift
 import UIKit
 import VueNativeCore
 
+@MainActor
 class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     var window: UIWindow?
 
@@ -39,10 +40,14 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                options connectionOptions: UIScene.ConnectionOptions) {
         guard let windowScene = scene as? UIWindowScene else { return }
 
-        // Capture the URL that launched the app (cold start)
-        if let url = connectionOptions.urlContexts.first?.url {
-            LinkingModule.initialURL = url.absoluteString
-        }
+        // Seed Linking.getInitialURL before the JavaScript bundle starts.
+        // urlContexts covers custom schemes; userActivities covers a
+        // Universal Link that launched the scene.
+        let launchURL = connectionOptions.urlContexts.first?.url
+            ?? connectionOptions.userActivities
+                .first(where: { $0.activityType == NSUserActivityTypeBrowsingWeb })?
+                .webpageURL
+        NativeBridge.shared.setInitialURL(launchURL)
 
         let window = UIWindow(windowScene: windowScene)
         window.rootViewController = MyAppViewController()
@@ -53,13 +58,13 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     // Handle URLs while the app is already running (warm start)
     func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
         guard let url = URLContexts.first?.url else { return }
-        NativeBridge.shared.emitGlobalEvent("url", payload: ["url": url.absoluteString])
+        NativeBridge.shared.handleOpenURL(url)
     }
 }
 ```
 
 ::: tip
-`LinkingModule.initialURL` is a static property. Set it **before** the JS bundle loads so that `getInitialURL` returns the correct value when the router initializes.
+Call `setInitialURL(_:)` before assigning `MyAppViewController` as the window's root controller. The router reads this cached value through `Linking.getInitialURL` when its linking integration starts. Use `handleOpenURL(_:)` only for URLs received after launch.
 :::
 
 ### Android Configuration
@@ -80,27 +85,7 @@ Add an intent filter to your launcher activity in `AndroidManifest.xml`:
 </activity>
 ```
 
-`VueNativeActivity` automatically reads `intent.data` on launch and sets it as the `initialURL` on the `LinkingModule`:
-
-```kotlin
-// Handled automatically inside VueNativeActivity.onCreate:
-intent?.data?.toString()?.let { url ->
-    val linkingModule = NativeModuleRegistry.getInstance(this)
-        .getModule("Linking") as? LinkingModule
-    linkingModule?.initialURL = url
-}
-```
-
-To handle URLs arriving while the Activity is already running, override `onNewIntent`:
-
-```kotlin
-override fun onNewIntent(intent: Intent?) {
-    super.onNewIntent(intent)
-    intent?.data?.toString()?.let { url ->
-        bridge.emitGlobalEvent("url", mapOf("url" to url))
-    }
-}
-```
+`VueNativeActivity` automatically reads `intent.data` on launch and exposes it through `Linking.getInitialURL`. It also forwards URLs received by its `onNewIntent` implementation as `url` global events. No registry lookup or bridge access is needed in your application class. If you override `onNewIntent`, call `super.onNewIntent(intent)` so the base activity can forward the URL.
 
 ## Universal Links (iOS) / App Links (Android)
 
@@ -142,7 +127,7 @@ Replace `TEAMID` with your Apple Developer Team ID.
 func scene(_ scene: UIScene, continue userActivity: NSUserActivity) {
     guard userActivity.activityType == NSUserActivityTypeBrowsingWeb,
           let url = userActivity.webpageURL else { return }
-    NativeBridge.shared.emitGlobalEvent("url", payload: ["url": url.absoluteString])
+    NativeBridge.shared.handleOpenURL(url)
 }
 ```
 
@@ -293,7 +278,7 @@ const handled = router.handleURL('myapp://profile/42')
 
 When you provide a `linking` config, the router automatically:
 
-1. **On app launch** -- Calls `getInitialURL` via the native `Linking` module. If the app was opened by a URL, it navigates to the matching screen.
+1. **On app launch** -- Calls `getInitialURL` via the native `Linking` module. Android's base activity populates this value automatically; on iOS, `NativeBridge.setInitialURL(_:)` seeds it from your scene or app delegate.
 2. **While running** -- Listens for the `url` global event (emitted by the native side when a new URL arrives) and calls `handleURL()`.
 
 You do not need to set up any listeners manually -- this is handled internally by `createRouter()`:

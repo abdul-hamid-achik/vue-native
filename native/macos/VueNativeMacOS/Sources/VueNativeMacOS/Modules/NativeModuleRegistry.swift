@@ -15,11 +15,26 @@ final class NativeModuleRegistry {
     // MARK: - Registration
 
     func register(_ module: NativeModule) {
-        modules[module.moduleName] = module
+        let previous = modules.updateValue(module, forKey: module.moduleName)
+        if let previous, previous !== module {
+            previous.destroy()
+        }
+    }
+
+    /// Destroy and unregister every module in the current snapshot.
+    func removeAll() {
+        let registeredModules = Array(modules.values)
+        modules.removeAll(keepingCapacity: true)
+        registeredModules.forEach { $0.destroy() }
     }
 
     /// Register all built-in macOS modules.
     func registerDefaults(dispatcher: NativeEventDispatcher, viewLookup: @escaping (Int) -> NSView?) {
+        // Reinitialization must produce an exact registry snapshot. Clearing
+        // first releases old host-bound modules and removes generated modules
+        // that no longer exist in the current generated registry.
+        removeAll()
+
         // Cross-platform ports
         register(HapticsModule())
         register(ClipboardModule())
@@ -29,6 +44,15 @@ final class NativeModuleRegistry {
         register(KeyboardModule())
         register(LinkingModule())
         register(ShareModule())
+        register(AsyncStorageModule())
+        register(FileSystemModule())
+        register(SecureStorageModule())
+        register(DatabaseModule())
+        register(NetworkModule(eventDispatcher: dispatcher))
+        register(GeolocationModule(eventDispatcher: dispatcher))
+        register(PerformanceModule(eventDispatcher: dispatcher))
+        register(AudioModule(eventDispatcher: dispatcher))
+        register(WebSocketModule(eventDispatcher: dispatcher))
 
         // macOS-only modules
         register(WindowModule())
@@ -41,6 +65,8 @@ final class NativeModuleRegistry {
         register(NotificationsModule())
         register(BiometryModule())
         register(PermissionsModule())
+
+        registerGeneratedModules()
     }
 
     // MARK: - Invocation

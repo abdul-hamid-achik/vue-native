@@ -1,5 +1,6 @@
 import { defineComponent, h, type PropType } from '@vue/runtime-core'
-import type { ViewStyle } from '../types/styles'
+import type { TextStyle, ViewStyle } from '../types/styles'
+import { VText } from './VText'
 
 /**
  * VButton — a pressable button component.
@@ -22,6 +23,10 @@ import type { ViewStyle } from '../types/styles'
 export const VButton = defineComponent({
   name: 'VButton',
   props: {
+    /** Convenience label rendered as VText when no default slot is provided. */
+    title: String,
+    /** Text styling for the title shorthand. */
+    titleStyle: Object as PropType<TextStyle>,
     style: Object as PropType<ViewStyle>,
     disabled: {
       type: Boolean,
@@ -39,15 +44,29 @@ export const VButton = defineComponent({
     accessibilityState: Object,
   },
   setup(props, { slots }) {
-    return () =>
-      h(
+    return () => {
+      const slotContent = slots.default?.()
+      const content = slotContent?.length
+        ? slotContent
+        : props.title !== undefined
+          ? [h(VText, { style: props.titleStyle }, () => props.title)]
+          : []
+
+      return h(
         'VButton',
         {
-          ...props,
+          style: props.style,
+          disabled: props.disabled,
+          activeOpacity: props.activeOpacity,
           onPress: props.disabled ? undefined : props.onPress,
           onLongPress: props.disabled ? undefined : props.onLongPress,
+          accessibilityLabel: props.accessibilityLabel,
+          accessibilityRole: props.accessibilityRole,
+          accessibilityHint: props.accessibilityHint,
+          accessibilityState: props.accessibilityState,
         },
-        slots.default?.(),
+        content,
       )
+    }
   },
 })

@@ -17,12 +17,14 @@ const router = createRouter({
   ],
   linking: {
     prefixes: ['navdemo://', 'https://navdemo.example.com'],
-    screens: {
-      Home: '',
-      Detail: 'detail/:id',
-      Search: 'search',
-      Profile: 'profile',
-      Settings: 'settings',
+    config: {
+      screens: {
+        Home: '',
+        Detail: 'detail/:id',
+        Search: 'search',
+        Profile: 'profile',
+        Settings: 'settings',
+      },
     },
   },
 })

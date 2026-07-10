@@ -28,9 +28,29 @@ final class VToolbarFactory: NativeComponentFactory {
     func createView() -> NSView {
         let view = ToolbarPlaceholderView()
         view.ensureLayoutNode()
-        view.onMoveToWindow = { [weak self, weak view] in
-            guard let self, let view, view.window != nil else { return }
-            self.rebuildToolbar(for: view)
+        view.onWindowChange = { [weak self, weak view] oldWindow, newWindow in
+            guard let self, let view else { return }
+
+            if let oldWindow,
+               let installedToolbar = objc_getAssociatedObject(
+                   view, &VToolbarFactory.toolbarKey
+               ) as? NSToolbar,
+               oldWindow.toolbar === installedToolbar {
+                oldWindow.toolbar = nil
+            }
+
+            if newWindow != nil {
+                self.rebuildToolbar(for: view)
+            } else {
+                objc_setAssociatedObject(
+                    view, &VToolbarFactory.toolbarKey,
+                    nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC
+                )
+                objc_setAssociatedObject(
+                    view, &VToolbarFactory.toolbarDelegateKey,
+                    nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC
+                )
+            }
         }
         return view
     }
@@ -166,11 +186,16 @@ final class VToolbarFactory: NativeComponentFactory {
 // MARK: - ToolbarPlaceholderView
 
 private final class ToolbarPlaceholderView: FlippedView {
-    var onMoveToWindow: (() -> Void)?
+    var onWindowChange: ((NSWindow?, NSWindow?) -> Void)?
+    private weak var previouslyAttachedWindow: NSWindow?
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        onMoveToWindow?()
+        let oldWindow = previouslyAttachedWindow
+        let newWindow = window
+        guard oldWindow !== newWindow else { return }
+        previouslyAttachedWindow = newWindow
+        onWindowChange?(oldWindow, newWindow)
     }
 }
 

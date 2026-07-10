@@ -11,6 +11,7 @@ interface DeviceInfoPayload {
   screenWidth?: number
   screenHeight?: number
   scale?: number
+  screenScale?: number
 }
 
 interface DimensionsChangePayload {
@@ -34,13 +35,20 @@ export function useDimensions() {
   const width = ref(0)
   const height = ref(0)
   const scale = ref(1)
+  let eventRevision = 0
+  let isActive = true
 
   onMounted(async () => {
+    const revisionAtRequest = eventRevision
     try {
       const info: DeviceInfoPayload = await NativeBridge.invokeNativeModule('DeviceInfo', 'getInfo', [])
-      width.value = info?.screenWidth || 0
-      height.value = info?.screenHeight || 0
-      scale.value = info?.scale || 1
+      // Resize/orientation events emitted while the snapshot is loading are
+      // newer than the snapshot and must remain authoritative.
+      if (isActive && eventRevision === revisionAtRequest) {
+        width.value = info?.screenWidth || 0
+        height.value = info?.screenHeight || 0
+        scale.value = info?.scale ?? info?.screenScale ?? 1
+      }
     } catch {
       // DeviceInfo may not be available in all environments
     }
@@ -48,12 +56,16 @@ export function useDimensions() {
 
   // Listen for orientation/resize changes
   const cleanup = NativeBridge.onGlobalEvent<DimensionsChangePayload>('dimensionsChange', (payload) => {
+    eventRevision++
     if (payload.width != null) width.value = payload.width
     if (payload.height != null) height.value = payload.height
     if (payload.scale != null) scale.value = payload.scale
   })
 
-  onUnmounted(cleanup)
+  onUnmounted(() => {
+    isActive = false
+    cleanup()
+  })
 
   return { width, height, scale }
 }

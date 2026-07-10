@@ -415,7 +415,7 @@ class NativeModuleTest {
         module.invoke("getKeyboardHeight", emptyList(), bridge) { res, _ ->
             result = res
         }
-        assertEquals(0, result)
+        assertEquals(mapOf("height" to 0, "isVisible" to false), result)
     }
 
     @Test
@@ -428,6 +428,39 @@ class NativeModuleTest {
             error = err
         }
         assertNotNull(error)
+    }
+
+    // =========================================================================
+    // BiometryModule
+    // =========================================================================
+
+    @Test
+    fun testBiometryAvailabilityReturnsBoolean() {
+        val module = BiometryModule()
+        module.initialize(context, bridge)
+
+        var result: Any? = null
+        var resultError: String? = "not_called"
+        module.invoke("isAvailable", emptyList(), bridge) { value, error ->
+            result = value
+            resultError = error
+        }
+
+        assertTrue(result is Boolean)
+        assertNull(resultError)
+    }
+
+    @Test
+    fun testBiometryAuthenticateRequiresActiveHostActivity() {
+        val module = BiometryModule()
+        module.initialize(context, bridge)
+
+        var resultError: String? = null
+        module.invoke("authenticate", listOf("Confirm identity"), bridge) { _, error ->
+            resultError = error
+        }
+
+        assertTrue(resultError?.contains("VueNativeActivity") == true)
     }
 
     // =========================================================================

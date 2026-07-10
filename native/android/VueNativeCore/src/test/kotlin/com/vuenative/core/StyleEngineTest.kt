@@ -170,6 +170,24 @@ class StyleEngineTest {
         assertEquals(expectedPx, fp.height)
     }
 
+    @Test
+    fun testPercentageDimensionsApplyDuringMeasure() {
+        val parent = VueNativeFlexboxLayout(context)
+        val child = View(context)
+        StyleEngine.apply("width", "50%", child)
+        StyleEngine.apply("height", "25%", child)
+        parent.addView(child, StyleEngine.buildFlexLayoutParams(child))
+
+        parent.measure(
+            View.MeasureSpec.makeMeasureSpec(200, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(400, View.MeasureSpec.EXACTLY)
+        )
+
+        val lp = child.layoutParams as FlexboxLayout.LayoutParams
+        assertEquals(100, lp.width)
+        assertEquals(100, lp.height)
+    }
+
     // -------------------------------------------------------------------------
     // flex
     // -------------------------------------------------------------------------
@@ -182,6 +200,21 @@ class StyleEngineTest {
         val fp = StyleEngine.getFlexProps(view)
         assertEquals("flexGrow should be 1", 1f, fp.flexGrow, 0.01f)
         assertEquals("flexShrink should be 1", 1f, fp.flexShrink, 0.01f)
+    }
+
+    @Test
+    fun testRemovingFlexPreservesExplicitDimensions() {
+        val view = View(context)
+        StyleEngine.apply("width", 100, view)
+        StyleEngine.apply("height", 40, view)
+        StyleEngine.apply("flex", 1, view)
+        StyleEngine.apply("flex", null, view)
+
+        val fp = StyleEngine.getFlexProps(view)
+        assertEquals(StyleEngine.dpToPx(context, 100f).toInt(), fp.width)
+        assertEquals(StyleEngine.dpToPx(context, 40f).toInt(), fp.height)
+        assertEquals(0f, fp.flexGrow, 0.01f)
+        assertEquals(-1f, fp.flexBasisPercent, 0.01f)
     }
 
     // -------------------------------------------------------------------------
@@ -271,6 +304,26 @@ class StyleEngineTest {
             View.IMPORTANT_FOR_ACCESSIBILITY_YES,
             view.importantForAccessibility
         )
+    }
+
+    @Test
+    fun testAccessibilityStateClearsReactiveFlags() {
+        val view = View(context)
+        StyleEngine.apply(
+            "accessibilityState",
+            mapOf("disabled" to true, "selected" to true, "checked" to true),
+            view
+        )
+        assertTrue(!view.isEnabled)
+        assertTrue(view.isSelected)
+
+        StyleEngine.apply(
+            "accessibilityState",
+            mapOf("disabled" to false, "selected" to false, "checked" to false),
+            view
+        )
+        assertTrue(view.isEnabled)
+        assertTrue(!view.isSelected)
     }
 
     // -------------------------------------------------------------------------

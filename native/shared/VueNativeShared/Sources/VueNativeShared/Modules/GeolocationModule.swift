@@ -45,6 +45,20 @@ public final class GeolocationModule: NativeModule {
     }
 
     public func invokeSync(method: String, args: [Any]) -> Any? { nil }
+
+    public func destroy() {
+        let cleanup = {
+            MainActor.assumeIsolated {
+                GeolocationManager.shared.reset()
+            }
+        }
+
+        if Thread.isMainThread {
+            cleanup()
+        } else {
+            DispatchQueue.main.sync(execute: cleanup)
+        }
+    }
 }
 
 // MARK: - Internal location manager
@@ -117,6 +131,15 @@ private final class GeolocationManager: NSObject, CLLocationManagerDelegate {
         if watchCallbacks.isEmpty {
             manager?.stopUpdatingLocation()
         }
+    }
+
+    func reset() {
+        manager?.stopUpdatingLocation()
+        manager?.delegate = nil
+        manager = nil
+        pendingCallbacks.removeAll()
+        watchCallbacks.removeAll()
+        nextWatchId = 1
     }
 
     // MARK: CLLocationManagerDelegate

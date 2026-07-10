@@ -406,6 +406,6 @@ onMounted(() => {
 
 ## See Also
 
-- [VView](./VView.md) - Basic container component
-- [VPressable](./VPressable.md) - Pressable container with feedback
+- [VView](../components/VView.md) - Basic container component
+- [VPressable](../components/VPressable.md) - Pressable container with feedback
 - [useAnimation](../composables/useAnimation.md) - Animation API

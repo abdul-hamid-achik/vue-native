@@ -309,6 +309,110 @@ final class JSRuntimeTests: XCTestCase {
         waitForExpectations(timeout: 5.0)
     }
 
+    func testFileBundleReportsEvaluationFailureAndClearsException() throws {
+        let invalidURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("VueNative-invalid-\(UUID().uuidString).js")
+        let validURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("VueNative-valid-\(UUID().uuidString).js")
+        try "function broken( {".write(to: invalidURL, atomically: true, encoding: .utf8)
+        try "globalThis.__fileBundleRecovered = true;".write(to: validURL, atomically: true, encoding: .utf8)
+        defer {
+            try? FileManager.default.removeItem(at: invalidURL)
+            try? FileManager.default.removeItem(at: validURL)
+        }
+
+        let invalidExpectation = expectation(description: "invalid file reports failure")
+        let recoveredExpectation = expectation(description: "runtime remains usable")
+        let runtime = JSRuntime.shared
+
+        runtime.initialize {
+            runtime.loadBundle(source: .file(url: invalidURL)) { success in
+                XCTAssertFalse(success)
+                XCTAssertNil(runtime.context.exception)
+                invalidExpectation.fulfill()
+
+                runtime.loadBundle(source: .file(url: validURL)) { recovered in
+                    XCTAssertTrue(recovered)
+                    XCTAssertNil(runtime.context.exception)
+                    XCTAssertTrue(
+                        runtime.context.objectForKeyedSubscript("__fileBundleRecovered")?.toBool() ?? false
+                    )
+                    recoveredExpectation.fulfill()
+                }
+            }
+        }
+
+        waitForExpectations(timeout: 5.0)
+    }
+
+    func testRecreateDiscardsGlobalsFromFailedJavaScriptWorld() {
+        let expectation = expectation(description: "runtime recreates a clean context")
+        let runtime = JSRuntime.shared
+
+        runtime.initialize {
+            let previousContext = runtime.context
+            previousContext?.evaluateScript("globalThis.__staleOTAState = { mounted: true };")
+
+            runtime.recreate {
+                XCTAssertFalse(runtime.context === previousContext)
+                XCTAssertTrue(
+                    runtime.context.objectForKeyedSubscript("__staleOTAState")?.isUndefined ?? false
+                )
+                XCTAssertFalse(
+                    runtime.context.objectForKeyedSubscript("setTimeout")?.isUndefined ?? true
+                )
+                expectation.fulfill()
+            }
+        }
+
+        waitForExpectations(timeout: 5.0)
+    }
+
+    func testInitializeForHostReplacesAnExistingJavaScriptWorld() {
+        let expectation = expectation(description: "new host receives a clean context")
+        let runtime = JSRuntime.shared
+
+        runtime.initialize {
+            let previousContext = runtime.context
+            previousContext?.evaluateScript("globalThis.__previousHost = true;")
+
+            runtime.initializeForHost {
+                XCTAssertFalse(runtime.context === previousContext)
+                XCTAssertTrue(
+                    runtime.context.objectForKeyedSubscript("__previousHost")?.isUndefined ?? false
+                )
+                expectation.fulfill()
+            }
+        }
+
+        waitForExpectations(timeout: 5.0)
+    }
+
+    func testReloadPreparesBridgeFunctionsBeforeBundleEvaluation() {
+        let expectation = expectation(description: "reload prepares context before evaluation")
+        let runtime = JSRuntime.shared
+
+        runtime.initialize {
+            runtime.reload(
+                bundle: "globalThis.__preparedDuringEvaluation = __VN_reloadProbe();",
+                prepareContext: { context in
+                    let probe: @convention(block) () -> Bool = { true }
+                    context.setObject(probe, forKeyedSubscript: "__VN_reloadProbe" as NSString)
+                },
+                completion: { success in
+                    XCTAssertTrue(success)
+                    XCTAssertTrue(
+                        runtime.context.objectForKeyedSubscript("__preparedDuringEvaluation")?.toBool()
+                            ?? false
+                    )
+                    expectation.fulfill()
+                }
+            )
+        }
+
+        waitForExpectations(timeout: 5.0)
+    }
+
     // MARK: - Test: JSON Operation Parsing
 
     func testOperationJSONParsing() {

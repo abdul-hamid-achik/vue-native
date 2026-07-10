@@ -89,4 +89,17 @@ class VWebViewFactory : NativeComponentFactory {
         errorHandlers.remove(wv)
         messageHandlers.remove(wv)
     }
+
+    override fun destroyView(view: View) {
+        val wv = view as? WebView ?: return
+        loadHandlers.remove(wv)
+        errorHandlers.remove(wv)
+        messageHandlers.remove(wv)
+        wv.stopLoading()
+        wv.removeJavascriptInterface("vueNative")
+        wv.webViewClient = WebViewClient()
+        wv.webChromeClient = null
+        wv.removeAllViews()
+        wv.destroy()
+    }
 }

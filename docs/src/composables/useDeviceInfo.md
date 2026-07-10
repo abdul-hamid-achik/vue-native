@@ -55,6 +55,7 @@ useDeviceInfo(): {
 |----------|---------|
 | iOS | Reads from `UIDevice.current` and `UIScreen.main`. |
 | Android | Reads from `android.os.Build` and `DisplayMetrics`. |
+| macOS | Reads from `ProcessInfo`, `NSScreen`, and the current AppKit appearance. |
 
 ## Example
 

@@ -13,7 +13,7 @@ class DatabaseModule : NativeModule {
     private val lock = Object()
 
     override fun initialize(context: Context, bridge: NativeBridge) {
-        this.context = context
+        this.context = context.applicationContext
     }
 
     override fun invoke(method: String, args: List<Any?>, bridge: NativeBridge, callback: (Any?, String?) -> Unit) {

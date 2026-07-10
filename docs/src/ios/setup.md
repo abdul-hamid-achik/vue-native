@@ -9,7 +9,7 @@ This guide walks through every step to get a Vue Native app building and running
 | **Xcode** | 15+ | [Mac App Store](https://apps.apple.com/app/xcode/id497799835) |
 | **Xcode Command Line Tools** | (bundled) | `xcode-select --install` |
 | **XcodeGen** | 2.38+ | `brew install xcodegen` |
-| **Bun** (or Node 18+) | 1.3+ | `curl -fsSL https://bun.sh/install \| bash` |
+| **Bun** | 1.3+ | `curl -fsSL https://bun.sh/install \| bash` |
 | **iOS Simulator** | (bundled) | Included with Xcode |
 
 Verify your environment:
@@ -73,6 +73,9 @@ my-app/
       Info.plist
       AppDelegate.swift
       SceneDelegate.swift
+  native/              # Bundled native runtime source
+    ios/VueNativeCore/
+    shared/VueNativeShared/
   dist/                # Built JS bundle (generated)
   vite.config.ts
   vue-native.config.ts
@@ -99,10 +102,13 @@ xcodegen generate
 ```
 
 This reads `project.yml` and creates `MyApp.xcodeproj`. The project.yml declares:
-- **VueNativeCore** as a remote Swift Package dependency (from GitHub)
-- A **Run Script** build phase that copies `dist/vue-native-bundle.js` into the `.app` bundle
+- **VueNativeCore** as the bundled local Swift Package dependency
+- `dist/vue-native-bundle.js` as an app resource
 - Deployment target: iOS 16.0
 - Swift 5.9
+
+Using the local package is important for `<native>` blocks: generated Swift is
+written into `native/ios/VueNativeCore` and is therefore compiled into the app.
 
 ::: tip
 You only need to re-run `xcodegen generate` when you change `project.yml` (e.g. adding a new dependency or build phase). Source code changes don't require it.
@@ -122,9 +128,9 @@ xcodebuild \
 ```
 
 This:
-- Resolves Swift Package Manager dependencies (VueNativeCore, FlexLayout)
+- Resolves Swift Package Manager dependencies (the local VueNativeCore package and FlexLayout)
 - Compiles Swift sources (AppDelegate, SceneDelegate)
-- Copies the JS bundle into the app via the Run Script phase
+- Copies the JS bundle into the app as a declared resource
 - Produces a `.app` in `DerivedData/`
 
 ::: tip First build is slow

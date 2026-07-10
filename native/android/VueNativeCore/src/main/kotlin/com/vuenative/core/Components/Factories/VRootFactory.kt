@@ -7,7 +7,7 @@ import com.google.android.flexbox.FlexboxLayout
 
 class VRootFactory : NativeComponentFactory {
     override fun createView(context: Context): View {
-        return FlexboxLayout(context).apply {
+        return VueNativeFlexboxLayout(context).apply {
             flexDirection = FlexDirection.COLUMN
             layoutParams = android.view.ViewGroup.LayoutParams(
                 android.view.ViewGroup.LayoutParams.MATCH_PARENT,

@@ -31,6 +31,26 @@ final class AnimationModule: NativeModule {
                 callback(nil, "Invalid args"); return
             }
             runParallel(animationsData: animationsData, callback: callback)
+        case "measureView":
+            guard let viewId = args.first.flatMap({ $0 as? Int ?? ($0 as? Double).map(Int.init) }) else {
+                callback(nil, "measureView: invalid view ID")
+                return
+            }
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    guard let view = NativeBridge.shared.view(forId: viewId) else {
+                        callback(nil, "measureView: view \(viewId) not found")
+                        return
+                    }
+                    let frame = view.convert(view.bounds, to: view.window)
+                    callback([
+                        "x": frame.origin.x,
+                        "y": frame.origin.y,
+                        "width": frame.size.width,
+                        "height": frame.size.height,
+                    ], nil)
+                }
+            }
         default:
             callback(nil, "AnimationModule: unknown method '\(method)'")
         }

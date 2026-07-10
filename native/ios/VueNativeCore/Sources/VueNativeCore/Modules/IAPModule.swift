@@ -190,5 +190,10 @@ final class IAPModule: NativeModule {
         default: return "unknown"
         }
     }
+
+    func destroy() {
+        transactionTask?.cancel()
+        transactionTask = nil
+    }
 }
 #endif

@@ -299,11 +299,13 @@ final class NativeModuleTests: XCTestCase {
 
     // MARK: - NetworkModule Tests
 
+    @MainActor
     func testNetworkModuleName() {
         let module = NetworkModule(bridge: NativeBridge.shared)
         XCTAssertEqual(module.moduleName, "Network", "NetworkModule should be named 'Network'")
     }
 
+    @MainActor
     func testNetworkModuleGetStatusReturnsInfo() {
         let module = NetworkModule(bridge: NativeBridge.shared)
         let expectation = self.expectation(description: "getStatus callback")
@@ -322,6 +324,7 @@ final class NativeModuleTests: XCTestCase {
         waitForExpectations(timeout: 2.0)
     }
 
+    @MainActor
     func testNetworkModuleUnknownMethod() {
         let module = NetworkModule(bridge: NativeBridge.shared)
         let expectation = self.expectation(description: "unknown method")
@@ -334,6 +337,7 @@ final class NativeModuleTests: XCTestCase {
         waitForExpectations(timeout: 2.0)
     }
 
+    @MainActor
     func testNetworkModuleInvokeSyncReturnsNil() {
         let module = NetworkModule(bridge: NativeBridge.shared)
         let result = module.invokeSync(method: "getStatus", args: [])

@@ -214,7 +214,8 @@ final class VImageFactory: NativeComponentFactory {
         let components = name.split(separator: ".")
         if components.count >= 2 {
             let baseName = String(components.dropLast().joined(separator: "."))
-            let ext = String(components.last!)
+            guard let lastComponent = components.last else { return nil }
+            let ext = String(lastComponent)
             if let path = Bundle.main.path(forResource: baseName, ofType: ext) {
                 return NSImage(contentsOfFile: path)
             }

@@ -1,9 +1,40 @@
 import { Command } from 'commander'
-import { spawn, execSync } from 'node:child_process'
+import { execFileSync, execSync } from 'node:child_process'
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import pc from 'picocolors'
-import { ConfigError } from '../config.js'
+import { ConfigError, loadConfig } from '../config.js'
+import { runManagedProcess } from '../managed-process.js'
+import {
+  ensureXcodeProject,
+  installAndroidBundle,
+  readAndroidApplicationId,
+} from '../native-project.js'
+
+const APPLE_BUNDLE_ID_PATTERN = /^[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$/
+const ANDROID_APPLICATION_ID_PATTERN = /^[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+$/
+const ANDROID_ACTIVITY_PATTERN = /^\.?[A-Za-z_][A-Za-z0-9_$]*(?:\.[A-Za-z_][A-Za-z0-9_$]*)*$/
+
+function validateAppleBundleId(bundleId: string): void {
+  if (!APPLE_BUNDLE_ID_PATTERN.test(bundleId)) {
+    throw new ConfigError(
+      'Invalid iOS bundle identifier. Pass a reverse-domain identifier such as com.example.app.',
+    )
+  }
+}
+
+function validateAndroidComponent(applicationId: string, activity: string): void {
+  if (!ANDROID_APPLICATION_ID_PATTERN.test(applicationId)) {
+    throw new ConfigError(
+      'Invalid Android package name. Pass a reverse-domain identifier such as com.example.app.',
+    )
+  }
+  if (!ANDROID_ACTIVITY_PATTERN.test(activity)) {
+    throw new ConfigError(
+      'Invalid Android activity name. Use a class name such as .MainActivity or com.example.MainActivity.',
+    )
+  }
+}
 
 function findAppPath(_buildDir: string): string | null {
   // Look for .app bundle in DerivedData or build directory
@@ -74,14 +105,14 @@ export const runCommand = new Command('run')
   .option('--scheme <scheme>', 'Xcode scheme to build')
   .option('--simulator <name>', 'simulator name', 'iPhone 16')
   .option('--bundle-id <id>', 'app bundle identifier')
-  .option('--package <name>', 'Android package name', 'com.vuenative.app')
+  .option('--package <name>', 'Android package name (auto-detected from app/build.gradle when omitted)')
   .option('--activity <name>', 'Android activity name', '.MainActivity')
   .action(async (platform: string, options: {
     device?: boolean
     scheme?: string
     simulator: string
     bundleId?: string
-    package: string
+    package?: string
     activity: string
   }) => {
     if (platform !== 'ios' && platform !== 'android' && platform !== 'macos') {
@@ -89,6 +120,13 @@ export const runCommand = new Command('run')
     }
 
     const cwd = process.cwd()
+    const config = await loadConfig(cwd)
+    const resolvedOptions = {
+      ...options,
+      scheme: options.scheme ?? config?.ios.scheme,
+      bundleId: options.bundleId ?? config?.bundleId,
+      package: options.package ?? config?.android.packageName,
+    }
 
     // Step 1: Build the JS bundle
     const platformLabel = platform === 'ios' ? 'iOS' : platform === 'android' ? 'Android' : 'macOS'
@@ -102,15 +140,15 @@ export const runCommand = new Command('run')
     }
 
     if (platform === 'ios') {
-      runIOS(cwd, options)
+      await runIOS(cwd, resolvedOptions)
     } else if (platform === 'android') {
-      runAndroid(cwd, options)
+      await runAndroid(cwd, resolvedOptions)
     } else {
-      runMacOS(cwd, options)
+      await runMacOS(cwd, resolvedOptions)
     }
   })
 
-function runIOS(
+async function runIOS(
   cwd: string,
   options: {
     device?: boolean
@@ -118,123 +156,120 @@ function runIOS(
     simulator: string
     bundleId?: string
   },
-) {
-  // Find Xcode project
-  let xcodeProject: string | null = null
+): Promise<void> {
   const iosDir = join(cwd, 'ios')
+  const project = ensureXcodeProject(iosDir)
 
-  if (existsSync(iosDir)) {
-    // Look for .xcworkspace first (CocoaPods), then .xcodeproj
-    for (const ext of ['.xcworkspace', '.xcodeproj']) {
-      try {
-        const entries = readdirSync(iosDir)
-        const match = entries.find(e => e.endsWith(ext))
-        if (match) {
-          xcodeProject = join(iosDir, match)
-          break
-        }
-      } catch {}
-    }
-  }
-
-  if (!xcodeProject) {
+  if (!project) {
     console.log(pc.yellow('  No Xcode project found in ./ios/'))
-    console.log(pc.dim('  To add iOS support, create an Xcode project in the ios/ directory.'))
+    console.log(pc.dim('  Add ios/project.yml or an .xcodeproj/.xcworkspace, then retry.'))
     console.log(pc.dim('  Bundle has been built to dist/vue-native-bundle.js\n'))
     return
   }
 
   // Build with xcodebuild
-  const isWorkspace = xcodeProject.endsWith('.xcworkspace')
-  const scheme = options.scheme || xcodeProject.split('/').pop()?.replace(/\.(xcworkspace|xcodeproj)$/, '') || 'App'
+  const scheme = options.scheme || project.path.split('/').pop()?.replace(/\.(xcworkspace|xcodeproj)$/, '') || 'App'
   const destination = options.device
     ? 'generic/platform=iOS'
     : `platform=iOS Simulator,name=${options.simulator}`
 
-  const projectFlag = isWorkspace ? '-workspace' : '-project'
+  const projectFlag = project.isWorkspace ? '-workspace' : '-project'
 
   console.log(pc.white(`  Building ${scheme} for ${options.device ? 'device' : options.simulator}...`))
 
-  const xcodebuild = spawn(
-    'xcodebuild',
-    [projectFlag, xcodeProject, '-scheme', scheme, '-destination', destination, 'build'],
-    {
+  let result
+  try {
+    result = await runManagedProcess('xcodebuild', [
+      projectFlag,
+      project.path,
+      '-scheme',
+      scheme,
+      '-destination',
+      destination,
+      'build',
+    ], {
       cwd,
       stdio: 'pipe',
-      env: { ...process.env, DEVELOPER_DIR: '/Applications/Xcode.app/Contents/Developer' },
-    },
-  )
+      env: { ...process.env },
+    }, {
+      stderr: (data) => {
+        const text = data.toString().trim()
+        if (text.includes('error:') || text.includes('warning:')) {
+          console.log(pc.dim(`  ${text}`))
+        }
+      },
+    })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.error(pc.red(`  xcodebuild process error: ${message}`))
+    throw new ConfigError(`iOS build process failed: ${message}`)
+  }
 
-  xcodebuild.stderr?.on('data', (data: Buffer) => {
-    const text = data.toString().trim()
-    if (text.includes('error:') || text.includes('warning:')) {
-      console.log(pc.dim(`  ${text}`))
-    }
-  })
+  if (result.code !== 0) {
+    const outcome = result.code === null
+      ? `signal ${result.signal ?? 'unknown'}`
+      : `exit code ${result.code}`
+    console.error(pc.red(`  ✗ Build failed (${outcome})`))
+    throw new ConfigError(`iOS build failed with ${outcome}`)
+  }
 
-  xcodebuild.on('close', (code) => {
-    if (code !== 0) {
-      console.error(pc.red(`  ✗ Build failed (exit code ${code})`))
-      throw new ConfigError(`iOS build failed with exit code ${code}`)
-    }
+  console.log(pc.green('  ✓ Build successful\n'))
 
-    console.log(pc.green('  ✓ Build successful\n'))
+  if (options.device) {
+    console.log(pc.green('  App built for device. Install via Xcode.\n'))
+    return
+  }
 
-    if (options.device) {
-      console.log(pc.green('  App built for device. Install via Xcode.\n'))
-      return
-    }
+  // Launch on simulator
+  const simulatorName = options.simulator
+  const bundleId = options.bundleId || readBundleId(join(cwd, 'ios'))
+  validateAppleBundleId(bundleId)
 
-    // Launch on simulator
-    const simulatorName = options.simulator
-    const bundleId = options.bundleId || readBundleId(join(cwd, 'ios'))
+  console.log(pc.white(`  Booting simulator "${simulatorName}"...`))
+  try {
+    execFileSync('xcrun', ['simctl', 'boot', simulatorName], { stdio: 'pipe' })
+  } catch {
+    // Ignore error if simulator is already booted
+  }
 
-    console.log(pc.white(`  Booting simulator "${simulatorName}"...`))
+  // Open Simulator.app
+  try {
+    execFileSync('open', ['-a', 'Simulator'], { stdio: 'pipe' })
+  } catch {}
+
+  // Find and install the .app
+  const appPath = findAppPath(join(cwd, 'ios'))
+  if (appPath) {
+    console.log(pc.white(`  Installing app on simulator...`))
     try {
-      execSync(`xcrun simctl boot "${simulatorName}"`, { stdio: 'pipe' })
-    } catch {
-      // Ignore error if simulator is already booted
+      execFileSync('xcrun', ['simctl', 'install', 'booted', appPath], { stdio: 'pipe' })
+      console.log(pc.green('  ✓ App installed'))
+    } catch (err) {
+      console.error(pc.red(`  ✗ Failed to install app: ${(err as Error).message}`))
+      throw new ConfigError(`iOS app install failed: ${(err as Error).message}`)
     }
 
-    // Open Simulator.app
+    console.log(pc.white(`  Launching ${bundleId}...`))
     try {
-      execSync('open -a Simulator', { stdio: 'pipe' })
-    } catch {}
-
-    // Find and install the .app
-    const appPath = findAppPath(join(cwd, 'ios'))
-    if (appPath) {
-      console.log(pc.white(`  Installing app on simulator...`))
-      try {
-        execSync(`xcrun simctl install booted "${appPath}"`, { stdio: 'pipe' })
-        console.log(pc.green('  ✓ App installed'))
-      } catch (err) {
-        console.error(pc.red(`  ✗ Failed to install app: ${(err as Error).message}`))
-        throw new ConfigError(`iOS app install failed: ${(err as Error).message}`)
-      }
-
-      console.log(pc.white(`  Launching ${bundleId}...`))
-      try {
-        execSync(`xcrun simctl launch booted "${bundleId}"`, { stdio: 'pipe' })
-        console.log(pc.green(`  ✓ App launched on ${simulatorName}\n`))
-      } catch (err) {
-        console.error(pc.red(`  ✗ Failed to launch app: ${(err as Error).message}`))
-        throw new ConfigError(`iOS app launch failed: ${(err as Error).message}`)
-      }
-    } else {
-      console.log(pc.yellow('  Could not locate .app bundle in DerivedData.'))
-      console.log(pc.dim('  Try running the app from Xcode directly.\n'))
+      execFileSync('xcrun', ['simctl', 'launch', 'booted', bundleId], { stdio: 'pipe' })
+      console.log(pc.green(`  ✓ App launched on ${simulatorName}\n`))
+    } catch (err) {
+      console.error(pc.red(`  ✗ Failed to launch app: ${(err as Error).message}`))
+      throw new ConfigError(`iOS app launch failed: ${(err as Error).message}`)
     }
-  })
+  } else {
+    console.log(pc.yellow('  Could not locate .app bundle in DerivedData.'))
+    console.log(pc.dim('  Try running the app from Xcode directly.\n'))
+  }
 }
 
-function runAndroid(
+async function runAndroid(
   cwd: string,
   options: {
-    package: string
+    package?: string
     activity: string
   },
-) {
+): Promise<void> {
   const androidDir = join(cwd, 'android')
 
   if (!existsSync(androidDir)) {
@@ -252,94 +287,93 @@ function runAndroid(
     )
   }
 
+  const applicationId = options.package ?? readAndroidApplicationId(androidDir)
+  if (!applicationId) {
+    throw new ConfigError(
+      'Could not determine the Android applicationId from app/build.gradle. Pass it explicitly with --package.',
+    )
+  }
+  validateAndroidComponent(applicationId, options.activity)
+
+  installAndroidBundle(cwd, androidDir)
+  console.log(pc.green('  ✓ JS bundle copied to Android assets'))
+
   // Build with Gradle
   console.log(pc.white('  Building Android app with Gradle...'))
 
-  const gradle = spawn(
-    './gradlew',
-    ['assembleDebug'],
-    {
+  let result
+  try {
+    result = await runManagedProcess('./gradlew', ['assembleDebug'], {
       cwd: androidDir,
       stdio: 'pipe',
       env: { ...process.env },
-    },
-  )
-
-  // Ensure Gradle process is cleaned up on exit or interruption
-  const cleanupGradle = () => {
-    if (gradle && !gradle.killed) {
-      gradle.kill()
-    }
+    }, {
+      stdout: (data) => {
+        const text = data.toString().trim()
+        if (text) {
+          console.log(pc.dim(`  ${text}`))
+        }
+      },
+      stderr: (data) => {
+        const text = data.toString().trim()
+        if (text.includes('ERROR') || text.includes('FAILURE')) {
+          console.log(pc.red(`  ${text}`))
+        }
+      },
+    })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.error(pc.red(`  Gradle process error: ${message}`))
+    throw new ConfigError(`Android Gradle process failed: ${message}`)
   }
-  process.on('exit', cleanupGradle)
-  process.on('SIGINT', cleanupGradle)
-  process.on('SIGTERM', cleanupGradle)
 
-  gradle.stdout?.on('data', (data: Buffer) => {
-    const text = data.toString().trim()
-    if (text) {
-      console.log(pc.dim(`  ${text}`))
-    }
-  })
+  if (result.code !== 0) {
+    const outcome = result.code === null
+      ? `signal ${result.signal ?? 'unknown'}`
+      : `exit code ${result.code}`
+    console.error(pc.red(`  ✗ Gradle build failed (${outcome})`))
+    throw new ConfigError(`Android Gradle build failed with ${outcome}`)
+  }
 
-  gradle.stderr?.on('data', (data: Buffer) => {
-    const text = data.toString().trim()
-    if (text.includes('ERROR') || text.includes('FAILURE')) {
-      console.log(pc.red(`  ${text}`))
-    }
-  })
+  console.log(pc.green('  ✓ Build successful\n'))
 
-  gradle.on('error', (err) => {
-    console.error(pc.red(`  Gradle process error: ${err.message}`))
-    cleanupGradle()
-  })
+  // Find APK
+  const apkPath = findApkPath(androidDir)
+  if (!apkPath) {
+    console.log(pc.yellow('  Could not locate debug APK.'))
+    console.log(pc.dim('  Expected at android/app/build/outputs/apk/debug/\n'))
+    return
+  }
 
-  gradle.on('close', (code) => {
-    if (code !== 0) {
-      console.error(pc.red(`  ✗ Gradle build failed (exit code ${code})`))
-      throw new ConfigError(`Android Gradle build failed with exit code ${code}`)
-    }
+  // Install APK
+  console.log(pc.white('  Installing APK on device/emulator...'))
+  try {
+    execFileSync('adb', ['install', '-r', apkPath], { stdio: 'pipe' })
+    console.log(pc.green('  ✓ APK installed'))
+  } catch (err) {
+    console.error(pc.red(`  ✗ Failed to install APK: ${(err as Error).message}`))
+    console.log(pc.dim('  Make sure an emulator is running or a device is connected (adb devices).\n'))
+    throw new ConfigError(`APK install failed: ${(err as Error).message}`)
+  }
 
-    console.log(pc.green('  ✓ Build successful\n'))
-
-    // Find APK
-    const apkPath = findApkPath(androidDir)
-    if (!apkPath) {
-      console.log(pc.yellow('  Could not locate debug APK.'))
-      console.log(pc.dim('  Expected at android/app/build/outputs/apk/debug/\n'))
-      return
-    }
-
-    // Install APK
-    console.log(pc.white('  Installing APK on device/emulator...'))
-    try {
-      execSync(`adb install -r "${apkPath}"`, { stdio: 'pipe' })
-      console.log(pc.green('  ✓ APK installed'))
-    } catch (err) {
-      console.error(pc.red(`  ✗ Failed to install APK: ${(err as Error).message}`))
-      console.log(pc.dim('  Make sure an emulator is running or a device is connected (adb devices).\n'))
-      throw new ConfigError(`APK install failed: ${(err as Error).message}`)
-    }
-
-    // Launch app
-    const componentName = `${options.package}/${options.activity}`
-    console.log(pc.white(`  Launching ${componentName}...`))
-    try {
-      execSync(`adb shell am start -n "${componentName}"`, { stdio: 'pipe' })
-      console.log(pc.green(`  ✓ App launched\n`))
-    } catch (err) {
-      console.error(pc.red(`  ✗ Failed to launch app: ${(err as Error).message}`))
-      throw new ConfigError(`App launch failed: ${(err as Error).message}`)
-    }
-  })
+  // Launch app
+  const componentName = `${applicationId}/${options.activity}`
+  console.log(pc.white(`  Launching ${componentName}...`))
+  try {
+    execFileSync('adb', ['shell', 'am', 'start', '-n', componentName], { stdio: 'pipe' })
+    console.log(pc.green(`  ✓ App launched\n`))
+  } catch (err) {
+    console.error(pc.red(`  ✗ Failed to launch app: ${(err as Error).message}`))
+    throw new ConfigError(`App launch failed: ${(err as Error).message}`)
+  }
 }
 
-function runMacOS(
+async function runMacOS(
   cwd: string,
   options: {
     scheme?: string
   },
-) {
+): Promise<void> {
   const macosDir = join(cwd, 'macos')
 
   if (!existsSync(macosDir)) {
@@ -373,63 +407,76 @@ function runMacOS(
 
   console.log(pc.white(`  Building ${scheme} for macOS...`))
 
-  const xcodebuild = spawn(
-    'xcodebuild',
-    [projectFlag, xcodeProject, '-scheme', scheme, '-destination', 'platform=macOS', 'build'],
-    {
+  let result
+  try {
+    result = await runManagedProcess('xcodebuild', [
+      projectFlag,
+      xcodeProject,
+      '-scheme',
+      scheme,
+      '-destination',
+      'platform=macOS',
+      'build',
+    ], {
       cwd,
       stdio: 'pipe',
-      env: { ...process.env, DEVELOPER_DIR: '/Applications/Xcode.app/Contents/Developer' },
-    },
-  )
+      env: { ...process.env },
+    }, {
+      stderr: (data) => {
+        const text = data.toString().trim()
+        if (text.includes('error:') || text.includes('warning:')) {
+          console.log(pc.dim(`  ${text}`))
+        }
+      },
+    })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.error(pc.red(`  xcodebuild process error: ${message}`))
+    throw new ConfigError(`macOS build process failed: ${message}`)
+  }
 
-  xcodebuild.stderr?.on('data', (data: Buffer) => {
-    const text = data.toString().trim()
-    if (text.includes('error:') || text.includes('warning:')) {
-      console.log(pc.dim(`  ${text}`))
-    }
-  })
+  if (result.code !== 0) {
+    const outcome = result.code === null
+      ? `signal ${result.signal ?? 'unknown'}`
+      : `exit code ${result.code}`
+    console.error(pc.red(`  ✗ Build failed (${outcome})`))
+    throw new ConfigError(`macOS build failed with ${outcome}`)
+  }
 
-  xcodebuild.on('close', (code) => {
-    if (code !== 0) {
-      console.error(pc.red(`  ✗ Build failed (exit code ${code})`))
-      throw new ConfigError(`macOS build failed with exit code ${code}`)
-    }
+  console.log(pc.green('  ✓ Build successful\n'))
 
-    console.log(pc.green('  ✓ Build successful\n'))
+  // Find and launch the macOS app
+  const derivedDataBase = join(process.env.HOME || '~', 'Library/Developer/Xcode/DerivedData')
+  let appPath: string | null = null
 
-    // Find and launch the macOS app
-    const derivedDataBase = join(process.env.HOME || '~', 'Library/Developer/Xcode/DerivedData')
-    let appPath: string | null = null
-
-    if (existsSync(derivedDataBase)) {
-      try {
-        const projects = readdirSync(derivedDataBase)
-        for (const project of projects.reverse()) {
-          const productsDir = join(derivedDataBase, project, 'Build/Products/Debug')
-          if (existsSync(productsDir)) {
-            const entries = readdirSync(productsDir)
-            const app = entries.find(e => e.endsWith('.app'))
-            if (app) {
-              appPath = join(productsDir, app)
-              break
-            }
+  if (existsSync(derivedDataBase)) {
+    try {
+      const projects = readdirSync(derivedDataBase)
+      for (const project of projects.reverse()) {
+        const productsDir = join(derivedDataBase, project, 'Build/Products/Debug')
+        if (existsSync(productsDir)) {
+          const entries = readdirSync(productsDir)
+          const app = entries.find(e => e.endsWith('.app'))
+          if (app) {
+            appPath = join(productsDir, app)
+            break
           }
         }
-      } catch {}
-    }
-
-    if (appPath) {
-      console.log(pc.white(`  Launching ${appPath}...`))
-      try {
-        execSync(`open "${appPath}"`, { stdio: 'pipe' })
-        console.log(pc.green(`  ✓ App launched\n`))
-      } catch (err) {
-        console.error(pc.red(`  ✗ Failed to launch app: ${(err as Error).message}`))
       }
-    } else {
-      console.log(pc.yellow('  Could not locate .app bundle in DerivedData.'))
-      console.log(pc.dim('  Try running the app from Xcode directly.\n'))
+    } catch {}
+  }
+
+  if (appPath) {
+    console.log(pc.white(`  Launching ${appPath}...`))
+    try {
+      execFileSync('open', [appPath], { stdio: 'pipe' })
+      console.log(pc.green(`  ✓ App launched\n`))
+    } catch (err) {
+      console.error(pc.red(`  ✗ Failed to launch app: ${(err as Error).message}`))
+      throw new ConfigError(`macOS app launch failed: ${(err as Error).message}`)
     }
-  })
+  } else {
+    console.log(pc.yellow('  Could not locate .app bundle in DerivedData.'))
+    console.log(pc.dim('  Try running the app from Xcode directly.\n'))
+  }
 }

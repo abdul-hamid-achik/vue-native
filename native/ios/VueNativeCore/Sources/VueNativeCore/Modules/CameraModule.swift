@@ -21,6 +21,10 @@ final class CameraModule: NativeModule {
     private weak var bridge: NativeBridge?
     private let qrQueue = DispatchQueue(label: "com.vuenative.camera.qr")
 
+    init(bridge: NativeBridge) {
+        self.bridge = bridge
+    }
+
     func invoke(method: String, args: [Any], callback: @escaping (Any?, String?) -> Void) {
         let options = args.first as? [String: Any] ?? [:]
         switch method {
@@ -141,7 +145,10 @@ final class CameraModule: NativeModule {
         }
         session.addOutput(output)
 
-        let bridge = NativeBridge.shared
+        guard let bridge else {
+            callback(nil, "Vue Native bridge is not available")
+            return
+        }
         let delegate = QRScanDelegate(bridge: bridge)
         output.setMetadataObjectsDelegate(delegate, queue: DispatchQueue.main)
         output.metadataObjectTypes = [.qr, .ean8, .ean13, .pdf417, .code128]
@@ -238,9 +245,18 @@ private final class VideoPickerDelegate: NSObject, UIImagePickerControllerDelega
 
         // Get video duration
         let asset = AVAsset(url: tempURL)
-        let duration = CMTimeGetSeconds(asset.duration)
-
-        callback(["uri": tempURL.absoluteString, "duration": duration, "type": "video/quicktime"], nil)
+        Task { @MainActor in
+            do {
+                let duration = try await asset.load(.duration)
+                callback([
+                    "uri": tempURL.absoluteString,
+                    "duration": CMTimeGetSeconds(duration),
+                    "type": "video/quicktime",
+                ], nil)
+            } catch {
+                callback(nil, "Failed to read video duration: \(error.localizedDescription)")
+            }
+        }
     }
 
     func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {

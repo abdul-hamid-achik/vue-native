@@ -16,22 +16,33 @@ final class AppStateModule: NSObject, NativeModule {
         observers.append(NotificationCenter.default.addObserver(
             forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main
         ) { [weak self] _ in
-            self?.bridge?.dispatchGlobalEvent("appState:change", payload: ["state": "active"])
+            Task { @MainActor [weak self] in
+                self?.bridge?.dispatchGlobalEvent("appState:change", payload: ["state": "active"])
+            }
         })
         observers.append(NotificationCenter.default.addObserver(
             forName: UIApplication.willResignActiveNotification, object: nil, queue: .main
         ) { [weak self] _ in
-            self?.bridge?.dispatchGlobalEvent("appState:change", payload: ["state": "inactive"])
+            Task { @MainActor [weak self] in
+                self?.bridge?.dispatchGlobalEvent("appState:change", payload: ["state": "inactive"])
+            }
         })
         observers.append(NotificationCenter.default.addObserver(
             forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main
         ) { [weak self] _ in
-            self?.bridge?.dispatchGlobalEvent("appState:change", payload: ["state": "background"])
+            Task { @MainActor [weak self] in
+                self?.bridge?.dispatchGlobalEvent("appState:change", payload: ["state": "background"])
+            }
         })
     }
 
     deinit {
+        destroy()
+    }
+
+    func destroy() {
         observers.forEach { NotificationCenter.default.removeObserver($0) }
+        observers.removeAll()
     }
 
     func invoke(method: String, args: [Any], callback: @escaping (Any?, String?) -> Void) {

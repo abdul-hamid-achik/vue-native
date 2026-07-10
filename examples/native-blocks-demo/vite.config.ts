@@ -11,6 +11,7 @@ export default defineConfig({
       nativeOutputDirs: {
         ios: 'generated/ios',
         android: 'generated/android',
+        macos: 'generated/macos',
         typescript: 'app/generated',
       },
     }),

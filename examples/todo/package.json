@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "build": "vite build",
-    "dev": "vite build --watch"
+    "dev": "vite build --watch",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@thelacanians/vue-native-runtime": "workspace:*"

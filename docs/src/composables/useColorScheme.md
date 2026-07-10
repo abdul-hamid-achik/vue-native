@@ -45,6 +45,7 @@ type ColorScheme = 'light' | 'dark'
 |----------|---------|
 | iOS | Observes `UITraitCollection.userInterfaceStyle` changes. |
 | Android | Observes `Configuration.uiMode` changes. |
+| macOS | Observes the effective AppKit appearance. |
 
 ## Example
 
@@ -79,5 +80,5 @@ const theme = computed(() => ({
 ## Notes
 
 - The composable subscribes to native `colorScheme:change` events and automatically cleans up on `onUnmounted`.
-- `colorScheme` defaults to `'light'` before the first native event fires. If you need the accurate initial value immediately, the native side should dispatch the current scheme on startup.
+- `colorScheme` starts as `'light'`, then queries `DeviceInfo.getInfo()` after mount so an app launched in dark mode is corrected without waiting for a theme change.
 - Use `isDark` for simple conditional styling. Use `colorScheme` when you need the raw value (e.g., for a theme switcher UI).

@@ -23,7 +23,7 @@
  */
 
 import { parseDirectory, type NativeBlock } from '@thelacanians/vue-native-sfc-parser'
-import { generateCode, writeGeneratedFiles, type CodegenResult } from '@thelacanians/vue-native-codegen'
+import { cleanGeneratedFiles, generateCode, hasGeneratedArtifacts, writeGeneratedFiles, type CodegenResult } from '@thelacanians/vue-native-codegen'
 import fg from 'fast-glob'
 import type { ConfigEnv, LibraryFormats, ResolvedConfig, UserConfig, ViteDevServer } from 'vite'
 
@@ -161,16 +161,25 @@ export default function vueNativePlugin(options: VueNativePluginOptions = {}) {
   }
 
   let projectRoot = ''
+  let codegenQueue: Promise<CodegenResult | null> = Promise.resolve(null)
 
   /**
    * Run code generation
    */
-  async function runCodegen(root: string): Promise<CodegenResult | null> {
+  async function performCodegen(root: string): Promise<CodegenResult | null> {
     if (!nativeCodegen) {
       return null
     }
 
     try {
+      const codegenOptions = {
+        root,
+        iosOutputDir: nativeOutputDirs?.ios,
+        androidOutputDir: nativeOutputDirs?.android,
+        macosOutputDir: nativeOutputDirs?.macos,
+        typescriptOutputDir: nativeOutputDirs?.typescript,
+      }
+
       // Find all SFC files
       const sfcs = await fg('**/*.vue', {
         cwd: root,
@@ -178,40 +187,80 @@ export default function vueNativePlugin(options: VueNativePluginOptions = {}) {
         absolute: true,
       })
 
-      if (sfcs.length === 0) {
-        return null
-      }
-
-      // Parse SFCs and extract native blocks
-      const parseResult = parseDirectory('.', {
-        root,
-        exclude,
-      })
+      // Parse SFCs and extract native blocks. A project can legitimately have
+      // no SFCs/native blocks after a deletion; that must clear generated
+      // modules instead of leaving stale registries behind.
+      const parseResult = sfcs.length === 0
+        ? { errors: [], allNativeBlocks: [] }
+        : parseDirectory('.', { root, exclude })
 
       if (parseResult.errors.length > 0) {
-        console.warn('[vue-native] Parse errors:', parseResult.errors)
+        const error = new Error(
+          `Native block parsing failed with ${parseResult.errors.length} error${parseResult.errors.length === 1 ? '' : 's'}`,
+        )
+        state.blocks = parseResult.allNativeBlocks
+        state.lastResult = {
+          files: [],
+          errors: parseResult.errors,
+          warnings: [],
+          stats: {
+            totalBlocks: state.blocks.length,
+            swiftFiles: 0,
+            kotlinFiles: 0,
+            typescriptFiles: 0,
+          },
+        }
+        state.lastError = error
+        console.error('[vue-native] Parse errors:', parseResult.errors)
+        return null
       }
 
       state.blocks = parseResult.allNativeBlocks
 
-      if (state.blocks.length === 0) {
-        return null
+      // Do not create a default native project tree in a JavaScript-only app.
+      // Once codegen has created output, though, an empty block list means the
+      // final block was removed and those artifacts must be cleaned/replaced.
+      if (state.blocks.length === 0 && !hasGeneratedArtifacts(codegenOptions, root)) {
+        const emptyResult: CodegenResult = {
+          files: [],
+          errors: [],
+          warnings: [],
+          stats: {
+            totalBlocks: 0,
+            swiftFiles: 0,
+            kotlinFiles: 0,
+            typescriptFiles: 0,
+          },
+        }
+        state.lastResult = emptyResult
+        state.lastError = null
+        logInfo('[vue-native] No <native> blocks or generated artifacts; skipping code generation')
+        return emptyResult
       }
 
       // Generate code
-      const codegenResult = generateCode(state.blocks, {
-        root,
-        iosOutputDir: nativeOutputDirs?.ios,
-        androidOutputDir: nativeOutputDirs?.android,
-        macosOutputDir: nativeOutputDirs?.macos,
-        typescriptOutputDir: nativeOutputDirs?.typescript,
-      })
+      const codegenResult = generateCode(state.blocks, codegenOptions)
 
-      // Write files to disk
+      if (codegenResult.errors.length > 0) {
+        state.lastResult = codegenResult
+        state.lastError = new Error('Code generation validation failed')
+        console.error('[vue-native] Codegen errors:', codegenResult.errors)
+        return null
+      }
+
+      // Prune only files carrying the generator marker, then write the full
+      // current set. This handles both deleted blocks and deleted final blocks.
+      cleanGeneratedFiles(codegenOptions, root)
       const writeResult = writeGeneratedFiles(codegenResult, root)
 
       if (writeResult.errors.length > 0) {
+        const error = new Error(
+          `Code generation failed to write ${writeResult.errors.length} file${writeResult.errors.length === 1 ? '' : 's'}`,
+        )
+        state.lastResult = codegenResult
+        state.lastError = error
         console.error('[vue-native] Write errors:', writeResult.errors)
+        return null
       }
 
       state.lastResult = codegenResult
@@ -225,6 +274,19 @@ export default function vueNativePlugin(options: VueNativePluginOptions = {}) {
       console.error('[vue-native] Codegen error:', error)
       return null
     }
+  }
+
+  /**
+   * Serialize codegen runs so rapid add/change/unlink watcher events cannot
+   * interleave cleanup and writes and leave output from an older scan behind.
+   */
+  function runCodegen(root: string): Promise<CodegenResult | null> {
+    const nextRun = codegenQueue.then(
+      () => performCodegen(root),
+      () => performCodegen(root),
+    )
+    codegenQueue = nextRun
+    return nextRun
   }
 
   return {
@@ -316,7 +378,7 @@ export default function vueNativePlugin(options: VueNativePluginOptions = {}) {
       if (!nativeCodegen) return
 
       // Watch for SFC changes
-      server.watcher.on('change', async (file: string) => {
+      const regenerateForSfc = async (file: string) => {
         if (file.endsWith('.vue')) {
           logInfo('[vue-native] SFC changed, regenerating code...')
           await runCodegen(projectRoot)
@@ -334,7 +396,14 @@ export default function vueNativePlugin(options: VueNativePluginOptions = {}) {
             })
           }
         }
-      })
+      }
+
+      // Deleting the final SFC/native block is just as important as editing
+      // one: stale generated classes and registries must be removed. Watching
+      // additions also makes newly created SFCs participate immediately.
+      server.watcher.on('add', regenerateForSfc)
+      server.watcher.on('change', regenerateForSfc)
+      server.watcher.on('unlink', regenerateForSfc)
     },
 
     /**
@@ -344,6 +413,9 @@ export default function vueNativePlugin(options: VueNativePluginOptions = {}) {
     async buildStart() {
       if (nativeCodegen && projectRoot) {
         await runCodegen(projectRoot)
+        if (state.lastError) {
+          throw state.lastError
+        }
       }
     },
 

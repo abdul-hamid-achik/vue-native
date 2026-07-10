@@ -215,7 +215,7 @@ async function handleAppleLogin() {
 
 ### OTA Update Verification
 
-The `useOTAUpdate` composable verifies downloaded bundles against a SHA-256 hash provided by your update server. The native module rejects any bundle whose computed hash does not match:
+The `useOTAUpdate` composable requires a SHA-256 hash from your update server. Native code checks the downloaded bytes before staging, before apply, and again when the app selects an applied bundle at startup:
 
 ```ts
 import { useOTAUpdate } from '@thelacanians/vue-native-runtime'
@@ -232,12 +232,12 @@ if (info.updateAvailable) {
 ```
 
 ::: tip
-Serve OTA bundles over HTTPS with certificate pinning enabled. Combine transport security (TLS + pinning) with content verification (SHA-256) for defense in depth.
+Serve both OTA metadata and bundles over HTTPS. The OTA module does not currently expose certificate-pinning or public-key signature configuration; add native signature verification before using it for a high-risk application.
 :::
 
 ### Code Signing
 
-The JS bundle embedded in your app is covered by the platform's binary code signature. OTA-delivered bundles are verified by SHA-256 hash instead, since they arrive after installation.
+The JS bundle embedded in your app is covered by the platform's binary code signature. An OTA bundle is not. SHA-256 proves that downloaded bytes match the metadata, but it does not authenticate the publisher if an attacker can replace both the bundle and metadata. Treat signing and store-policy review as separate requirements.
 
 ## Common Pitfalls
 

@@ -10,7 +10,6 @@ import java.security.SecureRandom
 import okhttp3.Call
 import okhttp3.Callback
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
-import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
@@ -24,7 +23,6 @@ object JSPolyfills {
 
     private const val TAG = "VueNative-Polyfills"
     private val mainHandler = Handler(Looper.getMainLooper())
-    private val httpClient = OkHttpClient()
 
     // Timer storage — accessed from JS thread only
     private val timers = mutableMapOf<Int, Runnable>()
@@ -34,10 +32,15 @@ object JSPolyfills {
     private val rafCallbacks = mutableMapOf<Int, Any>()
     private var nextRafId = 1
     private var rafChoreographerPosted = false
+    @Volatile private var activeRuntime: JSRuntime? = null
 
     fun register(runtime: JSRuntime) {
         runtime.runOnJsThread {
-            val v8 = runtime.v8() ?: return@runOnJsThread
+            runtime.v8() ?: return@runOnJsThread
+            if (activeRuntime !== runtime) {
+                reset()
+                activeRuntime = runtime
+            }
             registerConsole(runtime)
             registerTimers(runtime)
             registerMicrotask(runtime)
@@ -53,7 +56,11 @@ object JSPolyfills {
     }
 
     /** Reset all timers, RAF callbacks, and counters. Call before hot-reloading a new bundle. */
-    fun reset() {
+    fun reset(owner: JSRuntime? = null) {
+        // A retiring Activity must not clear timers installed by a replacement
+        // runtime that became active first.
+        if (owner != null && activeRuntime !== owner) return
+
         // Cancel all pending timer callbacks
         for ((_, runnable) in timers) {
             mainHandler.removeCallbacks(runnable)
@@ -67,6 +74,7 @@ object JSPolyfills {
         // Reset counters
         nextTimerId = 1
         nextRafId = 1
+        if (owner != null) activeRuntime = null
     }
 
     // -- console ------------------------------------------------------------------
@@ -381,7 +389,7 @@ object JSPolyfills {
 
                 builder.method(method, requestBody)
 
-                httpClient.newCall(builder.build()).enqueue(object : Callback {
+                HttpModule.client().newCall(builder.build()).enqueue(object : Callback {
                     override fun onFailure(call: Call, e: IOException) {
                         val errMsg = e.message ?: "Network error"
                         runtime.runOnJsThread {
@@ -427,12 +435,11 @@ object JSPolyfills {
                     if (!cb) return;
                     delete __vnFetchCallbacks[id];
                     var resp = JSON.parse(respJson) || {};
-                    resp.text = function() { return Promise.resolve(resp._body || ''); };
+                    resp.text = function() { return Promise.resolve(resp._body); };
                     resp.json = function() {
-                        return new Promise(function(res, rej) {
-                            try { res(JSON.parse(resp._body || '{}')); }
-                            catch(e) { rej(e); }
-                        });
+                        // Match the Fetch API: empty and malformed bodies reject
+                        // rather than silently becoming an empty object.
+                        return Promise.resolve().then(function() { return JSON.parse(resp._body); });
                     };
                     cb.resolve(resp);
                 }

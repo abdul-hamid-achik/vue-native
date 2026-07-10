@@ -12,14 +12,14 @@ final class VVideoFactory: NativeComponentFactory {
 
     // MARK: - Associated object keys
 
-    private static var onReadyKey: UInt8 = 0
-    private static var onPlayKey: UInt8 = 1
-    private static var onPauseKey: UInt8 = 2
-    private static var onEndKey: UInt8 = 3
-    private static var onErrorKey: UInt8 = 4
-    private static var onProgressKey: UInt8 = 5
-    private static var playerKey: UInt8 = 6
-    private static var statusObserverKey: UInt8 = 8
+    nonisolated(unsafe) private static var onReadyKey: UInt8 = 0
+    nonisolated(unsafe) private static var onPlayKey: UInt8 = 1
+    nonisolated(unsafe) private static var onPauseKey: UInt8 = 2
+    nonisolated(unsafe) private static var onEndKey: UInt8 = 3
+    nonisolated(unsafe) private static var onErrorKey: UInt8 = 4
+    nonisolated(unsafe) private static var onProgressKey: UInt8 = 5
+    nonisolated(unsafe) private static var playerKey: UInt8 = 6
+    nonisolated(unsafe) private static var statusObserverKey: UInt8 = 8
 
     // MARK: - NativeComponentFactory
 
@@ -145,12 +145,18 @@ final class VVideoFactory: NativeComponentFactory {
                 switch item.status {
                 case .readyToPlay:
                     let duration = CMTimeGetSeconds(item.duration)
-                    self.fireEvent(for: container, key: &VVideoFactory.onReadyKey,
-                                   payload: ["duration": duration.isFinite ? duration : 0])
+                    VVideoFactory.fireEvent(
+                        for: container,
+                        key: &VVideoFactory.onReadyKey,
+                        payload: ["duration": duration.isFinite ? duration : 0]
+                    )
                 case .failed:
                     let message = item.error?.localizedDescription ?? "Unknown playback error"
-                    self.fireEvent(for: container, key: &VVideoFactory.onErrorKey,
-                                   payload: ["message": message])
+                    VVideoFactory.fireEvent(
+                        for: container,
+                        key: &VVideoFactory.onErrorKey,
+                        payload: ["message": message]
+                    )
                 default:
                     break
                 }
@@ -166,8 +172,11 @@ final class VVideoFactory: NativeComponentFactory {
             let currentTime = CMTimeGetSeconds(time)
             let dur = CMTimeGetSeconds(duration)
             if currentTime.isFinite && dur.isFinite {
-                self.fireEvent(for: container, key: &VVideoFactory.onProgressKey,
-                               payload: ["currentTime": currentTime, "duration": dur])
+                VVideoFactory.fireEvent(
+                    for: container,
+                    key: &VVideoFactory.onProgressKey,
+                    payload: ["currentTime": currentTime, "duration": dur]
+                )
             }
         }
         objc_setAssociatedObject(container, &_timeObserverKey, timeObserver as AnyObject, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
@@ -179,7 +188,7 @@ final class VVideoFactory: NativeComponentFactory {
             queue: .main
         ) { [weak container] _ in
             guard let container = container else { return }
-            self.fireEvent(for: container, key: &VVideoFactory.onEndKey, payload: nil)
+            VVideoFactory.fireEvent(for: container, key: &VVideoFactory.onEndKey, payload: nil)
             if container.loop {
                 container.player?.seek(to: .zero)
                 container.player?.play()
@@ -210,7 +219,7 @@ final class VVideoFactory: NativeComponentFactory {
         container.playerLayer = nil
     }
 
-    private func fireEvent(for view: NSView, key: inout UInt8, payload: Any?) {
+    nonisolated private static func fireEvent(for view: NSView, key: inout UInt8, payload: Any?) {
         if let handler = objc_getAssociatedObject(view, &key) as? ((Any?) -> Void) {
             handler(payload)
         }

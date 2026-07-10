@@ -1,6 +1,7 @@
 import JavaScriptCore
 import AppKit
 import Security
+import VueNativeShared
 
 /// Registers browser-like APIs in JSContext that the Vue runtime and application code expect.
 /// macOS port of the iOS JSPolyfills. All callbacks execute on the JS queue unless noted.
@@ -19,12 +20,9 @@ enum JSPolyfills {
 
     // MARK: - RAF storage
 
-    private static var displayLink: CVDisplayLink?
-    private static var displayLinkSource: DispatchSourceUserDataAdd?
-    private static var displayLinkSourcePtr: UnsafeMutableRawPointer?
+    private static var rafTimer: Timer?
     private static var rafCallbacks: [String: JSValue] = [:]
     private static var nextRafId: Int = 1
-    private static weak var rafRuntime: JSRuntime?
 
     // MARK: - Reset
 
@@ -42,17 +40,7 @@ enum JSPolyfills {
             for (_, entry) in oldTimers {
                 entry.timer.invalidate()
             }
-            if let link = displayLink {
-                CVDisplayLinkStop(link)
-            }
-            displayLink = nil
-            displayLinkSource?.cancel()
-            displayLinkSource = nil
-            if let ptr = displayLinkSourcePtr {
-                Unmanaged<AnyObject>.fromOpaque(ptr).release()
-                displayLinkSourcePtr = nil
-            }
-            rafRuntime = nil
+            stopRAFTimer()
         }
     }
 
@@ -281,11 +269,11 @@ enum JSPolyfills {
                 return id
             }
 
-            // Ensure CVDisplayLink is running
+            // A main-run-loop timer provides a display-rate callback without
+            // relying on the CVDisplayLink APIs deprecated in macOS 15.
             DispatchQueue.main.async {
-                if displayLink == nil {
-                    rafRuntime = runtime
-                    startDisplayLink(runtime: runtime)
+                if rafTimer == nil {
+                    startRAFTimer(runtime: runtime)
                 }
             }
 
@@ -302,39 +290,24 @@ enum JSPolyfills {
         context.setObject(cancelAnimationFrame, forKeyedSubscript: "cancelAnimationFrame" as NSString)
     }
 
-    /// Start a CVDisplayLink for requestAnimationFrame on macOS.
-    /// CVDisplayLink fires on a background thread, so we use a DispatchSource
-    /// to coalesce signals and dispatch to the JS queue.
-    private static func startDisplayLink(runtime: JSRuntime) {
-        var link: CVDisplayLink?
-        CVDisplayLinkCreateWithActiveCGDisplays(&link)
-        guard let link = link else { return }
-
-        let source = DispatchSourceMakeUserDataAdd()
-        displayLinkSource = source
-
-        source.setEventHandler { [weak runtime] in
-            guard let runtime = runtime else { return }
-            let timestamp = CACurrentMediaTime() * 1000.0
-            fireRAFCallbacks(runtime: runtime, timestamp: timestamp)
+    /// Start a run-loop timer for requestAnimationFrame on macOS. The timer is
+    /// scheduled in `.common` modes so it continues while menus and live resize
+    /// tracking are active, matching the practical behavior of a display link.
+    private static func startRAFTimer(runtime: JSRuntime) {
+        let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak runtime] _ in
+            guard let runtime else {
+                stopRAFTimer()
+                return
+            }
+            fireRAFCallbacks(runtime: runtime, timestamp: CACurrentMediaTime() * 1000.0)
         }
-        source.resume()
+        RunLoop.main.add(timer, forMode: .common)
+        rafTimer = timer
+    }
 
-        // Wrap the DispatchSource in an Unmanaged pointer so the C callback
-        // can access it without capturing context (C function pointers cannot
-        // capture Swift closures).
-        let sourcePtr = Unmanaged.passRetained(source as AnyObject).toOpaque()
-        displayLinkSourcePtr = sourcePtr
-
-        CVDisplayLinkSetOutputCallback(link, { _, _, _, _, _, userInfo -> CVReturn in
-            guard let userInfo = userInfo else { return kCVReturnSuccess }
-            let src = Unmanaged<AnyObject>.fromOpaque(userInfo).takeUnretainedValue()
-            (src as? DispatchSourceUserDataAdd)?.add(data: 1)
-            return kCVReturnSuccess
-        }, sourcePtr)
-
-        CVDisplayLinkStart(link)
-        displayLink = link
+    private static func stopRAFTimer() {
+        rafTimer?.invalidate()
+        rafTimer = nil
     }
 
     /// Fire all pending RAF callbacks. RAF is one-shot.
@@ -346,14 +319,9 @@ enum JSPolyfills {
         }
 
         guard !callbacks.isEmpty else {
-            // No pending callbacks -- stop the display link
+            // No pending callbacks -- stop the timer until the next request.
             DispatchQueue.main.async {
-                if let link = displayLink {
-                    CVDisplayLinkStop(link)
-                }
-                displayLink = nil
-                displayLinkSource?.cancel()
-                displayLinkSource = nil
+                stopRAFTimer()
             }
             return
         }
@@ -372,12 +340,7 @@ enum JSPolyfills {
             let isEmpty: Bool = stateQueue.sync { rafCallbacks.isEmpty }
             if isEmpty {
                 DispatchQueue.main.async {
-                    if let link = displayLink {
-                        CVDisplayLinkStop(link)
-                    }
-                    displayLink = nil
-                    displayLinkSource?.cancel()
-                    displayLinkSource = nil
+                    stopRAFTimer()
                 }
             }
         }
@@ -413,6 +376,18 @@ enum JSPolyfills {
     // MARK: - fetch
 
     private static func registerFetch(in context: JSContext, runtime: JSRuntime) {
+        let configurePins: @convention(block) (JSValue) -> Void = { pinsValue in
+            guard let jsonString = pinsValue.toString(),
+                  let data = jsonString.data(using: .utf8),
+                  let pins = try? JSONSerialization.jsonObject(with: data) as? [String: [String]] else {
+                NSLog("[VueNative CertPin] Invalid pins configuration")
+                return
+            }
+
+            CertificatePinning.shared.configurePins(pins)
+        }
+        context.setObject(configurePins, forKeyedSubscript: "__VN_configurePins" as NSString)
+
         let fetch: @convention(block) (JSValue, JSValue) -> JSValue = { [weak runtime] urlValue, optionsValue in
             guard let runtime = runtime, let context = runtime.context else {
                 return JSValue(undefinedIn: JSContext.current())
@@ -463,7 +438,12 @@ enum JSPolyfills {
             let captureBlock = JSValue(object: captureExecutor as AnyObject, in: context)
             let promise = promiseCtor?.call(withArguments: [captureBlock as Any])
 
-            let task = URLSession.shared.dataTask(with: request) { [weak runtime] data, response, error in
+            let host = url.host ?? ""
+            let session = CertificatePinning.shared.hasPins(for: host)
+                ? CertificatePinning.shared.session
+                : URLSession.shared
+
+            let task = session.dataTask(with: request) { [weak runtime] data, response, error in
                 guard let runtime = runtime else { return }
                 runtime.jsQueue.async { [weak runtime] in
                     guard runtime != nil, let context = runtime?.context else { return }

@@ -29,6 +29,7 @@ my-app/
   app/
     main.ts          # Entry point
     App.vue          # Root component
+    generated/       # TypeScript wrappers generated from <native> blocks
     pages/
       Home.vue       # Home screen
   ios/
@@ -37,10 +38,23 @@ my-app/
   android/
     app/             # Android app module
     build.gradle.kts
+    settings.gradle.kts
+    gradlew          # Bundled Gradle wrapper script
+    gradle/wrapper/  # Wrapper properties and JAR
+  native/            # Bundled native runtime source
+    android/VueNativeCore/     # Linked locally as :VueNativeCore
+    ios/VueNativeCore/         # Linked as a local Swift package
+    shared/VueNativeShared/    # Shared Apple runtime
   vite.config.ts
   package.json
   tsconfig.json
 ```
+
+The scaffold is self-contained: Android uses the bundled Gradle wrapper and
+local `:VueNativeCore` module, while iOS uses the bundled local Swift package.
+This also ensures code generated from `<native>` blocks is compiled into both
+apps. `vue-native run ios` generates the Xcode project from `project.yml` when
+needed; install XcodeGen with `brew install xcodegen`.
 
 ### `vue-native dev`
 
@@ -80,8 +94,26 @@ vue-native run android
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `--package <name>` | `com.vuenative.app` | Android package name |
+| `--package <name>` | auto-detect | Override the application ID used to launch the app |
 | `--activity <name>` | `.MainActivity` | Launch activity |
+
+Before an Android run or native build, the CLI copies
+`dist/vue-native-bundle.js` into the app's assets directory automatically.
+
+### `vue-native build <platform>`
+
+Create an iOS, Android, or macOS artifact after bundling the JavaScript:
+
+```bash
+vue-native build ios
+vue-native build android --aab
+vue-native build macos
+vue-native build android --mode debug
+```
+
+`--mode` accepts `debug` or `release` (the default). Use `--output` to choose
+the artifact directory, `--scheme` for an iOS or macOS Xcode scheme, and
+`--aab` to create an Android App Bundle instead of an APK.
 
 ## Development workflow
 

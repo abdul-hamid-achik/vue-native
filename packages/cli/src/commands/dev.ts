@@ -1,11 +1,12 @@
 import { Command } from 'commander'
-import { spawn, execSync } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import { readFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { watch } from 'chokidar'
 import { WebSocketServer, WebSocket } from 'ws'
 import pc from 'picocolors'
+import { loadConfig } from '../config.js'
 
 const DEFAULT_PORT = 8174
 const BUNDLE_FILE = 'dist/vue-native-bundle.js'
@@ -27,7 +28,7 @@ interface SimulatorListResponse {
 
 function detectIOSSimulators(): SimulatorInfo[] {
   try {
-    const output = execSync('xcrun simctl list devices available -j', {
+    const output = execFileSync('xcrun', ['simctl', 'list', 'devices', 'available', '-j'], {
       stdio: 'pipe',
       encoding: 'utf8',
     })
@@ -53,18 +54,18 @@ function detectIOSSimulators(): SimulatorInfo[] {
 
 function bootSimulator(udid: string): void {
   try {
-    execSync(`xcrun simctl boot "${udid}"`, { stdio: 'pipe' })
+    execFileSync('xcrun', ['simctl', 'boot', udid], { stdio: 'pipe' })
   } catch {
     // Already booted
   }
   try {
-    execSync('open -a Simulator', { stdio: 'pipe' })
+    execFileSync('open', ['-a', 'Simulator'], { stdio: 'pipe' })
   } catch {}
 }
 
 function detectAndroidEmulators(): string[] {
   try {
-    const output = execSync('adb devices', { stdio: 'pipe', encoding: 'utf8' })
+    const output = execFileSync('adb', ['devices'], { stdio: 'pipe', encoding: 'utf8' })
     const lines = output.split('\n').filter(l => l.includes('device') && !l.startsWith('List'))
     return lines.map(l => l.split('\t')[0]).filter(Boolean)
   } catch {
@@ -85,6 +86,7 @@ export const devCommand = new Command('dev')
   .action(async (options: { port: string, ios?: boolean, android?: boolean, simulator?: string }) => {
     const port = parseInt(options.port, 10)
     const cwd = process.cwd()
+    await loadConfig(cwd)
     const bundlePath = join(cwd, BUNDLE_FILE)
 
     console.log(pc.cyan('\n  Vue Native Dev Server\n'))

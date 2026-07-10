@@ -15,12 +15,14 @@ const mockMkdir = vi.fn().mockResolvedValue(undefined)
 const mockWriteFile = vi.fn().mockResolvedValue(undefined)
 const mockReadFile = vi.fn().mockResolvedValue('')
 const mockCp = vi.fn().mockResolvedValue(undefined)
+const mockChmod = vi.fn().mockResolvedValue(undefined)
 
 vi.mock('node:fs/promises', () => ({
   mkdir: (...args: unknown[]) => mockMkdir(...args),
   writeFile: (...args: unknown[]) => mockWriteFile(...args),
   readFile: (...args: unknown[]) => mockReadFile(...args),
   cp: (...args: unknown[]) => mockCp(...args),
+  chmod: (...args: unknown[]) => mockChmod(...args),
 }))
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -51,6 +53,7 @@ vi.mock('node:fs', async () => {
 // ───────────────────────────────────────────────────────────────────────────
 
 const mockExecSync = vi.fn()
+const mockExecFileSync = vi.fn()
 const mockSpawn = vi.fn().mockReturnValue({
   stdout: { on: vi.fn() },
   stderr: { on: vi.fn() },
@@ -59,8 +62,32 @@ const mockSpawn = vi.fn().mockReturnValue({
   killed: false,
 })
 
+type ChildProcessHandler = (...args: any[]) => void
+
+function createMockChildProcess(autoClose = true) {
+  const handlers = new Map<string, ChildProcessHandler>()
+  const child = {
+    stdout: { on: vi.fn() },
+    stderr: { on: vi.fn() },
+    on: vi.fn((event: string, handler: ChildProcessHandler) => {
+      handlers.set(event, handler)
+      if (autoClose && event === 'close') {
+        queueMicrotask(() => handler(0, null))
+      }
+      return child
+    }),
+    kill: vi.fn(),
+    killed: false,
+    emit(event: string, ...args: unknown[]) {
+      handlers.get(event)?.(...args)
+    },
+  }
+  return child
+}
+
 vi.mock('node:child_process', () => ({
   execSync: (...args: unknown[]) => mockExecSync(...args),
+  execFileSync: (...args: unknown[]) => mockExecFileSync(...args),
   spawn: (...args: unknown[]) => mockSpawn(...args),
 }))
 
@@ -345,6 +372,9 @@ describe('create command', () => {
     vi.resetModules()
     mockMkdir.mockReset().mockResolvedValue(undefined)
     mockWriteFile.mockReset().mockResolvedValue(undefined)
+    mockCp.mockReset().mockResolvedValue(undefined)
+    mockChmod.mockReset().mockResolvedValue(undefined)
+    mockExistsSync.mockReset().mockReturnValue(false)
     vi.spyOn(console, 'log').mockImplementation(() => {})
     vi.spyOn(console, 'error').mockImplementation(() => {})
   })
@@ -357,7 +387,9 @@ describe('create command', () => {
     vi.resetModules()
     const { createCommand } = await import('../commands/create')
     // Parse with commander — simulate CLI input
-    await createCommand.parseAsync(['node', 'create', name, '-t', template])
+    // Put options before `--` so option-looking invalid names still reach the
+    // command's project-name validator instead of Commander's option parser.
+    await createCommand.parseAsync(['node', 'create', '-t', template, '--', name])
   }
 
   describe('blank template', () => {
@@ -388,8 +420,10 @@ describe('create command', () => {
       expect(pkgJson.dependencies).toHaveProperty('@thelacanians/vue-native-runtime')
       expect(pkgJson.dependencies).toHaveProperty('@thelacanians/vue-native-navigation')
       expect(pkgJson.dependencies).toHaveProperty('vue')
+      expect(pkgJson.devDependencies).toHaveProperty('@thelacanians/vue-native-cli')
       expect(pkgJson.devDependencies).toHaveProperty('@thelacanians/vue-native-vite-plugin')
       expect(pkgJson.devDependencies['@vitejs/plugin-vue']).toBe('^6.0.5')
+      expect(pkgJson.devDependencies.esbuild).toBe('^0.27.0')
       expect(pkgJson.devDependencies['vite']).toBe('^8.0.0')
       expect(pkgJson.devDependencies).toHaveProperty('vite')
       expect(pkgJson.devDependencies).toHaveProperty('typescript')
@@ -420,6 +454,7 @@ describe('create command', () => {
       expect(tsconfig.compilerOptions.target).toBe('ES2020')
       expect(tsconfig.compilerOptions.strict).toBe(true)
       expect(tsconfig.compilerOptions.module).toBe('ESNext')
+      expect(tsconfig.compilerOptions.lib).toEqual(['ES2020', 'DOM', 'DOM.Iterable'])
       expect(tsconfig.include).toContain('app/**/*')
     })
 
@@ -434,7 +469,8 @@ describe('create command', () => {
       const content = viteConfigCall![1] as string
       expect(content).toContain('import vue from \'@vitejs/plugin-vue\'')
       expect(content).toContain('import vueNative from \'@thelacanians/vue-native-vite-plugin\'')
-      expect(content).toContain('plugins: [vue(), vueNative()]')
+      expect(content).toContain('typescript: \'app/generated\'')
+      expect(content).toContain('plugins: [vue(), vueNative({')
     })
 
     it('creates App.vue with SafeArea and RouterView', async () => {
@@ -595,8 +631,13 @@ describe('create command', () => {
 
       const content = projectYmlCall![1] as string
       expect(content).toContain('VueNativeCore')
+      expect(content).toContain('path: ../native/ios/VueNativeCore')
+      expect(content).not.toContain('url: https://github.com')
       expect(content).toContain('iOS: "16.0"')
       expect(content).toContain('SWIFT_VERSION: "5.9"')
+      expect(content).toContain('path: ../dist/vue-native-bundle.js')
+      expect(content).toContain('buildPhase: resources')
+      expect(content).not.toMatch(/^\s{4}resources:/m)
     })
 
     it('creates ios/Sources/Info.plist', async () => {
@@ -645,7 +686,7 @@ describe('create command', () => {
       expect(content).toContain('org.jetbrains.kotlin.android')
     })
 
-    it('creates android/settings.gradle.kts with Maven repo', async () => {
+    it('creates a self-contained Android project with the bundled core module', async () => {
       await runCreate('my-app')
 
       const settingsCall = mockWriteFile.mock.calls.find(
@@ -654,9 +695,32 @@ describe('create command', () => {
       expect(settingsCall).toBeDefined()
 
       const content = settingsCall![1] as string
-      expect(content).toContain('maven.pkg.github.com/abdul-hamid-achik/vue-native')
+      expect(content).not.toContain('maven.pkg.github.com')
       expect(content).toContain('jitpack.io')
       expect(content).toContain('include(":app")')
+      expect(content).toContain('include(":VueNativeCore")')
+      expect(content).toContain('file("../native/android/VueNativeCore")')
+
+      const appGradleCall = mockWriteFile.mock.calls.find(
+        ([path]: any[]) => path.endsWith('app/build.gradle.kts'),
+      )
+      expect(appGradleCall?.[1]).toContain('implementation(project(":VueNativeCore"))')
+    })
+
+    it('copies a usable Gradle wrapper and bundled VueNativeCore module', async () => {
+      await runCreate('my-app')
+
+      const copyPairs = mockCp.mock.calls.map(([source, destination]: any[]) => [source, destination])
+      expect(copyPairs).toEqual(expect.arrayContaining([
+        [expect.stringMatching(/native$/), expect.stringMatching(/my-app\/native$/)],
+        [expect.stringMatching(/native\/android\/gradlew$/), expect.stringMatching(/my-app\/android\/gradlew$/)],
+        [expect.stringMatching(/native\/android\/gradlew\.bat$/), expect.stringMatching(/my-app\/android\/gradlew\.bat$/)],
+        [expect.stringMatching(/native\/android\/gradle\/wrapper\/gradle-wrapper\.jar$/), expect.stringMatching(/my-app\/android\/gradle\/wrapper\/gradle-wrapper\.jar$/)],
+      ]))
+      expect(mockChmod).toHaveBeenCalledWith(
+        expect.stringMatching(/my-app\/android\/gradlew$/),
+        0o755,
+      )
     })
 
     it('creates AndroidManifest.xml with INTERNET permission and activity config', async () => {
@@ -811,6 +875,18 @@ describe('create command', () => {
       await expect(runCreate('my-app', 'invalid-template')).rejects.toThrow(/Invalid template/)
     })
   })
+
+  describe('project safety', () => {
+    it.each(['_', '---', '123app', 'has space'])('rejects unsafe project name %s', async (name) => {
+      await expect(runCreate(name)).rejects.toThrow(/must start with a letter/)
+    })
+
+    it('refuses to overwrite an existing project directory', async () => {
+      mockExistsSync.mockReturnValue(true)
+      await expect(runCreate('existing-app')).rejects.toThrow(/already exists/)
+      expect(mockWriteFile).not.toHaveBeenCalled()
+    })
+  })
 })
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -823,14 +899,9 @@ describe('dev command', () => {
     mockWssOn.mockReset()
     mockWssClose.mockReset()
     mockWatcherOn.mockReset().mockReturnThis()
-    mockSpawn.mockReset().mockReturnValue({
-      stdout: { on: vi.fn() },
-      stderr: { on: vi.fn() },
-      on: vi.fn(),
-      kill: vi.fn(),
-      killed: false,
-    })
+    mockSpawn.mockReset().mockImplementation(() => createMockChildProcess())
     mockExecSync.mockReset()
+    mockExecFileSync.mockReset()
     mockExistsSync.mockReturnValue(false)
     capturedWssOptions = {}
     vi.spyOn(console, 'log').mockImplementation(() => {})
@@ -921,6 +992,40 @@ describe('dev command', () => {
     )
   })
 
+  it('boots simulator identifiers as literal process arguments', async () => {
+    const untrustedUdid = 'SIMULATOR-ID; touch /tmp/vue-native-injected'
+    mockExecFileSync.mockImplementation((command: string, args: string[]) => {
+      if (command === 'xcrun' && args[1] === 'list') {
+        return JSON.stringify({
+          devices: {
+            'com.apple.CoreSimulator.SimRuntime.iOS-18-0': [{
+              name: 'Security Test iPhone',
+              udid: untrustedUdid,
+              state: 'Shutdown',
+              isAvailable: true,
+            }],
+          },
+        })
+      }
+      return ''
+    })
+
+    const devCommand = await importDevCommand()
+    await devCommand.parseAsync([
+      'node',
+      'dev',
+      '--ios',
+      '--simulator',
+      'Security Test iPhone',
+    ])
+
+    expect(mockExecFileSync).toHaveBeenCalledWith(
+      'xcrun',
+      ['simctl', 'boot', untrustedUdid],
+      { stdio: 'pipe' },
+    )
+  })
+
   it('sets up file watcher for bundle changes', async () => {
     const devCommand = await importDevCommand()
     await devCommand.parseAsync(['node', 'dev'])
@@ -955,16 +1060,13 @@ describe('run command', () => {
   beforeEach(() => {
     vi.resetModules()
     mockExecSync.mockReset()
-    mockSpawn.mockReset().mockReturnValue({
-      stdout: { on: vi.fn() },
-      stderr: { on: vi.fn() },
-      on: vi.fn(),
-      kill: vi.fn(),
-      killed: false,
-    })
+    mockExecFileSync.mockReset()
+    mockSpawn.mockReset().mockImplementation(() => createMockChildProcess())
     mockExistsSync.mockReset().mockReturnValue(false)
     mockReaddirSync.mockReset().mockReturnValue([])
-    mockReadFileSync.mockReset().mockReturnValue('')
+    mockReadFileSync.mockReset().mockReturnValue('applicationId = "com.vuenative.myapp"')
+    mockMkdirSync.mockReset()
+    mockCopyFileSync.mockReset()
     vi.spyOn(console, 'log').mockImplementation(() => {})
     vi.spyOn(console, 'error').mockImplementation(() => {})
     vi.spyOn(process, 'on').mockImplementation(() => process)
@@ -1022,6 +1124,52 @@ describe('run command', () => {
       expect(logCalls).toContain('No Xcode project')
     })
 
+    it('generates a scaffolded project.yml with XcodeGen before building', async () => {
+      mockExecSync.mockImplementation(() => '')
+      mockExistsSync.mockImplementation((path: string) => {
+        return typeof path === 'string'
+          && (path.endsWith('/ios') || path.endsWith('/ios/project.yml'))
+      })
+      let readCount = 0
+      mockReaddirSync.mockImplementation(() => {
+        readCount += 1
+        return readCount <= 2 ? [] : ['MyApp.xcodeproj']
+      })
+
+      const runCmd = await importRunCommand()
+      await runCmd.parseAsync(['node', 'run', 'ios'])
+
+      expect(mockExecSync).toHaveBeenCalledWith(
+        'xcodegen --version',
+        expect.objectContaining({ stdio: 'ignore' }),
+      )
+      expect(mockExecSync).toHaveBeenCalledWith(
+        'xcodegen generate',
+        expect.objectContaining({ stdio: 'inherit' }),
+      )
+      expect(mockSpawn).toHaveBeenCalledWith(
+        'xcodebuild',
+        expect.arrayContaining(['-project', expect.stringContaining('MyApp.xcodeproj')]),
+        expect.any(Object),
+      )
+    })
+
+    it('reports how to install XcodeGen when a scaffolded project cannot be generated', async () => {
+      mockExecSync.mockImplementation((command: string) => {
+        if (command === 'xcodegen --version') throw new Error('command not found')
+        return ''
+      })
+      mockExistsSync.mockImplementation((path: string) => {
+        return typeof path === 'string'
+          && (path.endsWith('/ios') || path.endsWith('/ios/project.yml'))
+      })
+      mockReaddirSync.mockReturnValue([])
+
+      const runCmd = await importRunCommand()
+      await expect(runCmd.parseAsync(['node', 'run', 'ios']))
+        .rejects.toThrow(/brew install xcodegen/)
+    })
+
     it('uses xcodebuild with workspace flag for .xcworkspace', async () => {
       // Simulate: bundle build succeeds, ios/ exists with workspace
       mockExecSync.mockImplementation(() => '')
@@ -1077,6 +1225,77 @@ describe('run command', () => {
       expect(spawnArgs[destIndex + 1]).toContain('iOS Simulator')
     })
 
+    it('passes simulator names as literal process arguments', async () => {
+      const simulatorName = 'iPhone 15 Pro"; touch /tmp/vue-native-injected; "'
+      mockExecSync.mockImplementation(() => '')
+      mockExistsSync.mockImplementation((path: string) => {
+        if (typeof path === 'string' && path.endsWith('/ios')) return true
+        return false
+      })
+      mockReaddirSync.mockReturnValue(['MyApp.xcodeproj'])
+
+      const runCmd = await importRunCommand()
+      await runCmd.parseAsync(['node', 'run', 'ios', '--simulator', simulatorName])
+
+      expect(mockExecFileSync).toHaveBeenCalledWith(
+        'xcrun',
+        ['simctl', 'boot', simulatorName],
+        { stdio: 'pipe' },
+      )
+    })
+
+    it('rejects malformed bundle identifiers before invoking simctl', async () => {
+      mockExecSync.mockImplementation(() => '')
+      mockExistsSync.mockImplementation((path: string) => {
+        if (typeof path === 'string' && path.endsWith('/ios')) return true
+        return false
+      })
+      mockReaddirSync.mockReturnValue(['MyApp.xcodeproj'])
+
+      const runCmd = await importRunCommand()
+      await expect(runCmd.parseAsync([
+        'node',
+        'run',
+        'ios',
+        '--bundle-id',
+        'com.example.app; touch /tmp/vue-native-injected',
+      ])).rejects.toThrow(/Invalid iOS bundle identifier/)
+
+      expect(mockExecFileSync).not.toHaveBeenCalledWith(
+        'xcrun',
+        expect.arrayContaining(['launch']),
+        expect.any(Object),
+      )
+    })
+
+    it('preserves the caller-selected Xcode developer directory', async () => {
+      const previousDeveloperDir = process.env.DEVELOPER_DIR
+      process.env.DEVELOPER_DIR = '/opt/custom/Xcode.app/Contents/Developer'
+      mockExecSync.mockImplementation(() => '')
+      mockExistsSync.mockImplementation((path: string) => {
+        if (typeof path === 'string' && path.endsWith('/ios')) return true
+        return false
+      })
+      mockReaddirSync.mockReturnValue(['MyApp.xcodeproj'])
+
+      try {
+        const runCmd = await importRunCommand()
+        await runCmd.parseAsync(['node', 'run', 'ios', '--device'])
+
+        expect(mockSpawn.mock.calls[0][2]).toEqual(expect.objectContaining({
+          env: expect.objectContaining({
+            DEVELOPER_DIR: '/opt/custom/Xcode.app/Contents/Developer',
+          }),
+        }))
+      } finally {
+        if (previousDeveloperDir === undefined) {
+          delete process.env.DEVELOPER_DIR
+        } else {
+          process.env.DEVELOPER_DIR = previousDeveloperDir
+        }
+      }
+    })
+
     it('passes generic device destination when --device is set', async () => {
       mockExecSync.mockImplementation(() => '')
       mockExistsSync.mockImplementation((path: string) => {
@@ -1124,7 +1343,12 @@ describe('run command', () => {
       mockExecSync.mockImplementation(() => '')
       // android/ dir and gradlew both exist
       mockExistsSync.mockImplementation((path: string) => {
-        if (typeof path === 'string' && (path.endsWith('/android') || path.endsWith('/gradlew'))) {
+        if (typeof path === 'string' && (
+          path.endsWith('/android')
+          || path.endsWith('/gradlew')
+          || path.endsWith('/dist/vue-native-bundle.js')
+          || path.endsWith('/app/build.gradle.kts')
+        )) {
           return true
         }
         return false
@@ -1147,7 +1371,12 @@ describe('run command', () => {
       const processOnSpy = vi.spyOn(process, 'on').mockImplementation(() => process)
 
       mockExistsSync.mockImplementation((path: string) => {
-        if (typeof path === 'string' && (path.endsWith('/android') || path.endsWith('/gradlew'))) {
+        if (typeof path === 'string' && (
+          path.endsWith('/android')
+          || path.endsWith('/gradlew')
+          || path.endsWith('/dist/vue-native-bundle.js')
+          || path.endsWith('/app/build.gradle.kts')
+        )) {
           return true
         }
         return false
@@ -1162,6 +1391,157 @@ describe('run command', () => {
       expect(registeredEvents).toContain('SIGTERM')
 
       processOnSpy.mockRestore()
+    })
+
+    it('copies the bundle into app assets before starting Gradle', async () => {
+      mockExecSync.mockImplementation(() => '')
+      mockExistsSync.mockImplementation((path: string) => {
+        return typeof path === 'string' && (
+          path.endsWith('/android')
+          || path.endsWith('/gradlew')
+          || path.endsWith('/dist/vue-native-bundle.js')
+          || path.endsWith('/app/build.gradle.kts')
+        )
+      })
+
+      const runCmd = await importRunCommand()
+      await runCmd.parseAsync(['node', 'run', 'android'])
+
+      expect(mockMkdirSync).toHaveBeenCalledWith(
+        expect.stringMatching(/android\/app\/src\/main\/assets$/),
+        { recursive: true },
+      )
+      expect(mockCopyFileSync).toHaveBeenCalledWith(
+        expect.stringMatching(/dist\/vue-native-bundle\.js$/),
+        expect.stringMatching(/android\/app\/src\/main\/assets\/vue-native-bundle\.js$/),
+      )
+      expect(mockCopyFileSync.mock.invocationCallOrder[0])
+        .toBeLessThan(mockSpawn.mock.invocationCallOrder[0])
+    })
+
+    it('launches the applicationId from the generated Gradle file', async () => {
+      const child = createMockChildProcess(false)
+      mockSpawn.mockReturnValue(child)
+      mockExecSync.mockImplementation(() => '')
+      mockExistsSync.mockImplementation((path: string) => {
+        return typeof path === 'string' && (
+          path.endsWith('/android')
+          || path.endsWith('/gradlew')
+          || path.endsWith('/dist/vue-native-bundle.js')
+          || path.endsWith('/app/build.gradle.kts')
+          || path.endsWith('/app/build/outputs/apk/debug')
+        )
+      })
+      mockReadFileSync.mockReturnValue('applicationId = "com.vuenative.freshapp"')
+      mockReaddirSync.mockReturnValue(['app-debug.apk'])
+
+      const runCmd = await importRunCommand()
+      const command = runCmd.parseAsync(['node', 'run', 'android'])
+      await vi.waitFor(() => expect(child.on).toHaveBeenCalledWith('close', expect.any(Function)))
+
+      expect(mockExecFileSync).not.toHaveBeenCalledWith(
+        'adb',
+        expect.arrayContaining(['shell', 'am', 'start']),
+        expect.any(Object),
+      )
+
+      child.emit('close', 0, null)
+      await command
+
+      expect(mockExecFileSync).toHaveBeenCalledWith(
+        'adb',
+        ['install', '-r', expect.stringMatching(/app-debug\.apk$/)],
+        { stdio: 'pipe' },
+      )
+      expect(mockExecFileSync).toHaveBeenCalledWith(
+        'adb',
+        ['shell', 'am', 'start', '-n', 'com.vuenative.freshapp/.MainActivity'],
+        { stdio: 'pipe' },
+      )
+    })
+
+    it.each([
+      ['--package', 'com.example.app; touch /tmp/vue-native-injected', /Invalid Android package name/],
+      ['--activity', '.MainActivity; touch /tmp/vue-native-injected', /Invalid Android activity name/],
+    ])('rejects unsafe Android component input from %s', async (flag, value, errorPattern) => {
+      mockExecSync.mockImplementation(() => '')
+      mockExistsSync.mockImplementation((path: string) => {
+        return typeof path === 'string' && (
+          path.endsWith('/android')
+          || path.endsWith('/gradlew')
+          || path.endsWith('/dist/vue-native-bundle.js')
+          || path.endsWith('/app/build.gradle.kts')
+        )
+      })
+
+      const runCmd = await importRunCommand()
+      await expect(runCmd.parseAsync(['node', 'run', 'android', flag, value]))
+        .rejects.toThrow(errorPattern)
+
+      expect(mockExecFileSync).not.toHaveBeenCalledWith(
+        'adb',
+        expect.any(Array),
+        expect.any(Object),
+      )
+    })
+
+    it('rejects the awaited command and skips installation when Gradle fails', async () => {
+      const child = createMockChildProcess(false)
+      mockSpawn.mockReturnValue(child)
+      mockExecSync.mockImplementation(() => '')
+      mockExistsSync.mockImplementation((path: string) => {
+        return typeof path === 'string' && (
+          path.endsWith('/android')
+          || path.endsWith('/gradlew')
+          || path.endsWith('/dist/vue-native-bundle.js')
+          || path.endsWith('/app/build.gradle.kts')
+          || path.endsWith('/app/build/outputs/apk/debug')
+        )
+      })
+
+      const runCmd = await importRunCommand()
+      const command = runCmd.parseAsync(['node', 'run', 'android'])
+      const rejection = command.then(
+        () => null,
+        error => error as Error,
+      )
+      await vi.waitFor(() => expect(child.on).toHaveBeenCalledWith('close', expect.any(Function)))
+
+      child.emit('close', 7, null)
+
+      expect((await rejection)?.message).toContain('Android Gradle build failed with exit code 7')
+      expect(mockExecFileSync).not.toHaveBeenCalledWith(
+        'adb',
+        expect.arrayContaining(['install']),
+        expect.any(Object),
+      )
+    })
+
+    it('rejects instead of hanging when Gradle cannot be started', async () => {
+      const child = createMockChildProcess(false)
+      mockSpawn.mockReturnValue(child)
+      mockExecSync.mockImplementation(() => '')
+      mockExistsSync.mockImplementation((path: string) => {
+        return typeof path === 'string' && (
+          path.endsWith('/android')
+          || path.endsWith('/gradlew')
+          || path.endsWith('/dist/vue-native-bundle.js')
+          || path.endsWith('/app/build.gradle.kts')
+        )
+      })
+
+      const runCmd = await importRunCommand()
+      const command = runCmd.parseAsync(['node', 'run', 'android'])
+      const rejection = command.then(
+        () => null,
+        error => error as Error,
+      )
+      await vi.waitFor(() => expect(child.on).toHaveBeenCalledWith('error', expect.any(Function)))
+
+      child.emit('error', new Error('spawn ./gradlew ENOENT'))
+
+      expect((await rejection)?.message).toContain('Android Gradle process failed: spawn ./gradlew ENOENT')
+      expect(child.kill).toHaveBeenCalled()
     })
   })
 })
@@ -1259,15 +1639,12 @@ describe('cli entry point', () => {
 describe('build command', () => {
   beforeEach(() => {
     mockExecSync.mockReset()
-    mockSpawn.mockReset().mockReturnValue({
-      stdout: { on: vi.fn() },
-      stderr: { on: vi.fn() },
-      on: vi.fn(),
-      kill: vi.fn(),
-      killed: false,
-    })
+    mockExecFileSync.mockReset()
+    mockSpawn.mockReset().mockImplementation(() => createMockChildProcess())
     mockExistsSync.mockReset().mockReturnValue(false)
     mockReaddirSync.mockReset().mockReturnValue([])
+    mockMkdirSync.mockReset()
+    mockCopyFileSync.mockReset()
     vi.spyOn(console, 'log').mockImplementation(() => {})
     vi.spyOn(console, 'error').mockImplementation(() => {})
     vi.spyOn(process, 'on').mockImplementation(() => process)
@@ -1278,6 +1655,7 @@ describe('build command', () => {
   })
 
   async function importBuildCommand() {
+    vi.resetModules()
     const mod = await import('../commands/build')
     return mod.buildCommand
   }
@@ -1285,6 +1663,15 @@ describe('build command', () => {
   it('rejects invalid platform names', async () => {
     const buildCmd = await importBuildCommand()
     await expect(buildCmd.parseAsync(['node', 'build', 'windows'])).rejects.toThrow(/Platform must be/)
+  })
+
+  it('rejects unsupported build modes before invoking Vite', async () => {
+    const buildCmd = await importBuildCommand()
+
+    await expect(
+      buildCmd.parseAsync(['node', 'build', 'android', '--mode', 'staging']),
+    ).rejects.toThrow('Build mode must be "debug" or "release"')
+    expect(mockExecSync).not.toHaveBeenCalled()
   })
 
   describe('iOS build', () => {
@@ -1374,6 +1761,22 @@ describe('build command', () => {
       expect(spawnArgs[configIndex + 1]).toBe('Release')
     })
 
+    it('uses Debug configuration when requested', async () => {
+      mockExecSync.mockImplementation(() => '')
+      mockExistsSync.mockImplementation((path: string) => {
+        if (typeof path === 'string' && path.endsWith('/ios')) return true
+        return false
+      })
+      mockReaddirSync.mockReturnValue(['MyApp.xcodeproj'])
+
+      const buildCmd = await importBuildCommand()
+      await buildCmd.parseAsync(['node', 'build', 'ios', '--mode', 'debug'])
+
+      const spawnArgs = mockSpawn.mock.calls[0][1] as string[]
+      const configIndex = spawnArgs.indexOf('-configuration')
+      expect(spawnArgs[configIndex + 1]).toBe('Debug')
+    })
+
     it('uses --scheme option when provided', async () => {
       mockExecSync.mockImplementation(() => '')
       mockExistsSync.mockImplementation((path: string) => {
@@ -1407,6 +1810,34 @@ describe('build command', () => {
       expect(destIndex).toBeGreaterThan(-1)
       expect(spawnArgs[destIndex + 1]).toBe('generic/platform=iOS')
     })
+
+    it('does not override the caller-selected Xcode developer directory', async () => {
+      const previousDeveloperDir = process.env.DEVELOPER_DIR
+      process.env.DEVELOPER_DIR = '/opt/custom/Xcode.app/Contents/Developer'
+      mockExecSync.mockImplementation(() => '')
+      mockExistsSync.mockImplementation((path: string) => {
+        if (typeof path === 'string' && path.endsWith('/ios')) return true
+        return false
+      })
+      mockReaddirSync.mockReturnValue(['MyApp.xcodeproj'])
+
+      try {
+        const buildCmd = await importBuildCommand()
+        await buildCmd.parseAsync(['node', 'build', 'ios'])
+
+        expect(mockSpawn.mock.calls[0][2]).toEqual(expect.objectContaining({
+          env: expect.objectContaining({
+            DEVELOPER_DIR: '/opt/custom/Xcode.app/Contents/Developer',
+          }),
+        }))
+      } finally {
+        if (previousDeveloperDir === undefined) {
+          delete process.env.DEVELOPER_DIR
+        } else {
+          process.env.DEVELOPER_DIR = previousDeveloperDir
+        }
+      }
+    })
   })
 
   describe('Android build', () => {
@@ -1437,7 +1868,11 @@ describe('build command', () => {
     it('spawns gradlew assembleRelease by default', async () => {
       mockExecSync.mockImplementation(() => '')
       mockExistsSync.mockImplementation((path: string) => {
-        if (typeof path === 'string' && (path.endsWith('/android') || path.endsWith('/gradlew'))) {
+        if (typeof path === 'string' && (
+          path.endsWith('/android')
+          || path.endsWith('/gradlew')
+          || path.endsWith('/dist/vue-native-bundle.js')
+        )) {
           return true
         }
         return false
@@ -1456,7 +1891,11 @@ describe('build command', () => {
     it('spawns gradlew bundleRelease with --aab flag', async () => {
       mockExecSync.mockImplementation(() => '')
       mockExistsSync.mockImplementation((path: string) => {
-        if (typeof path === 'string' && (path.endsWith('/android') || path.endsWith('/gradlew'))) {
+        if (typeof path === 'string' && (
+          path.endsWith('/android')
+          || path.endsWith('/gradlew')
+          || path.endsWith('/dist/vue-native-bundle.js')
+        )) {
           return true
         }
         return false
@@ -1470,6 +1909,107 @@ describe('build command', () => {
         ['bundleRelease'],
         expect.objectContaining({ stdio: 'pipe' }),
       )
+    })
+
+    it('uses the debug Gradle task and copies the debug artifact when requested', async () => {
+      mockExecSync.mockImplementation(() => '')
+      mockExistsSync.mockImplementation((path: string) => {
+        return typeof path === 'string' && (
+          path.endsWith('/android')
+          || path.endsWith('/gradlew')
+          || path.endsWith('/dist/vue-native-bundle.js')
+          || path.endsWith('/app/build/outputs/apk/debug')
+        )
+      })
+      mockReaddirSync.mockReturnValue(['app-debug.apk'])
+
+      const buildCmd = await importBuildCommand()
+      await buildCmd.parseAsync(['node', 'build', 'android', '--mode', 'debug'])
+
+      expect(mockSpawn).toHaveBeenCalledWith(
+        './gradlew',
+        ['assembleDebug'],
+        expect.objectContaining({ stdio: 'pipe' }),
+      )
+      expect(mockCopyFileSync).toHaveBeenCalledWith(
+        expect.stringMatching(/android\/app\/build\/outputs\/apk\/debug\/app-debug\.apk$/),
+        expect.stringMatching(/build\/app-debug\.apk$/),
+      )
+    })
+
+    it('copies the production bundle into Android assets before the release build', async () => {
+      mockExecSync.mockImplementation(() => '')
+      mockExistsSync.mockImplementation((path: string) => {
+        return typeof path === 'string' && (
+          path.endsWith('/android')
+          || path.endsWith('/gradlew')
+          || path.endsWith('/dist/vue-native-bundle.js')
+        )
+      })
+
+      const buildCmd = await importBuildCommand()
+      await buildCmd.parseAsync(['node', 'build', 'android'])
+
+      expect(mockCopyFileSync).toHaveBeenCalledWith(
+        expect.stringMatching(/dist\/vue-native-bundle\.js$/),
+        expect.stringMatching(/android\/app\/src\/main\/assets\/vue-native-bundle\.js$/),
+      )
+      expect(mockCopyFileSync.mock.invocationCallOrder[0])
+        .toBeLessThan(mockSpawn.mock.invocationCallOrder[0])
+    })
+
+    it('waits for Gradle success before copying the release artifact', async () => {
+      const child = createMockChildProcess(false)
+      mockSpawn.mockReturnValue(child)
+      mockExecSync.mockImplementation(() => '')
+      mockExistsSync.mockImplementation((path: string) => {
+        return typeof path === 'string' && (
+          path.endsWith('/android')
+          || path.endsWith('/gradlew')
+          || path.endsWith('/dist/vue-native-bundle.js')
+          || path.endsWith('/app/build/outputs/apk/release')
+        )
+      })
+      mockReaddirSync.mockReturnValue(['app-release.apk'])
+
+      const buildCmd = await importBuildCommand()
+      const command = buildCmd.parseAsync(['node', 'build', 'android'])
+      await vi.waitFor(() => expect(child.on).toHaveBeenCalledWith('close', expect.any(Function)))
+
+      expect(mockCopyFileSync).toHaveBeenCalledTimes(1)
+
+      child.emit('close', 0, null)
+      await command
+
+      expect(mockCopyFileSync).toHaveBeenCalledWith(
+        expect.stringMatching(/android\/app\/build\/outputs\/apk\/release\/app-release\.apk$/),
+        expect.stringMatching(/build\/app-release\.apk$/),
+      )
+    })
+
+    it('rejects the awaited command when the release build exits nonzero', async () => {
+      const child = createMockChildProcess(false)
+      mockSpawn.mockReturnValue(child)
+      mockExecSync.mockImplementation(() => '')
+      mockExistsSync.mockImplementation((path: string) => {
+        return typeof path === 'string' && (
+          path.endsWith('/android')
+          || path.endsWith('/gradlew')
+          || path.endsWith('/dist/vue-native-bundle.js')
+        )
+      })
+
+      const buildCmd = await importBuildCommand()
+      const command = buildCmd.parseAsync(['node', 'build', 'android'])
+      const rejection = command.then(
+        () => null,
+        error => error as Error,
+      )
+      await vi.waitFor(() => expect(child.on).toHaveBeenCalledWith('close', expect.any(Function)))
+
+      child.emit('close', 23, null)
+
+      expect((await rejection)?.message).toContain('Android Gradle build failed with exit code 23')
     })
   })
 })

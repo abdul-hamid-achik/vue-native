@@ -4,25 +4,31 @@
 
 | Version | Supported          |
 | ------- | ------------------ |
-| 0.4.x   | :white_check_mark: |
-| < 0.4   | :x:                |
+| 0.6.x   | :white_check_mark: |
+| < 0.6   | :x:                |
 
 ## Reporting a Vulnerability
 
 We take the security of Vue Native seriously. If you believe you have found a security vulnerability, please report it to us as described below.
 
-**Please do NOT report security vulnerabilities through public GitHub issues.**
+**Please do NOT include vulnerability details in public GitHub issues or discussions.**
 
-Instead, please report them via email to [security@example.com] with the following information:
+The repository does not currently publish a verified private reporting address
+or have GitHub private vulnerability reporting enabled. Before the next public
+release, maintainers must enable [GitHub private vulnerability
+reporting](https://docs.github.com/en/code-security/security-advisories/working-with-repository-security-advisories/configuring-private-vulnerability-reporting-for-a-repository)
+or add a monitored security contact here.
+
+Until then, contact a project maintainer through their GitHub profile and ask
+for a private reporting channel before sharing technical details. Include:
 
 - Description of the vulnerability
 - Steps to reproduce the issue
 - Potential impact
 - Suggested fix (if any)
 
-You should receive a response within 48 hours. If for some reason you do not, please follow up via email to ensure we received your original message.
-
-After the initial reply to your report, we will keep you informed of the progress toward a fix and full announcement, and may ask for additional information or guidance.
+Maintainers should acknowledge reports promptly, agree on a disclosure timeline,
+and keep the reporter informed until a fix and advisory are available.
 
 ## Security Best Practices
 
@@ -52,4 +58,4 @@ We would like to thank the following for their contributions to our security:
 
 ---
 
-**Last Updated:** March 6, 2026
+**Last Updated:** July 9, 2026

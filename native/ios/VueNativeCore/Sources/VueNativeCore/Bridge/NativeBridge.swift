@@ -51,9 +51,12 @@ public final class NativeBridge {
 
     /// The root UIView that contains all rendered native views.
     private weak var rootView: UIView?
+    private var rootConstraints: [NSLayoutConstraint] = []
+    private var modalConstraints: [NSLayoutConstraint] = []
 
     /// Reference to the root view controller for safe area calculations.
     private weak var rootViewController: UIViewController?
+    private var activeHostID: UUID?
 
     /// The component registry for creating views and handling props/events.
     private let registry = ComponentRegistry.shared
@@ -90,7 +93,7 @@ public final class NativeBridge {
 
     /// Register `__VN_flushOperations`, `__VN_teardown`, `__VN_log`, and `__VN_handleError`
     /// on the given JSContext. Called from both `initialize()` and `reloadWithBundle()`.
-    private func registerBridgeFunctions(on context: JSContext) {
+    nonisolated private func registerBridgeFunctions(on context: JSContext) {
         let flushOps: @convention(block) (JSValue) -> Void = { [weak self] opsValue in
             guard let self = self else { return }
             guard let jsonString = opsValue.toString(), !jsonString.isEmpty else {
@@ -143,8 +146,9 @@ public final class NativeBridge {
 
     /// Initialize the bridge. Must be called after JSRuntime.initialize().
     /// Registers the `__VN_flushOperations` and `__VN_handleEvent` functions on JSContext.
-    public func initialize(rootViewController: UIViewController) {
-        self.rootViewController = rootViewController
+    public func initialize(rootViewController: UIViewController, hostID: UUID? = nil) {
+        prepareHost(rootViewController: rootViewController)
+        activeHostID = hostID
 
         let runtime = self.runtime
 
@@ -159,6 +163,32 @@ public final class NativeBridge {
         // Register all native modules synchronously so they are available
         // before any JS bundle evaluation that may invoke them.
         NativeModuleRegistry.shared.registerDefaults()
+    }
+
+    /// Install a native host, synchronously clearing state owned by a previous
+    /// controller. Kept internal so SwiftPM tests can exercise host lifecycle
+    /// without constructing notification modules that require an app test host.
+    func prepareHost(rootViewController: UIViewController) {
+        // NativeBridge is a singleton, while host view controllers may be
+        // recreated (scene replacement, tests, or an embedding app swapping
+        // controllers). Tear down the old host before replacing the weak
+        // reference so clearRootConstraints() can remove its trait observer.
+        if let currentHost = self.rootViewController,
+           currentHost !== rootViewController {
+            clearManagedViewState()
+        }
+        self.rootViewController = rootViewController
+    }
+
+    /// Release native state only when it still belongs to the closing host.
+    /// An older controller may deinitialize after its replacement is active.
+    @discardableResult
+    func releaseHost(hostID: UUID) -> Bool {
+        guard activeHostID == hostID else { return false }
+        reset()
+        rootViewController = nil
+        activeHostID = nil
+        return true
     }
 
     // MARK: - Operation Processing
@@ -407,15 +437,7 @@ public final class NativeBridge {
             return
         }
 
-        nodeParent[childId] = parentId
-        childrenOf[parentId, default: []].append(childId)
-        // For scroll views, children go into the inner content view
-        let container = childContainer(for: parentView)
-        if let factory = ComponentRegistry.factory(for: parentView) {
-            factory.insertChild(childView, into: container, before: nil)
-        } else {
-            container.flex.addItem(childView)
-        }
+        moveChild(childView, id: childId, to: parentView, parentId: parentId, before: nil)
     }
 
     /// insertBefore: [parentId: Int, childId: Int, beforeId: Int]
@@ -433,25 +455,72 @@ public final class NativeBridge {
             return
         }
 
-        nodeParent[childId] = parentId
-        // Insert into childrenOf at the correct position (before beforeId)
+        // Vue can emit an insert for an existing child to perform a keyed move.
+        // Inserting a node before itself is already in the desired position.
+        guard childId != beforeId else { return }
+
+        moveChild(childView, id: childId, to: parentView, parentId: parentId, before: (beforeId, beforeView))
+    }
+
+    /// Move (or insert) a child while keeping the bridge's ownership indexes in
+    /// sync with UIKit and custom containers such as VList/VText. UIKit's
+    /// `addSubview` implicitly reparents ordinary views, but it cannot update
+    /// the custom child arrays maintained by those factories. Detaching through
+    /// the previous parent factory first prevents duplicate rows/text children
+    /// and ensures removing the old parent cannot later destroy a moved child.
+    private func moveChild(
+        _ childView: UIView,
+        id childId: Int,
+        to parentView: UIView,
+        parentId: Int,
+        before anchor: (id: Int, view: UIView)?
+    ) {
+        detachChildForMove(childView, id: childId)
+
         var siblings = childrenOf[parentId, default: []]
-        if let idx = siblings.firstIndex(of: beforeId) {
-            siblings.insert(childId, at: idx)
+        // A malformed/repeated operation must not create duplicate reverse
+        // index entries. This also covers a same-parent keyed reorder.
+        siblings.removeAll { $0 == childId }
+        if let anchor, let index = siblings.firstIndex(of: anchor.id) {
+            siblings.insert(childId, at: index)
         } else {
             siblings.append(childId)
         }
         childrenOf[parentId] = siblings
+        nodeParent[childId] = parentId
 
+        // For scroll views, children go into the inner content view.
         let container = childContainer(for: parentView)
         if let factory = ComponentRegistry.factory(for: parentView) {
-            factory.insertChild(childView, into: container, before: beforeView)
-        } else if let index = container.subviews.firstIndex(of: beforeView) {
+            factory.insertChild(childView, into: container, before: anchor?.view)
+        } else if let anchor = anchor,
+                  let index = container.subviews.firstIndex(of: anchor.view) {
             container.insertSubview(childView, at: index)
             container.flex.markDirty()
             container.setNeedsLayout()
         } else {
             container.flex.addItem(childView)
+        }
+    }
+
+    /// Remove a child from its previous native container and reverse index
+    /// without unregistering the node. This is deliberately different from
+    /// `handleRemoveChild`, which destroys a node and all of its descendants.
+    private func detachChildForMove(_ childView: UIView, id childId: Int) {
+        guard let oldParentId = nodeParent[childId] else { return }
+
+        childrenOf[oldParentId]?.removeAll { $0 == childId }
+
+        guard let oldParentView = viewRegistry[oldParentId] else {
+            childView.removeFromSuperview()
+            return
+        }
+
+        let oldContainer = childContainer(for: oldParentView)
+        if let oldFactory = ComponentRegistry.factory(for: oldParentView) {
+            oldFactory.removeChild(childView, from: oldContainer)
+        } else {
+            childView.removeFromSuperview()
         }
     }
 
@@ -473,6 +542,7 @@ public final class NativeBridge {
         }
 
         guard let childView = viewRegistry[childId] else { return }
+        let removingRoot = childView === rootView
 
         // Recursively clean up all descendant nodes using the childrenOf index
         removeDescendantsFromIndex(childId)
@@ -493,11 +563,27 @@ public final class NativeBridge {
         }
 
         cleanupNodeRegistries(childId)
+
+        if removingRoot {
+            clearRootConstraints()
+            rootView = nil
+        }
     }
 
     /// Clean up all registry entries for a single node ID.
     /// Uses the eventKeysPerNode index for O(1) event handler cleanup.
     private func cleanupNodeRegistries(_ nodeId: Int) {
+        if let view = viewRegistry[nodeId],
+           let keys = eventKeysPerNode[nodeId] {
+            let prefix = "\(nodeId):"
+            for key in keys where key.hasPrefix(prefix) {
+                registry.removeEventListener(
+                    view: view,
+                    event: String(key.dropFirst(prefix.count))
+                )
+            }
+        }
+
         nodeParent.removeValue(forKey: nodeId)
         viewRegistry.removeValue(forKey: nodeId)
         typeRegistry.removeValue(forKey: nodeId)
@@ -583,6 +669,10 @@ public final class NativeBridge {
 
         NSLog("[VueNative Bridge] Setting up root view, vc.view bounds: %.1f x %.1f", vc.view.bounds.width, vc.view.bounds.height)
 
+        if let oldRoot = rootView, oldRoot !== view {
+            oldRoot.removeFromSuperview()
+        }
+        clearRootConstraints()
         rootView = view
         view.translatesAutoresizingMaskIntoConstraints = false
 
@@ -590,12 +680,13 @@ public final class NativeBridge {
         vc.view.addSubview(view)
 
         // Pin root view to safe area
-        NSLayoutConstraint.activate([
+        rootConstraints = [
             view.topAnchor.constraint(equalTo: vc.view.safeAreaLayoutGuide.topAnchor),
             view.leadingAnchor.constraint(equalTo: vc.view.safeAreaLayoutGuide.leadingAnchor),
             view.trailingAnchor.constraint(equalTo: vc.view.safeAreaLayoutGuide.trailingAnchor),
             view.bottomAnchor.constraint(equalTo: vc.view.safeAreaLayoutGuide.bottomAnchor),
-        ])
+        ]
+        NSLayoutConstraint.activate(rootConstraints)
 
         // Force AutoLayout to resolve the root view's frame immediately.
         // This ensures rootView.bounds is non-zero before the Yoga layout pass.
@@ -620,14 +711,7 @@ public final class NativeBridge {
         // Retain the observer for the lifetime of the root view controller's view
         objc_setAssociatedObject(vc.view as UIView, &NativeBridge.traitObserverKey, traitObserver as AnyObject, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
 
-        // Add modal container to root view for teleport
-        if rootView != nil {
-            rootView?.addSubview(modalContainer)
-            modalContainer.topAnchor.constraint(equalTo: rootView!.topAnchor).isActive = true
-            modalContainer.leadingAnchor.constraint(equalTo: rootView!.leadingAnchor).isActive = true
-            modalContainer.trailingAnchor.constraint(equalTo: rootView!.trailingAnchor).isActive = true
-            modalContainer.bottomAnchor.constraint(equalTo: rootView!.bottomAnchor).isActive = true
-        }
+        installModalContainerIfNeeded()
     }
 
     // MARK: - Teleport Handlers
@@ -729,10 +813,7 @@ public final class NativeBridge {
         case "root":
             return rootView
         case "modal":
-            // Ensure modal container is added to root if not already
-            if modalContainer.superview == nil && rootView != nil {
-                rootView?.addSubview(modalContainer)
-            }
+            installModalContainerIfNeeded()
             return modalContainer
         default:
             return nil
@@ -936,32 +1017,23 @@ public final class NativeBridge {
 
         NSLog("[VueNative Bridge] reloadWithBundle: clearing view hierarchy...")
 
-        // Step 1: Remove all subviews from root and clear registries on main thread
-        for (_, view) in viewRegistry {
-            view.removeFromSuperview()
-        }
-        viewRegistry.removeAll()
-        typeRegistry.removeAll()
-        eventHandlers.removeAll()
-        eventKeysPerNode.removeAll()
-        nodeParent.removeAll()
-        childrenOf.removeAll()
-        // Keep rootView reference and rootViewController — we re-use the same container
+        // Step 1: Remove all subviews and listeners from the old native tree.
+        clearManagedViewState()
+        // Keep rootViewController — the next bundle creates a fresh root view.
 
-        // Step 2: Re-register bridge functions on the new JSContext after runtime reloads.
-        // JSRuntime.reload creates a fresh JSContext, so we must re-register our Swift blocks.
-        // We do this by scheduling on the JS queue after the reload completes.
-        runtime.reload(bundle: bundle) { [weak self] success in
-            guard let self = self else { return }
+        // Step 2: JSRuntime.reload creates a fresh JSContext. Install bridge
+        // functions before evaluating the new bundle so its initial render and
+        // module calls cannot hit temporary polyfill stubs.
+        runtime.reload(bundle: bundle, teardownOldContext: false, prepareContext: { [weak self] context in
+            self?.registerBridgeFunctions(on: context)
+        }) { success in
             guard success else {
                 NSLog("[VueNative Bridge] reloadWithBundle: runtime reload failed — showing error overlay")
-                ErrorOverlayView.show(error: "Hot reload failed.\n\nThe new bundle could not be evaluated. Check the terminal for the JS error.\n\nSave the file again to retry.")
+                DispatchQueue.main.async {
+                    ErrorOverlayView.show(error: "Hot reload failed.\n\nThe new bundle could not be evaluated. Check the terminal for the JS error.\n\nSave the file again to retry.")
+                }
                 return
             }
-
-            // Re-register bridge functions on new context
-            guard let context = self.runtime.context else { return }
-            self.registerBridgeFunctions(on: context)
 
             NSLog("[VueNative Bridge] reloadWithBundle: bridge re-registered on new context")
         }
@@ -976,22 +1048,144 @@ public final class NativeBridge {
         dispatchGlobalEvent("memory:warning")
     }
 
+    // MARK: - Application Host Integration
+
+    /// Seed the URL returned by `Linking.getInitialURL` before the JavaScript
+    /// bundle starts. Call this from SceneDelegate/AppDelegate for a cold start.
+    public func setInitialURL(_ url: URL?) {
+        LinkingModule.initialURL = url?.absoluteString
+    }
+
+    /// Forward a URL received while the app is already running.
+    public func handleOpenURL(_ url: URL) {
+        dispatchGlobalEvent("url", payload: ["url": url.absoluteString])
+    }
+
+    /// Cache and forward an APNs device token. This public facade avoids host
+    /// applications reaching into the framework's internal module registry.
+    public func didRegisterForRemoteNotifications(deviceToken data: Data) {
+        let token = data.map { String(format: "%02x", $0) }.joined()
+        NotificationsModule.cachedDeviceToken = token
+        dispatchGlobalEvent("push:token", payload: ["token": token])
+    }
+
+    /// Forward a failed APNs registration attempt to JavaScript.
+    public func didFailToRegisterForRemoteNotifications(error: Error) {
+        dispatchGlobalEvent(
+            "push:error",
+            payload: ["message": error.localizedDescription]
+        )
+    }
+
+    /// Normalize and forward an APNs payload delivered through UIApplicationDelegate.
+    public func didReceiveRemoteNotification(userInfo: [AnyHashable: Any]) {
+        let data = userInfo.reduce(into: [String: Any]()) { result, entry in
+            guard let key = entry.key as? String else { return }
+            result[key] = Self.jsonSafeNotificationValue(entry.value)
+        }
+        let aps = data["aps"] as? [String: Any] ?? [:]
+        let alert = aps["alert"] as? [String: Any]
+        let stringAlert = aps["alert"] as? String
+
+        dispatchGlobalEvent(
+            "push:received",
+            payload: [
+                "title": alert?["title"] as? String ?? "",
+                "body": alert?["body"] as? String ?? stringAlert ?? "",
+                "data": data,
+                "remote": true,
+            ]
+        )
+    }
+
+    private static func jsonSafeNotificationValue(_ value: Any) -> Any {
+        if let dictionary = value as? [AnyHashable: Any] {
+            return dictionary.reduce(into: [String: Any]()) { result, entry in
+                guard let key = entry.key as? String else { return }
+                result[key] = jsonSafeNotificationValue(entry.value)
+            }
+        }
+        if let array = value as? [Any] {
+            return array.map(jsonSafeNotificationValue)
+        }
+        if value is String || value is NSNumber || value is NSNull {
+            return value
+        }
+        return String(describing: value)
+    }
+
     // MARK: - Cleanup
 
     /// Remove all views and reset the bridge state.
     public func reset() {
-        DispatchQueue.main.async { [weak self] in
-            guard let self = self else { return }
-            for (_, view) in self.viewRegistry {
-                view.removeFromSuperview()
-            }
-            self.viewRegistry.removeAll()
-            self.typeRegistry.removeAll()
-            self.eventHandlers.removeAll()
-            self.eventKeysPerNode.removeAll()
-            self.nodeParent.removeAll()
-            self.childrenOf.removeAll()
-            self.rootView = nil
+        clearManagedViewState()
+        NativeModuleRegistry.shared.removeAll()
+    }
+
+    /// Clear all state owned by the current native host. This is synchronous
+    /// because callers are already isolated to the main actor and host
+    /// replacement must finish before the new host reference is installed.
+    private func clearManagedViewState() {
+        for view in viewRegistry.values {
+            view.removeFromSuperview()
+        }
+        for container in teleportContainers.values {
+            container.removeFromSuperview()
+        }
+        clearRootConstraints()
+
+        for nodeId in Array(viewRegistry.keys) {
+            cleanupNodeRegistries(nodeId)
+        }
+
+        // Defensive clears cover malformed/incomplete trees whose reverse
+        // indexes may not have matched the view registry.
+        viewRegistry.removeAll()
+        typeRegistry.removeAll()
+        eventHandlers.removeAll()
+        eventKeysPerNode.removeAll()
+        nodeParent.removeAll()
+        childrenOf.removeAll()
+        teleportMarkers.removeAll()
+        teleportContainers.removeAll()
+        rootView = nil
+    }
+
+    private func installModalContainerIfNeeded() {
+        guard let rootView, modalContainer.superview !== rootView else { return }
+        modalContainer.removeFromSuperview()
+        NSLayoutConstraint.deactivate(modalConstraints)
+        modalConstraints.removeAll()
+        rootView.addSubview(modalContainer)
+        modalConstraints = [
+            modalContainer.topAnchor.constraint(equalTo: rootView.topAnchor),
+            modalContainer.leadingAnchor.constraint(equalTo: rootView.leadingAnchor),
+            modalContainer.trailingAnchor.constraint(equalTo: rootView.trailingAnchor),
+            modalContainer.bottomAnchor.constraint(equalTo: rootView.bottomAnchor),
+        ]
+        NSLayoutConstraint.activate(modalConstraints)
+    }
+
+    private func clearRootConstraints() {
+        NSLayoutConstraint.deactivate(rootConstraints)
+        NSLayoutConstraint.deactivate(modalConstraints)
+        rootConstraints.removeAll()
+        modalConstraints.removeAll()
+        modalContainer.removeFromSuperview()
+
+        if let rootControllerView = rootViewController?.view,
+           let traitObserver = objc_getAssociatedObject(
+               rootControllerView,
+               &NativeBridge.traitObserverKey
+           ) as? TraitObserverView {
+            traitObserver.onChange = nil
+            traitObserver.removeFromSuperview()
+            objc_setAssociatedObject(
+                rootControllerView,
+                &NativeBridge.traitObserverKey,
+                nil,
+                .OBJC_ASSOCIATION_RETAIN_NONATOMIC
+            )
         }
     }
 

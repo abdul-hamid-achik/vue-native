@@ -10,7 +10,7 @@ import HomeView from './views/HomeView.vue'
 import SearchView from './views/SearchView.vue'
 import ProfileView from './views/ProfileView.vue'
 
-const { TabNavigator, TabScreen, activeTab } = createTabNavigator()
+const { TabNavigator, activeTab } = createTabNavigator()
 ```
 
 ```vue
@@ -21,15 +21,15 @@ import HomeView from './views/HomeView.vue'
 import SearchView from './views/SearchView.vue'
 import ProfileView from './views/ProfileView.vue'
 
-const { TabNavigator, TabScreen, activeTab } = createTabNavigator()
+const { TabNavigator, activeTab } = createTabNavigator()
 </script>
 
 <template>
   <TabNavigator
     :screens="[
-      { name: 'home', label: 'Home', icon: 'house', component: HomeView },
-      { name: 'search', label: 'Search', icon: 'magnifyingglass', component: SearchView },
-      { name: 'profile', label: 'Profile', icon: 'person', component: ProfileView },
+      { name: 'home', label: 'Home', icon: '🏠', component: HomeView },
+      { name: 'search', label: 'Search', icon: '🔍', component: SearchView },
+      { name: 'profile', label: 'Profile', icon: '👤', component: ProfileView },
     ]"
     initialTab="home"
   />
@@ -40,7 +40,7 @@ const { TabNavigator, TabScreen, activeTab } = createTabNavigator()
 
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
-| `screens` | `TabScreenConfig[]` | — (required) | Ordered list of tab screen descriptors |
+| `screens` | `TabScreenConfig[]` | `[]` | Ordered screen descriptors. May be replaced by declarative `TabScreen` children |
 | `initialTab` | `string` | `''` | Which tab is shown first. Defaults to the first screen when empty |
 | `activeColor` | `string` | `'#007AFF'` | Color applied to the active tab icon and label |
 | `inactiveColor` | `string` | `'#8E8E93'` | Color applied to inactive tab icons and labels |
@@ -54,7 +54,7 @@ interface TabScreenConfig {
   name: string
   /** Display label shown below the icon in the tab bar */
   label?: string
-  /** Icon name rendered in the tab bar */
+  /** Text glyph or emoji rendered in the tab bar */
   icon?: string
   /** Vue component rendered as the tab content */
   component: Component
@@ -65,17 +65,26 @@ interface TabScreenConfig {
 
 ## Declarative screen configuration
 
-`TabScreen` is a declarative config component that renders nothing on its own. Its props are read by the parent `TabNavigator`:
+For static screen lists, use the returned `TabScreen` component instead of the `screens` prop:
 
 ```vue
+<script setup>
+import { createTabNavigator } from '@thelacanians/vue-native-navigation'
+import HomeView from './views/HomeView.vue'
+import SearchView from './views/SearchView.vue'
+
+const { TabNavigator, TabScreen } = createTabNavigator()
+</script>
+
 <template>
-  <TabNavigator>
-    <TabScreen name="home" label="Home" icon="house" :component="HomeView" />
-    <TabScreen name="search" label="Search" icon="magnifyingglass" :component="SearchView" />
-    <TabScreen name="profile" label="Profile" icon="person" :component="ProfileView" />
+  <TabNavigator initialTab="home">
+    <TabScreen name="home" label="Home" icon="🏠" :component="HomeView" />
+    <TabScreen name="search" label="Search" icon="🔍" :component="SearchView" lazy />
   </TabNavigator>
 </template>
 ```
+
+When both forms are supplied, a non-empty `screens` prop takes precedence over declarative children.
 
 ## Lazy tabs
 
@@ -93,9 +102,9 @@ import SettingsView from './views/SettingsView.vue'
 const { TabNavigator } = createTabNavigator()
 
 const screens = [
-  { name: 'home', label: 'Home', icon: 'house', component: HomeView },
-  { name: 'search', label: 'Search', icon: 'magnifyingglass', component: SearchView, lazy: true },
-  { name: 'settings', label: 'Settings', icon: 'gear', component: SettingsView, lazy: true },
+  { name: 'home', label: 'Home', icon: '🏠', component: HomeView },
+  { name: 'search', label: 'Search', icon: '🔍', component: SearchView, lazy: true },
+  { name: 'settings', label: 'Settings', icon: '⚙️', component: SettingsView, lazy: true },
 ]
 </script>
 
@@ -127,9 +136,9 @@ import ProfileView from './views/ProfileView.vue'
 const { TabNavigator, activeTab } = createTabNavigator()
 
 const screens = [
-  { name: 'home', label: 'Home', icon: 'house', component: HomeView },
-  { name: 'notifications', label: 'Alerts', icon: 'bell', component: NotificationsView },
-  { name: 'profile', label: 'Profile', icon: 'person', component: ProfileView },
+  { name: 'home', label: 'Home', icon: '🏠', component: HomeView },
+  { name: 'notifications', label: 'Alerts', icon: '🔔', component: NotificationsView },
+  { name: 'profile', label: 'Profile', icon: '👤', component: ProfileView },
 ]
 
 // React to tab changes

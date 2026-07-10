@@ -7,6 +7,8 @@ import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONArray
+import org.json.JSONObject
 
 /**
  * HttpModule — backs the useHttp() composable.
@@ -16,18 +18,31 @@ import okhttp3.RequestBody.Companion.toRequestBody
 class HttpModule : NativeModule {
     override val moduleName = "Http"
 
-    /** Default client without certificate pinning. */
-    private val defaultClient = OkHttpClient.Builder()
-        .connectTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
-        .writeTimeout(30, TimeUnit.SECONDS)
-        .build()
+    companion object {
+        /** Default client without certificate pinning. */
+        private val defaultClient = OkHttpClient.Builder()
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
+            .build()
 
-    /** Client with certificate pinning — rebuilt when pins are configured. */
-    private var pinnedClient: OkHttpClient? = null
+        /** Client with certificate pinning — rebuilt when pins are configured. */
+        @Volatile private var pinnedClient: OkHttpClient? = null
 
-    /** Current certificate pinner, if any. */
-    private var certificatePinner: CertificatePinner? = null
+        fun client(): OkHttpClient = pinnedClient ?: defaultClient
+
+        fun configurePins(pinsMap: Map<String, List<String>>) {
+            val builder = CertificatePinner.Builder()
+            for ((domain, pins) in pinsMap) {
+                for (pin in pins) {
+                    builder.add(domain, pin)
+                }
+            }
+            pinnedClient = defaultClient.newBuilder()
+                .certificatePinner(builder.build())
+                .build()
+        }
+    }
 
     override fun invoke(
         method: String,
@@ -37,24 +52,13 @@ class HttpModule : NativeModule {
     ) {
         when (method) {
             "configurePins" -> {
-                @Suppress("UNCHECKED_CAST")
-                val pinsMap = args.getOrNull(0) as? Map<String, List<String>>
+                val pinsMap = parsePins(args.getOrNull(0))
                     ?: run {
                         callback(null, "Invalid args — expected pins object")
                         return
                     }
 
-                val builder = CertificatePinner.Builder()
-                for ((domain, pins) in pinsMap) {
-                    for (pin in pins) {
-                        // OkHttp expects pins in "sha256/base64hash" format
-                        builder.add(domain, pin)
-                    }
-                }
-                certificatePinner = builder.build()
-                pinnedClient = defaultClient.newBuilder()
-                    .certificatePinner(certificatePinner!!)
-                    .build()
+                configurePins(pinsMap)
                 callback(true, null)
             }
             "request" -> {
@@ -91,10 +95,7 @@ class HttpModule : NativeModule {
                 }
                 builder.method(httpMethod, requestBody)
 
-                // Use pinned client when configured, otherwise default
-                val client = pinnedClient ?: defaultClient
-
-                client.newCall(builder.build()).enqueue(object : okhttp3.Callback {
+                client().newCall(builder.build()).enqueue(object : okhttp3.Callback {
                     override fun onFailure(call: okhttp3.Call, e: IOException) {
                         callback(null, e.message ?: "Network error")
                     }
@@ -115,6 +116,30 @@ class HttpModule : NativeModule {
                 })
             }
             else -> callback(null, "Unknown method: $method")
+        }
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun parsePins(value: Any?): Map<String, List<String>>? {
+        return when (value) {
+            is Map<*, *> -> value.mapValues { (_, pins) ->
+                when (pins) {
+                    is List<*> -> pins.mapNotNull { it?.toString() }
+                    is JSONArray -> (0 until pins.length()).mapNotNull { pins.optString(it, null) }
+                    else -> return null
+                }
+            } as? Map<String, List<String>>
+            is JSONObject -> {
+                val result = mutableMapOf<String, List<String>>()
+                val keys = value.keys()
+                while (keys.hasNext()) {
+                    val domain = keys.next()
+                    val pins = value.optJSONArray(domain) ?: return null
+                    result[domain] = (0 until pins.length()).mapNotNull { pins.optString(it, null) }
+                }
+                result
+            }
+            else -> null
         }
     }
 }

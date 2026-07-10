@@ -6,8 +6,8 @@ import VueNativeShared
 ///
 /// Methods:
 ///   - requestPermission() -> Bool
-///   - checkPermission() -> "granted"/"denied"/"notDetermined"
-///   - scheduleLocal(title, body, delay) -> { id }
+///   - getPermissionStatus() -> "granted"/"denied"/"notDetermined"
+///   - scheduleLocal(options) -> id
 ///   - cancelAll()
 ///   - cancel(id)
 ///   - getBadgeCount() -> String?
@@ -16,10 +16,9 @@ final class NotificationsModule: NativeModule {
     let moduleName = "Notifications"
 
     func invoke(method: String, args: [Any], callback: @escaping (Any?, String?) -> Void) {
-        let center = UNUserNotificationCenter.current()
-
         switch method {
         case "requestPermission":
+            let center = UNUserNotificationCenter.current()
             center.requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
                 if let error = error {
                     callback(nil, "Notification permission error: \(error.localizedDescription)")
@@ -28,7 +27,8 @@ final class NotificationsModule: NativeModule {
                 }
             }
 
-        case "checkPermission":
+        case "getPermissionStatus", "checkPermission":
+            let center = UNUserNotificationCenter.current()
             center.getNotificationSettings { settings in
                 let result: String
                 switch settings.authorizationStatus {
@@ -45,21 +45,34 @@ final class NotificationsModule: NativeModule {
             }
 
         case "scheduleLocal":
-            let title = args.count > 0 ? (args[0] as? String ?? "") : ""
-            let body = args.count > 1 ? (args[1] as? String ?? "") : ""
-            let delay = args.count > 2 ? (args[2] as? Double ?? 1.0) : 1.0
+            let center = UNUserNotificationCenter.current()
+            guard let options = args.first as? [String: Any] else {
+                callback(nil, "scheduleLocal: expected notification options")
+                return
+            }
+            let title = options["title"] as? String ?? ""
+            let body = options["body"] as? String ?? ""
+            let delay = options["delay"] as? Double ?? 0.1
 
             let content = UNMutableNotificationContent()
             content.title = title
             content.body = body
-            content.sound = .default
+            if options["sound"] as? String == "default" {
+                content.sound = .default
+            }
+            if let badge = options["badge"] as? Int {
+                content.badge = NSNumber(value: badge)
+            }
+            if let data = options["data"] as? [String: Any] {
+                content.userInfo = data
+            }
 
             let trigger = UNTimeIntervalNotificationTrigger(
                 timeInterval: max(delay, 0.1),
                 repeats: false
             )
 
-            let requestId = UUID().uuidString
+            let requestId = options["id"] as? String ?? UUID().uuidString
             let request = UNNotificationRequest(
                 identifier: requestId,
                 content: content,
@@ -70,20 +83,28 @@ final class NotificationsModule: NativeModule {
                 if let error = error {
                     callback(nil, "Schedule error: \(error.localizedDescription)")
                 } else {
-                    callback(["id": requestId], nil)
+                    callback(requestId, nil)
                 }
             }
 
         case "cancelAll":
+            let center = UNUserNotificationCenter.current()
             center.removeAllPendingNotificationRequests()
             callback(nil, nil)
 
         case "cancel":
+            let center = UNUserNotificationCenter.current()
             guard let identifier = args.first as? String else {
                 callback(nil, "cancel: missing notification id")
                 return
             }
             center.removePendingNotificationRequests(withIdentifiers: [identifier])
+            callback(nil, nil)
+
+        case "registerForPush":
+            callback(nil, "Remote push registration is not provided by Vue Native on macOS")
+
+        case "getToken":
             callback(nil, nil)
 
         case "getBadgeCount":

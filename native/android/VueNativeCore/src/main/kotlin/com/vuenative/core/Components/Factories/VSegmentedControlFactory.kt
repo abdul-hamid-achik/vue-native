@@ -74,4 +74,11 @@ class VSegmentedControlFactory : NativeComponentFactory {
         changeHandlers.remove(rg)
         rg.setOnCheckedChangeListener(null)
     }
+
+    override fun destroyView(view: View) {
+        val rg = view as? RadioGroup ?: return
+        rg.setOnCheckedChangeListener(null)
+        changeHandlers.remove(rg)
+        segmentValues.remove(rg)
+    }
 }

@@ -18,9 +18,20 @@ public protocol NativeModule: AnyObject {
     /// Invoke a method synchronously and return the result.
     /// Use sparingly — prefer the async variant.
     func invokeSync(method: String, args: [Any]) -> Any?
+
+    /// Release resources owned by this module before it is unregistered.
+    ///
+    /// Platform registries call this synchronously when replacing a module or
+    /// resetting the registry. Implementations must be idempotent and should
+    /// stop timers, observers, sessions, and other long-lived work without
+    /// dispatching new events back to JavaScript.
+    func destroy()
 }
 
 public extension NativeModule {
     /// Default sync implementation: just returns nil.
     func invokeSync(method: String, args: [Any]) -> Any? { return nil }
+
+    /// Stateless modules require no explicit cleanup.
+    func destroy() {}
 }

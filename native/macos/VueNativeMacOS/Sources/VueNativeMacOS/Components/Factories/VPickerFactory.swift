@@ -1,134 +1,181 @@
 import AppKit
 import ObjectiveC
 
-/// Factory for VPicker — a popup button for selecting from a list of items.
-/// Maps to NSPopUpButton.
+/// Factory for VPicker's public date/time API.
+///
+/// The TypeScript component exposes epoch-millisecond values and `date`,
+/// `time`, and `datetime` modes. `NSDatePicker` maps directly to that contract;
+/// the previous NSPopUpButton implementation used an unrelated items/index API
+/// that was never part of the public VPicker surface.
 final class VPickerFactory: NativeComponentFactory {
 
-    private static var changeHandlerKey: UInt8 = 0
-    nonisolated(unsafe) static var itemsKey: UInt8 = 0
-
-    // MARK: - NativeComponentFactory
+    nonisolated(unsafe) static var changeTargetKey: UInt8 = 0
+    nonisolated(unsafe) static var minuteIntervalKey: UInt8 = 1
+    nonisolated(unsafe) static var modeKey: UInt8 = 2
 
     func createView() -> NSView {
-        let popup = NSPopUpButton()
-        popup.pullsDown = false
-        popup.wantsLayer = true
-        popup.ensureLayoutNode()
-        return popup
+        let picker = NSDatePicker()
+        picker.datePickerMode = .single
+        picker.datePickerStyle = .textFieldAndStepper
+        picker.datePickerElements = [.yearMonthDay]
+        picker.ensureLayoutNode()
+        return picker
     }
 
     func updateProp(view: NSView, key: String, value: Any?) {
-        guard let popup = view as? NSPopUpButton else {
+        guard let picker = view as? NSDatePicker else {
             StyleEngine.apply(key: key, value: value, to: view)
             return
         }
 
         switch key {
-        case "items":
-            popup.removeAllItems()
-            var storedItems: [[String: Any]] = []
+        case "mode":
+            let mode = value as? String ?? "date"
+            configure(picker, for: mode)
 
-            if let strings = value as? [String] {
-                popup.addItems(withTitles: strings)
-                storedItems = strings.map { ["label": $0, "value": $0] }
-            } else if let items = value as? [[String: Any]] {
-                for item in items {
-                    let label = item["label"] as? String ?? item["value"] as? String ?? ""
-                    popup.addItem(withTitle: label)
-                    storedItems.append(item)
-                }
-            }
-            objc_setAssociatedObject(popup, &VPickerFactory.itemsKey, storedItems, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
-
-        case "selectedIndex":
-            if let idx = value as? Int {
-                if idx >= 0 && idx < popup.numberOfItems {
-                    popup.selectItem(at: idx)
-                }
-            } else if let idx = value as? Double {
-                let i = Int(idx)
-                if i >= 0 && i < popup.numberOfItems {
-                    popup.selectItem(at: i)
-                }
+        case "value":
+            if let date = date(fromEpochMilliseconds: value) {
+                picker.dateValue = normalized(date, for: picker)
             }
 
-        case "selectedValue":
-            if let val = value as? String,
-               let items = objc_getAssociatedObject(popup, &VPickerFactory.itemsKey) as? [[String: Any]] {
-                if let idx = items.firstIndex(where: { ($0["value"] as? String) == val }) {
-                    popup.selectItem(at: idx)
-                }
-            }
+        case "minimumDate":
+            picker.minDate = date(fromEpochMilliseconds: value)
+
+        case "maximumDate":
+            picker.maxDate = date(fromEpochMilliseconds: value)
+
+        case "minuteInterval":
+            let interval = max(1, min(60, intValue(value) ?? 1))
+            objc_setAssociatedObject(
+                picker,
+                &VPickerFactory.minuteIntervalKey,
+                NSNumber(value: interval),
+                .OBJC_ASSOCIATION_RETAIN_NONATOMIC
+            )
+            picker.dateValue = normalized(picker.dateValue, for: picker)
 
         case "enabled":
-            if let enabled = value as? Bool {
-                popup.isEnabled = enabled
-            } else {
-                popup.isEnabled = true
-            }
+            picker.isEnabled = boolValue(value, default: true)
 
         case "disabled":
-            if let disabled = value as? Bool {
-                popup.isEnabled = !disabled
-            } else if let disabled = value as? Int {
-                popup.isEnabled = disabled == 0
-            } else {
-                popup.isEnabled = true
-            }
+            picker.isEnabled = !boolValue(value, default: false)
 
         default:
-            StyleEngine.apply(key: key, value: value, to: view)
+            StyleEngine.apply(key: key, value: value, to: picker)
         }
     }
 
     func addEventListener(view: NSView, event: String, handler: @escaping (Any?) -> Void) {
-        guard let popup = view as? NSPopUpButton, event == "change" else { return }
+        guard event == "change", let picker = view as? NSDatePicker else { return }
 
-        let proxy = PickerActionProxy(popup: popup, handler: handler)
-        popup.target = proxy
-        popup.action = #selector(PickerActionProxy.selectionChanged(_:))
+        let target = DatePickerActionTarget(picker: picker, handler: handler)
+        picker.target = target
+        picker.action = #selector(DatePickerActionTarget.selectionChanged(_:))
         objc_setAssociatedObject(
-            popup,
-            &VPickerFactory.changeHandlerKey,
-            proxy,
+            picker,
+            &VPickerFactory.changeTargetKey,
+            target,
             .OBJC_ASSOCIATION_RETAIN_NONATOMIC
         )
     }
 
     func removeEventListener(view: NSView, event: String) {
-        guard let popup = view as? NSPopUpButton, event == "change" else { return }
+        guard event == "change", let picker = view as? NSDatePicker else { return }
+        picker.target = nil
+        picker.action = nil
+        objc_setAssociatedObject(picker, &VPickerFactory.changeTargetKey, nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+    }
 
-        popup.target = nil
-        popup.action = nil
-        objc_setAssociatedObject(popup, &VPickerFactory.changeHandlerKey, nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+    private func configure(_ picker: NSDatePicker, for mode: String) {
+        let resolvedMode: String
+        switch mode {
+        case "time":
+            picker.datePickerElements = [.hourMinute]
+            resolvedMode = "time"
+        case "datetime":
+            picker.datePickerElements = [.yearMonthDay, .hourMinute]
+            resolvedMode = "datetime"
+        default:
+            picker.datePickerElements = [.yearMonthDay]
+            resolvedMode = "date"
+        }
+        objc_setAssociatedObject(
+            picker,
+            &VPickerFactory.modeKey,
+            resolvedMode as NSString,
+            .OBJC_ASSOCIATION_RETAIN_NONATOMIC
+        )
+        picker.dateValue = normalized(picker.dateValue, for: picker)
+    }
+
+    private func normalized(_ date: Date, for picker: NSDatePicker) -> Date {
+        let mode = objc_getAssociatedObject(picker, &VPickerFactory.modeKey) as? String ?? "date"
+        guard mode == "time" || mode == "datetime" else { return date }
+
+        let interval = (objc_getAssociatedObject(
+            picker,
+            &VPickerFactory.minuteIntervalKey
+        ) as? NSNumber)?.doubleValue ?? 1
+        guard interval > 1 else { return date }
+
+        let seconds = interval * 60
+        return Date(timeIntervalSinceReferenceDate: (date.timeIntervalSinceReferenceDate / seconds).rounded() * seconds)
+    }
+
+    private func date(fromEpochMilliseconds value: Any?) -> Date? {
+        guard let milliseconds = doubleValue(value) else { return nil }
+        return Date(timeIntervalSince1970: milliseconds / 1000)
+    }
+
+    private func doubleValue(_ value: Any?) -> Double? {
+        if let value = value as? Double { return value }
+        if let value = value as? Int { return Double(value) }
+        if let value = value as? NSNumber { return value.doubleValue }
+        return nil
+    }
+
+    private func intValue(_ value: Any?) -> Int? {
+        if let value = value as? Int { return value }
+        if let value = value as? NSNumber { return value.intValue }
+        if let value = value as? Double { return Int(value) }
+        return nil
+    }
+
+    private func boolValue(_ value: Any?, default defaultValue: Bool) -> Bool {
+        if let value = value as? Bool { return value }
+        if let value = value as? NSNumber { return value.boolValue }
+        return defaultValue
     }
 }
 
-// MARK: - PickerActionProxy
-
-/// Target-action proxy that routes NSPopUpButton selection changes to a closure handler.
-final class PickerActionProxy: NSObject {
-
-    private weak var popup: NSPopUpButton?
+private final class DatePickerActionTarget: NSObject {
+    private weak var picker: NSDatePicker?
     private let handler: (Any?) -> Void
 
-    init(popup: NSPopUpButton, handler: @escaping (Any?) -> Void) {
-        self.popup = popup
+    init(picker: NSDatePicker, handler: @escaping (Any?) -> Void) {
+        self.picker = picker
         self.handler = handler
     }
 
-    @objc func selectionChanged(_ sender: NSPopUpButton) {
-        let index = sender.indexOfSelectedItem
-        let items = objc_getAssociatedObject(sender, &VPickerFactory.itemsKey) as? [[String: Any]]
-        let item = items?[safe: index]
-        let label = sender.titleOfSelectedItem ?? ""
-        let value = item?["value"] as? String ?? label
+    @objc func selectionChanged(_ sender: NSDatePicker) {
+        guard let picker else { return }
 
-        handler([
-            "selectedIndex": index,
-            "value": value,
-            "label": label
-        ])
+        let mode = objc_getAssociatedObject(picker, &VPickerFactory.modeKey) as? String ?? "date"
+        let interval = (objc_getAssociatedObject(
+            picker,
+            &VPickerFactory.minuteIntervalKey
+        ) as? NSNumber)?.doubleValue ?? 1
+        let selectedDate: Date
+        if (mode == "time" || mode == "datetime") && interval > 1 {
+            let seconds = interval * 60
+            selectedDate = Date(
+                timeIntervalSinceReferenceDate: (picker.dateValue.timeIntervalSinceReferenceDate / seconds).rounded() * seconds
+            )
+            picker.dateValue = selectedDate
+        } else {
+            selectedDate = sender.dateValue
+        }
+
+        handler(["value": selectedDate.timeIntervalSince1970 * 1000])
     }
 }

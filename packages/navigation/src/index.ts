@@ -918,12 +918,11 @@ export const VNavigationBar = defineComponent({
                   },
                   onPress: () => emit('back'),
                 },
-                () =>
-                  h(
-                    'VText',
-                    { style: { color: props.tintColor, fontSize: 17 } },
-                    () => `\u2039 ${props.backTitle}`,
-                  ),
+                h(
+                  'VText',
+                  { style: { color: props.tintColor, fontSize: 17 } },
+                  `\u2039 ${props.backTitle}`,
+                ),
               )
             : h('VView', { style: { minWidth: 60 } }),
 
@@ -938,7 +937,7 @@ export const VNavigationBar = defineComponent({
                   color: props.titleColor,
                 },
               },
-              () => props.title,
+              props.title,
             ),
           ]),
 
@@ -1008,7 +1007,7 @@ export const VTabBar = defineComponent({
               },
               onPress: () => emit('update:modelValue', tab.name),
             },
-            () => [
+            [
               // Icon (optional)
               tab.icon != null
                 ? h(
@@ -1020,7 +1019,7 @@ export const VTabBar = defineComponent({
                         color: isActive ? props.activeColor : props.inactiveColor,
                       },
                     },
-                    () => tab.icon as string,
+                    tab.icon as string,
                   )
                 : null,
               // Label
@@ -1033,7 +1032,7 @@ export const VTabBar = defineComponent({
                     fontWeight: isActive ? '600' : '400',
                   },
                 },
-                () => tab.label ?? tab.name,
+                tab.label ?? tab.name,
               ),
             ],
           )
@@ -1060,9 +1059,8 @@ export interface TabScreenConfig {
  * Create a self-contained tab-based navigator.
  *
  * Returns a `TabNavigator` component and a reactive `activeTab` ref.
- * Each screen is declared using `TabScreen` props passed directly to
- * `TabNavigator` via the `screens` prop, keeping the setup ergonomic
- * without requiring render-function slot tricks.
+ * Screens can be passed through the `screens` prop or declared as
+ * `TabScreen` children.
  *
  * @example
  * const { TabNavigator } = createTabNavigator()
@@ -1080,11 +1078,27 @@ export function createTabNavigator() {
   /** Tracks which tabs have been visited (for lazy mounting). */
   const visitedTabs = new Set<string>()
 
+  // ── TabScreen is a declarative config component ───────────────────────────
+  // It renders nothing itself; TabNavigator reads its VNode props before mount.
+  const TabScreen = defineComponent({
+    name: 'TabScreen',
+    props: {
+      name: { type: String, required: true },
+      label: { type: String, default: undefined },
+      icon: { type: String, default: undefined },
+      component: { type: Object as () => Component, required: true },
+      lazy: { type: Boolean, default: false },
+    },
+    setup() {
+      return () => null
+    },
+  })
+
   const TabNavigator = defineComponent({
     name: 'TabNavigator',
     props: {
       /** Ordered list of tab screen descriptors. */
-      screens: { type: Array as () => TabScreenConfig[], required: true },
+      screens: { type: Array as () => TabScreenConfig[], default: () => [] },
       /** Which tab is shown first. Defaults to the first screen. */
       initialTab: { type: String, default: '' },
       /** Active tab icon / label colour. */
@@ -1094,17 +1108,37 @@ export function createTabNavigator() {
       /** Background colour of the tab bar. */
       tabBarBackgroundColor: { type: String, default: '#F9F9F9' },
     },
-    setup(props) {
+    setup(props, { slots }) {
       // Initialise activeTab the first time we have screens available.
       // We do this reactively inside the render function so it works even
       // when the component tree is set up before screens are known.
       return () => {
-        const screens = props.screens
+        const declarativeScreens = (slots.default?.() ?? []).flatMap((vnode): TabScreenConfig[] => {
+          if (vnode.type !== TabScreen || vnode.props == null) return []
+
+          const rawProps = vnode.props as Record<string, unknown>
+          const name = getStringProp(rawProps, 'name')
+          const component = rawProps.component as Component | undefined
+          if (!name || component == null) return []
+
+          return [{
+            name,
+            label: getStringProp(rawProps, 'label'),
+            icon: getStringProp(rawProps, 'icon'),
+            component,
+            lazy: rawProps.lazy === true || rawProps.lazy === '',
+          }]
+        })
+        // Keep the established prop API authoritative when both forms are
+        // supplied; declarative children are the ergonomic fallback.
+        const screens = props.screens.length > 0 ? props.screens : declarativeScreens
         if (screens.length === 0) return null
 
         // Lazy initialisation of the active tab.
-        if (activeTab.value === '') {
-          activeTab.value = props.initialTab || screens[0].name
+        if (activeTab.value === '' || !screens.some(screen => screen.name === activeTab.value)) {
+          activeTab.value = screens.some(screen => screen.name === props.initialTab)
+            ? props.initialTab
+            : screens[0].name
         }
 
         // Mark the active tab as visited for lazy loading.
@@ -1154,25 +1188,6 @@ export function createTabNavigator() {
     },
   })
 
-  // ── TabScreen is a declarative config component ───────────────────────────
-  // It renders nothing itself; its props are read by the parent TabNavigator.
-  // Provided for ergonomic JSX / template usage where individual screens
-  // can be defined as self-documenting child elements.
-  const TabScreen = defineComponent({
-    name: 'TabScreen',
-    props: {
-      name: { type: String, required: true },
-      label: { type: String, default: undefined },
-      icon: { type: String, default: undefined },
-      component: { type: Object as () => Component, required: true },
-      lazy: { type: Boolean, default: false },
-    },
-    setup() {
-      // Intentionally renders nothing — used as a declarative config child.
-      return () => null
-    },
-  })
-
   return { TabNavigator, TabScreen, activeTab }
 }
 
@@ -1212,11 +1227,26 @@ export function createDrawerNavigator() {
 
   const drawerState: DrawerState = { isOpen, openDrawer, closeDrawer, toggleDrawer }
 
+  // ── DrawerScreen is a declarative config component ────────────────────────
+  // It renders nothing itself; DrawerNavigator reads its VNode props before mount.
+  const DrawerScreen = defineComponent({
+    name: 'DrawerScreen',
+    props: {
+      name: { type: String, required: true },
+      label: { type: String, default: undefined },
+      icon: { type: String, default: undefined },
+      component: { type: Object as () => Component, required: true },
+    },
+    setup() {
+      return () => null
+    },
+  })
+
   const DrawerNavigator = defineComponent({
     name: 'DrawerNavigator',
     props: {
       /** Ordered list of drawer screen descriptors. */
-      screens: { type: Array as () => DrawerScreenConfig[], required: true },
+      screens: { type: Array as () => DrawerScreenConfig[], default: () => [] },
       /** Optional custom drawer content component. Receives screens and activeScreen as props. */
       drawerContent: { type: Object as () => Component, default: undefined },
       /** Width of the drawer panel in points. */
@@ -1230,23 +1260,65 @@ export function createDrawerNavigator() {
       /** Colour of the overlay behind the drawer when open. */
       overlayColor: { type: String, default: 'rgba(0,0,0,0.4)' },
     },
-    setup(props) {
+    setup(props, { slots }) {
       // Provide drawer state so useDrawer() works inside children
       provide(DRAWER_KEY, drawerState)
 
       return () => {
-        const screens = props.screens
+        const declarativeScreens = (slots.default?.() ?? []).flatMap((vnode): DrawerScreenConfig[] => {
+          if (vnode.type !== DrawerScreen || vnode.props == null) return []
+
+          const rawProps = vnode.props as Record<string, unknown>
+          const name = getStringProp(rawProps, 'name')
+          const component = rawProps.component as Component | undefined
+          if (!name || component == null) return []
+
+          return [{
+            name,
+            label: getStringProp(rawProps, 'label'),
+            icon: getStringProp(rawProps, 'icon'),
+            component,
+          }]
+        })
+        const screens = props.screens.length > 0 ? props.screens : declarativeScreens
         if (screens.length === 0) return null
 
         // Lazy initialise
-        if (activeScreen.value === '') {
-          activeScreen.value = props.initialScreen || screens[0].name
+        if (activeScreen.value === '' || !screens.some(screen => screen.name === activeScreen.value)) {
+          activeScreen.value = screens.some(screen => screen.name === props.initialScreen)
+            ? props.initialScreen
+            : screens[0].name
         }
 
-        const _current = screens.find(s => s.name === activeScreen.value) ?? screens[0]
         const isLeft = props.drawerPosition === 'left'
 
         // ── Default drawer content (list of screens) ────────────────────
+        const defaultDrawerItems = screens.map(s => h('VButton', {
+          key: s.name,
+          style: {
+            paddingVertical: 14,
+            paddingHorizontal: 12,
+            backgroundColor: s.name === activeScreen.value ? '#E8E8ED' : 'transparent',
+            borderRadius: 8,
+            marginBottom: 4,
+          },
+          onPress: () => {
+            activeScreen.value = s.name
+            closeDrawer()
+          },
+        }, h('VView', { style: { flexDirection: 'row', alignItems: 'center' } }, [
+          s.icon != null
+            ? h('VText', { style: { fontSize: 18, marginRight: 12 } }, s.icon as string)
+            : null,
+          h('VText', {
+            style: {
+              fontSize: 16,
+              fontWeight: s.name === activeScreen.value ? '600' : '400',
+              color: '#000000',
+            },
+          }, s.label ?? s.name),
+        ])))
+
         const drawerMenu = props.drawerContent
           ? h(props.drawerContent, {
               screens,
@@ -1256,36 +1328,10 @@ export function createDrawerNavigator() {
                 closeDrawer()
               },
             })
-          : h('VView', { style: { flex: 1, paddingTop: 60, paddingHorizontal: 16 } },
-              screens.map(s =>
-                h('VButton', {
-                  key: s.name,
-                  style: {
-                    paddingVertical: 14,
-                    paddingHorizontal: 12,
-                    backgroundColor: s.name === activeScreen.value ? '#E8E8ED' : 'transparent',
-                    borderRadius: 8,
-                    marginBottom: 4,
-                  },
-                  onPress: () => {
-                    activeScreen.value = s.name
-                    closeDrawer()
-                  },
-                }, () =>
-                  h('VView', { style: { flexDirection: 'row', alignItems: 'center' } }, [
-                    s.icon != null
-                      ? h('VText', { style: { fontSize: 18, marginRight: 12 } }, () => s.icon as string)
-                      : null,
-                    h('VText', {
-                      style: {
-                        fontSize: 16,
-                        fontWeight: s.name === activeScreen.value ? '600' : '400',
-                        color: '#000000',
-                      },
-                    }, () => s.label ?? s.name),
-                  ]),
-                ),
-              ),
+          : h(
+              'VView',
+              { style: { flex: 1, paddingTop: 60, paddingHorizontal: 16 } },
+              defaultDrawerItems,
             )
 
         // ── Drawer panel ────────────────────────────────────────────────
@@ -1343,20 +1389,6 @@ export function createDrawerNavigator() {
           drawerPanel,
         ])
       }
-    },
-  })
-
-  // ── DrawerScreen: declarative config component ────────────────────────────
-  const DrawerScreen = defineComponent({
-    name: 'DrawerScreen',
-    props: {
-      name: { type: String, required: true },
-      label: { type: String, default: undefined },
-      icon: { type: String, default: undefined },
-      component: { type: Object as () => Component, required: true },
-    },
-    setup() {
-      return () => null
     },
   })
 

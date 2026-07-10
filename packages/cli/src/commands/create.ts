@@ -1,29 +1,40 @@
 import { Command } from 'commander'
-import { cp, mkdir, writeFile } from 'node:fs/promises'
-import { join, dirname } from 'node:path'
+import { chmod, cp, mkdir, writeFile } from 'node:fs/promises'
+import { basename, join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { existsSync, readFileSync } from 'node:fs'
 import pc from 'picocolors'
 import { ConfigError } from '../config.js'
 
+function getCliPackageDir(): string {
+  const moduleDir = dirname(fileURLToPath(import.meta.url))
+  const parentDir = dirname(moduleDir)
+
+  // Source execution: packages/cli/src/commands/create.ts
+  if (basename(moduleDir) === 'commands' && basename(parentDir) === 'src') {
+    return dirname(parentDir)
+  }
+
+  // Published build: packages/cli/dist/cli.js
+  return parentDir
+}
+
 function getTemplateVersions() {
   // Derive versions from the CLI's own package.json. The CLI is in the
   // changesets `fixed` group with runtime/navigation/vite-plugin, so its
-  // version is also the iOS SPM tag and the Android Maven artifact version.
+  // version is also the iOS SPM tag.
   try {
-    const cliDir = dirname(dirname(fileURLToPath(import.meta.url)))
+    const cliDir = getCliPackageDir()
     const pkg = JSON.parse(readFileSync(join(cliDir, 'package.json'), 'utf8'))
     const viteDevDep = pkg.devDependencies?.vite
     const viteVuePluginDevDep = pkg.devDependencies?.['@vitejs/plugin-vue']
     return {
-      NATIVE_VERSION: pkg.version,
       JS_PACKAGE_VERSION: `^${pkg.version}`,
       VITE_PLUGIN_VUE_VERSION: viteVuePluginDevDep ?? '^6.0.5',
       VITE_VERSION: viteDevDep ?? '^8.0.0',
     }
   } catch {
     return {
-      NATIVE_VERSION: '0.0.0',
       JS_PACKAGE_VERSION: '^0.0.0',
       VITE_PLUGIN_VUE_VERSION: '^6.0.5',
       VITE_VERSION: '^8.0.0',
@@ -31,9 +42,9 @@ function getTemplateVersions() {
   }
 }
 
-const { NATIVE_VERSION, JS_PACKAGE_VERSION, VITE_PLUGIN_VUE_VERSION, VITE_VERSION } = getTemplateVersions()
+const { JS_PACKAGE_VERSION, VITE_PLUGIN_VUE_VERSION, VITE_VERSION } = getTemplateVersions()
 
-const VALID_NAME = /^[a-zA-Z0-9_-]+$/i
+const VALID_NAME = /^[a-zA-Z][a-zA-Z0-9_-]*$/
 
 type Template = 'blank' | 'tabs' | 'drawer'
 
@@ -51,11 +62,16 @@ export const createCommand = new Command('create')
 
     if (!VALID_NAME.test(name)) {
       throw new ConfigError(
-        `Project name "${name}" must match /^[a-zA-Z0-9_-]+$/i`,
+        `Project name "${name}" must start with a letter and contain only letters, numbers, hyphens, or underscores.`,
       )
     }
 
     const dir = join(process.cwd(), name)
+    if (existsSync(dir)) {
+      throw new ConfigError(
+        `Cannot create "${name}": ${dir} already exists. Choose a new name or remove the existing directory.`,
+      )
+    }
     console.log(pc.cyan(`\nCreating Vue Native project: ${pc.bold(name)} (template: ${template})\n`))
 
     try {
@@ -80,8 +96,10 @@ export const createCommand = new Command('create')
           'vue': '^3.5.0',
         },
         devDependencies: {
+          '@thelacanians/vue-native-cli': JS_PACKAGE_VERSION,
           '@thelacanians/vue-native-vite-plugin': JS_PACKAGE_VERSION,
           '@vitejs/plugin-vue': VITE_PLUGIN_VUE_VERSION,
+          'esbuild': '^0.27.0',
           'vite': VITE_VERSION,
           'typescript': '^5.7.0',
         },
@@ -93,7 +111,11 @@ import vue from '@vitejs/plugin-vue'
 import vueNative from '@thelacanians/vue-native-vite-plugin'
 
 export default defineConfig({
-  plugins: [vue(), vueNative()],
+  plugins: [vue(), vueNative({
+    nativeOutputDirs: {
+      typescript: 'app/generated',
+    },
+  })],
 })
 `)
 
@@ -105,7 +127,7 @@ export default defineConfig({
           moduleResolution: 'bundler',
           strict: true,
           jsx: 'preserve',
-          lib: ['ES2020'],
+          lib: ['ES2020', 'DOM', 'DOM.Iterable'],
           types: [],
           paths: {
             vue: ['./node_modules/@thelacanians/vue-native-runtime/dist/index.d.ts'],
@@ -134,8 +156,7 @@ options:
 
 packages:
   VueNativeCore:
-    url: https://github.com/abdul-hamid-achik/vue-native
-    from: "${NATIVE_VERSION}"
+    path: ../native/ios/VueNativeCore
 
 targets:
   ${xcodeProjectName}:
@@ -143,6 +164,9 @@ targets:
     platform: iOS
     sources:
       - Sources
+      - path: ../dist/vue-native-bundle.js
+        buildPhase: resources
+        optional: true
     dependencies:
       - package: VueNativeCore
         product: VueNativeCore
@@ -152,9 +176,6 @@ targets:
         INFOPLIST_FILE: Sources/Info.plist
         SWIFT_VERSION: "5.9"
         GENERATE_INFOPLIST_FILE: false
-    resources:
-      - path: ../dist/vue-native-bundle.js
-        optional: true
 `)
 
       // ios/Sources/Info.plist
@@ -304,6 +325,7 @@ plugins {
     id("com.android.application") version "8.7.3" apply false
     id("com.android.library") version "8.7.3" apply false
     id("org.jetbrains.kotlin.android") version "2.0.21" apply false
+    id("org.jlleitschuh.gradle.ktlint") version "12.1.0" apply false
 }
 `)
 
@@ -321,18 +343,13 @@ dependencyResolutionManagement {
         google()
         mavenCentral()
         maven { url = uri("https://jitpack.io") }
-        maven {
-            url = uri("https://maven.pkg.github.com/abdul-hamid-achik/vue-native")
-            credentials {
-                username = providers.gradleProperty("gpr.user").orNull ?: System.getenv("GITHUB_ACTOR") ?: ""
-                password = providers.gradleProperty("gpr.key").orNull ?: System.getenv("GITHUB_TOKEN") ?: ""
-            }
-        }
     }
 }
 
 rootProject.name = "${name}"
 include(":app")
+include(":VueNativeCore")
+project(":VueNativeCore").projectDir = file("../native/android/VueNativeCore")
 `)
 
       // android/app/build.gradle.kts
@@ -378,7 +395,7 @@ android {
 }
 
 dependencies {
-    implementation("com.vuenative:core:${NATIVE_VERSION}")
+    implementation(project(":VueNativeCore"))
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("com.google.android.material:material:1.12.0")
     implementation("androidx.core:core-ktx:1.15.0")
@@ -491,6 +508,30 @@ zipStoreBase=GRADLE_USER_HOME
 zipStorePath=wrapper/dists
 `)
 
+      // Ship a self-contained Android project. GitHub's Maven registry requires
+      // authentication even for public packages, so fresh apps consume the
+      // bundled VueNativeCore project and wrapper without asking users for a PAT
+      // or a globally-installed Gradle executable.
+      const bundledNative = join(getCliPackageDir(), 'native')
+      const bundledAndroid = join(bundledNative, 'android')
+      try {
+        // Keep the canonical native/ layout so native-block code generation
+        // writes into the exact sources consumed by the local Android module.
+        await cp(bundledNative, join(dir, 'native'), { recursive: true })
+        await cp(join(bundledAndroid, 'gradlew'), join(androidDir, 'gradlew'))
+        await cp(join(bundledAndroid, 'gradlew.bat'), join(androidDir, 'gradlew.bat'))
+        await cp(
+          join(bundledAndroid, 'gradle', 'wrapper', 'gradle-wrapper.jar'),
+          join(androidGradleWrapperDir, 'gradle-wrapper.jar'),
+        )
+        await chmod(join(androidDir, 'gradlew'), 0o755)
+      } catch (error) {
+        throw new ConfigError(
+          `Bundled Android runtime files are missing or unreadable: ${(error as Error).message}`,
+        )
+      }
+      console.log(pc.dim('  Bundled native runtimes copied for local builds.\n'))
+
       // vue-native.config.ts
       await writeFile(join(dir, 'vue-native.config.ts'), `import { defineConfig } from '@thelacanians/vue-native-cli'
 
@@ -542,17 +583,6 @@ local.properties
 *.jks
 `)
 
-      // ── Copy bundled native/ as fallback ───────────────────
-      // When the CLI is installed from npm, native/ is bundled alongside dist/.
-      // This lets projects work immediately without waiting for SPM/Maven resolution.
-      const cliDir = dirname(dirname(fileURLToPath(import.meta.url)))
-      const bundledNative = join(cliDir, 'native')
-      if (existsSync(bundledNative)) {
-        const nativeDir = join(dir, 'native')
-        await cp(bundledNative, nativeDir, { recursive: true })
-        console.log(pc.dim('  Bundled native/ copied as fallback.\n'))
-      }
-
       console.log(pc.green('  Project created successfully!\n'))
       console.log(pc.white('  Next steps:\n'))
       console.log(pc.white(`    cd ${name}`))
@@ -562,7 +592,6 @@ local.properties
       console.log(pc.white('    vue-native run ios\n'))
       console.log(pc.white('  To run on Android:'))
       console.log(pc.dim('    Open android/ in Android Studio, or run:'))
-      console.log(pc.dim('    cd android && gradle wrapper && cd ..'))
       console.log(pc.white('    vue-native run android\n'))
     } catch (err) {
       throw new ConfigError(

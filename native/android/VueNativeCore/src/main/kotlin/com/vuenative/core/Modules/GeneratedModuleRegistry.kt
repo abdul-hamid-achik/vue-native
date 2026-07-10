@@ -18,11 +18,11 @@ package com.vuenative.core
  * Register all generated native modules from <native> blocks
  * This function is called automatically after registerDefaults()
  */
-fun NativeModuleRegistry.registerGeneratedModules() {
+@Suppress("UNUSED_PARAMETER")
+fun NativeModuleRegistry.registerGeneratedModules(context: android.content.Context, bridge: NativeBridge) {
     // Generated modules will be registered here
     // Example:
-    // register(HapticsModule())
-    // register(CameraModule())
+    // registerAndInitialize(HapticsModule(), bridge, context)
 
     // This function is called automatically after registerDefaults()
 }

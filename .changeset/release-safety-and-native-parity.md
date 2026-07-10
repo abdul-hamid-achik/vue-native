@@ -1,10 +1,24 @@
 ---
 "@thelacanians/vue-native-runtime": minor
+"@thelacanians/vue-native-vite-plugin": minor
+"@thelacanians/vue-native-cli": patch
 "@thelacanians/vue-native-codegen": patch
 ---
 
 Expose macOS runtime component wrappers for toolbar, split view, and outline view usage from Vue.
 
-Improve Android native parity for back handling, percentage flex dimensions, and certificate-pinned HTTP/fetch requests.
+Harden renderer and composable lifecycle behavior across remounts, native-node removal, dialogs, device state, geolocation, tab identity, HTTP requests, and event dispatch.
 
-Update native-block code generation so Swift registries are platform-specific and Kotlin generated modules receive context and bridge initialization.
+Improve native parity and cleanup across iOS, Android, and macOS, including host replacement, keyed moves, modal and picker behavior, percentage flex dimensions, back handling, certificate-pinned HTTP/fetch requests, and native-module ownership.
+
+Make native-block generation deterministic and safe for multi-module SFCs. Generated APIs now use actual bridge dispatch labels and Promise types, Swift registries are platform-specific, and Kotlin modules receive the active host context plus atomic bridge initialization.
+
+Harden the Vite codegen integration so add/change/unlink events are serialized, last-known-good output survives parse errors, and generation failures stop production builds.
+
+Make iOS and Android OTA updates usable end to end: require verified version/hash metadata, implement verify and partial-download cleanup methods, keep rollback-safe content-addressed bundles, and load valid applied bundles at production startup with an embedded fallback.
+
+Make fresh CLI scaffolds self-contained and verifiable: package the native runtimes from cache-safe inputs, regenerate them before every pack, embed the JavaScript bundle in generated iOS apps, copy it into Android assets, validate build modes, and await native subprocess completion without shell-interpolating user input.
+
+Strengthen release gates with native contract checks, Knip, non-mutating Lefthook hooks, integrated local-tarball scaffold smoke tests, example and editor-tool type checks, least-privilege publish jobs, and post-version validation before publication.
+
+Polish public runtime and navigation behavior across transitions, drawer/tab declarative screens, push errors, accessibility state, modal styling, deep links, and documented examples.

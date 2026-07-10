@@ -33,7 +33,7 @@ useBiometry(): {
 ### Types
 
 ```ts
-type BiometryType = 'faceID' | 'touchID' | 'opticID' | 'none'
+type BiometryType = 'faceID' | 'touchID' | 'opticID' | 'biometric' | 'none'
 
 interface BiometryResult {
   success: boolean
@@ -46,7 +46,8 @@ interface BiometryResult {
 | Platform | Support |
 |----------|---------|
 | iOS | Uses the `LocalAuthentication` framework (`LAContext`). Supports Face ID, Touch ID, and Optic ID. |
-| Android | Uses `BiometricManager` for availability checks. `authenticate` requires an Activity-level `BiometricPrompt` — override `VueNativeActivity.onAuthenticateRequest()` to provide it. |
+| Android | Uses `BiometricManager` for availability checks and the host `VueNativeActivity` for `BiometricPrompt`. |
+| macOS | Uses `LocalAuthentication` for Touch ID on supported Macs. |
 
 ## Example
 
@@ -99,5 +100,5 @@ async function handleAuth() {
 
 - On iOS, add `NSFaceIDUsageDescription` to your `Info.plist` to explain why your app uses Face ID. Without this key, the system will terminate your app when Face ID is triggered.
 - On Android, `getSupportedBiometry` returns `"faceID"` as a generic label when strong biometrics are available (Android does not distinguish between face and fingerprint at the API level). It returns `"biometric"` when hardware is present but not enrolled.
-- On Android, `authenticate` requires Activity-level integration with `BiometricPrompt`. The base `CameraModule` stub returns an error — override `VueNativeActivity.onAuthenticateRequest()` to provide the actual prompt.
+- On Android, `authenticate` presents `BiometricPrompt` through the active `VueNativeActivity`. It resolves with `success: false` when authentication is unavailable, cancelled, or fails.
 - This composable has no reactive state and no cleanup. All methods return Promises.

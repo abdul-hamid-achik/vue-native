@@ -11,15 +11,38 @@ import { type NativeNode, createNativeNode, createTextNode, createCommentNode, r
 import { NativeBridge } from './bridge'
 
 /**
- * Normalize an event name from Vue's "onXxx" convention to lowercase.
- * e.g. "onPress" -> "press", "onLongPress" -> "longpress"
+ * Normalize an event name from Vue's "onXxx" convention.
+ * e.g. "onPress" -> "press", "onLongPress" -> "longPress"
  */
 function toEventName(key: string): string {
-  return key.slice(2).toLowerCase()
+  const name = key.slice(2)
+  return name.charAt(0).toLowerCase() + name.slice(1)
 }
 
-function isEventHandler(value: unknown): value is (payload: unknown) => void {
+type EventHandler = (payload: unknown) => void
+
+function isEventHandler(value: unknown): value is EventHandler {
   return typeof value === 'function'
+}
+
+/**
+ * Vue accepts an array of event handlers. The bridge has one native callback
+ * slot per event, so combine an array into a single callback before storing it.
+ */
+function getEventHandler(value: unknown): EventHandler | null {
+  if (isEventHandler(value)) {
+    return value
+  }
+
+  if (Array.isArray(value) && value.length > 0 && value.every(isEventHandler)) {
+    return (payload: unknown) => {
+      for (const handler of value) {
+        handler(payload)
+      }
+    }
+  }
+
+  return null
 }
 
 /**
@@ -66,6 +89,21 @@ function patchStyle(
   }
 }
 
+/**
+ * Native removeChild tears down an entire native subtree in one operation.
+ * Mirror that ownership change in the JS-side ID allocator so descendants do
+ * not remain permanently marked as active after their parent is removed or
+ * replaced with element text.
+ */
+function releaseSubtree(node: NativeNode): void {
+  const children = node.children.splice(0)
+  for (const child of children) {
+    child.parent = null
+    releaseSubtree(child)
+  }
+  releaseNodeId(node.id)
+}
+
 const nodeOps: RendererOptions<NativeNode, NativeNode> = {
   /**
    * Create a native element node.
@@ -106,9 +144,17 @@ const nodeOps: RendererOptions<NativeNode, NativeNode> = {
    * Set the text content of an element, replacing all its children.
    */
   setElementText(node: NativeNode, text: string): void {
-    // Clear JS-side children
-    for (const child of node.children) {
+    // The native operation replaces the full subtree, so clear both the
+    // JS-side parent links and their allocated node IDs.
+    for (const child of [...node.children]) {
+      // Native setElementText only updates the component's text prop. Explicitly
+      // remove existing native child subtrees first so a VView cannot retain
+      // stale visual descendants when Vue switches from children to text.
+      if (child.type !== '__COMMENT__') {
+        NativeBridge.removeChild(node.id, child.id)
+      }
       child.parent = null
+      releaseSubtree(child)
     }
     node.children = []
     NativeBridge.setElementText(node.id, text)
@@ -128,18 +174,22 @@ const nodeOps: RendererOptions<NativeNode, NativeNode> = {
     nextValue: unknown,
   ): void {
     try {
-      // Event handlers: keys starting with "on" followed by uppercase letter
-      if (key.startsWith('on') && key.length > 2 && key[2] === key[2].toUpperCase()) {
+      // Event handlers use Vue's onXxx convention. Do not claim ordinary
+      // on-prefixed props (for example VSwitch.onTintColor) unless either
+      // side is actually a function or an array of functions.
+      const previousHandler = getEventHandler(prevValue)
+      const nextHandler = getEventHandler(nextValue)
+      if (/^on[A-Z]/.test(key) && (previousHandler || nextHandler)) {
         const eventName = toEventName(key)
 
         // Remove old handler if it existed
-        if (prevValue) {
+        if (previousHandler) {
           NativeBridge.removeEventListener(el.id, eventName)
         }
 
         // Register new handler if provided
-        if (isEventHandler(nextValue)) {
-          NativeBridge.addEventListener(el.id, eventName, nextValue)
+        if (nextHandler) {
+          NativeBridge.addEventListener(el.id, eventName, nextHandler)
         }
         return
       }
@@ -227,7 +277,7 @@ const nodeOps: RendererOptions<NativeNode, NativeNode> = {
       } catch (err) {
         console.error(`[VueNative] Error removing node ${child.id}:`, err)
       }
-      releaseNodeId(child.id)
+      releaseSubtree(child)
     }
   },
 

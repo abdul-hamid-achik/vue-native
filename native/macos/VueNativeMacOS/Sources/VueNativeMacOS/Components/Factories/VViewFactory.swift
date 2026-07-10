@@ -106,12 +106,12 @@ final class VViewFactory: NativeComponentFactory {
         view.gestureRecognizers.forEach { recognizer in
             switch event {
             case "press" where recognizer is NSClickGestureRecognizer:
-                let click = recognizer as! NSClickGestureRecognizer
+                guard let click = recognizer as? NSClickGestureRecognizer else { break }
                 if click.buttonMask == 0x1 {
                     view.removeGestureRecognizer(recognizer)
                 }
             case "rightPress" where recognizer is NSClickGestureRecognizer:
-                let click = recognizer as! NSClickGestureRecognizer
+                guard let click = recognizer as? NSClickGestureRecognizer else { break }
                 if click.buttonMask == 0x2 {
                     view.removeGestureRecognizer(recognizer)
                 }
@@ -126,7 +126,7 @@ final class VViewFactory: NativeComponentFactory {
                     view.removeGestureRecognizer(recognizer)
                 }
             case "doubleTap" where recognizer is NSClickGestureRecognizer:
-                let click = recognizer as! NSClickGestureRecognizer
+                guard let click = recognizer as? NSClickGestureRecognizer else { break }
                 if click.numberOfClicksRequired == 2 {
                     view.removeGestureRecognizer(recognizer)
                 }
@@ -195,19 +195,19 @@ private class HoverTrackingView: NSView {
     }
 
     override func mouseEntered(with event: NSEvent) {
-        guard let target = targetView else { return }
+        guard targetView != nil else { return }
         let location = convert(event.locationInWindow, from: nil)
         wrapper.handleHover(location: location, isEntering: true)
     }
 
     override func mouseExited(with event: NSEvent) {
-        guard let target = targetView else { return }
+        guard targetView != nil else { return }
         let location = convert(event.locationInWindow, from: nil)
         wrapper.handleHover(location: location, isEntering: false)
     }
 
     override func mouseMoved(with event: NSEvent) {
-        guard let target = targetView else { return }
+        guard targetView != nil else { return }
         let location = convert(event.locationInWindow, from: nil)
         wrapper.handleHover(location: location, isEntering: true)
     }

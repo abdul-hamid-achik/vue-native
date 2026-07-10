@@ -1,14 +1,18 @@
 package com.vuenative.core
 
+import android.app.Activity
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
@@ -19,6 +23,14 @@ class MockNativeModule(override val moduleName: String) : NativeModule {
     var lastMethod: String? = null
     var lastArgs: List<Any?> = emptyList()
     var resultToReturn: Any? = null
+    var destroyCount = 0
+    var initializeError: RuntimeException? = null
+    var initializedContext: Context? = null
+
+    override fun initialize(context: Context, bridge: NativeBridge) {
+        initializedContext = context
+        initializeError?.let { throw it }
+    }
 
     override fun invoke(method: String, args: List<Any?>, bridge: NativeBridge, callback: (Any?, String?) -> Unit) {
         lastMethod = method
@@ -30,6 +42,10 @@ class MockNativeModule(override val moduleName: String) : NativeModule {
         lastMethod = method
         lastArgs = args
         return resultToReturn
+    }
+
+    override fun destroy() {
+        destroyCount += 1
     }
 }
 
@@ -71,6 +87,58 @@ class NativeModuleRegistryTest {
         assertNotNull("getModule should return the registered module", retrieved)
         assertEquals("TestModule", retrieved!!.moduleName)
         assertTrue("Retrieved module should be the same instance", retrieved === mock)
+    }
+
+    @Test
+    fun testRegisterDestroysReplacedModule() {
+        val first = MockNativeModule("TestModule")
+        val replacement = MockNativeModule("TestModule")
+
+        registry.register(first)
+        registry.register(replacement)
+
+        assertEquals(1, first.destroyCount)
+        assertEquals(0, replacement.destroyCount)
+        assertTrue(registry.getModule("TestModule") === replacement)
+    }
+
+    @Test
+    fun testDestroyAllDestroysAndUnregistersModules() {
+        val first = MockNativeModule("First")
+        val second = MockNativeModule("Second")
+        registry.register(first)
+        registry.register(second)
+
+        registry.destroyAll()
+
+        assertEquals(1, first.destroyCount)
+        assertEquals(1, second.destroyCount)
+        assertNull(registry.getModule("First"))
+        assertNull(registry.getModule("Second"))
+    }
+
+    @Test
+    fun testRegisterAndInitializeRemovesFailedModuleAndContinuesSafely() {
+        val failing = MockNativeModule("Failing").apply {
+            initializeError = IllegalStateException("boom")
+        }
+
+        val initialized = registry.registerAndInitialize(failing, bridge)
+
+        assertFalse(initialized)
+        assertEquals(1, failing.destroyCount)
+        assertNull(registry.getModule("Failing"))
+    }
+
+    @Test
+    fun testRegisterAndInitializePassesActiveHostContext() {
+        val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+        val module = MockNativeModule("HostAware")
+
+        val initialized = registry.registerAndInitialize(module, bridge, activity)
+
+        assertTrue(initialized)
+        assertSame(activity, module.initializedContext)
     }
 
     // -------------------------------------------------------------------------
@@ -162,28 +230,31 @@ class NativeModuleRegistryTest {
 
     @Test
     fun testRegisterDefaults() {
-        // Some modules (e.g. SecureStorageModule) may throw during initialize()
-        // in the Robolectric environment (KeyStore not available). Wrap with try/catch
-        // and verify the modules that registered successfully.
-        try {
-            registry.registerDefaults(bridge)
-        } catch (_: Exception) {
-            // Some modules may fail to initialize in test — that's OK
-        }
+        // Individual initialization failures (for example, an unavailable
+        // Robolectric KeyStore) must not prevent later modules registering.
+        registry.registerDefaults(bridge)
 
-        // Spot-check modules that register before SecureStorageModule (which throws
-        // java.security.KeyStoreException in Robolectric, halting the forEach loop).
-        // Modules registered in order: Haptics, AsyncStorage, Clipboard, DeviceInfo,
-        // Network, AppState, Linking, Share, Animation, Keyboard, Permissions,
-        // Geolocation, Notifications, Http, Biometry, Camera, BackHandler, SecureStorage(throws)...
+        // Spot-check both early and late entries in the defaults list.
         assertNotNull("Haptics module should be registered", registry.getModule("Haptics"))
         assertNotNull("AsyncStorage module should be registered", registry.getModule("AsyncStorage"))
+        assertNotNull("Contacts module should register after any earlier failure", registry.getModule("Contacts"))
         assertNotNull("Clipboard module should be registered", registry.getModule("Clipboard"))
         assertNotNull("DeviceInfo module should be registered", registry.getModule("DeviceInfo"))
         assertNotNull("Network module should be registered", registry.getModule("Network"))
         assertNotNull("Animation module should be registered", registry.getModule("Animation"))
         assertNotNull("Http module should be registered", registry.getModule("Http"))
         assertNotNull("BackHandler module should be registered", registry.getModule("BackHandler"))
+
+        val custom = MockNativeModule("OwnedByFirstBridge")
+        registry.register(custom)
+        val unrelatedBridge = NativeBridge(context)
+        registry.destroyAll(unrelatedBridge)
+        assertTrue(registry.getModule(custom.moduleName) === custom)
+        assertEquals(0, custom.destroyCount)
+
+        registry.destroyAll(bridge)
+        assertNull(registry.getModule(custom.moduleName))
+        assertEquals(1, custom.destroyCount)
     }
 
     // -------------------------------------------------------------------------

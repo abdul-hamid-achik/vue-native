@@ -31,7 +31,7 @@ class HapticsModule : NativeModule {
                 vibrate("light")
                 callback(null, null)
             }
-            "notificationOccurred" -> {
+            "notificationFeedback", "notificationOccurred" -> {
                 val type = args.getOrNull(0)?.toString() ?: "success"
                 vibrate(type)
                 callback(null, null)

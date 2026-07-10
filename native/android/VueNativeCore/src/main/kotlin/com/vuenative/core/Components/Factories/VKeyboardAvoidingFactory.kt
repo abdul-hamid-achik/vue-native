@@ -8,7 +8,7 @@ import com.google.android.flexbox.FlexboxLayout
 
 class VKeyboardAvoidingFactory : NativeComponentFactory {
     override fun createView(context: Context): View {
-        val flex = FlexboxLayout(context).apply {
+        val flex = VueNativeFlexboxLayout(context).apply {
             flexDirection = FlexDirection.COLUMN
             layoutParams = ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,

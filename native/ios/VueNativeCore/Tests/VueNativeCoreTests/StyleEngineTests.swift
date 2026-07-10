@@ -194,6 +194,17 @@ final class StyleEngineTests: XCTestCase {
         XCTAssertFalse(view.clipsToBounds, "clipsToBounds should be false when overflow is 'visible'")
     }
 
+    func testRemovingLayoutStylesRestoresVisibleDefaults() {
+        StyleEngine.apply(key: "display", value: "none", to: view)
+        StyleEngine.apply(key: "overflow", value: "hidden", to: view)
+
+        StyleEngine.apply(key: "display", value: nil, to: view)
+        StyleEngine.apply(key: "overflow", value: nil, to: view)
+
+        XCTAssertFalse(view.isHidden, "Removing display should restore flex visibility")
+        XCTAssertFalse(view.clipsToBounds, "Removing overflow should restore visible overflow")
+    }
+
     // MARK: - hidden Tests
 
     func testApplyHiddenTrue() {
@@ -266,6 +277,24 @@ final class StyleEngineTests: XCTestCase {
             "accessibilityTraits should contain .button"
         )
         XCTAssertTrue(view.isAccessibilityElement, "isAccessibilityElement should be true")
+    }
+
+    func testAccessibilityStateClearsReactiveTraits() {
+        StyleEngine.apply(
+            key: "accessibilityState",
+            value: ["disabled": true, "selected": true],
+            to: view
+        )
+        XCTAssertTrue(view.accessibilityTraits.contains(.notEnabled))
+        XCTAssertTrue(view.accessibilityTraits.contains(.selected))
+
+        StyleEngine.apply(
+            key: "accessibilityState",
+            value: ["disabled": false, "selected": false],
+            to: view
+        )
+        XCTAssertFalse(view.accessibilityTraits.contains(.notEnabled))
+        XCTAssertFalse(view.accessibilityTraits.contains(.selected))
     }
 
     // MARK: - Text Property Tests

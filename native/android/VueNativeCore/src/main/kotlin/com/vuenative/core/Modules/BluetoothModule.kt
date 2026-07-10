@@ -28,9 +28,10 @@ class BluetoothModule : NativeModule {
     private val writeCallbacks = mutableMapOf<String, (Any?, String?) -> Unit>()
 
     override fun initialize(context: Context, bridge: NativeBridge) {
-        this.context = context
+        this.context = context.applicationContext
         this.bridge = bridge
-        val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+        val bluetoothManager = context.applicationContext
+            .getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
         bluetoothAdapter = bluetoothManager?.adapter
         scanner = bluetoothAdapter?.bluetoothLeScanner
     }

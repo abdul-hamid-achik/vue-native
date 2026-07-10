@@ -25,8 +25,9 @@ export function validateNativeBlocks(blocks: NativeBlock[]): ValidationResult {
 
     // Validate Kotlin syntax (basic)
     if (block.language === 'kotlin') {
-      const kotlinErrors = validateKotlinSyntax(block)
-      errors.push(...kotlinErrors)
+      const kotlinValidation = validateKotlinSyntax(block)
+      errors.push(...kotlinValidation.errors)
+      warnings.push(...kotlinValidation.warnings)
     }
 
     // Validate NativeModule implementation
@@ -39,6 +40,9 @@ export function validateNativeBlocks(blocks: NativeBlock[]): ValidationResult {
   }
 
   // Validate cross-platform consistency
+  const collisionErrors = validateOutputCollisions(blocks)
+  errors.push(...collisionErrors)
+
   const consistencyWarnings = validateCrossPlatformConsistency(blocks)
   warnings.push(...consistencyWarnings)
 
@@ -111,7 +115,7 @@ function validateSwiftSyntax(block: NativeBlock): ParseError[] {
 /**
  * Validate Kotlin syntax (basic checks)
  */
-function validateKotlinSyntax(block: NativeBlock): ParseError[] {
+function validateKotlinSyntax(block: NativeBlock): Pick<ValidationResult, 'errors' | 'warnings'> {
   const errors: ParseError[] = []
   const warnings: ParseError[] = []
   const { content, sourceFile } = block
@@ -141,6 +145,12 @@ function validateKotlinSyntax(block: NativeBlock): ParseError[] {
       line: block.startLine,
       message: 'Kotlin module must implement `invoke(method:args:callback)` method',
     })
+  } else if (!content.match(/(?:override\s+)?fun\s+invoke\s*\([^)]*\bbridge\s*:\s*NativeBridge[^)]*\)/s)) {
+    errors.push({
+      file: sourceFile,
+      line: block.startLine,
+      message: 'Kotlin invoke method must include `bridge: NativeBridge` to match the NativeModule interface',
+    })
   }
 
   // Check for balanced braces
@@ -165,8 +175,7 @@ function validateKotlinSyntax(block: NativeBlock): ParseError[] {
     })
   }
 
-  // Add warnings to errors array for return (they'll be separated by caller)
-  return [...errors, ...warnings]
+  return { errors, warnings }
 }
 
 /**
@@ -258,32 +267,87 @@ function extractMethodNames(block: NativeBlock): string[] {
 function validateCrossPlatformConsistency(blocks: NativeBlock[]): ParseError[] {
   const warnings: ParseError[] = []
 
-  // Group by component
-  const byComponent = new Map<string, NativeBlock[]>()
+  // Match implementations by SFC and native class. One SFC may intentionally
+  // define several unrelated modules, so grouping only by component name
+  // produces false cross-platform mismatch warnings.
+  const byImplementation = new Map<string, NativeBlock[]>()
   for (const block of blocks) {
-    const existing = byComponent.get(block.componentName) || []
+    const className = extractClassName(block.content) ?? '<unknown>'
+    const key = `${block.componentName}:${className}`
+    const existing = byImplementation.get(key) || []
     existing.push(block)
-    byComponent.set(block.componentName, existing)
+    byImplementation.set(key, existing)
   }
 
-  // Check each component has consistent module names
-  for (const [componentName, componentBlocks] of byComponent.entries()) {
-    if (componentBlocks.length > 1) {
+  // Check matching class implementations use the same runtime module name.
+  for (const implementationBlocks of byImplementation.values()) {
+    const platforms = new Set(implementationBlocks.map(block => block.platform))
+    if (platforms.size > 1) {
       const moduleNames = new Set(
-        componentBlocks.map(b => extractModuleName(b.content)),
+        implementationBlocks.map(block => extractModuleName(block.content)),
       )
 
       if (moduleNames.size > 1) {
         warnings.push({
-          file: componentBlocks[0].sourceFile,
-          line: componentBlocks[0].startLine,
-          message: `Component '${componentName}' has different module names across platforms: ${Array.from(moduleNames).join(', ')}`,
+          file: implementationBlocks[0].sourceFile,
+          line: implementationBlocks[0].startLine,
+          message: `Native class '${extractClassName(implementationBlocks[0].content) ?? 'unknown'}' has different module names across platforms: ${Array.from(moduleNames).join(', ')}`,
         })
       }
     }
   }
 
   return warnings
+}
+
+/**
+ * Reject output and registry collisions before generation. Two classes with
+ * the same platform/class name overwrite the same generated source file, and
+ * two modules with the same platform/moduleName silently overwrite one entry
+ * in NativeModuleRegistry.
+ */
+function validateOutputCollisions(blocks: NativeBlock[]): ParseError[] {
+  const errors: ParseError[] = []
+  const classes = new Map<string, NativeBlock>()
+  const modules = new Map<string, NativeBlock>()
+
+  for (const block of blocks) {
+    const className = extractClassName(block.content)
+    if (className) {
+      const classKey = `${block.platform}:${className}`
+      const existingClass = classes.get(classKey)
+      if (existingClass) {
+        errors.push({
+          file: block.sourceFile,
+          line: block.startLine,
+          message: `Duplicate ${block.platform} native class '${className}' would overwrite generated output from ${existingClass.sourceFile}`,
+        })
+      } else {
+        classes.set(classKey, block)
+      }
+    }
+
+    const moduleName = extractModuleName(block.content)
+    if (moduleName !== 'Unknown') {
+      const moduleKey = `${block.platform}:${moduleName}`
+      const existingModule = modules.get(moduleKey)
+      if (existingModule) {
+        errors.push({
+          file: block.sourceFile,
+          line: block.startLine,
+          message: `Duplicate ${block.platform} module name '${moduleName}' would overwrite the native registry entry from ${existingModule.sourceFile}`,
+        })
+      } else {
+        modules.set(moduleKey, block)
+      }
+    }
+  }
+
+  return errors
+}
+
+function extractClassName(content: string): string | undefined {
+  return content.match(/class\s+(\w+)\s*:/)?.[1]
 }
 
 /**

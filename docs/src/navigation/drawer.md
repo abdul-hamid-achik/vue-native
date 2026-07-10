@@ -27,9 +27,9 @@ const { DrawerNavigator } = createDrawerNavigator()
 <template>
   <DrawerNavigator
     :screens="[
-      { name: 'home', label: 'Home', icon: 'house', component: HomeView },
-      { name: 'settings', label: 'Settings', icon: 'gear', component: SettingsView },
-      { name: 'about', label: 'About', icon: 'info.circle', component: AboutView },
+      { name: 'home', label: 'Home', icon: '🏠', component: HomeView },
+      { name: 'settings', label: 'Settings', icon: '⚙️', component: SettingsView },
+      { name: 'about', label: 'About', icon: 'ℹ️', component: AboutView },
     ]"
     initialScreen="home"
   />
@@ -40,7 +40,7 @@ const { DrawerNavigator } = createDrawerNavigator()
 
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
-| `screens` | `DrawerScreenConfig[]` | — (required) | Ordered list of drawer screen descriptors |
+| `screens` | `DrawerScreenConfig[]` | `[]` | Ordered descriptors. May be replaced by declarative `DrawerScreen` children |
 | `drawerContent` | `Component` | `undefined` | Custom component for the drawer panel. Receives `{ screens, activeScreen, onSelect }` as props |
 | `drawerWidth` | `number` | `280` | Width of the drawer panel in points |
 | `drawerPosition` | `'left' \| 'right'` | `'left'` | Which edge the drawer slides in from |
@@ -56,7 +56,7 @@ interface DrawerScreenConfig {
   name: string
   /** Display label shown in the drawer menu */
   label?: string
-  /** Icon name rendered alongside the label */
+  /** Text glyph or emoji rendered alongside the label */
   icon?: string
   /** Vue component rendered as the screen content */
   component: Component
@@ -66,10 +66,18 @@ interface DrawerScreenConfig {
 `DrawerScreen` is a declarative config component that renders nothing on its own. Its props are read by the parent `DrawerNavigator`:
 
 ```vue
+<script setup>
+import { createDrawerNavigator } from '@thelacanians/vue-native-navigation'
+import HomeView from './views/HomeView.vue'
+import SettingsView from './views/SettingsView.vue'
+
+const { DrawerNavigator, DrawerScreen } = createDrawerNavigator()
+</script>
+
 <template>
   <DrawerNavigator>
-    <DrawerScreen name="home" label="Home" icon="house" :component="HomeView" />
-    <DrawerScreen name="settings" label="Settings" icon="gear" :component="SettingsView" />
+    <DrawerScreen name="home" label="Home" icon="🏠" :component="HomeView" />
+    <DrawerScreen name="settings" label="Settings" icon="⚙️" :component="SettingsView" />
   </DrawerNavigator>
 </template>
 ```
@@ -94,9 +102,8 @@ const { isOpen, openDrawer, closeDrawer, toggleDrawer } = useDrawer()
 ```vue
 <!-- HomeView.vue -->
 <script setup>
-import { createDrawerNavigator } from '@thelacanians/vue-native-navigation'
+import { useDrawer } from '@thelacanians/vue-native-navigation'
 
-const { useDrawer } = createDrawerNavigator()
 const { openDrawer } = useDrawer()
 </script>
 
@@ -171,8 +178,8 @@ import SettingsView from './views/SettingsView.vue'
 const { DrawerNavigator } = createDrawerNavigator()
 
 const screens = [
-  { name: 'home', label: 'Home', icon: 'house', component: HomeView },
-  { name: 'settings', label: 'Settings', icon: 'gear', component: SettingsView },
+  { name: 'home', label: 'Home', icon: '🏠', component: HomeView },
+  { name: 'settings', label: 'Settings', icon: '⚙️', component: SettingsView },
 ]
 </script>
 
@@ -200,8 +207,8 @@ const { DrawerNavigator, useDrawer } = createDrawerNavigator()
 const { toggleDrawer } = useDrawer()
 
 const screens = [
-  { name: 'home', label: 'Home', icon: 'house', component: HomeView },
-  { name: 'notifications', label: 'Notifications', icon: 'bell', component: NotificationsView },
+  { name: 'home', label: 'Home', icon: '🏠', component: HomeView },
+  { name: 'notifications', label: 'Notifications', icon: '🔔', component: NotificationsView },
 ]
 </script>
 

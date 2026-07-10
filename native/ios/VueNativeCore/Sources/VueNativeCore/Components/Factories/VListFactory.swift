@@ -173,8 +173,10 @@ private final class VListInternalDelegate: NSObject,
 
     func tableView(_ tableView: UITableView,
                    cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        let cell = tableView.dequeueReusableCell(
-            withIdentifier: "VListCell", for: indexPath) as! VListCell
+        guard let cell = tableView.dequeueReusableCell(
+            withIdentifier: "VListCell", for: indexPath) as? VListCell else {
+            return UITableViewCell(style: .default, reuseIdentifier: nil)
+        }
         guard let container = container,
               indexPath.row < container.itemViews.count else { return cell }
         cell.setItemView(container.itemViews[indexPath.row])

@@ -643,6 +643,89 @@ describe('Navigation — createRouter', () => {
       const { TabScreen } = createTabNavigator()
       expect(TabScreen).toBeDefined()
     })
+
+    it('renders declarative TabScreen children when screens is omitted', async () => {
+      const { createTabNavigator } = await import('../index')
+      const { createApp, createNativeNode } = await import('@thelacanians/vue-native-runtime')
+      const { TabNavigator, TabScreen, activeTab } = createTabNavigator()
+
+      const root = createNativeNode('__ROOT__')
+      const app = createApp({
+        render: () => h(TabNavigator, null, {
+          default: () => [
+            h(TabScreen, {
+              name: 'home',
+              label: 'Home',
+              icon: '🏠',
+              component: HomeScreen,
+            }),
+            h(TabScreen, {
+              name: 'settings',
+              label: 'Settings',
+              icon: '⚙️',
+              component: _SettingsScreen,
+              lazy: true,
+            }),
+          ],
+        }),
+      })
+
+      app.mount(root as any)
+      await nextTick()
+
+      expect(activeTab.value).toBe('home')
+      expect(mockBridge.getOpsByType('create').some(op => op.args[1] === 'VButton')).toBe(true)
+      expect(mockBridge.getOps().some(op =>
+        (op.op === 'createText' && op.args[1] === 'Home')
+        || (op.op === 'setElementText' && op.args[1] === 'Home'),
+      )).toBe(true)
+
+      const tabPresses = mockBridge.getOpsByType('addEventListener')
+        .filter(op => op.args[1] === 'press')
+      NativeBridge.handleNativeEvent(tabPresses[1].args[0], 'press', null)
+      await nextTick()
+      expect(activeTab.value).toBe('settings')
+    })
+
+    it('keeps the screens prop authoritative when declarative children are also present', async () => {
+      const { createTabNavigator } = await import('../index')
+      const { createApp, createNativeNode } = await import('@thelacanians/vue-native-runtime')
+      const { TabNavigator, TabScreen, activeTab } = createTabNavigator()
+
+      const root = createNativeNode('__ROOT__')
+      const app = createApp({
+        render: () => h(TabNavigator, {
+          screens: [{ name: 'home', component: HomeScreen }],
+        }, {
+          default: () => h(TabScreen, {
+            name: 'settings',
+            component: _SettingsScreen,
+          }),
+        }),
+      })
+
+      app.mount(root as any)
+      await nextTick()
+
+      expect(activeTab.value).toBe('home')
+    })
+
+    it('falls back to the first tab when initialTab is unknown', async () => {
+      const { createTabNavigator } = await import('../index')
+      const { createApp, createNativeNode } = await import('@thelacanians/vue-native-runtime')
+      const { TabNavigator, activeTab } = createTabNavigator()
+      const root = createNativeNode('__ROOT__')
+      const app = createApp({
+        render: () => h(TabNavigator, {
+          initialTab: 'missing',
+          screens: [{ name: 'home', component: HomeScreen }],
+        }),
+      })
+
+      app.mount(root as any)
+      await nextTick()
+      expect(activeTab.value).toBe('home')
+    })
   })
 
   // ---------------------------------------------------------------------------
@@ -673,6 +756,88 @@ describe('Navigation — createRouter', () => {
       expect(drawer.isOpen.value).toBe(true)
       drawer.toggleDrawer()
       expect(drawer.isOpen.value).toBe(false)
+    })
+
+    it('renders declarative DrawerScreen children when screens is omitted', async () => {
+      const { createDrawerNavigator } = await import('../index')
+      const { createApp, createNativeNode } = await import('@thelacanians/vue-native-runtime')
+      const { DrawerNavigator, DrawerScreen, activeScreen } = createDrawerNavigator()
+
+      const root = createNativeNode('__ROOT__')
+      const app = createApp({
+        render: () => h(DrawerNavigator, null, {
+          default: () => [
+            h(DrawerScreen, {
+              name: 'home',
+              label: 'Home',
+              icon: '🏠',
+              component: HomeScreen,
+            }),
+            h(DrawerScreen, {
+              name: 'settings',
+              label: 'Settings',
+              icon: '⚙️',
+              component: _SettingsScreen,
+            }),
+          ],
+        }),
+      })
+
+      app.mount(root as any)
+      await nextTick()
+
+      expect(activeScreen.value).toBe('home')
+      expect(mockBridge.getOpsByType('create').some(op => op.args[1] === 'VButton')).toBe(true)
+      expect(mockBridge.getOps().some(op =>
+        (op.op === 'createText' && op.args[1] === 'Home')
+        || (op.op === 'setElementText' && op.args[1] === 'Home'),
+      )).toBe(true)
+
+      const drawerPresses = mockBridge.getOpsByType('addEventListener')
+        .filter(op => op.args[1] === 'press')
+      NativeBridge.handleNativeEvent(drawerPresses[1].args[0], 'press', null)
+      await nextTick()
+      expect(activeScreen.value).toBe('settings')
+    })
+
+    it('keeps the drawer screens prop authoritative when children are also present', async () => {
+      const { createDrawerNavigator } = await import('../index')
+      const { createApp, createNativeNode } = await import('@thelacanians/vue-native-runtime')
+      const { DrawerNavigator, DrawerScreen, activeScreen } = createDrawerNavigator()
+
+      const root = createNativeNode('__ROOT__')
+      const app = createApp({
+        render: () => h(DrawerNavigator, {
+          screens: [{ name: 'home', component: HomeScreen }],
+        }, {
+          default: () => h(DrawerScreen, {
+            name: 'settings',
+            component: _SettingsScreen,
+          }),
+        }),
+      })
+
+      app.mount(root as any)
+      await nextTick()
+
+      expect(activeScreen.value).toBe('home')
+    })
+
+    it('falls back to the first drawer screen when initialScreen is unknown', async () => {
+      const { createDrawerNavigator } = await import('../index')
+      const { createApp, createNativeNode } = await import('@thelacanians/vue-native-runtime')
+      const { DrawerNavigator, activeScreen } = createDrawerNavigator()
+      const root = createNativeNode('__ROOT__')
+      const app = createApp({
+        render: () => h(DrawerNavigator, {
+          initialScreen: 'missing',
+          screens: [{ name: 'home', component: HomeScreen }],
+        }),
+      })
+
+      app.mount(root as any)
+      await nextTick()
+      expect(activeScreen.value).toBe('home')
     })
   })
 

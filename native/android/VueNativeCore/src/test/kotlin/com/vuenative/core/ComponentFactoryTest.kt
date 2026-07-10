@@ -3,6 +3,7 @@ package com.vuenative.core
 import android.content.Context
 import android.view.View
 import android.widget.CheckBox
+import android.widget.DatePicker
 import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -11,6 +12,7 @@ import android.widget.RadioButton
 import android.widget.RadioGroup
 import android.widget.SeekBar
 import android.widget.TextView
+import android.widget.TimePicker
 import androidx.appcompat.widget.SwitchCompat
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import androidx.test.core.app.ApplicationProvider
@@ -19,6 +21,7 @@ import com.google.android.flexbox.FlexboxLayout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -478,7 +481,14 @@ class ComponentFactoryTest {
         val factory = VSliderFactory()
         val view = factory.createView(context) as SeekBar
 
-        assertEquals("Default max should be 100", 100, view.max)
+        // Android uses an internal integer resolution while exposing the
+        // cross-platform 0...1 floating-point range at the bridge boundary.
+        assertEquals(
+            "Default range should end at 1",
+            1.0,
+            factory.valueForProgress(view, view.max),
+            0.0,
+        )
         assertEquals("Default progress should be 0", 0, view.progress)
     }
 
@@ -497,7 +507,48 @@ class ComponentFactoryTest {
         val view = factory.createView(context) as SeekBar
 
         factory.updateProp(view, "maximumValue", 200)
-        assertEquals(200, view.max)
+        assertEquals(200.0, factory.valueForProgress(view, view.max), 0.0)
+    }
+
+    // =========================================================================
+    // VPickerFactory
+    // =========================================================================
+
+    @Test
+    fun testVPickerFactoryUsesDateAndTimeControlsForPublicModes() {
+        val factory = VPickerFactory()
+        val view = factory.createView(context) as LinearLayout
+        val datePicker = view.getChildAt(0) as DatePicker
+        val timePicker = view.getChildAt(1) as TimePicker
+
+        assertEquals(View.VISIBLE, datePicker.visibility)
+        assertEquals(View.GONE, timePicker.visibility)
+
+        factory.updateProp(view, "mode", "time")
+        assertEquals(View.GONE, datePicker.visibility)
+        assertEquals(View.VISIBLE, timePicker.visibility)
+
+        factory.updateProp(view, "mode", "datetime")
+        assertEquals(View.VISIBLE, datePicker.visibility)
+        assertEquals(View.VISIBLE, timePicker.visibility)
+    }
+
+    @Test
+    fun testVPickerFactoryKeepsEpochMillisecondsWithoutFloatPrecisionLoss() {
+        val factory = VPickerFactory()
+        val view = factory.createView(context) as LinearLayout
+        val datePicker = view.getChildAt(0) as DatePicker
+        val timePicker = view.getChildAt(1) as TimePicker
+        val value = 1_725_043_755_000L
+        val calendar = java.util.Calendar.getInstance().apply { timeInMillis = value }
+
+        factory.updateProp(view, "value", value.toDouble())
+
+        assertEquals(calendar.get(java.util.Calendar.YEAR), datePicker.year)
+        assertEquals(calendar.get(java.util.Calendar.MONTH), datePicker.month)
+        assertEquals(calendar.get(java.util.Calendar.DAY_OF_MONTH), datePicker.dayOfMonth)
+        assertEquals(calendar.get(java.util.Calendar.HOUR_OF_DAY), timePicker.hour)
+        assertEquals(calendar.get(java.util.Calendar.MINUTE), timePicker.minute)
     }
 
     // =========================================================================
@@ -670,5 +721,110 @@ class ComponentFactoryTest {
         assertEquals(0.4f, view.alpha, 0.01f)
         assertFalse("First child should be disabled", view.getChildAt(0).isEnabled)
         assertFalse("Second child should be disabled", view.getChildAt(1).isEnabled)
+    }
+
+    // =========================================================================
+    // Factory lifecycle cleanup
+    // =========================================================================
+
+    @Test
+    fun testModalStyleTargetsVisibleContentContainer() {
+        val factory = VModalFactory()
+        val placeholder = factory.createView(context)
+        factory.updateProp(placeholder, "backgroundColor", "#ff0000")
+        val child = View(context)
+
+        factory.insertChild(placeholder, child, 0)
+
+        val container = child.parent as View
+        assertNotNull(container.background)
+        assertNull(placeholder.background)
+    }
+
+    @Test
+    fun testStatefulFactoriesReleaseViewReferencesOnDestroy() {
+        assertFactoryReleasesView(VActionSheetFactory()) { factory, view ->
+            factory.updateProp(view, "title", "Actions")
+            factory.addEventListener(view, "action") { }
+            factory.addEventListener(view, "cancel") { }
+        }
+        assertFactoryReleasesView(VAlertDialogFactory()) { factory, view ->
+            factory.updateProp(view, "title", "Alert")
+            factory.addEventListener(view, "confirm") { }
+            factory.addEventListener(view, "cancel") { }
+            factory.addEventListener(view, "action") { }
+        }
+        assertFactoryReleasesView(VCheckboxFactory()) { factory, view ->
+            factory.addEventListener(view, "change") { }
+        }
+        assertFactoryReleasesView(VDropdownFactory()) { factory, view ->
+            factory.updateProp(
+                view,
+                "options",
+                listOf(mapOf("label" to "One", "value" to "1"))
+            )
+            factory.addEventListener(view, "change") { }
+        }
+        assertFactoryReleasesView(VImageFactory()) { factory, view ->
+            factory.addEventListener(view, "load") { }
+            factory.addEventListener(view, "error") { }
+        }
+        assertFactoryReleasesView(VInputFactory()) { factory, view ->
+            factory.addEventListener(view, "change") { }
+            factory.addEventListener(view, "submit") { }
+            factory.addEventListener(view, "focus") { }
+            factory.addEventListener(view, "blur") { }
+        }
+        assertFactoryReleasesView(VRadioFactory()) { factory, view ->
+            factory.updateProp(
+                view,
+                "options",
+                listOf(mapOf("label" to "One", "value" to "1"))
+            )
+            factory.addEventListener(view, "change") { }
+        }
+        assertFactoryReleasesView(VScrollViewFactory()) { factory, view ->
+            factory.addEventListener(view, "scroll") { }
+        }
+        assertFactoryReleasesView(VSegmentedControlFactory()) { factory, view ->
+            factory.updateProp(view, "values", listOf("One", "Two"))
+            factory.addEventListener(view, "change") { }
+        }
+        assertFactoryReleasesView(VSwitchFactory()) { factory, view ->
+            factory.addEventListener(view, "change") { }
+        }
+        assertFactoryReleasesView(VVideoFactory()) { factory, view ->
+            factory.updateProp(view, "autoplay", true)
+            factory.addEventListener(view, "ready") { }
+        }
+        assertFactoryReleasesView(VWebViewFactory()) { factory, view ->
+            factory.addEventListener(view, "load") { }
+            factory.addEventListener(view, "error") { }
+            factory.addEventListener(view, "message") { }
+        }
+    }
+
+    private fun assertFactoryReleasesView(
+        factory: NativeComponentFactory,
+        configure: (NativeComponentFactory, View) -> Unit
+    ) {
+        val view = factory.createView(context)
+        configure(factory, view)
+
+        val stateMaps = factory.javaClass.declaredFields.mapNotNull { field ->
+            field.isAccessible = true
+            field.get(factory) as? Map<*, *>
+        }
+        assertTrue(
+            "${factory.javaClass.simpleName} should track the configured view before cleanup",
+            stateMaps.any { state -> state.keys.any { it === view } }
+        )
+
+        factory.destroyView(view)
+
+        assertFalse(
+            "${factory.javaClass.simpleName} retained a destroyed view",
+            stateMaps.any { state -> state.keys.any { it === view } }
+        )
     }
 }

@@ -70,13 +70,6 @@ export const generateCommand = new Command('generate')
       console.log(pc.dim('─────────────────────────────────────\n'))
 
       try {
-        // Clean if requested
-        if (options.clean) {
-          console.log(pc.yellow('🗑️  Cleaning generated files...'))
-          cleanGeneratedFiles(codegenOptions, cwd)
-          console.log(pc.green('✓ Cleaned\n'))
-        }
-
         // Parse SFCs
         console.log(pc.blue('📄 Scanning SFC files...'))
         const parseResult = parseDirectory('.', {
@@ -97,8 +90,7 @@ export const generateCommand = new Command('generate')
 
         if (blockCount === 0) {
           console.log(pc.yellow('\n⚠️  No <native> blocks found.'))
-          console.log(pc.dim('Add <native platform="ios"> or <native platform="android"> blocks to your SFC files.'))
-          return
+          console.log(pc.dim('Removing stale generated modules and writing empty registries.'))
         }
 
         // Validate native blocks
@@ -140,6 +132,17 @@ export const generateCommand = new Command('generate')
             console.log(pc.red(`  - ${err.file} ${err.message}`))
           })
           throw new ConfigError('Code generation failed')
+        }
+
+        // Replace only generator-owned files after validation has succeeded.
+        // This prunes modules removed from an SFC and guarantees the registry
+        // cannot retain references to a deleted generated class.
+        if (options.clean) {
+          console.log(pc.yellow('🗑️  Cleaning generated files...'))
+        }
+        cleanGeneratedFiles(codegenOptions, cwd)
+        if (options.clean) {
+          console.log(pc.green('✓ Cleaned\n'))
         }
 
         // Write files

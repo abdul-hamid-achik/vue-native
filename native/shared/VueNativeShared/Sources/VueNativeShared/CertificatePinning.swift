@@ -1,5 +1,6 @@
 import Foundation
 import CommonCrypto
+import Security
 
 /// Manages certificate pinning for network requests.
 /// Stores SHA-256 pin hashes per domain and provides a URLSession with
@@ -17,6 +18,7 @@ public final class CertificatePinning: NSObject, URLSessionDelegate {
     /// Maps lowercase domain to an array of base64-encoded SHA-256 hashes of the
     /// Subject Public Key Info (SPKI).
     private var pins: [String: [String]] = [:]
+    private let pinsLock = NSLock()
 
     /// A URLSession configured with this object as its delegate for TLS validation.
     /// Lazily created so we don't pay the cost if pinning is never configured.
@@ -38,6 +40,7 @@ public final class CertificatePinning: NSObject, URLSessionDelegate {
     ///
     /// - Parameter domainPins: Dictionary mapping domain names to arrays of pin strings.
     public func configurePins(_ domainPins: [String: [String]]) {
+        var normalizedPins: [String: [String]] = [:]
         for (domain, pinList) in domainPins {
             let hashes = pinList.compactMap { pin -> String? in
                 // Accept "sha256/XXXXX" format — strip the prefix
@@ -46,19 +49,34 @@ public final class CertificatePinning: NSObject, URLSessionDelegate {
                 }
                 return nil
             }
-            if !hashes.isEmpty {
-                pins[domain.lowercased()] = hashes
+            normalizedPins[domain.lowercased()] = hashes
+        }
+
+        // URLSession invokes its delegate on a background queue, while bridge
+        // calls can configure pins from another queue. Protect the shared map
+        // so a challenge cannot race a configuration update.
+        pinsLock.lock()
+        defer { pinsLock.unlock() }
+        for (domain, hashes) in normalizedPins {
+            if hashes.isEmpty {
+                pins.removeValue(forKey: domain)
+            } else {
+                pins[domain] = hashes
             }
         }
     }
 
     /// Returns true if there are pins configured for the given host.
     public func hasPins(for host: String) -> Bool {
+        pinsLock.lock()
+        defer { pinsLock.unlock() }
         return pins[host.lowercased()] != nil
     }
 
     /// Remove all configured pins.
     public func clearPins() {
+        pinsLock.lock()
+        defer { pinsLock.unlock() }
         pins.removeAll()
     }
 
@@ -78,7 +96,11 @@ public final class CertificatePinning: NSObject, URLSessionDelegate {
         let host = challenge.protectionSpace.host.lowercased()
 
         // If no pins configured for this host, use default handling
-        guard let expectedPins = pins[host] else {
+        pinsLock.lock()
+        let expectedPins = pins[host]
+        pinsLock.unlock()
+
+        guard let expectedPins else {
             completionHandler(.performDefaultHandling, nil)
             return
         }
@@ -100,7 +122,7 @@ public final class CertificatePinning: NSObject, URLSessionDelegate {
         for i in 0..<certCount {
             guard i < certChain.count else { continue }
             let certificate = certChain[i]
-            let spkiHash = sha256OfSPKI(for: certificate)
+            let spkiHash = Self.spkiHash(for: certificate)
             if expectedPins.contains(spkiHash) {
                 completionHandler(.useCredential, URLCredential(trust: serverTrust))
                 return
@@ -114,21 +136,122 @@ public final class CertificatePinning: NSObject, URLSessionDelegate {
 
     // MARK: - SPKI Hashing
 
-    /// Compute the base64-encoded SHA-256 hash of a certificate's Subject Public Key Info.
-    private func sha256OfSPKI(for certificate: SecCertificate) -> String {
-        guard let publicKey = SecCertificateCopyKey(certificate) else { return "" }
-
-        var error: Unmanaged<CFError>?
-        guard let publicKeyData = SecKeyCopyExternalRepresentation(publicKey, &error) as Data? else {
+    /// Compute the base64-encoded SHA-256 hash of the DER SubjectPublicKeyInfo
+    /// structure in a certificate. `SecKeyCopyExternalRepresentation` returns
+    /// raw key material (PKCS#1 for RSA and X9.63 for EC), not SPKI, so hashing
+    /// it is incompatible with standard `sha256/...` pins and OkHttp.
+    static func spkiHash(for certificate: SecCertificate) -> String {
+        let certificateDER = SecCertificateCopyData(certificate) as Data
+        guard let spkiDER = spkiDER(fromCertificateDER: certificateDER) else {
             return ""
         }
+        return sha256Base64(of: spkiDER)
+    }
 
-        // Hash the raw public key data with SHA-256
-        var hash = [UInt8](repeating: 0, count: Int(CC_SHA256_DIGEST_LENGTH))
-        publicKeyData.withUnsafeBytes { bytes in
-            _ = CC_SHA256(bytes.baseAddress, CC_LONG(publicKeyData.count), &hash)
+    /// Extracts the complete DER SubjectPublicKeyInfo element from an X.509
+    /// certificate. This avoids reconstructing RSA/EC algorithm headers by
+    /// hand and works for every key algorithm represented in a DER certificate.
+    static func spkiDER(fromCertificateDER certificateDER: Data) -> Data? {
+        guard let certificate = parseDERElement(in: certificateDER, at: 0, limit: certificateDER.count),
+              certificate.tag == 0x30,
+              certificate.endOffset == certificateDER.count,
+              let tbsCertificate = parseDERElement(
+                  in: certificateDER,
+                  at: certificate.contentRange.lowerBound,
+                  limit: certificate.contentRange.upperBound
+              ),
+              tbsCertificate.tag == 0x30 else {
+            return nil
         }
 
+        var cursor = tbsCertificate.contentRange.lowerBound
+        if let version = parseDERElement(
+            in: certificateDER,
+            at: cursor,
+            limit: tbsCertificate.contentRange.upperBound
+        ), version.tag == 0xA0 {
+            cursor = version.endOffset
+        }
+
+        // serialNumber, signature, issuer, validity, subject
+        for _ in 0..<5 {
+            guard let field = parseDERElement(
+                in: certificateDER,
+                at: cursor,
+                limit: tbsCertificate.contentRange.upperBound
+            ) else {
+                return nil
+            }
+            cursor = field.endOffset
+        }
+
+        guard let subjectPublicKeyInfo = parseDERElement(
+            in: certificateDER,
+            at: cursor,
+            limit: tbsCertificate.contentRange.upperBound
+        ), subjectPublicKeyInfo.tag == 0x30 else {
+            return nil
+        }
+
+        return certificateDER.subdata(in: subjectPublicKeyInfo.range)
+    }
+
+    static func sha256Base64(of data: Data) -> String {
+        var hash = [UInt8](repeating: 0, count: Int(CC_SHA256_DIGEST_LENGTH))
+        data.withUnsafeBytes { bytes in
+            _ = CC_SHA256(bytes.baseAddress, CC_LONG(bytes.count), &hash)
+        }
         return Data(hash).base64EncodedString()
+    }
+
+    private struct DERElement {
+        let tag: UInt8
+        let range: Range<Int>
+        let contentRange: Range<Int>
+
+        var endOffset: Int { range.upperBound }
+    }
+
+    /// Read a definite-length ASN.1 DER element. X.509 certificates are DER,
+    /// so indefinite lengths and encodings that exceed the enclosing sequence
+    /// are intentionally rejected.
+    private static func parseDERElement(in data: Data, at offset: Int, limit: Int) -> DERElement? {
+        guard offset >= 0, limit <= data.count, offset < limit else { return nil }
+
+        let tag = data[data.index(data.startIndex, offsetBy: offset)]
+        var cursor = offset + 1
+        guard cursor < limit else { return nil }
+
+        let firstLength = data[data.index(data.startIndex, offsetBy: cursor)]
+        cursor += 1
+
+        let length: Int
+        if firstLength & 0x80 == 0 {
+            length = Int(firstLength)
+        } else {
+            let lengthOctetCount = Int(firstLength & 0x7F)
+            guard lengthOctetCount > 0,
+                  lengthOctetCount <= MemoryLayout<Int>.size,
+                  cursor + lengthOctetCount <= limit else {
+                return nil
+            }
+
+            var parsedLength = 0
+            for _ in 0..<lengthOctetCount {
+                let octet = Int(data[data.index(data.startIndex, offsetBy: cursor)])
+                guard parsedLength <= (Int.max - octet) / 256 else { return nil }
+                parsedLength = parsedLength * 256 + octet
+                cursor += 1
+            }
+            length = parsedLength
+        }
+
+        guard length <= limit - cursor else { return nil }
+        let endOffset = cursor + length
+        return DERElement(
+            tag: tag,
+            range: offset..<endOffset,
+            contentRange: cursor..<endOffset
+        )
     }
 }

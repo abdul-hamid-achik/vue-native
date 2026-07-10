@@ -13,7 +13,7 @@ import kotlin.math.atan2
 
 class VViewFactory : NativeComponentFactory {
     override fun createView(context: Context): View {
-        return FlexboxLayout(context).apply {
+        return VueNativeFlexboxLayout(context).apply {
             flexDirection = FlexDirection.COLUMN
             layoutParams = ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,

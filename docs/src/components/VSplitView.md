@@ -190,6 +190,6 @@ function onResize(e: { positions: number[] }) {
 
 - Direct children of `VSplitView` become the arranged subviews of the underlying `NSSplitView`. Each child fills one pane.
 - `dividerPosition` sets the position of the **first** divider only. For three-pane layouts the second divider is positioned by `NSSplitView` according to each pane's natural size.
-- Do not mix AutoLayout constraints with Yoga layout inside the same `VSplitView` hierarchy. `VSplitView` manages its children through `NSSplitView`'s `addArrangedSubview` / `insertArrangedSubview` APIs and runs Yoga on each pane independently.
+- Do not mix Auto Layout constraints with Vue Native's `LayoutNode` frames inside the same `VSplitView` hierarchy. `VSplitView` manages its children through `NSSplitView`'s `addArrangedSubview` / `insertArrangedSubview` APIs, while each pane lays out its Vue Native descendants through `LayoutNode`.
 - The `@resize` event fires on every drag update, not just on release. Debounce or throttle the handler if you are persisting pane sizes to storage.
 - `dividerColor` accepts any hex string that the runtime's `NSColor.fromHex()` extension understands (e.g. `'#RGB'`, `'#RRGGBB'`, `'#RRGGBBAA'`).

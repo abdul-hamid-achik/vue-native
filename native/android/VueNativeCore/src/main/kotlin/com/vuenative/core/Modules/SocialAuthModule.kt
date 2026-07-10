@@ -3,14 +3,14 @@ package com.vuenative.core
 import android.app.Activity
 import android.content.Context
 import android.content.SharedPreferences
-import android.os.Handler
-import android.os.Looper
 import androidx.credentials.*
 import androidx.credentials.exceptions.GetCredentialCancellationException
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 
 /**
@@ -27,7 +27,7 @@ class SocialAuthModule : NativeModule {
     private var context: Context? = null
     private var bridge: NativeBridge? = null
     private var prefs: SharedPreferences? = null
-    private val mainHandler = Handler(Looper.getMainLooper())
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     override fun initialize(context: Context, bridge: NativeBridge) {
         this.context = context
@@ -85,41 +85,39 @@ class SocialAuthModule : NativeModule {
             .addCredentialOption(googleIdOption)
             .build()
 
-        mainHandler.post {
-            GlobalScope.launch(Dispatchers.Main) {
-                try {
-                    val result = credentialManager.getCredential(activity, request)
-                    val credential = result.credential
+        scope.launch {
+            try {
+                val result = credentialManager.getCredential(activity, request)
+                val credential = result.credential
 
-                    when (credential) {
-                        is CustomCredential -> {
-                            if (credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
-                                val googleCredential = GoogleIdTokenCredential.createFrom(credential.data)
-                                val userInfo = mapOf(
-                                    "userId" to googleCredential.id,
-                                    "email" to googleCredential.id,
-                                    "fullName" to (googleCredential.displayName ?: ""),
-                                    "identityToken" to googleCredential.idToken,
-                                )
+                when (credential) {
+                    is CustomCredential -> {
+                        if (credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
+                            val googleCredential = GoogleIdTokenCredential.createFrom(credential.data)
+                            val userInfo = mapOf(
+                                "userId" to googleCredential.id,
+                                "email" to googleCredential.id,
+                                "fullName" to (googleCredential.displayName ?: ""),
+                                "identityToken" to googleCredential.idToken,
+                            )
 
-                                prefs?.edit()
-                                    ?.putString("google_userId", googleCredential.id)
-                                    ?.putString("google_email", googleCredential.id)
-                                    ?.putString("google_name", googleCredential.displayName ?: "")
-                                    ?.apply()
+                            prefs?.edit()
+                                ?.putString("google_userId", googleCredential.id)
+                                ?.putString("google_email", googleCredential.id)
+                                ?.putString("google_name", googleCredential.displayName ?: "")
+                                ?.apply()
 
-                                callback(userInfo, null)
-                            } else {
-                                callback(null, "signInWithGoogle: unexpected credential type")
-                            }
+                            callback(userInfo, null)
+                        } else {
+                            callback(null, "signInWithGoogle: unexpected credential type")
                         }
-                        else -> callback(null, "signInWithGoogle: unexpected credential type")
                     }
-                } catch (e: GetCredentialCancellationException) {
-                    callback(null, "signInWithGoogle: user cancelled")
-                } catch (e: Exception) {
-                    callback(null, "signInWithGoogle: ${e.message}")
+                    else -> callback(null, "signInWithGoogle: unexpected credential type")
                 }
+            } catch (e: GetCredentialCancellationException) {
+                callback(null, "signInWithGoogle: user cancelled")
+            } catch (e: Exception) {
+                callback(null, "signInWithGoogle: ${e.message}")
             }
         }
     }
@@ -161,5 +159,12 @@ class SocialAuthModule : NativeModule {
             }
             else -> callback(null, null)
         }
+    }
+
+    override fun destroy() {
+        scope.cancel()
+        context = null
+        bridge = null
+        prefs = null
     }
 }

@@ -48,6 +48,7 @@ The following language prefixes are detected as RTL:
 |----------|---------|
 | iOS | Reads locale from `DeviceInfo` native module. |
 | Android | Reads locale from `DeviceInfo` native module. |
+| macOS | Reads locale from `DeviceInfo` native module. |
 
 ## Example
 

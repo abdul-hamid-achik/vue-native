@@ -22,7 +22,7 @@ class AnimationModule : NativeModule {
     private val mainHandler = Handler(Looper.getMainLooper())
 
     override fun initialize(context: Context, bridge: NativeBridge) {
-        this.context = context
+        this.context = context.applicationContext
         this.bridge = bridge
     }
 
@@ -33,6 +33,26 @@ class AnimationModule : NativeModule {
             "keyframe" -> handleKeyframe(args, bridge, callback)
             "sequence" -> handleSequence(args, bridge, callback)
             "parallel" -> handleParallel(args, bridge, callback)
+            "measureView" -> {
+                val nodeId = StyleEngine.toInt(args.getOrNull(0), -1)
+                val view = bridge.nodeViews[nodeId] ?: run {
+                    callback(null, "measureView: view $nodeId not found")
+                    return
+                }
+                mainHandler.post {
+                    val location = IntArray(2)
+                    view.getLocationInWindow(location)
+                    callback(
+                        mapOf(
+                            "x" to location[0],
+                            "y" to location[1],
+                            "width" to view.width,
+                            "height" to view.height,
+                        ),
+                        null,
+                    )
+                }
+            }
             "fadeIn" -> {
                 val nodeId = StyleEngine.toInt(args.getOrNull(0), -1)
                 val view = bridge.nodeViews[nodeId] ?: run {

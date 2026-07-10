@@ -13,10 +13,11 @@ const mockBridge = installMockBridge()
 
 const { NativeBridge } = await import('../bridge')
 const { resetNodeId } = await import('../node')
-const { h, ref, nextTick: vueNextTick, defineComponent } = await import('@vue/runtime-core')
+const { h, ref, nextTick: vueNextTick, defineComponent, onUnmounted } = await import('@vue/runtime-core')
 const { render } = await import('../renderer')
 const { createNativeNode } = await import('../node')
-const { createApp } = await import('../index')
+const runtimeExports = await import('../index')
+const { createApp } = runtimeExports
 const { builtInComponents } = await import('../components')
 
 describe('Integration: full Vue render cycle', () => {
@@ -24,6 +25,16 @@ describe('Integration: full Vue render cycle', () => {
     mockBridge.reset()
     NativeBridge.reset()
     resetNodeId()
+  })
+
+  it('exposes every documented framework helper from the package root', () => {
+    expect(runtimeExports.VTransition).toBe(builtInComponents.VTransition)
+    expect(runtimeExports.VTransitionGroup).toBe(builtInComponents.VTransitionGroup)
+    expect(runtimeExports.VSuspense).toBe(builtInComponents.VSuspense)
+    expect(runtimeExports.KeepAlive).toBe(builtInComponents.KeepAlive)
+    expect(runtimeExports.VErrorBoundary).toBe(runtimeExports.ErrorBoundary)
+    expect(runtimeExports.Easing).toBeDefined()
+    expect(runtimeExports.defineAsyncComponent).toBeTypeOf('function')
   })
 
   it('registers every built-in component and drawer aliases on createApp()', () => {
@@ -44,6 +55,59 @@ describe('Integration: full Vue render cycle', () => {
     } finally {
       consoleWarnSpy.mockRestore()
     }
+  })
+
+  it('mounts through Vue, cleans up on unmount, and rejects unsupported remounts', async () => {
+    const cleanup = vi.fn()
+    const app = createApp(defineComponent({
+      setup() {
+        onUnmounted(cleanup)
+        return () => h('VView')
+      },
+    }))
+
+    const root = app.start()
+    expect(app.start()).toBe(root)
+    expect((app as typeof app & { _instance: unknown | null })._instance).not.toBeNull()
+    await nextTick()
+
+    app.unmount()
+    await nextTick()
+
+    expect(cleanup).toHaveBeenCalledTimes(1)
+    expect((app as typeof app & { _instance: unknown | null })._instance).toBeNull()
+    expect(mockBridge.getOpsByType('removeChild').some(op => op.args[0] === root.id)).toBe(true)
+
+    expect(() => app.start()).toThrow('has been unmounted and cannot be restarted')
+  })
+
+  it('unmounts active apps before native hot-reload teardown resets bridge state', async () => {
+    const cleanup = vi.fn()
+    const app = createApp(defineComponent({
+      setup() {
+        onUnmounted(cleanup)
+        return () => h('VView')
+      },
+    }))
+
+    app.start()
+    await nextTick()
+
+    const teardown = (globalThis as typeof globalThis & { __VN_teardown?: () => void }).__VN_teardown
+    expect(teardown).toBeTypeOf('function')
+    teardown!()
+
+    expect(cleanup).toHaveBeenCalledTimes(1)
+    expect((app as typeof app & { _instance: unknown | null })._instance).toBeNull()
+    expect(NativeBridge.getPendingCount()).toBe(0)
+
+    expect(() => app.start()).toThrow('has been unmounted and cannot be restarted')
+
+    // Hot reload evaluates a fresh bundle and creates a fresh Vue app. The
+    // bridge/node reset must make that replacement app start cleanly.
+    const replacementApp = createApp(defineComponent({ render: () => h('VView') }))
+    expect(replacementApp.start().id).toBe(1)
+    replacementApp.unmount()
   })
 
   it('renders a simple VView with VText child', async () => {

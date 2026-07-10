@@ -45,6 +45,9 @@ open class VueNativeViewController: UIViewController {
 
     private let runtime = JSRuntime.shared
     private let bridge  = NativeBridge.shared
+    private let hostID = UUID()
+    private var lastDimensions: (width: CGFloat, height: CGFloat, scale: CGFloat)?
+    private var hasLoadedBundle = false
 
     // MARK: - Lifecycle
 
@@ -60,13 +63,48 @@ open class VueNativeViewController: UIViewController {
         // when __VN_flushOperations is registered. Calling bridge.initialize()
         // before this creates a nil-context registration that silently drops,
         // causing a white screen.
-        runtime.initialize { [weak self] in
-            guard let self else { return }
-            self.bridge.initialize(rootViewController: self)
+        runtime.initializeForHost { [weak self] in
             DispatchQueue.main.async {
+                guard let self else { return }
+                self.bridge.initialize(rootViewController: self, hostID: self.hostID)
                 self.loadBundle()
             }
         }
+    }
+
+    /// Keep useDimensions() in sync with rotation, Split View, and other
+    /// window-size changes. The bridge serializes this payload back to the JS
+    /// queue, so this method remains UI-thread-only.
+    override open func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+
+        emitDimensionsIfNeeded()
+    }
+
+    private func emitDimensionsIfNeeded() {
+
+        guard hasLoadedBundle else { return }
+        let size = view.bounds.size
+        guard size.width > 0, size.height > 0 else { return }
+        let scale = view.window?.screen.scale ?? UIScreen.main.scale
+        let dimensions = (width: size.width, height: size.height, scale: scale)
+
+        if let previous = lastDimensions,
+           previous.width == dimensions.width,
+           previous.height == dimensions.height,
+           previous.scale == dimensions.scale {
+            return
+        }
+
+        lastDimensions = dimensions
+        bridge.dispatchGlobalEvent(
+            "dimensionsChange",
+            payload: [
+                "width": dimensions.width,
+                "height": dimensions.height,
+                "scale": dimensions.scale,
+            ]
+        )
     }
 
     // MARK: - Bundle loading
@@ -76,16 +114,73 @@ open class VueNativeViewController: UIViewController {
         if let wsURL = devServerURL {
             // Connect hot reload manager; it will also do the initial HTTP fetch
             HotReloadManager.shared.connect(to: wsURL)
+            // Development builds keep their deterministic embedded fallback;
+            // an applied OTA bundle must never race the live-reload source.
+            loadEmbeddedBundle()
+            return
         }
         #endif
-        // Always load from the embedded bundle (serves as fallback in dev, sole source in release)
-        loadEmbeddedBundle()
+
+        if let otaURL = OTAModule.activeBundleURL() {
+            loadOTABundle(at: otaURL)
+        } else {
+            loadEmbeddedBundle()
+        }
+    }
+
+    private func loadOTABundle(at url: URL) {
+        runtime.loadBundle(source: .file(url: url)) { [weak self] success in
+            guard let self else { return }
+            if success {
+                DispatchQueue.main.async {
+                    self.hasLoadedBundle = true
+                    self.emitDimensionsIfNeeded()
+                }
+                NSLog("[VueNative] Loaded verified OTA bundle '%@'", url.lastPathComponent)
+                return
+            }
+
+            // The file was verified before selection but may have disappeared or
+            // become unreadable, or JavaScriptCore may reject it during
+            // evaluation. A failed bundle can already have mutated globals and
+            // queued work, so discard the entire JavaScript world before loading
+            // the embedded app-store bundle.
+            self.runtime.recreate { [weak self] in
+                guard let self else { return }
+                DispatchQueue.main.async {
+                    OTAModule.invalidateActiveBundle()
+                    self.bridge.reset()
+                    self.bridge.initialize(rootViewController: self, hostID: self.hostID)
+                    NSLog("[VueNative] OTA bundle failed to load; falling back to embedded bundle in a fresh context")
+                    self.loadEmbeddedBundle()
+                }
+            }
+        }
     }
 
     private func loadEmbeddedBundle() {
-        runtime.loadBundle(source: .embedded(name: bundleName)) { success in
+        runtime.loadBundle(source: .embedded(name: bundleName)) { [weak self] success in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.hasLoadedBundle = success
+                if success {
+                    self.view.setNeedsLayout()
+                    self.view.layoutIfNeeded()
+                    self.emitDimensionsIfNeeded()
+                }
+            }
             if !success {
-                NSLog("[VueNative] ERROR: Failed to load bundle '%@'", self.bundleName)
+                NSLog("[VueNative] ERROR: Failed to load bundle '%@'", self?.bundleName ?? "unknown")
+            }
+        }
+    }
+
+    deinit {
+        let hostID = hostID
+        Task { @MainActor in
+            let bridge = NativeBridge.shared
+            if bridge.releaseHost(hostID: hostID) {
+                JSRuntime.shared.invalidate()
             }
         }
     }

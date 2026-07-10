@@ -38,7 +38,7 @@ extension NativeComponentFactory {
     }
 
     func insertChild(_ child: NSView, into parent: NSView, before anchor: NSView?) {
-        if let anchor = anchor, let idx = parent.subviews.firstIndex(of: anchor) {
+        if let anchor = anchor, parent.subviews.contains(anchor) {
             // NSView uses addSubview(_:positioned:relativeTo:) for ordering.
             // .below places the child just before the anchor in the subview array.
             parent.addSubview(child, positioned: .below, relativeTo: anchor)

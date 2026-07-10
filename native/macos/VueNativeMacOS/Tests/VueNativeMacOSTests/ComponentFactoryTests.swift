@@ -16,6 +16,24 @@ final class ComponentFactoryTests: XCTestCase {
         return window
     }
 
+    func testVModalStyleTargetsVisibleOverlay() {
+        let factory = VModalFactory()
+        let placeholder = factory.createView()
+        factory.updateProp(view: placeholder, key: "backgroundColor", value: "#ff0000")
+        let child = FlippedView()
+
+        factory.insertChild(child, into: placeholder, before: nil)
+
+        guard let overlayColor = child.superview?.layer?.backgroundColor,
+              let color = NSColor(cgColor: overlayColor)?.usingColorSpace(.sRGB) else {
+            return XCTFail("Expected overlay background color")
+        }
+        XCTAssertEqual(color.redComponent, 1, accuracy: 0.01)
+        XCTAssertEqual(color.greenComponent, 0, accuracy: 0.01)
+        XCTAssertEqual(color.blueComponent, 0, accuracy: 0.01)
+        XCTAssertNil(placeholder.layer?.backgroundColor)
+    }
+
     func testVListFactoryAppliesPublicProps() {
         let factory = VListFactory()
         guard let container = factory.createView() as? VListContainerView else {
@@ -89,6 +107,38 @@ final class ComponentFactoryTests: XCTestCase {
         XCTAssertNil(payload["layoutMeasurement"])
     }
 
+    func testVPickerFactoryUsesTheCrossPlatformDateTimeModes() {
+        let factory = VPickerFactory()
+        guard let picker = factory.createView() as? NSDatePicker else {
+            return XCTFail("Expected NSDatePicker")
+        }
+
+        factory.updateProp(view: picker, key: "mode", value: "time")
+        XCTAssertEqual(picker.datePickerElements, [.hourMinute])
+
+        factory.updateProp(view: picker, key: "mode", value: "datetime")
+        XCTAssertEqual(picker.datePickerElements, [.yearMonthDay, .hourMinute])
+
+        factory.updateProp(view: picker, key: "mode", value: "date")
+        XCTAssertEqual(picker.datePickerElements, [.yearMonthDay])
+    }
+
+    func testVPickerFactoryUsesEpochMillisecondsAndClearsBounds() {
+        let factory = VPickerFactory()
+        guard let picker = factory.createView() as? NSDatePicker else {
+            return XCTFail("Expected NSDatePicker")
+        }
+        let milliseconds = 1_725_043_755_000.0
+
+        factory.updateProp(view: picker, key: "value", value: milliseconds)
+        XCTAssertEqual(picker.dateValue.timeIntervalSince1970 * 1000, milliseconds, accuracy: 0.001)
+
+        factory.updateProp(view: picker, key: "minimumDate", value: milliseconds - 1_000)
+        XCTAssertNotNil(picker.minDate)
+        factory.updateProp(view: picker, key: "minimumDate", value: nil)
+        XCTAssertNil(picker.minDate)
+    }
+
     func testVToolbarAttachesWhenItemsArriveBeforeWindow() {
         let factory = VToolbarFactory()
         let view = factory.createView()
@@ -151,5 +201,23 @@ final class ComponentFactoryTests: XCTestCase {
         target.perform(action, with: toolbarItem)
 
         XCTAssertEqual(payload?["id"] as? String, "new")
+    }
+
+    func testVToolbarDetachesOwnedToolbarWhenPlaceholderLeavesWindow() {
+        let factory = VToolbarFactory()
+        let view = factory.createView()
+        let window = makeWindow()
+
+        factory.updateProp(
+            view: view,
+            key: "items",
+            value: [["id": "new", "label": "New"]]
+        )
+        window.contentView?.addSubview(view)
+        XCTAssertNotNil(window.toolbar)
+
+        view.removeFromSuperview()
+
+        XCTAssertNil(window.toolbar)
     }
 }

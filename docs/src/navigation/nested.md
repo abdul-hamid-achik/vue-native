@@ -1,104 +1,78 @@
-# Nested Navigators
+# Navigator Composition
 
-You can nest navigators to build complex navigation patterns — for example, a tab navigator where each tab has its own stack, or a drawer that wraps a stack.
+Tab and drawer navigators can render other navigator components as screens. This supports layouts such as a drawer whose main screen contains tabs, or a tab that hosts the application's one stack router.
 
-## Tab + Stack
+::: warning Independent nested stacks
+The current public API does **not** provide a separate stack-router context for every tab or drawer screen. `createTabNavigator()` and `createDrawerNavigator()` take no arguments and do not accept `{ tabs }`, `{ items }`, or `{ router }` options. Configure the returned navigator through its `screens` prop or declarative `TabScreen`/`DrawerScreen` children.
+:::
 
-A common pattern is tabs at the root, with each tab owning an independent stack:
+## Drawer containing tabs
 
-```ts
-import { createRouter, createTabNavigator } from '@thelacanians/vue-native-navigation'
-
-const HomeStack = createRouter({
-  routes: [
-    { name: 'home', component: HomeScreen },
-    { name: 'detail', component: DetailScreen },
-  ],
-})
-
-const SettingsStack = createRouter({
-  routes: [
-    { name: 'settings', component: SettingsScreen },
-    { name: 'profile', component: ProfileScreen },
-  ],
-})
-
-const tabs = createTabNavigator({
-  tabs: [
-    { name: 'homeTab', router: HomeStack, label: 'Home', icon: 'house' },
-    { name: 'settingsTab', router: SettingsStack, label: 'Settings', icon: 'gear' },
-  ],
-})
-```
-
-Each tab's stack is independent — pushing a screen in the Home tab does not affect the Settings tab's stack.
-
-## Drawer + Stack
-
-Wrap a stack navigator inside a drawer:
+Create each navigator once and export the returned component and state. Importing the same instance is important: calling a factory again creates a different navigator state.
 
 ```ts
-import { createRouter, createDrawerNavigator } from '@thelacanians/vue-native-navigation'
+// navigation/tabs.ts
+import { createTabNavigator } from '@thelacanians/vue-native-navigation'
 
-const mainStack = createRouter({
-  routes: [
-    { name: 'home', component: HomeScreen },
-    { name: 'detail', component: DetailScreen },
-  ],
-})
-
-const drawer = createDrawerNavigator({
-  router: mainStack,
-  items: [
-    { name: 'home', label: 'Home', icon: 'house' },
-    { name: 'about', label: 'About', component: AboutScreen },
-  ],
-})
+export const { TabNavigator, activeTab } = createTabNavigator()
 ```
-
-## useParentRouter
-
-When inside a nested navigator, use `useParentRouter()` to access the parent router:
 
 ```vue
+<!-- TabbedHome.vue -->
 <script setup>
-import { useRouter, useParentRouter } from '@thelacanians/vue-native-navigation'
+import { TabNavigator } from './navigation/tabs'
+import FeedScreen from './pages/Feed.vue'
+import ProfileScreen from './pages/Profile.vue'
 
-const router = useRouter()          // Current (child) router
-const parent = useParentRouter()    // Parent router (e.g., tab navigator)
+const screens = [
+  { name: 'feed', label: 'Feed', icon: '🏠', component: FeedScreen },
+  { name: 'profile', label: 'Profile', icon: '👤', component: ProfileScreen },
+]
 </script>
-```
 
-This is useful when a child screen needs to switch tabs or open the drawer:
+<template>
+  <TabNavigator :screens="screens" initialTab="feed" />
+</template>
+```
 
 ```ts
-// Switch to the settings tab from within the home stack
-parent.navigate('settingsTab')
+// navigation/drawer.ts
+import { createDrawerNavigator } from '@thelacanians/vue-native-navigation'
+
+export const { DrawerNavigator, useDrawer, activeScreen } = createDrawerNavigator()
 ```
-
-## Independent Stacks
-
-Each nested router maintains its own stack independently. Navigating within one stack does not affect sibling stacks:
 
 ```vue
+<!-- App.vue -->
 <script setup>
-import { useRouter } from '@thelacanians/vue-native-navigation'
+import { DrawerNavigator } from './navigation/drawer'
+import TabbedHome from './TabbedHome.vue'
+import AboutScreen from './pages/About.vue'
 
-const router = useRouter()
-
-// This only affects the current tab's stack
-router.push('detail', { id: 42 })
+const screens = [
+  { name: 'main', label: 'Home', icon: '🏠', component: TabbedHome },
+  { name: 'about', label: 'About', icon: 'ℹ️', component: AboutScreen },
+]
 </script>
+
+<template>
+  <DrawerNavigator :screens="screens" initialScreen="main" />
+</template>
 ```
 
-When switching tabs, the previous tab's stack is preserved. Going back to a tab shows the last screen the user was on.
+This is component composition, not a parent/child stack relationship. The drawer tracks `activeScreen`; the tab navigator independently tracks `activeTab`.
 
-## Deep Linking with Nested Navigators
+## Hosting one stack inside a tab
 
-Deep links can target screens inside nested navigators using path segments:
+A `RouterView` resolves the router installed on the Vue application. You can render that one root stack inside a tab component.
 
 ```ts
-const HomeStack = createRouter({
+// navigation/router.ts
+import { createRouter } from '@thelacanians/vue-native-navigation'
+import HomeScreen from '../pages/Home.vue'
+import DetailScreen from '../pages/Detail.vue'
+
+export const router = createRouter({
   routes: [
     { name: 'home', component: HomeScreen },
     { name: 'detail', component: DetailScreen },
@@ -107,6 +81,7 @@ const HomeStack = createRouter({
     prefixes: ['myapp://'],
     config: {
       screens: {
+        home: '',
         detail: 'items/:id',
       },
     },
@@ -114,40 +89,19 @@ const HomeStack = createRouter({
 })
 ```
 
-When the app receives a deep link like `myapp://items/42`, the router will:
+```ts
+// main.ts
+import { createApp } from '@thelacanians/vue-native-runtime'
+import App from './App.vue'
+import { router } from './navigation/router'
 
-1. Switch to the tab containing `HomeStack`
-2. Push the `detail` screen with `{ id: '42' }` params
-
-## Example: Full App with Nested Navigation
+createApp(App).use(router).start()
+```
 
 ```vue
-<!-- App.vue -->
+<!-- StackHost.vue -->
 <script setup>
-import { createRouter, createTabNavigator, RouterView } from '@thelacanians/vue-native-navigation'
-import HomeScreen from './pages/Home.vue'
-import DetailScreen from './pages/Detail.vue'
-import SettingsScreen from './pages/Settings.vue'
-
-const homeStack = createRouter({
-  routes: [
-    { name: 'home', component: HomeScreen },
-    { name: 'detail', component: DetailScreen },
-  ],
-})
-
-const settingsStack = createRouter({
-  routes: [
-    { name: 'settings', component: SettingsScreen },
-  ],
-})
-
-const app = createTabNavigator({
-  tabs: [
-    { name: 'homeTab', router: homeStack, label: 'Home', icon: 'house' },
-    { name: 'settingsTab', router: settingsStack, label: 'Settings', icon: 'gear' },
-  ],
-})
+import { RouterView } from '@thelacanians/vue-native-navigation'
 </script>
 
 <template>
@@ -155,6 +109,80 @@ const app = createTabNavigator({
 </template>
 ```
 
-::: tip
-Keep nesting shallow — one or two levels deep is typical. Deeply nested navigators can make the navigation structure hard to reason about and debug.
-:::
+```vue
+<!-- App.vue -->
+<script setup>
+import { createTabNavigator } from '@thelacanians/vue-native-navigation'
+import StackHost from './StackHost.vue'
+import SettingsScreen from './pages/Settings.vue'
+
+const { TabNavigator, activeTab } = createTabNavigator()
+
+const screens = [
+  { name: 'home', label: 'Home', icon: '🏠', component: StackHost },
+  { name: 'settings', label: 'Settings', icon: '⚙️', component: SettingsScreen },
+]
+
+function showHomeStack() {
+  activeTab.value = 'home'
+}
+</script>
+
+<template>
+  <TabNavigator :screens="screens" initialTab="home" />
+</template>
+```
+
+The stack remains mounted when its tab is hidden, so its navigation history is preserved. Adding another `RouterView` to another tab would resolve the same root router; it would **not** create an independent sibling stack.
+
+## Switching containers programmatically
+
+Use the state returned by the navigator factory:
+
+```ts
+import { activeTab } from './navigation/tabs'
+import { activeScreen, useDrawer } from './navigation/drawer'
+
+activeTab.value = 'profile'
+activeScreen.value = 'about'
+
+const { openDrawer, closeDrawer } = useDrawer()
+openDrawer()
+closeDrawer()
+```
+
+Do not use `router.navigate()` to switch a tab or drawer item: those names are not stack routes.
+
+## `useParentRouter()`
+
+`useParentRouter()` returns `router.parent` when the current router has a parent, otherwise it returns the current router. Tab and drawer navigators do not currently create or provide child `RouterInstance` objects, so this composable does not switch tabs or open a drawer in the supported component API.
+
+Use `activeTab`, `activeScreen`, or the drawer state returned by the corresponding factory for those actions.
+
+## Deep links
+
+The `linking` option belongs to `createRouter()`. A root stack hosted inside a tab can handle its configured links, but the router does not automatically select the containing tab or drawer item.
+
+When your application handles a URL explicitly, select the container first and then pass the URL to the root router:
+
+```ts
+import { router } from './navigation/router'
+import { activeTab } from './navigation/tabs'
+
+export function openAppURL(url: string): boolean {
+  activeTab.value = 'home'
+  return router.handleURL(url)
+}
+```
+
+Use this helper for URLs entering through app-owned code or tests. Do not also send the same URL through the native automatic listener, or the stack may navigate twice. If you rely on the router's automatic native URL listener, keep the stack's containing tab selected by default or add equivalent application-level selection logic.
+
+## Current limitation
+
+Independent stack history per tab requires a public nested-router provider that scopes `useRouter()` and `RouterView` to a child router. That provider is not part of the current public API. Until it is, use one root stack plus tab/drawer component state, or keep each tab as a stateful screen component.
+
+## See also
+
+- [Stack navigation](./stack.md)
+- [Tab navigation](./tabs.md)
+- [Drawer navigation](./drawer.md)

@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { createJiti } from 'jiti'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -29,7 +29,7 @@ export interface VueNativeConfig {
     /** Android package name (defaults to bundleId). */
     packageName?: string
   }
-  /** List of Vue Native plugins to include. */
+  /** Reserved plugin metadata. Plugins are not installed automatically. */
   plugins?: string[]
 }
 
@@ -131,10 +131,10 @@ export async function loadConfig(cwd: string): Promise<ResolvedConfig | null> {
   if (!configPath) return null
 
   try {
-    // Dynamic import works for .mjs and .js files.
-    // For .ts files, bun and tsx handle it natively; Node needs a loader.
-    const mod = await import(pathToFileURL(configPath).href)
-    const raw = mod.default ?? mod
+    // The published CLI runs under Node, so use Jiti to support the generated
+    // TypeScript config as well as JavaScript and ESM variants.
+    const jiti = createJiti(import.meta.url)
+    const raw = await jiti.import<unknown>(configPath, { default: true })
 
     if (!validateConfig(raw)) {
       throw new ConfigError(`Invalid configuration in ${configPath}`)

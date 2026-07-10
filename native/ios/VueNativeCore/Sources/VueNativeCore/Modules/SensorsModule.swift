@@ -99,5 +99,11 @@ final class SensorsModule: NativeModule {
         motionManager.stopGyroUpdates()
         callback(nil, nil)
     }
+
+    func destroy() {
+        motionManager.stopAccelerometerUpdates()
+        motionManager.stopGyroUpdates()
+        queue.cancelAllOperations()
+    }
 }
 #endif

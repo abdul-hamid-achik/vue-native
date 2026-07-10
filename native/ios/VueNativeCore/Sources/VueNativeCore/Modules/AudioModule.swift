@@ -28,7 +28,12 @@ final class AudioModule: NSObject, NativeModule {
     private var recorder: AVAudioRecorder?
     private var displayLink: CADisplayLink?
     private var isPlaying = false
-    private var bridge: NativeBridge? { NativeBridge.shared }
+    private weak var bridge: NativeBridge?
+
+    init(bridge: NativeBridge) {
+        self.bridge = bridge
+        super.init()
+    }
 
     // MARK: - Delegate to forward completion events
     private var playerDelegate: AudioPlayerDelegate?
@@ -234,7 +239,7 @@ final class AudioModule: NSObject, NativeModule {
     }
 
     @objc private func reportProgress() {
-        guard let player = player, isPlaying else { return }
+        guard player != nil, isPlaying else { return }
         DispatchQueue.main.async { [weak self] in
             guard let self = self, let player = self.player else { return }
             self.bridge?.dispatchGlobalEvent("audio:progress", payload: [
@@ -346,6 +351,29 @@ final class AudioModule: NSObject, NativeModule {
                 status["volume"] = player.volume
             }
             callback(status, nil)
+        }
+    }
+
+    func destroy() {
+        let cleanup = {
+            self.stopProgressReporting()
+            self.player?.stop()
+            self.player?.delegate = nil
+            self.player = nil
+            self.playerDelegate = nil
+            self.recorder?.stop()
+            self.recorder = nil
+            self.isPlaying = false
+            try? AVAudioSession.sharedInstance().setActive(
+                false,
+                options: .notifyOthersOnDeactivation
+            )
+        }
+
+        if Thread.isMainThread {
+            cleanup()
+        } else {
+            DispatchQueue.main.sync(execute: cleanup)
         }
     }
 }

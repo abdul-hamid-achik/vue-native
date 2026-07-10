@@ -14,6 +14,9 @@ native/**/local.properties
 native/**/*.aar
 native/**/*.apk
 native/**/*.aab
+native/**/.DS_Store
+native/**/AGENTS.md
+native/**/src/test/
 node_modules/
 .git/
 .github/

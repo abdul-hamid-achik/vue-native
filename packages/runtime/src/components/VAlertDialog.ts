@@ -67,13 +67,15 @@ export const VAlertDialog = defineComponent({
       }
 
       return h('VAlertDialog', {
-        visible: debouncedVisible.value,
         title: props.title,
         message: props.message,
         buttons: resolvedButtons,
         onConfirm: (event: unknown) => emit('confirm', event),
         onCancel: () => emit('cancel'),
         onAction: (event: AlertActionPayload | unknown) => emit('action', event),
+        // Native factories present synchronously when this becomes true. Keep
+        // it last so content and handlers are installed before presentation.
+        visible: debouncedVisible.value,
       })
     }
   },

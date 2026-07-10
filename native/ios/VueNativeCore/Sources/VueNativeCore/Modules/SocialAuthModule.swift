@@ -226,16 +226,24 @@ final class SocialAuthModule: NSObject, NativeModule, ASAuthorizationControllerD
             queue: .main
         ) { [weak self] _ in
             UserDefaults.standard.removeObject(forKey: "vn_apple_userId")
-            self?.bridge?.dispatchGlobalEvent("auth:appleCredentialRevoked", payload: [:])
+            Task { @MainActor [weak self] in
+                self?.bridge?.dispatchGlobalEvent("auth:appleCredentialRevoked", payload: [:])
+            }
         }
     }
 
     private static var webAuthProviderKey: UInt8 = 0
 
     deinit {
+        destroy()
+    }
+
+    func destroy() {
         if let observer = credentialObserver {
             NotificationCenter.default.removeObserver(observer)
+            credentialObserver = nil
         }
+        appleSignInCallback = nil
     }
 }
 

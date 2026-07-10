@@ -207,4 +207,15 @@ class VInputFactory : NativeComponentFactory {
             }
         }
     }
+
+    override fun destroyView(view: View) {
+        val et = view as? EditText ?: return
+        textWatchers.remove(et)?.let { et.removeTextChangedListener(it) }
+        et.setOnEditorActionListener(null)
+        et.onFocusChangeListener = null
+        changeHandlers.remove(et)
+        submitHandlers.remove(et)
+        focusHandlers.remove(et)
+        blurHandlers.remove(et)
+    }
 }

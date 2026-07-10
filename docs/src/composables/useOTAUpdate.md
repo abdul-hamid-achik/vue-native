@@ -1,6 +1,6 @@
 # useOTAUpdate
 
-Over-The-Air (OTA) bundle updates for deploying new JavaScript bundles without going through app store review. Downloads new bundles from your server, verifies integrity with SHA-256, and applies them on the next app launch.
+Over-The-Air (OTA) JavaScript bundle updates for iOS and Android. Vue Native downloads a versioned bundle from your server, verifies its SHA-256 digest, and selects it on the next production app launch. OTA delivery is not a way to bypass platform rules: review the current Apple App Store and Google Play policies for dynamically downloaded code before shipping it.
 
 ## Usage
 
@@ -21,7 +21,7 @@ const {
 ```ts
 useOTAUpdate(serverUrl: string): {
   checkForUpdate: () => Promise<UpdateInfo>
-  downloadUpdate: (url?: string, hash?: string) => Promise<void>
+  downloadUpdate: (url?: string, hash?: string, version?: string) => Promise<void>
   applyUpdate: () => Promise<void>
   rollback: () => Promise<void>
   getCurrentVersion: () => Promise<VersionInfo>
@@ -56,16 +56,17 @@ Check the update server for a new bundle version. Returns the update info.
 
 #### `downloadUpdate(url?, hash?)`
 
-Download a new bundle. If `url` and `hash` are omitted, uses values from the last `checkForUpdate()` call.
+Download a new bundle. With no arguments, it uses the URL, hash, and version from the last successful `checkForUpdate()` call. All three values are required by the native contract; a direct download must provide them explicitly.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `url` | `string?` | Download URL. Defaults to `lastUpdateInfo.downloadUrl`. |
-| `hash` | `string?` | Expected SHA-256 hash. Defaults to `lastUpdateInfo.hash`. |
+| `hash` | `string?` | Expected 64-character hexadecimal SHA-256 digest. Defaults to `lastUpdateInfo.hash`. |
+| `version` | `string?` | Offered version to persist with the bundle. Defaults to `lastUpdateInfo.version`. |
 
 #### `applyUpdate()`
 
-Apply the downloaded bundle. The new bundle will be loaded on the next app launch.
+Verify and apply the downloaded bundle. Native code verifies the file again inside `applyUpdate()` so a caller cannot bypass the integrity check. The new bundle is selected on the next production app launch.
 
 #### `rollback()`
 
@@ -136,17 +137,28 @@ When no update is available:
 
 ### Bundle Hosting
 
-The `downloadUrl` should point to a JS bundle file. The bundle is the IIFE output of your Vite build. You can host it on any CDN or static file server.
+The `downloadUrl` should point to the IIFE output of your Vite build. `hash` is required and must be the lowercase or uppercase hexadecimal SHA-256 digest of those exact bytes. The runtime rejects incomplete metadata before starting a download.
 
 ## Platform Details
 
 | Aspect | iOS | Android |
 |--------|-----|---------|
-| Storage location | `Documents/VueNativeOTA/bundle.js` | `filesDir/VueNativeOTA/bundle.js` |
+| Storage location | `Application Support/VueNativeOTA/bundle-<sha256>.js` (excluded from backup) | `filesDir/VueNativeOTA/bundle-<sha256>.js` |
 | Version tracking | `UserDefaults` | `SharedPreferences` |
 | Hash verification | `CommonCrypto` SHA-256 | `java.security.MessageDigest` SHA-256 |
 | HTTP client | `URLSession` | `OkHttp` |
 | Progress events | `URLSessionDownloadDelegate` | Manual byte tracking |
+
+Content-addressed filenames keep the active and previous bundles separate, so applying a new update does not overwrite the one retained for one-step rollback. Applied state contains the path, offered version, and verified hash; incomplete state is treated as invalid.
+
+### Startup and fallback behavior
+
+- When no development server is configured, the iOS and Android base hosts resolve the applied OTA state before loading the embedded bundle.
+- The selected file must remain inside Vue Native's private OTA directory, be readable non-empty UTF-8 text, and still match its persisted SHA-256 digest.
+- Missing, moved, unreadable, tampered, or partially persisted state is cleared and the immutable embedded bundle is loaded instead.
+- If JavaScript evaluation fails, both hosts clear the applied state. Android recreates the Activity with a fresh V8 runtime; iOS clears partial timers/native state and loads the embedded bundle.
+- Development-server sessions intentionally ignore applied OTA state so live reload and OTA cannot race each other.
+- macOS does not currently register the OTA module or load OTA bundles. Do not advertise OTA support for macOS.
 
 ## Example
 
@@ -209,15 +221,19 @@ const styles = createStyleSheet({
 
 ## Security Considerations
 
-- **Always provide a SHA-256 hash** with your bundles. The native module verifies the hash before saving the bundle, preventing tampered downloads from being applied.
-- **Use HTTPS** for both the update check endpoint and the bundle download URL.
-- **Sign your bundles** on the server side and verify signatures if your app handles sensitive data.
-- The rollback mechanism ensures you can always revert to a known-good bundle if an OTA update causes issues.
+- **A SHA-256 hash is mandatory.** The bundle is checked after download, immediately before apply, and again during startup selection.
+- **A hash is integrity metadata, not a signature.** If an attacker can replace both the bundle and the update response, the hash alone does not authenticate the publisher. Vue Native does not currently include public-key bundle-signature verification.
+- **Use HTTPS for the check endpoint and bundle URL in production.** The native clients accept HTTP so local/test infrastructure can work; the framework cannot determine whether a host is production.
+- Keep update metadata and bundles behind the same authentication, authorization, rollout, and audit controls you use for a production release pipeline. Consider adding native public-key signature verification before OTA is used for high-risk applications.
+- Ship only JavaScript compatible with the native APIs in the installed app binary. An OTA bundle cannot add native permissions, entitlements, SDKs, components, or module methods.
+- SHA-256/readability validation cannot prove application semantics. Test the exact production bundle, use staged rollout, and retain an operational rollback path.
 
 ## Notes
 
-- OTA updates only change the JavaScript bundle. Native code changes still require an app store update.
+- OTA updates only change the JavaScript bundle. Native code changes still require an app-store release.
 - The new bundle is loaded on the **next app launch** after `applyUpdate()` is called. To force an immediate reload, you would need to restart the app.
-- Bundle storage uses the app's Documents directory (iOS) or internal files directory (Android), so bundles persist across app restarts.
-- The `rollback()` function keeps one previous version. If you need to roll back further, you roll back to the embedded (original app store) bundle.
+- Bundle storage uses private Application Support (iOS) or internal files storage (Android), so bundles persist across app restarts and are not exposed as user documents.
+- The `rollback()` function keeps one previous applied OTA version. If that file is missing or invalid, rollback selects the embedded app-store bundle.
 - Download progress events fire via `ota:downloadProgress` global events, which the composable listens to automatically.
+- Automatic crash watchdogs and health-based rollout decisions are not built in. Add release telemetry and server-side rollout controls before relying on OTA in production.
+- The iOS evaluation fallback currently reuses its initialized JavaScriptCore context after clearing native/polyfill state. A bundle that mutates globals before throwing may still require an app relaunch; test rollback and failed-startup behavior on devices.

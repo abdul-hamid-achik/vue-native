@@ -74,17 +74,23 @@ const tabs = [
 |------|------|---------|-------------|
 | `tabs` | TabConfig[] | - | Array of tab configurations |
 | `activeTab` | string | - | Currently active tab ID |
+| `modelValue` | string | - | Active tab ID/name for `v-model` |
 | `position` | 'top' \| 'bottom' | 'bottom' | Tab bar position |
+| `activeColor` | string | '#007AFF' | Active icon and label color |
+| `inactiveColor` | string | '#8E8E93' | Inactive icon and label color |
+| `backgroundColor` | string | '#fff' | Tab bar background color |
 
 ### TabConfig
 
 ```typescript
-interface TabConfig {
-  id: string          // Unique tab identifier
+type TabConfig = {
   label: string       // Tab label text
-  icon?: string       // Tab icon (emoji or icon name)
+  icon?: string       // Tab icon text (for example, an emoji)
   badge?: number | string // Optional badge count
-}
+} & (
+  | { id: string; name?: string }
+  | { id?: string; name: string }
+)
 ```
 
 ### Events
@@ -92,6 +98,7 @@ interface TabConfig {
 | Event | Params | Description |
 |-------|--------|-------------|
 | `change` | `tabId: string` | Emitted when tab is selected |
+| `update:modelValue` | `tabId: string` | Emitted for `v-model` updates |
 
 ---
 
@@ -212,7 +219,9 @@ function navigateTo(page) {
 | `open` | boolean | false | Whether drawer is open |
 | `position` | 'left' \| 'right' | 'left' | Drawer position |
 | `width` | number | 280 | Drawer width in pixels |
+| `overlayColor` | string | 'rgba(0,0,0,0.5)' | Backdrop color |
 | `closeOnPress` | boolean | true | Close on item press |
+| `closeOnPressOutside` | boolean | true | Close when the backdrop is pressed |
 
 #### VDrawer.Item
 
@@ -220,6 +229,7 @@ function navigateTo(page) {
 |------|------|---------|-------------|
 | `icon` | string | '' | Icon (emoji or name) |
 | `label` | string | - | Item label |
+| `active` | boolean | false | Marks the current item and exposes selected accessibility state |
 | `badge` | number \| string | null | Badge count |
 | `disabled` | boolean | false | Disabled state |
 
@@ -230,6 +240,7 @@ function navigateTo(page) {
 | Event | Params | Description |
 |-------|--------|-------------|
 | `update:open` | `open: boolean` | Emitted when open state changes |
+| `open` | - | Emitted when drawer becomes visible |
 | `close` | - | Emitted when drawer closes |
 
 #### VDrawer.Item
@@ -244,6 +255,7 @@ function navigateTo(page) {
 
 - `header` - Drawer header content
 - `default` - Drawer content (receives `close` function)
+- `footer` - Content rendered after the drawer items
 
 ---
 
@@ -408,7 +420,6 @@ Both components include built-in accessibility support:
 
 - Tab items have `role="tab"` and proper selection state
 - Drawer items have `role="menuitem"`
-- Keyboard navigation support
 - Screen reader announcements
 
 ### Custom Accessibility

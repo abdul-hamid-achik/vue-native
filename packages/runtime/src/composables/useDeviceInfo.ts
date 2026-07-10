@@ -2,13 +2,19 @@ import { ref, onMounted } from '@vue/runtime-core'
 import { NativeBridge } from '../bridge'
 
 export interface DeviceInfo {
-  model: string
-  systemVersion: string
-  systemName: string
-  name: string
-  screenWidth: number
-  screenHeight: number
-  scale: number
+  model?: string
+  systemVersion?: string
+  systemName?: string
+  name?: string
+  /** Legacy Android key retained for compatibility with older native runtimes. */
+  deviceName?: string
+  screenWidth?: number
+  screenHeight?: number
+  scale?: number
+  /** Legacy Android key retained for compatibility with older native runtimes. */
+  screenScale?: number
+  locale?: string
+  colorScheme?: 'light' | 'dark'
 }
 
 /**
@@ -36,15 +42,20 @@ export function useDeviceInfo() {
     model.value = info.model ?? ''
     systemVersion.value = info.systemVersion ?? ''
     systemName.value = info.systemName ?? ''
-    name.value = info.name ?? ''
+    // Android shipped `deviceName`/`screenScale` before the public runtime
+    // contract settled on `name`/`scale`. Accept both while native runtimes
+    // converge so applications do not silently lose device metadata.
+    name.value = info.name ?? info.deviceName ?? ''
     screenWidth.value = info.screenWidth ?? 0
     screenHeight.value = info.screenHeight ?? 0
-    scale.value = info.scale ?? 1
+    scale.value = info.scale ?? info.screenScale ?? 1
     isLoaded.value = true
   }
 
   onMounted(() => {
-    fetchInfo()
+    // DeviceInfo is optional in test, preview, and partially embedded hosts.
+    // Do not turn an unavailable module into an unhandled lifecycle rejection.
+    void fetchInfo().catch(() => undefined)
   })
 
   return {

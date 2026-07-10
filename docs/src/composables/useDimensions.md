@@ -41,8 +41,9 @@ useDimensions(): {
 
 | Platform | Support |
 |----------|---------|
-| iOS | Uses `UIScreen.main.bounds` for initial values and listens for `UIScreen` dimension change notifications. |
+| iOS | Uses `UIScreen.main.bounds` for initial values and emits updates from the Vue Native view controller during layout changes. |
 | Android | Uses `DisplayMetrics` from the `WindowManager` for initial values and listens for configuration changes. |
+| macOS | Uses `NSScreen` for initial values and emits updates when the Vue Native window is resized. |
 
 ## Example
 
@@ -77,7 +78,7 @@ const isLandscape = computed(() => width.value > height.value)
 
 ## Notes
 
-- Initial values are fetched synchronously from `DeviceInfo.getInfo()` so they are available on the first render.
+- Initial values are fetched asynchronously from `DeviceInfo.getInfo()` after mount; the refs begin as `0 × 0` at scale `1`.
 - Listens for `dimensionsChange` events from the native bridge to update values reactively.
 - Values are in logical points, not physical pixels. Multiply by `scale` to get physical pixel dimensions.
 - Automatically unsubscribes from dimension change events when the component unmounts.

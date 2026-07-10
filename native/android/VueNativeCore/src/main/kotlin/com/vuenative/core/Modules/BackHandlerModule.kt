@@ -19,6 +19,10 @@ class BackHandlerModule : NativeModule {
         fun setActivity(activity: Activity?) {
             activityRef = activity?.let { WeakReference(it) }
         }
+
+        fun clearActivity(activity: Activity) {
+            if (activityRef?.get() === activity) activityRef = null
+        }
     }
 
     override fun invoke(

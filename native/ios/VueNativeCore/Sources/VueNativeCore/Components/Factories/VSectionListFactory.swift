@@ -68,7 +68,11 @@ final class VSectionListFactory: NativeComponentFactory {
             }
             return
         }
-        container.allChildren.append(child)
+        if let anchor, let index = container.allChildren.firstIndex(where: { $0 === anchor }) {
+            container.allChildren.insert(child, at: index)
+        } else {
+            container.allChildren.append(child)
+        }
         container.rebuildSections()
         container.tableView.reloadData()
     }
@@ -152,14 +156,45 @@ final class VSectionListContainerView: UIView {
         let width = bounds.width
         guard width > 0 else { return }
 
-        // Lay out all child views for height calculation
+        // Lay out all child views for height calculation. Keep track of the
+        // rows whose measured width changed so we can refresh only affected
+        // table sections/rows; reloading the whole table from layoutSubviews
+        // can re-enter layout and is especially expensive for large lists.
+        var changedChildren = Set<ObjectIdentifier>()
         for child in allChildren {
             if abs(child.frame.size.width - width) > 0.5 {
                 child.frame.size.width = width
                 child.flex.layout(mode: .adjustHeight)
+                changedChildren.insert(ObjectIdentifier(child))
             }
         }
-        tableView.reloadData()
+
+        guard !changedChildren.isEmpty else { return }
+
+        var changedSections = IndexSet()
+        var changedRows: [IndexPath] = []
+        for (sectionIndex, section) in sections.enumerated() {
+            if let header = section.headerView,
+               changedChildren.contains(ObjectIdentifier(header)) {
+                changedSections.insert(sectionIndex)
+            }
+
+            for (rowIndex, item) in section.itemViews.enumerated()
+                where changedChildren.contains(ObjectIdentifier(item)) {
+                changedRows.append(IndexPath(row: rowIndex, section: sectionIndex))
+            }
+        }
+
+        if !changedSections.isEmpty {
+            tableView.reloadSections(changedSections, with: .none)
+        }
+
+        let rowsOutsideReloadedSections = changedRows.filter {
+            !changedSections.contains($0.section)
+        }
+        if !rowsOutsideReloadedSections.isEmpty {
+            tableView.reloadRows(at: rowsOutsideReloadedSections, with: .none)
+        }
     }
 }
 
@@ -185,8 +220,10 @@ private final class VSectionListInternalDelegate: NSObject,
 
     func tableView(_ tableView: UITableView,
                    cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        let cell = tableView.dequeueReusableCell(
-            withIdentifier: "VListCell", for: indexPath) as! VListCell
+        guard let cell = tableView.dequeueReusableCell(
+            withIdentifier: "VListCell", for: indexPath) as? VListCell else {
+            return UITableViewCell(style: .default, reuseIdentifier: nil)
+        }
         guard let container = container,
               indexPath.section < container.sections.count,
               indexPath.row < container.sections[indexPath.section].itemViews.count else { return cell }

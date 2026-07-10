@@ -132,7 +132,11 @@ class JSRuntime(private val context: Context) {
 
     /** Post work to the JS thread. */
     fun runOnJsThread(block: () -> Unit) {
-        jsHandler.post(block)
+        if (Looper.myLooper() === jsThread.looper) {
+            block()
+        } else {
+            jsHandler.post(block)
+        }
     }
 
     /** Post work to the main (UI) thread. */
@@ -209,6 +213,7 @@ class JSRuntime(private val context: Context) {
     /** Release the V8 runtime. */
     fun release() {
         jsHandler.post {
+            JSPolyfills.reset(this)
             v8?.release(true)
             v8 = null
             isInitialized = false

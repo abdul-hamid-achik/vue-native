@@ -232,10 +232,19 @@ class CustomHapticsModule: NativeModule {
 
 <native platform="android">
 // CustomHapticsModule - Advanced haptic feedback patterns
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.Build
+
 class CustomHapticsModule: NativeModule {
     override val moduleName: String = "CustomHaptics"
+    private lateinit var context: Context
 
-    override fun invoke(method: String, args: List&lt;Any&gt;, callback: (Any?, String?) -> Unit) {
+    override fun initialize(context: Context, bridge: NativeBridge) {
+        this.context = context
+    }
+
+    override fun invoke(method: String, args: List&lt;Any?&gt;, bridge: NativeBridge, callback: (Any?, String?) -> Unit) {
         when (method) {
             "vibrate" -> {
                 val style = args[0] as? String ?: "medium"
@@ -260,7 +269,12 @@ class CustomHapticsModule: NativeModule {
             "heavy" -> 40L
             else -> 20L
         }
-        vibrator.vibrate(VibrationEffect.createOneShot(duration, VibrationEffect.DEFAULT_AMPLITUDE))
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            vibrator.vibrate(VibrationEffect.createOneShot(duration, VibrationEffect.DEFAULT_AMPLITUDE))
+        } else {
+            @Suppress("DEPRECATION")
+            vibrator.vibrate(duration)
+        }
     }
 
     private fun playPattern(pattern: List&lt;Int&gt;) {
@@ -269,7 +283,12 @@ class CustomHapticsModule: NativeModule {
             pattern.forEachIndexed { index, duration ->
                 Thread.sleep(duration.toLong())
                 if (index % 2 == 0) {
-                    vibrator.vibrate(VibrationEffect.createOneShot(20, VibrationEffect.DEFAULT_AMPLITUDE))
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        vibrator.vibrate(VibrationEffect.createOneShot(20, VibrationEffect.DEFAULT_AMPLITUDE))
+                    } else {
+                        @Suppress("DEPRECATION")
+                        vibrator.vibrate(20)
+                    }
                 }
             }
         }.start()
@@ -328,7 +347,7 @@ class ImageProcessorModule: NativeModule {
 
     private var lastImage: android.graphics.Bitmap? = null
 
-    override fun invoke(method: String, args: List&lt;Any&gt;, callback: (Any?, String?) -> Unit) {
+    override fun invoke(method: String, args: List&lt;Any?&gt;, bridge: NativeBridge, callback: (Any?, String?) -> Unit) {
         when (method) {
             "applyFilter" -> {
                 val filterName = args[0] as String
@@ -412,8 +431,13 @@ class DeviceInfoModule: NativeModule {
 // DeviceInfoModule - Extended device information
 class DeviceInfoModule: NativeModule {
     override val moduleName: String = "DeviceInfo"
+    private lateinit var context: Context
 
-    override fun invoke(method: String, args: List&lt;Any&gt;, callback: (Any?, String?) -> Unit) {
+    override fun initialize(context: Context, bridge: NativeBridge) {
+        this.context = context
+    }
+
+    override fun invoke(method: String, args: List&lt;Any?&gt;, bridge: NativeBridge, callback: (Any?, String?) -> Unit) {
         when (method) {
             "getBatteryLevel" -> {
                 val batteryManager = context.getSystemService(Context.BATTERY_SERVICE) as? android.os.BatteryManager

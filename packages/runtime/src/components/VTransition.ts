@@ -1,9 +1,10 @@
 import { BaseTransition, defineComponent, h, ref, type VNode, type PropType } from '@vue/runtime-core'
-import { useAnimation, Easing } from '../composables/useAnimation'
+import { useAnimation, Easing, type EasingType } from '../composables/useAnimation'
 
 export type TransitionMode = 'in-out' | 'out-in' | 'default'
 
 export interface TransitionProps {
+  show?: boolean
   name?: string
   appear?: boolean
   persist?: boolean
@@ -22,6 +23,11 @@ export interface TransitionProps {
   appearActiveClass?: string
   appearToClass?: string
   duration?: number | { enter: number, leave: number, appear?: number }
+  enterFrom?: Record<string, unknown>
+  enterTo?: Record<string, unknown>
+  leaveFrom?: Record<string, unknown>
+  leaveTo?: Record<string, unknown>
+  easing?: EasingType
 }
 
 const DefaultDuration = 300
@@ -49,7 +55,9 @@ function resolveTransitionTarget(el: unknown): number | undefined {
 
 export const VTransition = defineComponent({
   name: 'VTransition',
+  inheritAttrs: false,
   props: {
+    show: { type: Boolean, default: true },
     name: { type: String, default: '' },
     appear: { type: Boolean, default: false },
     persist: { type: Boolean, default: false },
@@ -68,16 +76,48 @@ export const VTransition = defineComponent({
     appearActiveClass: { type: String, default: '' },
     appearToClass: { type: String, default: '' },
     duration: [Number, Object] as PropType<number | { enter: number, leave: number, appear?: number }>,
+    enterFrom: Object as PropType<Record<string, unknown>>,
+    enterTo: Object as PropType<Record<string, unknown>>,
+    leaveFrom: Object as PropType<Record<string, unknown>>,
+    leaveTo: Object as PropType<Record<string, unknown>>,
+    easing: { type: String as PropType<EasingType>, default: 'ease' },
   },
-  setup(transitionProps, { slots, expose }) {
+  setup(transitionProps, { slots, expose, attrs }) {
     const { timing } = useAnimation()
     const isAppearing = ref(false)
     const isLeaving = ref(false)
     const hasEntered = ref(!transitionProps.appear)
 
+    function presetStyles() {
+      if (transitionProps.name === 'slide') {
+        return {
+          enterFrom: { opacity: 0, translateX: -30 },
+          enterTo: { opacity: 1, translateX: 0 },
+          leaveFrom: { opacity: 1, translateX: 0 },
+          leaveTo: { opacity: 0, translateX: -30 },
+        }
+      }
+
+      return {
+        enterFrom: { opacity: 0 },
+        enterTo: { opacity: 1 },
+        leaveFrom: { opacity: 1 },
+        leaveTo: { opacity: 0 },
+      }
+    }
+
+    function callListener(name: string, ...args: unknown[]) {
+      const listener = attrs[name]
+      if (Array.isArray(listener)) {
+        listener.forEach(fn => typeof fn === 'function' && fn(...args))
+      } else if (typeof listener === 'function') {
+        listener(...args)
+      }
+    }
+
     async function doEnter(el: unknown) {
       const viewId = resolveTransitionTarget(el)
-      if (!viewId) return
+      if (viewId == null) return
 
       isAppearing.value = true
 
@@ -85,11 +125,16 @@ export const VTransition = defineComponent({
         ? (transitionProps.duration.enter ?? DefaultDuration)
         : (transitionProps.duration ?? DefaultDuration)
 
-      const enterStyles: Record<string, number> = { opacity: 1 }
+      const presets = presetStyles()
+      const enterFrom = transitionProps.enterFrom ?? presets.enterFrom
+      const enterTo = transitionProps.enterTo ?? presets.enterTo
 
       try {
-        await timing(viewId, { opacity: 0 }, { duration: 0 })
-        await timing(viewId, enterStyles, { duration: enterDuration, easing: 'easeOut' })
+        await timing(viewId, enterFrom, { duration: 0 })
+        await timing(viewId, enterTo, {
+          duration: enterDuration,
+          easing: transitionProps.easing,
+        })
         isAppearing.value = false
         hasEntered.value = true
       } catch (e) {
@@ -101,7 +146,7 @@ export const VTransition = defineComponent({
 
     async function doLeave(el: unknown) {
       const viewId = resolveTransitionTarget(el)
-      if (!viewId) return
+      if (viewId == null) return
 
       isLeaving.value = true
 
@@ -110,7 +155,12 @@ export const VTransition = defineComponent({
         : (transitionProps.duration ?? DefaultDuration)
 
       try {
-        await timing(viewId, { opacity: 0 }, { duration: leaveDuration, easing: 'easeIn' })
+        const presets = presetStyles()
+        await timing(viewId, transitionProps.leaveFrom ?? presets.leaveFrom, { duration: 0 })
+        await timing(viewId, transitionProps.leaveTo ?? presets.leaveTo, {
+          duration: leaveDuration,
+          easing: transitionProps.easing,
+        })
       } catch (e) {
         console.warn('[VueNative Transition] leave animation failed:', e)
       } finally {
@@ -118,45 +168,52 @@ export const VTransition = defineComponent({
       }
     }
 
-    function onEnter(_el: unknown, done: () => void) {
-      if (!hasEntered.value || transitionProps.appear) {
-        doEnter(_el).then(() => done())
-      } else {
-        done()
-      }
+    function onBeforeEnter(el: unknown) {
+      callListener('onBeforeEnter', el)
+    }
+
+    function onEnter(el: unknown, done: () => void) {
+      callListener('onEnter', el)
+      doEnter(el).then(() => done())
     }
 
     function onLeave(el: unknown, done: () => void) {
+      callListener('onLeave', el)
       doLeave(el).then(() => done())
     }
 
     function onAfterEnter() {
-      // Post-enter callback hook
+      callListener('onAfterEnter')
     }
 
     function onAfterLeave() {
-      // Post-leave callback hook
+      callListener('onAfterLeave')
     }
 
     function onEnterCancelled() {
       isAppearing.value = false
+      callListener('onEnterCancelled')
     }
 
     function onLeaveCancelled() {
       isLeaving.value = false
+      callListener('onLeaveCancelled')
     }
 
     function onAppear(el: unknown, done: () => void) {
       isAppearing.value = true
+      callListener('onAppear', el)
       doEnter(el).then(() => done())
     }
 
     function onAfterAppear() {
       isAppearing.value = false
+      callListener('onAfterAppear')
     }
 
     expose({
       onEnter,
+      onBeforeEnter,
       onLeave,
       onAfterEnter,
       onAfterLeave,
@@ -170,35 +227,16 @@ export const VTransition = defineComponent({
     })
 
     return () => {
-      const children = slots.default?.() ?? []
-      const hasDefault = children.length > 0
-
-      if (!hasDefault) {
-        return null
-      }
-
-      let finalChildren = children
-
-      if (transitionProps.mode === 'out-in') {
-        if (isLeaving.value) {
-          finalChildren = [children[children.length - 1]]
-        } else if (!hasEntered.value) {
-          finalChildren = []
-        }
-      }
-
-      if (transitionProps.mode === 'in-out') {
-        if (isAppearing.value && children.length > 1) {
-          finalChildren = [children[0]]
-        }
-      }
+      const finalChildren = transitionProps.show ? (slots.default?.() ?? []) : []
 
       return h(BaseTransition, {
         name: transitionProps.name || 'v',
         appear: transitionProps.appear,
         persist: transitionProps.persist || transitionProps.name === 'persist',
+        mode: transitionProps.mode === 'default' ? undefined : transitionProps.mode,
         css: transitionProps.css,
         type: transitionProps.type,
+        onBeforeEnter,
         onEnter,
         onLeave,
         onAfterEnter,
@@ -231,13 +269,13 @@ export const VTransitionGroup = defineComponent({
 
     function onBeforeEnter(el: unknown) {
       const viewId = resolveTransitionTarget(el)
-      if (!viewId) return
+      if (viewId == null) return
       timing(viewId, { opacity: 0 }, { duration: 0 }).catch(() => {})
     }
 
     function onEnter(el: unknown, done: () => void) {
       const viewId = resolveTransitionTarget(el)
-      if (!viewId) {
+      if (viewId == null) {
         done()
         return
       }
@@ -249,7 +287,7 @@ export const VTransitionGroup = defineComponent({
 
     function onLeave(el: unknown, done: () => void) {
       const viewId = resolveTransitionTarget(el)
-      if (!viewId) {
+      if (viewId == null) {
         done()
         return
       }

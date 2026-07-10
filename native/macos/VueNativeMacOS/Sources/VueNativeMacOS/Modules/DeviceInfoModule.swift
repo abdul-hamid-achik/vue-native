@@ -4,14 +4,15 @@ import VueNativeShared
 /// Native module providing device and screen information for macOS.
 ///
 /// Methods:
-///   - getInfo() -> { platform, systemName, systemVersion, model, name, screenWidth, screenHeight, scale }
+///   - getInfo()/getDeviceInfo() -> { platform, systemName, systemVersion,
+///     model, name, locale, colorScheme, screenWidth, screenHeight, scale }
 final class DeviceInfoModule: NativeModule {
     let moduleName = "DeviceInfo"
 
     func invoke(method: String, args: [Any], callback: @escaping (Any?, String?) -> Void) {
         DispatchQueue.main.async {
             switch method {
-            case "getInfo":
+            case "getInfo", "getDeviceInfo":
                 let processInfo = ProcessInfo.processInfo
                 let version = processInfo.operatingSystemVersion
 
@@ -27,6 +28,9 @@ final class DeviceInfoModule: NativeModule {
                 let screenWidth = screen?.frame.width ?? 0
                 let screenHeight = screen?.frame.height ?? 0
                 let scale = screen?.backingScaleFactor ?? 1.0
+                let colorScheme = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+                    ? "dark"
+                    : "light"
 
                 let info: [String: Any] = [
                     "platform": "macos",
@@ -35,6 +39,8 @@ final class DeviceInfoModule: NativeModule {
                     "model": machine,
                     "name": Host.current().localizedName ?? "Mac",
                     "isSimulator": false,
+                    "locale": Locale.current.identifier,
+                    "colorScheme": colorScheme,
                     "screenWidth": screenWidth,
                     "screenHeight": screenHeight,
                     "scale": scale,

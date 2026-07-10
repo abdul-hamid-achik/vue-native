@@ -20,7 +20,8 @@
 - Swift 6.0+ toolchain
 
 ### Shared
-- Node.js 18+ or [Bun](https://bun.sh)
+- [Bun](https://bun.sh) 1.3+ (required by the CLI build workflow)
+- Node.js 20.19+ only when using npm/npx instead of `bunx`
 
 For full platform setup instructions (emulator/simulator configuration, environment variables, etc.), see the [iOS Setup](/ios/setup.md), [Android Setup](/android/setup.md), and [macOS Setup](/macos/setup) guides.
 

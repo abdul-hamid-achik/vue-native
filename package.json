@@ -5,7 +5,8 @@
   "workspaces": [
     "packages/*",
     "examples/*",
-    "docs"
+    "docs",
+    "tools/*"
   ],
   "scripts": {
     "build": "turbo run build",
@@ -18,10 +19,15 @@
     "test:e2e:android": "maestro test .maestro/flows --env DEVICE=android",
     "typecheck": "turbo run typecheck",
     "clean": "turbo run clean",
-    "lint": "bunx eslint .",
-    "lint:fix": "bunx eslint . --fix",
-    "knip": "bunx knip",
-    "prepare": "bunx lefthook install",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "lint:staged": "eslint --no-warn-ignored",
+    "knip": "knip --treat-config-hints-as-errors",
+    "contracts:check": "bun scripts/check-native-contracts.mjs",
+    "smoke:cli": "bun scripts/smoke-cli-scaffold.mjs",
+    "hooks:validate": "lefthook validate",
+    "check:ts": "bun run lint && bun run typecheck && bun run contracts:check && bun run build && bun run smoke:cli && bun run test:ts && bun run knip && bun run hooks:validate",
+    "prepare": "lefthook install",
     "version": "changeset version",
     "release": "changeset publish",
     "version:check": "changeset status",

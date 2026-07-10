@@ -46,6 +46,34 @@ public final class JSRuntime: @unchecked Sendable {
 
     private init() {}
 
+    private func installFreshContext() {
+        dispatchPrecondition(condition: .onQueue(jsQueue))
+
+        context = JSContext()
+        context.exceptionHandler = { [weak self] _, exception in
+            guard let exception else { return }
+            let message = exception.toString() ?? "Unknown JS error"
+            let line = exception.objectForKeyedSubscript("line")?.toInt32() ?? 0
+            let column = exception.objectForKeyedSubscript("column")?.toInt32() ?? 0
+            let stack = exception.objectForKeyedSubscript("stack")?.toString() ?? ""
+            NSLog("[VueNative macOS JS Error] \(message) at line \(line):\(column)")
+            if !stack.isEmpty {
+                NSLog("[VueNative macOS JS Stack] \(stack)")
+            }
+            #if DEBUG
+            let fullMessage = stack.isEmpty ? message : "\(message)\n\n\(stack)"
+            Task { @MainActor in
+                ErrorOverlayView.show(error: fullMessage)
+            }
+            #endif
+            _ = self
+        }
+
+        context.evaluateScript("var globalThis = this;")
+        JSPolyfills.register(in: self)
+        isInitialized = true
+    }
+
     /// Initialize the JS runtime. Creates the JSContext on the JS queue,
     /// configures exception handling, and registers polyfills.
     /// Must be called before any other method.
@@ -57,31 +85,26 @@ public final class JSRuntime: @unchecked Sendable {
                 return
             }
 
-            self.context = JSContext()
+            self.installFreshContext()
+            completion?()
+        }
+    }
 
-            self.context.exceptionHandler = { [weak self] context, exception in
-                guard let exception = exception else { return }
-                let message = exception.toString() ?? "Unknown JS error"
-                let line = exception.objectForKeyedSubscript("line")?.toInt32() ?? 0
-                let column = exception.objectForKeyedSubscript("column")?.toInt32() ?? 0
-                let stack = exception.objectForKeyedSubscript("stack")?.toString() ?? ""
-                NSLog("[VueNative macOS JS Error] \(message) at line \(line):\(column)")
-                if !stack.isEmpty {
-                    NSLog("[VueNative macOS JS Stack] \(stack)")
+    /// Install a clean JavaScript world for a new window host.
+    public func initializeForHost(completion: (() -> Void)? = nil) {
+        jsQueue.async { [weak self] in
+            guard let self else { return }
+
+            if self.isInitialized {
+                if let teardown = self.context?.objectForKeyedSubscript("__VN_teardown"),
+                   !teardown.isUndefined {
+                    teardown.call(withArguments: [])
+                    self.context?.evaluateScript("void 0;")
                 }
-                #if DEBUG
-                let fullMessage = stack.isEmpty ? message : "\(message)\n\n\(stack)"
-                ErrorOverlayView.show(error: fullMessage)
-                #endif
-                _ = self
+                JSPolyfills.reset()
             }
 
-            self.context.evaluateScript("var globalThis = this;")
-
-            // Register polyfills
-            JSPolyfills.register(in: self)
-
-            self.isInitialized = true
+            self.installFreshContext()
             completion?()
         }
     }
@@ -285,7 +308,12 @@ public final class JSRuntime: @unchecked Sendable {
     // MARK: - Hot Reload
 
     /// Reload the runtime with a new JavaScript bundle string.
-    public func reload(bundle: String, completion: ((Bool) -> Void)? = nil) {
+    public func reload(
+        bundle: String,
+        teardownOldContext: Bool = true,
+        prepareContext: ((JSContext) -> Void)? = nil,
+        completion: ((Bool) -> Void)? = nil
+    ) {
         jsQueue.async { [weak self] in
             guard let self = self else {
                 completion?(false)
@@ -294,7 +322,8 @@ public final class JSRuntime: @unchecked Sendable {
 
             NSLog("[VueNative macOS] Hot reload: tearing down old context...")
 
-            if let teardown = self.context?.objectForKeyedSubscript("__VN_teardown"),
+            if teardownOldContext,
+               let teardown = self.context?.objectForKeyedSubscript("__VN_teardown"),
                !teardown.isUndefined {
                 teardown.call(withArguments: [])
                 self.context?.evaluateScript("void 0;")
@@ -302,22 +331,8 @@ public final class JSRuntime: @unchecked Sendable {
 
             JSPolyfills.reset()
 
-            self.context = JSContext()
-            self.context.exceptionHandler = { [weak self] _, exception in
-                guard let exception = exception else { return }
-                let message = exception.toString() ?? "Unknown JS error"
-                let line = exception.objectForKeyedSubscript("line")?.toInt32() ?? 0
-                let stack = exception.objectForKeyedSubscript("stack")?.toString() ?? ""
-                NSLog("[VueNative macOS JS Error] \(message) at line \(line)")
-                #if DEBUG
-                let fullMessage = stack.isEmpty ? message : "\(message)\n\n\(stack)"
-                ErrorOverlayView.show(error: fullMessage)
-                #endif
-                _ = self
-            }
-
-            self.context.evaluateScript("var globalThis = this;")
-            JSPolyfills.register(in: self)
+            self.installFreshContext()
+            prepareContext?(self.context)
 
             NSLog("[VueNative macOS] Hot reload: evaluating new bundle (\(bundle.count) bytes)...")
             self.context.evaluateScript(bundle)

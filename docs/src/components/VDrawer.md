@@ -47,15 +47,16 @@ const isOpen = ref(false)
 | `position` | `'left' \| 'right'` | `'left'` | Which side the drawer slides in from |
 | `width` | `number` | `280` | Width of the drawer panel in points |
 | `overlayColor` | `string` | `'rgba(0,0,0,0.5)'` | Color of the backdrop overlay |
-| `closeOnPressOutside` | `boolean` | `true` | Whether tapping the overlay closes the drawer |
+| `closeOnPress` | `boolean` | `true` | Whether pressing a drawer item closes the drawer |
+| `closeOnPressOutside` | `boolean` | `true` | Whether pressing the overlay closes the drawer |
 
 ## Events
 
 | Event | Payload | Description |
 |-------|---------|-------------|
 | `update:open` | `boolean` | Emitted when drawer visibility changes |
-| `open` | — | Emitted when drawer finishes opening |
-| `close` | — | Emitted when drawer finishes closing |
+| `open` | — | Emitted when the drawer becomes visible |
+| `close` | — | Emitted when the drawer becomes hidden |
 
 ## Slots
 
@@ -77,9 +78,20 @@ Individual menu items within the drawer.
 | `label` | `string` | — | Display text |
 | `active` | `boolean` | `false` | Whether this item is currently selected |
 | `badge` | `string \| number` | — | Optional badge text/number |
+| `disabled` | `boolean` | `false` | Prevents the item from being pressed |
 
 ### Events
 
 | Event | Payload | Description |
 |-------|---------|-------------|
 | `press` | — | Emitted when the item is tapped |
+
+## VDrawer.Section
+
+Groups drawer content under an optional heading.
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `title` | `string` | `''` | Section heading |
+
+The default slot contains the section items.

@@ -12,7 +12,7 @@ Vue Component (SFC)
   NativeBridge (TypeScript)
       ↓  JSON batch via queueMicrotask
       ├── iOS:     Swift → UIKit   → Yoga layout
-      ├── macOS:   Swift → AppKit  → Yoga layout
+      ├── macOS:   Swift → AppKit  → LayoutNode flexbox
       └── Android: Kotlin → Android Views → FlexboxLayout
 ```
 

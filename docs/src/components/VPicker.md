@@ -1,6 +1,8 @@
 # VPicker
 
-A date and time picker component. Maps to `UIDatePicker` on iOS and `DatePicker` on Android.
+A date and time picker component. It maps to `UIDatePicker` on iOS,
+composed `DatePicker`/`TimePicker` controls on Android, and `NSDatePicker` on
+macOS.
 
 ## Usage
 
@@ -106,3 +108,4 @@ const selectedTime = ref(Date.now())
 - All date/time values are in epoch milliseconds (JavaScript `Date.now()` format). Convert with `new Date(value)` for display.
 - On iOS, the picker uses the compact style (`UIDatePicker.preferredDatePickerStyle = .compact`) on iOS 14+.
 - The `minuteInterval` must be a divisor of 60 (e.g. 1, 2, 3, 4, 5, 6, 10, 12, 15, 20, 30).
+- In Android `time` mode, `minimumDate` and `maximumDate` cannot be enforced because the platform time control has no date selector. Use those bounds with `date` or `datetime` mode.

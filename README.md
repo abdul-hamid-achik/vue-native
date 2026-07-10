@@ -18,19 +18,23 @@ Build native iOS, Android, and macOS apps with Vue 3. Write Vue components, rend
 
 | Feature | iOS | Android | macOS |
 |---------|-----|---------|-------|
-| All 28+ components | ✅ | ✅ | ✅ |
-| Native Modules | ✅ | ✅ | ✅ |
+| Core component set | ✅ | ✅ | ✅ |
+| Desktop-only components (`VToolbar`, `VSplitView`, `VOutlineView`) | — | — | ✅ |
+| Native modules | Platform-specific | Platform-specific | Platform-specific |
 | Navigation | ✅ | ✅ | ✅ |
 | Hot Reload | ✅ | ✅ | ✅ |
 | Dark Mode | ✅ | ✅ | ✅ |
 | JS Engine | JavaScriptCore | V8 (J2V8) | JavaScriptCore |
 | Layout | Yoga/FlexLayout | FlexboxLayout | LayoutNode |
 
+Component and module support is documented on each API page. Check platform notes before depending on device hardware, permissions, or desktop-only UI.
+
 ## Requirements
 
 ### iOS
 - iOS 16.0+
 - Xcode 15+
+- XcodeGen (`brew install xcodegen`)
 - Swift 5.9+
 
 ### Android
@@ -44,15 +48,17 @@ Build native iOS, Android, and macOS apps with Vue 3. Write Vue components, rend
 - Swift 6.0+ toolchain
 
 ### Shared
-- Node.js 18+ / Bun
+- Bun 1.3+ (the CLI invokes Bun for Vite builds)
+- Node.js 20.19+ only when using npm/npx instead of `bunx`
 
 ## Quick Start
 
 ### Create a new project
 
 ```bash
-npx @thelacanians/vue-native-cli create my-app
+bunx @thelacanians/vue-native-cli create my-app
 cd my-app
+bun install
 ```
 
 ### Project structure
@@ -63,11 +69,12 @@ my-app/
 │   ├── main.ts        # Entry point
 │   ├── App.vue        # Root component
 │   └── views/         # Screen components
-├── ios/               # Xcode project
-│   ├── AppDelegate.swift
-│   └── SceneDelegate.swift
+├── ios/               # XcodeGen project spec + app host
+│   ├── project.yml
+│   └── Sources/
 ├── android/           # Android Gradle project
 │   └── app/
+├── native/            # Bundled local iOS/Android runtime sources
 ├── dist/              # Built JS bundle (auto-generated)
 └── vite.config.ts
 ```
@@ -104,8 +111,9 @@ const styles = createStyleSheet({
 ### Start development
 
 ```bash
-bun run dev      # Start Vite watch mode + dev server
-# Open ios/ in Xcode or android/ in Android Studio and run on simulator/emulator
+bun run dev                  # Start Vite watch mode + dev server
+bunx vue-native run ios      # Generate/build and launch iOS
+bunx vue-native run android  # Build and launch Android
 ```
 
 macOS runtime support is available through `VueNativeMacOS`; the CLI can run an existing macOS Xcode project, but `vue-native create` does not scaffold the macOS app shell yet.
@@ -129,21 +137,21 @@ macOS runtime support is available through `VueNativeMacOS`; the CLI can run an 
 ### Interactive
 | Component | Description |
 |-----------|-------------|
-| `<VButton>` | Pressable view with `@press` and `@longPress` events |
+| `<VButton>` | Pressable view with `@press` and `@long-press` events |
 | `<VSwitch>` | Toggle switch. Supports `v-model` |
-| `<VSlider>` | Range slider. Supports `v-model`, `minimumValue`, `maximumValue` |
+| `<VSlider>` | Range slider. Supports `v-model`, `min`, and `max` |
 | `<VSegmentedControl>` | Tab strip selector |
 
 ### Media
 | Component | Description |
 |-----------|-------------|
-| `<VImage>` | Async image loading with caching. `source={{ uri: 'https://...' }}` |
-| `<VWebView>` | Embedded WKWebView. `source={{ uri: '...' }}` or `source={{ html: '...' }}` |
+| `<VImage>` | Async image loading with caching. `:source="{ uri: 'https://...' }"` |
+| `<VWebView>` | Embedded web view. `:source="{ uri: '...' }"` or `:source="{ html: '...' }"` |
 
 ### Lists
 | Component | Description |
 |-----------|-------------|
-| `<VList>` | Virtualized list backed by UITableView. Efficient for large datasets |
+| `<VList>` | Virtualized native list. Efficient for large datasets |
 
 ### Feedback
 | Component | Description |
@@ -230,7 +238,7 @@ const http = useHttp({ baseURL: 'https://api.example.com' })
 ```typescript
 import { createRouter, RouterView, useRouter, useRoute } from '@thelacanians/vue-native-navigation'
 
-const { router } = createRouter([
+const router = createRouter([
   { name: 'home', component: HomeView },
   { name: 'detail', component: DetailView },
 ])

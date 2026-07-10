@@ -137,5 +137,21 @@ final class PerformanceModule: NSObject, NativeModule {
         }
         return 0
     }
+
+    func destroy() {
+        let cleanup = {
+            self.isProfiling = false
+            self.displayLink?.invalidate()
+            self.displayLink = nil
+            self.metricsTimer?.invalidate()
+            self.metricsTimer = nil
+        }
+
+        if Thread.isMainThread {
+            cleanup()
+        } else {
+            DispatchQueue.main.sync(execute: cleanup)
+        }
+    }
 }
 #endif

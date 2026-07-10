@@ -6,22 +6,54 @@
  * to validate the resolved configuration without needing a real Vite build.
  */
 import { describe, it, expect } from 'vitest'
+import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { build } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import vueNativePlugin from '../index'
+import type { ConfigEnv, UserConfig } from 'vite'
 import type { VueNativePluginOptions } from '../index'
+
+interface TestPluginConfig {
+  resolve: {
+    // Tests exercise both Vite-supported alias representations. The
+    // intersection keeps property and array assertions type-safe here.
+    alias: Record<string, string> & Array<{ find: string | RegExp, replacement: string }>
+  }
+  define: Record<string, string>
+  build: {
+    target: string
+    lib: {
+      entry: string
+      formats: string[]
+      name: string
+      fileName: () => string
+    }
+    rollupOptions: {
+      output: {
+        inlineDynamicImports?: boolean
+        manualChunks?: unknown
+      }
+    }
+    minify: false | 'esbuild'
+    sourcemap: boolean
+    emptyOutDir: boolean
+  }
+}
 
 // Helper: invoke the plugin's config hook and return the result.
 function getPluginConfig(
   pluginOptions?: VueNativePluginOptions,
-  env: { mode: string, command?: string } = { mode: 'production' },
-  userConfig: Record<string, any> = {},
-) {
+  env: { mode: string, command?: ConfigEnv['command'] } = { mode: 'production' },
+  userConfig: UserConfig = {},
+): TestPluginConfig {
   const plugin = vueNativePlugin(pluginOptions)
-  return plugin.config(userConfig, env as { mode: string })
+  return plugin.config(userConfig, {
+    command: env.command ?? 'build',
+    mode: env.mode,
+  }) as TestPluginConfig
 }
 
 // ---------------------------------------------------------------------------
@@ -43,6 +75,96 @@ describe('Plugin creation', () => {
     const plugin = vueNativePlugin()
     expect(plugin.config).toBeDefined()
     expect(typeof plugin.config).toBe('function')
+  })
+})
+
+describe('Native codegen cleanup', () => {
+  it('does not create a native tree when no native blocks or generated artifacts exist', async () => {
+    const root = await mkdtemp(join(process.cwd(), 'tmp-vue-native-codegen-'))
+
+    try {
+      await mkdir(join(root, 'app'), { recursive: true })
+      await writeFile(join(root, 'app', 'App.vue'), '<template><VView /></template>')
+
+      const plugin = vueNativePlugin()
+      await plugin.configResolved?.({ root } as any)
+
+      expect(existsSync(join(root, 'native'))).toBe(false)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('removes stale generated modules and writes empty registries after the final block is deleted', async () => {
+    const root = await mkdtemp(join(process.cwd(), 'tmp-vue-native-codegen-'))
+    const outputDirs = {
+      ios: 'generated/ios',
+      android: 'generated/android',
+      macos: 'generated/macos',
+      typescript: 'generated/typescript',
+    }
+
+    try {
+      await mkdir(join(root, 'app'), { recursive: true })
+      await writeFile(join(root, 'app', 'App.vue'), '<template><VView /></template>')
+      const staleModule = join(root, outputDirs.ios, 'StaleModule.swift')
+      await mkdir(join(root, outputDirs.ios), { recursive: true })
+      await writeFile(staleModule, '// Auto-Generated Code\nfinal class StaleModule {}\n')
+
+      const plugin = vueNativePlugin({ nativeOutputDirs: outputDirs })
+      await plugin.configResolved?.({ root } as any)
+
+      await expect(readFile(staleModule, 'utf8')).rejects.toThrow()
+      const registry = await readFile(join(root, outputDirs.ios, 'GeneratedModuleRegistry.swift'), 'utf8')
+      expect(registry).toContain('registerGeneratedModules')
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('preserves the last valid generated output when SFC parsing fails', async () => {
+    const root = await mkdtemp(join(process.cwd(), 'tmp-vue-native-codegen-'))
+    const outputDirs = {
+      ios: 'generated/ios',
+      android: 'generated/android',
+      macos: 'generated/macos',
+      typescript: 'generated/typescript',
+    }
+
+    try {
+      await mkdir(join(root, 'app'), { recursive: true })
+      await writeFile(
+        join(root, 'app', 'App.vue'),
+        '<template><VView /></template><native>class BrokenModule {}</native>',
+      )
+      const staleModule = join(root, outputDirs.ios, 'LastValidModule.swift')
+      await mkdir(join(root, outputDirs.ios), { recursive: true })
+      await writeFile(staleModule, '// Auto-Generated Code\nfinal class LastValidModule {}\n')
+
+      const plugin = vueNativePlugin({ nativeOutputDirs: outputDirs })
+      await plugin.configResolved?.({ root } as any)
+
+      expect(await readFile(staleModule, 'utf8')).toContain('LastValidModule')
+      expect(plugin.api.getLastError()?.message).toContain('parsing failed')
+      await expect((plugin.buildStart as () => Promise<void>)()).rejects.toThrow('parsing failed')
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('watches added, changed, and deleted SFCs for codegen updates', async () => {
+    const registeredEvents: string[] = []
+    const watcher = {
+      on(event: string) {
+        registeredEvents.push(event)
+        return watcher
+      },
+    }
+    const plugin = vueNativePlugin()
+
+    await plugin.configureServer?.({ watcher } as any)
+
+    expect(registeredEvents).toEqual(['add', 'change', 'unlink'])
   })
 })
 
@@ -250,7 +372,7 @@ describe('Edge cases', () => {
   it('works when called with no options', () => {
     const plugin = vueNativePlugin()
     expect(plugin.name).toBe('vue-native')
-    const config = plugin.config({}, { mode: 'production' })
+    const config = getPluginConfig()
     expect(config).toBeDefined()
     expect(config.build).toBeDefined()
     expect(config.resolve).toBeDefined()
@@ -258,8 +380,7 @@ describe('Edge cases', () => {
   })
 
   it('works when called with an empty options object', () => {
-    const plugin = vueNativePlugin({})
-    const config = plugin.config({}, { mode: 'production' })
+    const config = getPluginConfig({})
     expect(config.build.lib.name).toBe('VueNativeApp')
     expect(config.define['__PLATFORM__']).toBe(JSON.stringify('ios'))
   })

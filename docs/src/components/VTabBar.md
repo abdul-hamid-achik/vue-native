@@ -8,8 +8,8 @@ A tab bar component for switching between screens. Renders a row of tappable tab
 <VTabBar
   v-model="activeTab"
   :tabs="[
-    { name: 'home', label: 'Home', icon: 'house' },
-    { name: 'settings', label: 'Settings', icon: 'gear' },
+    { name: 'home', label: 'Home', icon: '🏠' },
+    { name: 'settings', label: 'Settings', icon: '⚙️' },
   ]"
 />
 ```
@@ -30,7 +30,7 @@ A tab bar component for switching between screens. Renders a row of tappable tab
 interface TabBarItem {
   name: string      // Unique identifier for the tab
   label?: string    // Display label below the icon
-  icon?: string     // Icon name (platform-specific)
+  icon?: string     // Text glyph or emoji
 }
 ```
 
@@ -60,9 +60,9 @@ const activeTab = ref('home')
     <VTabBar
       v-model="activeTab"
       :tabs="[
-        { name: 'home', label: 'Home', icon: 'house' },
-        { name: 'search', label: 'Search', icon: 'magnifyingglass' },
-        { name: 'profile', label: 'Profile', icon: 'person' },
+        { name: 'home', label: 'Home', icon: '🏠' },
+        { name: 'search', label: 'Search', icon: '🔍' },
+        { name: 'profile', label: 'Profile', icon: '👤' },
       ]"
       activeColor="#007AFF"
       inactiveColor="#8E8E93"
@@ -74,35 +74,29 @@ const activeTab = ref('home')
 
 ## With Tab Navigator
 
-`VTabBar` is most commonly used with `createTabNavigator`, which handles screen switching automatically:
+`VTabBar` is most commonly used with `createTabNavigator`, which handles screen switching automatically. Import that navigator-integrated export from the navigation package:
 
 ```vue
 <script setup>
-import { createTabNavigator, VTabBar, RouterView } from '@thelacanians/vue-native-navigation'
+import { createTabNavigator } from '@thelacanians/vue-native-navigation'
 import HomeScreen from './pages/Home.vue'
 import SettingsScreen from './pages/Settings.vue'
 
-const tabs = createTabNavigator({
-  tabs: [
-    { name: 'home', component: HomeScreen, label: 'Home', icon: 'house' },
-    { name: 'settings', component: SettingsScreen, label: 'Settings', icon: 'gear' },
-  ],
-})
+const { TabNavigator } = createTabNavigator()
+const screens = [
+  { name: 'home', component: HomeScreen, label: 'Home', icon: '🏠' },
+  { name: 'settings', component: SettingsScreen, label: 'Settings', icon: '⚙️' },
+]
 </script>
 
 <template>
-  <VView :style="{ flex: 1 }">
-    <RouterView />
-    <VTabBar
-      v-model="tabs.activeTab.value"
-      :tabs="tabs.tabItems"
-    />
-  </VView>
+  <TabNavigator :screens="screens" initialTab="home" />
 </template>
 ```
 
 ## Notes
 
-- `VTabBar` is exported from `@thelacanians/vue-native-navigation`, not the runtime package.
+- `@thelacanians/vue-native-navigation` exports the navigator-integrated tab bar shown on this page.
+- `@thelacanians/vue-native-runtime` also exports a lower-level `VTabBar` for standalone layouts. It accepts either `id` or `name` identifiers, supports badges and top/bottom positioning, and emits both `change` and `update:modelValue`.
 - The tab bar renders at the bottom of the screen. It does not automatically account for the safe area — wrap it in a `VSafeArea` or add bottom padding on devices with home indicators.
-- Icon names are platform-specific: SF Symbols on iOS, Material Icons on Android.
+- `icon` is rendered as text. Use an emoji, glyph, or a custom tab-bar component when you need an icon library; symbol names are not resolved automatically.

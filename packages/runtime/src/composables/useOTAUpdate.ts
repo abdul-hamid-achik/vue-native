@@ -8,7 +8,7 @@ export interface UpdateInfo {
   version: string
   /** URL to download the update bundle. */
   downloadUrl: string
-  /** SHA-256 hash of the bundle for integrity verification. */
+  /** Required 64-character hexadecimal SHA-256 digest of the bundle. */
   hash: string
   /** Size of the update in bytes. */
   size: number
@@ -27,6 +27,8 @@ export interface VersionInfo {
 
 export type UpdateStatus = 'idle' | 'checking' | 'downloading' | 'ready' | 'error'
 
+const SHA256_HEX_PATTERN = /^[a-f\d]{64}$/i
+
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message
   if (typeof error === 'object' && error !== null && 'message' in error) {
@@ -39,8 +41,10 @@ function getErrorMessage(error: unknown): string {
 /**
  * Composable for managing Over-The-Air (OTA) JS bundle updates.
  *
- * Downloads new JS bundles from a server, verifies integrity via SHA-256,
- * and applies them on the next app launch.
+ * Downloads versioned JS bundles from a server, verifies integrity via
+ * SHA-256, and applies them on the next production app launch. SHA-256
+ * protects integrity but does not authenticate the publisher like a
+ * public-key signature would.
  *
  * @param serverUrl - URL of the update server endpoint
  *
@@ -97,13 +101,19 @@ export function useOTAUpdate(serverUrl: string) {
 
     try {
       const info: UpdateInfo = await NativeBridge.invokeNativeModule('OTA', 'checkForUpdate', [serverUrl])
+      if (info.updateAvailable) {
+        if (!info.version || !info.downloadUrl || !SHA256_HEX_PATTERN.test(info.hash)) {
+          throw new Error('Update server returned incomplete or invalid update metadata.')
+        }
+      }
+
       lastUpdateInfo = info
       if (info.updateAvailable) {
         availableVersion.value = info.version
       } else {
         availableVersion.value = null
       }
-      status.value = info.updateAvailable ? 'idle' : 'idle'
+      status.value = 'idle'
       return info
     } catch (err: unknown) {
       error.value = getErrorMessage(err)
@@ -114,12 +124,27 @@ export function useOTAUpdate(serverUrl: string) {
     }
   }
 
-  async function downloadUpdate(url?: string, hash?: string): Promise<void> {
+  async function downloadUpdate(url?: string, hash?: string, version?: string): Promise<void> {
     const downloadUrl = url || lastUpdateInfo?.downloadUrl
     const expectedHash = hash || lastUpdateInfo?.hash
+    const offeredVersion = version || lastUpdateInfo?.version
 
     if (!downloadUrl) {
       const msg = 'No download URL. Call checkForUpdate() first or provide a URL.'
+      error.value = msg
+      status.value = 'error'
+      throw new Error(msg)
+    }
+
+    if (!expectedHash || !SHA256_HEX_PATTERN.test(expectedHash)) {
+      const msg = 'A valid 64-character SHA-256 hash is required for OTA updates.'
+      error.value = msg
+      status.value = 'error'
+      throw new Error(msg)
+    }
+
+    if (!offeredVersion) {
+      const msg = 'No update version. Call checkForUpdate() first or provide a version.'
       error.value = msg
       status.value = 'error'
       throw new Error(msg)
@@ -131,7 +156,7 @@ export function useOTAUpdate(serverUrl: string) {
     error.value = null
 
     try {
-      await NativeBridge.invokeNativeModule('OTA', 'downloadUpdate', [downloadUrl, expectedHash || ''])
+      await NativeBridge.invokeNativeModule('OTA', 'downloadUpdate', [downloadUrl, expectedHash, offeredVersion])
       status.value = 'ready'
     } catch (err: unknown) {
       // Clean up partial download to prevent corrupted bundles from being applied later
@@ -157,6 +182,9 @@ export function useOTAUpdate(serverUrl: string) {
     try {
       await NativeBridge.invokeNativeModule('OTA', 'verifyBundle', [])
     } catch (err: unknown) {
+      await NativeBridge.invokeNativeModule('OTA', 'cleanupPartialDownload', []).catch((cleanupError: unknown) => {
+        if (__DEV__) console.warn('[vue-native] OTA.cleanupPartialDownload failed:', cleanupError)
+      })
       status.value = 'error'
       error.value = 'Bundle verification failed: ' + getErrorMessage(err)
       throw err

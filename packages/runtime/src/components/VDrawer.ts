@@ -46,21 +46,34 @@ export const VDrawer = defineComponent({
       type: Number,
       default: 280,
     },
+    /** Backdrop color shown behind the drawer */
+    overlayColor: {
+      type: String,
+      default: 'rgba(0, 0, 0, 0.5)',
+    },
     /** Close on item press */
     closeOnPress: {
       type: Boolean,
       default: true,
     },
+    /** Close when the backdrop is pressed */
+    closeOnPressOutside: {
+      type: Boolean,
+      default: true,
+    },
   },
-  emits: ['update:open', 'close'],
+  emits: ['update:open', 'open', 'close'],
   setup(props, { attrs, slots, emit }) {
     const isOpen = ref(props.open)
 
     watch(() => props.open, (value) => {
+      if (isOpen.value === value) return
       isOpen.value = value
+      emit(value ? 'open' : 'close')
     })
 
     const closeDrawer = () => {
+      if (!isOpen.value) return
       isOpen.value = false
       emit('update:open', false)
       emit('close')
@@ -82,7 +95,7 @@ export const VDrawer = defineComponent({
         left: 0,
         right: 0,
         bottom: 0,
-        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        backgroundColor: props.overlayColor,
         opacity: isOpen.value ? 1 : 0,
         zIndex: 999,
       }
@@ -120,13 +133,18 @@ export const VDrawer = defineComponent({
         drawerChildren.push(...(slots.default({ close: closeDrawer }) ?? []))
       }
 
+      if (slots.footer) {
+        drawerChildren.push(...slots.footer())
+      }
+
       return [
         // Overlay
         isOpen.value
           ? h(VPressable, {
               style: overlayStyle,
-              onPress: closeDrawer,
+              onPress: props.closeOnPressOutside ? closeDrawer : undefined,
               accessibilityLabel: 'Close menu',
+              accessibilityState: { disabled: !props.closeOnPressOutside },
             })
           : null,
 
@@ -152,6 +170,11 @@ export const VDrawerItem = defineComponent({
     label: {
       type: String,
       required: true,
+    },
+    /** Whether this item represents the current destination */
+    active: {
+      type: Boolean,
+      default: false,
     },
     /** Badge count */
     badge: {
@@ -183,13 +206,14 @@ export const VDrawerItem = defineComponent({
         padding: 16,
         borderBottomWidth: 1,
         borderBottomColor: '#f0f0f0',
+        backgroundColor: props.active ? '#EAF3FF' : 'transparent',
         opacity: props.disabled ? 0.5 : 1,
       },
       onPress: handlePress,
       disabled: props.disabled,
       accessibilityLabel: props.label,
       accessibilityRole: 'menuitem',
-      accessibilityState: { disabled: props.disabled },
+      accessibilityState: { disabled: props.disabled, selected: props.active },
     }, () => {
       const children: VNode[] = []
 
@@ -211,12 +235,12 @@ export const VDrawerItem = defineComponent({
           style: {
             flex: 1,
             fontSize: 16,
-            color: props.disabled ? '#999' : '#333',
+            color: props.disabled ? '#999' : props.active ? '#007AFF' : '#333',
           },
         }, () => props.label),
       )
 
-      if (props.badge) {
+      if (props.badge !== null && props.badge !== undefined && props.badge !== '') {
         children.push(
           h(VView, {
             style: {

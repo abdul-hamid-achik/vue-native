@@ -113,6 +113,20 @@ final class BluetoothModule: NativeModule {
     }
 
     func invokeSync(method: String, args: [Any]) -> Any? { nil }
+
+    func destroy() {
+        let cleanup = {
+            MainActor.assumeIsolated {
+                BLEManager.shared.reset()
+            }
+        }
+
+        if Thread.isMainThread {
+            cleanup()
+        } else {
+            DispatchQueue.main.sync(execute: cleanup)
+        }
+    }
 }
 
 // MARK: - BLE Manager
@@ -234,6 +248,27 @@ private final class BLEManager: NSObject, CBCentralManagerDelegate, CBPeripheral
         subscribeBridges.removeValue(forKey: key)
         peripheral.setNotifyValue(false, for: char)
         callback(nil, nil)
+    }
+
+    func reset() {
+        centralManager?.stopScan()
+        for peripheral in connectedPeripherals.values {
+            centralManager?.cancelPeripheralConnection(peripheral)
+            peripheral.delegate = nil
+        }
+        for peripheral in discoveredPeripherals.values {
+            peripheral.delegate = nil
+        }
+
+        scanBridge = nil
+        connectCallbacks.removeAll()
+        readCallbacks.removeAll()
+        writeCallbacks.removeAll()
+        subscribeBridges.removeAll()
+        discoveredPeripherals.removeAll()
+        connectedPeripherals.removeAll()
+        centralManager?.delegate = nil
+        centralManager = nil
     }
 
     // MARK: Helpers

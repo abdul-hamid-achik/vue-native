@@ -38,7 +38,7 @@ class TestModule: NativeModule {
 class TestModule: NativeModule {
   override val moduleName: String = "Test"
   
-  override fun invoke(method: String, args: List<Any?>, callback: (Any?, String?) -> Unit) {
+  override fun invoke(method: String, args: List<Any?>, bridge: NativeBridge, callback: (Any?, String?) -> Unit) {
     callback(null, null)
   }
 }
@@ -54,6 +54,30 @@ class TestModule: NativeModule {
 
       expect(result.isValid).toBe(true)
       expect(result.errors).toHaveLength(0)
+    })
+
+    it('keeps nullable-argument guidance as a warning rather than rejecting generation', () => {
+      const block: NativeBlock = {
+        platform: 'android',
+        language: 'kotlin',
+        content: `
+class TestModule: NativeModule {
+  override val moduleName: String = "Test"
+  override fun invoke(method: String, args: List<Any>, bridge: NativeBridge, callback: (Any?, String?) -> Unit) {
+    callback(null, null)
+  }
+}
+        `.trim(),
+        sourceFile: '/test/Test.vue',
+        componentName: 'Test',
+        attributes: {},
+      }
+
+      const result = validateNativeBlocks([block])
+
+      expect(result.isValid).toBe(true)
+      expect(result.errors).toHaveLength(0)
+      expect(result.warnings.some(warning => warning.message.includes('List<Any?>'))).toBe(true)
     })
 
     it('should error when Swift module missing class declaration', () => {
@@ -122,7 +146,7 @@ class TestModule: NativeModule {
         language: 'kotlin',
         content: `
 class TestModule: NativeModule {
-  override fun invoke(method: String, args: List<Any>, callback: (Any?, String?) -> Unit) {
+  override fun invoke(method: String, args: List<Any>, bridge: NativeBridge, callback: (Any?, String?) -> Unit) {
     callback(null, null)
   }
 }
@@ -170,7 +194,7 @@ class TestModule: NativeModule {
 class TestModule: NativeModule {
   override val moduleName: String = "Test"
   
-  override fun invoke(method: String, args: List<Any>, callback: (Any?, String?) -> Unit) {
+  override fun invoke(method: String, args: List<Any>, bridge: NativeBridge, callback: (Any?, String?) -> Unit) {
     callback(null, null)
   // Missing closing brace
 }
@@ -233,7 +257,7 @@ class TestModule: NativeModule {
         content: `
 class TestModule: NativeModule {
   override val moduleName: String = "Vibration"
-  override fun invoke(method: String, args: List<Any>, callback: (Any?, String?) -> Unit) {
+  override fun invoke(method: String, args: List<Any>, bridge: NativeBridge, callback: (Any?, String?) -> Unit) {
     callback(null, null)
   }
 }
@@ -246,6 +270,98 @@ class TestModule: NativeModule {
       const result = validateNativeBlocks([iosBlock, androidBlock])
 
       expect(result.warnings.some(w => w.message.includes('module names'))).toBe(true)
+    })
+
+    it('allows multiple distinct modules in one SFC without a consistency warning', () => {
+      const hapticsBlock: NativeBlock = {
+        platform: 'ios',
+        language: 'swift',
+        content: `
+class HapticsModule: NativeModule {
+  var moduleName: String { "Haptics" }
+  func invoke(method: String, args: [Any], callback: @escaping (Any?, String?) -> Void) {
+    callback(nil, nil)
+  }
+}
+        `.trim(),
+        sourceFile: '/test/App.vue',
+        componentName: 'App',
+        attributes: {},
+      }
+      const cameraBlock: NativeBlock = {
+        ...hapticsBlock,
+        content: `
+class CameraModule: NativeModule {
+  var moduleName: String { "Camera" }
+  func invoke(method: String, args: [Any], callback: @escaping (Any?, String?) -> Void) {
+    callback(nil, nil)
+  }
+}
+        `.trim(),
+      }
+
+      const result = validateNativeBlocks([hapticsBlock, cameraBlock])
+
+      expect(result.isValid).toBe(true)
+      expect(result.warnings.some(warning => warning.message.includes('module names'))).toBe(false)
+    })
+
+    it('rejects duplicate same-platform module names that collide in the registry', () => {
+      const first: NativeBlock = {
+        platform: 'ios',
+        language: 'swift',
+        content: `
+class FirstModule: NativeModule {
+  var moduleName: String { "Shared" }
+  func invoke(method: String, args: [Any], callback: @escaping (Any?, String?) -> Void) {
+    callback(nil, nil)
+  }
+}
+        `.trim(),
+        sourceFile: '/test/First.vue',
+        componentName: 'First',
+        attributes: {},
+      }
+      const second: NativeBlock = {
+        ...first,
+        content: first.content.replace('FirstModule', 'SecondModule'),
+        sourceFile: '/test/Second.vue',
+        componentName: 'Second',
+      }
+
+      const result = validateNativeBlocks([first, second])
+
+      expect(result.isValid).toBe(false)
+      expect(result.errors.some(error => error.message.includes('Duplicate ios module name \'Shared\''))).toBe(true)
+    })
+
+    it('rejects duplicate same-platform class names that overwrite generated files', () => {
+      const first: NativeBlock = {
+        platform: 'android',
+        language: 'kotlin',
+        content: `
+class SharedModule: NativeModule {
+  override val moduleName: String = "First"
+  override fun invoke(method: String, args: List<Any?>, bridge: NativeBridge, callback: (Any?, String?) -> Unit) {
+    callback(null, null)
+  }
+}
+        `.trim(),
+        sourceFile: '/test/First.vue',
+        componentName: 'First',
+        attributes: {},
+      }
+      const second: NativeBlock = {
+        ...first,
+        content: first.content.replace('"First"', '"Second"'),
+        sourceFile: '/test/Second.vue',
+        componentName: 'Second',
+      }
+
+      const result = validateNativeBlocks([first, second])
+
+      expect(result.isValid).toBe(false)
+      expect(result.errors.some(error => error.message.includes('Duplicate android native class \'SharedModule\''))).toBe(true)
     })
 
     it('should handle multiple blocks', () => {

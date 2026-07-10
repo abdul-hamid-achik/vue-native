@@ -25,14 +25,13 @@ final class VPickerFactory: NativeComponentFactory {
     func updateProp(view: UIView, key: String, value: Any?) {
         switch key {
         case "mode":
-            guard let modeStr = value as? String else { return }
             // If we have a UIDatePicker, set its mode
             if let datePicker = view as? UIDatePicker {
-                switch modeStr {
+                switch value as? String ?? "date" {
                 case "date":     datePicker.datePickerMode = .date
                 case "time":     datePicker.datePickerMode = .time
                 case "datetime": datePicker.datePickerMode = .dateAndTime
-                default: break
+                default:            datePicker.datePickerMode = .date
                 }
             }
         case "value":
@@ -42,19 +41,19 @@ final class VPickerFactory: NativeComponentFactory {
                 }
             }
         case "minimumDate":
-            if let datePicker = view as? UIDatePicker,
-               let ms = (value as? Double) ?? (value as? NSNumber)?.doubleValue {
-                datePicker.minimumDate = Date(timeIntervalSince1970: ms / 1000.0)
+            if let datePicker = view as? UIDatePicker {
+                let ms = (value as? Double) ?? (value as? NSNumber)?.doubleValue
+                datePicker.minimumDate = ms.map { Date(timeIntervalSince1970: $0 / 1000.0) }
             }
         case "maximumDate":
-            if let datePicker = view as? UIDatePicker,
-               let ms = (value as? Double) ?? (value as? NSNumber)?.doubleValue {
-                datePicker.maximumDate = Date(timeIntervalSince1970: ms / 1000.0)
+            if let datePicker = view as? UIDatePicker {
+                let ms = (value as? Double) ?? (value as? NSNumber)?.doubleValue
+                datePicker.maximumDate = ms.map { Date(timeIntervalSince1970: $0 / 1000.0) }
             }
         case "minuteInterval":
-            if let datePicker = view as? UIDatePicker,
-               let interval = (value as? Int) ?? (value as? NSNumber)?.intValue {
-                datePicker.minuteInterval = interval
+            if let datePicker = view as? UIDatePicker {
+                let requested = (value as? Int) ?? (value as? NSNumber)?.intValue ?? 1
+                datePicker.minuteInterval = validMinuteInterval(requested)
             }
         case "items":
             // UIPickerView items — not using UIPickerView in this simplified version
@@ -77,8 +76,18 @@ final class VPickerFactory: NativeComponentFactory {
 
     func removeEventListener(view: UIView, event: String) {
         if event == "change" {
+            if let datePicker = view as? UIDatePicker,
+               let target = objc_getAssociatedObject(view, &pickerDelegateKey) as? PickerChangeTarget {
+                datePicker.removeTarget(target, action: #selector(PickerChangeTarget.handleChange(_:)), for: .valueChanged)
+            }
             objc_setAssociatedObject(view, &pickerOnChangeKey, nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+            objc_setAssociatedObject(view, &pickerDelegateKey, nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
         }
+    }
+
+    private func validMinuteInterval(_ interval: Int) -> Int {
+        guard interval >= 1, interval <= 60, 60.isMultiple(of: interval) else { return 1 }
+        return interval
     }
 }
 

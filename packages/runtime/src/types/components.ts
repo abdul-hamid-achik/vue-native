@@ -35,6 +35,8 @@ export interface VTextProps extends AccessibilityProps {
 }
 
 export interface VButtonProps extends AccessibilityProps {
+  title?: string
+  titleStyle?: TextStyle
   style?: ViewStyle
   disabled?: boolean
   activeOpacity?: number
@@ -270,25 +272,66 @@ export interface VFlatListProps<T = unknown, TRendered = unknown> {
 
 export interface VTabBarProps {
   tabs: Array<{
-    id: string
     label: string
     icon?: string
     badge?: number | string
-  }>
-  activeTab: string
+  } & (
+    | { id: string, name?: string }
+    | { id?: string, name: string }
+  )>
+  activeTab?: string
+  modelValue?: string
   position?: 'top' | 'bottom'
+  activeColor?: string
+  inactiveColor?: string
+  backgroundColor?: string
+}
+
+export interface VToolbarProps {
+  items: Array<{
+    id: string
+    label: string
+    icon?: string
+  }>
+  displayMode?: 'iconOnly' | 'labelOnly' | 'iconAndLabel'
+  showsBaselineSeparator?: boolean
+  style?: ViewStyle
+}
+
+export interface VSplitViewProps {
+  direction?: 'horizontal' | 'vertical'
+  dividerStyle?: 'thin' | 'thick' | 'paneSplitter'
+  dividerColor?: string
+  dividerPosition?: number
+  style?: ViewStyle
+}
+
+export interface VOutlineNode {
+  id: string
+  label: string
+  children?: VOutlineNode[]
+}
+
+export interface VOutlineViewProps {
+  data: VOutlineNode[]
+  expandAll?: boolean
+  selectionMode?: 'single' | 'multiple' | 'none'
+  style?: ViewStyle
 }
 
 export interface VDrawerProps {
   open?: boolean
   position?: 'left' | 'right'
   width?: number
+  overlayColor?: string
   closeOnPress?: boolean
+  closeOnPressOutside?: boolean
 }
 
 export interface VDrawerItemProps extends AccessibilityProps {
   icon?: string
   label: string
+  active?: boolean
   badge?: number | string | null
   disabled?: boolean
 }

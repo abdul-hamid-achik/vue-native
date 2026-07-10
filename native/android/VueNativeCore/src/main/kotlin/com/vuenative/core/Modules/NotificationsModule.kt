@@ -1,6 +1,7 @@
 package com.vuenative.core
 
 import android.Manifest
+import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
@@ -11,6 +12,7 @@ import android.os.Looper
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import java.util.UUID
 
 /**
  * Native module for local and remote (push) notifications.
@@ -21,15 +23,16 @@ import androidx.core.app.NotificationManagerCompat
  *    NotificationsModule.onNewToken() and onPushReceived()
  *
  * Methods:
- *   - requestPermission() -> { status: "granted"|"denied" }
- *   - scheduleLocal(opts) -> { id }
+ *   - requestPermission() -> Boolean
+ *   - getPermissionStatus() -> "granted"|"denied"|"notDetermined"
+ *   - scheduleLocal(opts) -> notificationId: String
  *   - cancel(id)
  *   - cancelAll()
  *   - registerForPush() -> true (no-op on Android; FCM auto-registers)
  *   - getToken() -> String? (returns cached FCM token)
  *
- * Global events:
- *   "notification:received" -- local notification tapped
+ * Host-forwarded global events:
+ *   "notification:received" -- local notification tapped (host integration required)
  *   "push:token"     { token }
  *   "push:received"  { title, body, data, remote: true }
  */
@@ -38,11 +41,13 @@ class NotificationsModule : NativeModule {
 
     private var context: Context? = null
     private var bridge: NativeBridge? = null
+    private var permissionsModule: PermissionsModule? = null
     private val handler = Handler(Looper.getMainLooper())
-    private var notifIdCounter = 1
+    private val pendingNotifications = mutableMapOf<String, Runnable>()
 
     companion object {
         private const val CHANNEL_ID = "vue_native_default"
+        private const val LOCAL_NOTIFICATION_ID = 1
 
         /** Singleton reference so FirebaseMessagingService can call into this module. */
         @Volatile
@@ -51,10 +56,12 @@ class NotificationsModule : NativeModule {
     }
 
     override fun initialize(context: Context, bridge: NativeBridge) {
-        this.context = context
+        this.context = context.applicationContext
         this.bridge = bridge
+        this.permissionsModule = NativeModuleRegistry.getInstance(context)
+            .getModule("Permissions") as? PermissionsModule
         instance = this
-        createDefaultChannel(context)
+        createDefaultChannel(context.applicationContext)
     }
 
     private fun createDefaultChannel(ctx: Context) {
@@ -112,19 +119,34 @@ class NotificationsModule : NativeModule {
     ) {
         when (method) {
             "requestPermission" -> {
-                // Android <13: no runtime permission needed for notifications
-                // Android 13+: POST_NOTIFICATIONS must be granted via PermissionsModule
-                val granted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    val ctx = context ?: run {
-                        callback(null, "Not initialized")
-                        return
-                    }
-                    ActivityCompat.checkSelfPermission(ctx, Manifest.permission.POST_NOTIFICATIONS) ==
-                            PackageManager.PERMISSION_GRANTED
-                } else {
-                    true
+                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+                    callback(true, null)
+                    return
                 }
-                callback(mapOf("status" to if (granted) "granted" else "denied"), null)
+
+                val permissions = resolvePermissionsModule() ?: run {
+                    callback(null, "NotificationsModule: Permissions module is unavailable")
+                    return
+                }
+                permissions.requestNamedPermission("notifications", this) { status, error ->
+                    if (error != null) {
+                        callback(null, error)
+                    } else {
+                        callback(status == "granted", null)
+                    }
+                }
+            }
+            "getPermissionStatus" -> {
+                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+                    callback("granted", null)
+                    return
+                }
+
+                val permissions = resolvePermissionsModule() ?: run {
+                    callback(null, "NotificationsModule: Permissions module is unavailable")
+                    return
+                }
+                permissions.checkNamedPermission("notifications", callback)
             }
             "scheduleLocal" -> {
                 val ctx = context ?: run {
@@ -139,43 +161,63 @@ class NotificationsModule : NativeModule {
 
                 val title = opts["title"]?.toString() ?: ""
                 val body = opts["body"]?.toString() ?: ""
-                val delaySeconds = (opts["delay"] as? Number)?.toLong() ?: 0L
-                val notifId = notifIdCounter++
+                val delaySeconds = (opts["delay"] as? Number)?.toDouble() ?: 0.0
+                val delayMillis = (delaySeconds.coerceAtLeast(0.0) * 1000.0)
+                    .coerceAtMost(Long.MAX_VALUE.toDouble())
+                    .toLong()
+                val notificationId = (opts["id"] as? String)
+                    ?.takeIf(String::isNotBlank)
+                    ?: UUID.randomUUID().toString()
 
                 val show = Runnable {
+                    pendingNotifications.remove(notificationId)
                     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
                         ActivityCompat.checkSelfPermission(ctx, Manifest.permission.POST_NOTIFICATIONS)
                         == PackageManager.PERMISSION_GRANTED
                     ) {
-                        val notification = NotificationCompat.Builder(ctx, CHANNEL_ID)
+                        val builder = NotificationCompat.Builder(ctx, CHANNEL_ID)
                             .setSmallIcon(android.R.drawable.ic_dialog_info)
                             .setContentTitle(title)
                             .setContentText(body)
                             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
                             .setAutoCancel(true)
-                            .build()
-                        NotificationManagerCompat.from(ctx).notify(notifId, notification)
+
+                        if (opts["sound"] == "default") {
+                            builder.setDefaults(Notification.DEFAULT_SOUND)
+                        }
+                        (opts["badge"] as? Number)?.toInt()?.let { badge ->
+                            builder.setNumber(badge.coerceAtLeast(0))
+                        }
+
+                        NotificationManagerCompat.from(ctx).notify(
+                            notificationId,
+                            LOCAL_NOTIFICATION_ID,
+                            builder.build(),
+                        )
                     }
                 }
 
-                if (delaySeconds > 0) {
-                    handler.postDelayed(show, delaySeconds * 1000L)
+                pendingNotifications.remove(notificationId)?.let(handler::removeCallbacks)
+                if (delayMillis > 0) {
+                    pendingNotifications[notificationId] = show
+                    handler.postDelayed(show, delayMillis)
                 } else {
                     show.run()
                 }
-                callback(mapOf("id" to notifId), null)
+                callback(notificationId, null)
             }
             "cancel" -> {
                 val ctx = context ?: run {
                     callback(null, "Not initialized")
                     return
                 }
-                val id = (args.getOrNull(0) as? Number)?.toInt()
+                val id = (args.getOrNull(0) as? String)?.takeIf(String::isNotBlank)
                     ?: run {
                         callback(null, "Invalid args — expected notification id")
                         return
                     }
-                NotificationManagerCompat.from(ctx).cancel(id)
+                pendingNotifications.remove(id)?.let(handler::removeCallbacks)
+                NotificationManagerCompat.from(ctx).cancel(id, LOCAL_NOTIFICATION_ID)
                 callback(null, null)
             }
             "cancelAll" -> {
@@ -183,6 +225,8 @@ class NotificationsModule : NativeModule {
                     callback(null, "Not initialized")
                     return
                 }
+                pendingNotifications.values.forEach(handler::removeCallbacks)
+                pendingNotifications.clear()
                 NotificationManagerCompat.from(ctx).cancelAll()
                 callback(null, null)
             }
@@ -195,5 +239,26 @@ class NotificationsModule : NativeModule {
             }
             else -> callback(null, "Unknown method: $method")
         }
+    }
+
+    private fun resolvePermissionsModule(): PermissionsModule? {
+        permissionsModule?.let { return it }
+        val ctx = context ?: return null
+        return (NativeModuleRegistry.getInstance(ctx).getModule("Permissions") as? PermissionsModule)
+            ?.also { permissionsModule = it }
+    }
+
+    override fun destroy() {
+        handler.removeCallbacksAndMessages(null)
+        pendingNotifications.clear()
+        permissionsModule?.cancelPendingRequests(
+            this,
+            "Notification permission request cancelled because the native host was destroyed",
+        )
+        if (instance === this) instance = null
+        context = null
+        bridge = null
+        permissionsModule = null
+        fcmToken = null
     }
 }

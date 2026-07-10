@@ -1,5 +1,6 @@
 {
   "name": "vue-native-snippets",
+  "private": true,
   "displayName": "Vue Native Snippets",
   "description": "Snippets and tooling for Vue Native — build native iOS and Android apps with Vue 3",
   "version": "0.1.0",

@@ -25,15 +25,15 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: 1.3.8
 
       - name: Cache node_modules
         uses: actions/cache@v4
         with:
           path: node_modules
-          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lock') }}
+          key: ${{ runner.os }}-bun-1.3.8-${{ hashFiles('**/bun.lock') }}
           restore-keys: |
-            ${{ runner.os }}-bun-
+            ${{ runner.os }}-bun-1.3.8-
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -44,14 +44,23 @@ jobs:
       - name: Type check
         run: bun run typecheck
 
+      - name: Native module contract check
+        run: bun run contracts:check
+
       - name: Build
         run: bun run build
+
+      - name: Smoke-test packed CLI scaffold
+        run: bun run smoke:cli
 
       - name: Test
         run: bun run test:ts
 
       - name: Dead code check
         run: bun run knip
+
+      - name: Validate Git hooks
+        run: bun run hooks:validate
 
   # ── Swift / iOS (build & test VueNativeCore) ───────────
   swift-ios:
@@ -98,11 +107,15 @@ jobs:
 
       - name: Test VueNativeCore
         run: |
+          SIMULATOR_ID="$(
+            xcrun simctl list devices available -j |
+              python3 -c 'import json, sys; devices = json.load(sys.stdin)["devices"].values(); phones = (device for runtime in devices for device in runtime if device.get("isAvailable") and device["name"].startswith("iPhone")); print(next(phones)["udid"])'
+          )"
           cd native/ios/VueNativeCore
           xcodebuild test \
             -scheme VueNativeCore \
             -sdk iphonesimulator \
-            -destination 'platform=iOS Simulator,name=iPhone 15,OS=17.2' \
+            -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
             -skipPackagePluginValidation \
             -resultBundlePath TestResults.xcresult
 
@@ -134,6 +147,9 @@ jobs:
         run: |
           cd native/shared/VueNativeShared
           swift test
+
+      - name: Validate root VueNativeMacOS product
+        run: swift build --target VueNativeMacOS
 
       - name: Build VueNativeMacOS
         run: |
@@ -176,14 +192,14 @@ jobs:
         working-directory: native/android
 
       - name: Build VueNativeCore
-        run: ./gradlew :VueNativeCore:assembleRelease
+        run: ./gradlew :VueNativeCore:compileDebugKotlin :VueNativeCore:assembleRelease
         working-directory: native/android
 
       - name: Test VueNativeCore
-        run: ./gradlew :VueNativeCore:testReleaseUnitTest
+        run: ./gradlew :VueNativeCore:testDebugUnitTest :VueNativeCore:testReleaseUnitTest
         working-directory: native/android
 
-  # ── Visual report for PRs ──────────────────────────────
+  # ── Aggregate required checks ──────────────────────────
   summary:
     name: CI Summary
     runs-on: ubuntu-latest
@@ -193,11 +209,21 @@ jobs:
     steps:
       - name: CI Summary
         run: |
-          echo "## CI Results"
-          echo ""
-          echo "| Job | Status |"
-          echo "|-----|--------|"
-          echo "| TypeScript | ${{ needs.typescript.result }} |"
-          echo "| Swift iOS | ${{ needs.swift-ios.result }} |"
-          echo "| Swift macOS | ${{ needs.swift-macos.result }} |"
-          echo "| Kotlin | ${{ needs.kotlin.result }} |"
+          {
+            echo "## CI Results"
+            echo ""
+            echo "| Job | Status |"
+            echo "|-----|--------|"
+            echo "| TypeScript | ${{ needs.typescript.result }} |"
+            echo "| Swift iOS | ${{ needs.swift-ios.result }} |"
+            echo "| Swift macOS | ${{ needs.swift-macos.result }} |"
+            echo "| Kotlin | ${{ needs.kotlin.result }} |"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+          if [[ "${{ needs.typescript.result }}" != "success" || \
+                "${{ needs.swift-ios.result }}" != "success" || \
+                "${{ needs.swift-macos.result }}" != "success" || \
+                "${{ needs.kotlin.result }}" != "success" ]]; then
+            echo "One or more required CI jobs failed or were cancelled."
+            exit 1
+          fi

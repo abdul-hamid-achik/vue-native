@@ -9,6 +9,8 @@ object Tags {
     const val BORDER_COLOR = 0x7F_FF_0010
     const val BORDER_WIDTH = 0x7F_FF_0011
     const val GAP = 0x7F_FF_0012
+    const val PADDING_STATE = 0x7F_FF_0018
+    const val POINTER_EVENTS_STATE = 0x7F_FF_0019
     const val SHADOW_COLOR = 0x7F_FF_0013
     const val SHADOW_OPACITY = 0x7F_FF_0014
     const val SHADOW_RADIUS = 0x7F_FF_0015
@@ -30,6 +32,8 @@ const val TAG_FACTORY = Tags.FACTORY
 const val TAG_BORDER_COLOR = Tags.BORDER_COLOR
 const val TAG_BORDER_WIDTH = Tags.BORDER_WIDTH
 const val TAG_GAP = Tags.GAP
+const val TAG_PADDING_STATE = Tags.PADDING_STATE
+const val TAG_POINTER_EVENTS_STATE = Tags.POINTER_EVENTS_STATE
 const val TAG_SHADOW_COLOR = Tags.SHADOW_COLOR
 const val TAG_SHADOW_OPACITY = Tags.SHADOW_OPACITY
 const val TAG_SHADOW_RADIUS = Tags.SHADOW_RADIUS

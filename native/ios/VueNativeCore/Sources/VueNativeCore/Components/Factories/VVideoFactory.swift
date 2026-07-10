@@ -163,14 +163,17 @@ final class VVideoFactory: NativeComponentFactory {
 
         // Periodic time observer for progress
         let interval = CMTime(seconds: 0.25, preferredTimescale: CMTimeScale(NSEC_PER_SEC))
-        let timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak container] time in
-            guard let container = container,
-                  let duration = container.player?.currentItem?.duration else { return }
-            let currentTime = CMTimeGetSeconds(time)
-            let dur = CMTimeGetSeconds(duration)
-            if currentTime.isFinite && dur.isFinite {
-                self.fireEvent(for: container, key: &VVideoFactory.onProgressKey,
-                               payload: ["currentTime": currentTime, "duration": dur])
+        let timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: nil) { [weak self, weak container] time in
+            DispatchQueue.main.async { [weak self, weak container] in
+                guard let self,
+                      let container,
+                      let duration = container.player?.currentItem?.duration else { return }
+                let currentTime = CMTimeGetSeconds(time)
+                let dur = CMTimeGetSeconds(duration)
+                if currentTime.isFinite && dur.isFinite {
+                    self.fireEvent(for: container, key: &VVideoFactory.onProgressKey,
+                                   payload: ["currentTime": currentTime, "duration": dur])
+                }
             }
         }
         objc_setAssociatedObject(container, &_timeObserverKey, timeObserver as AnyObject, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
@@ -179,13 +182,15 @@ final class VVideoFactory: NativeComponentFactory {
         let endObserver = NotificationCenter.default.addObserver(
             forName: .AVPlayerItemDidPlayToEndTime,
             object: playerItem,
-            queue: .main
-        ) { [weak container] _ in
-            guard let container = container else { return }
-            self.fireEvent(for: container, key: &VVideoFactory.onEndKey, payload: nil)
-            if container.loop {
-                container.player?.seek(to: .zero)
-                container.player?.play()
+            queue: nil
+        ) { [weak self, weak container] _ in
+            DispatchQueue.main.async { [weak self, weak container] in
+                guard let self, let container else { return }
+                self.fireEvent(for: container, key: &VVideoFactory.onEndKey, payload: nil)
+                if container.loop {
+                    container.player?.seek(to: .zero)
+                    container.player?.play()
+                }
             }
         }
         objc_setAssociatedObject(container, &_endObserverKey, endObserver as AnyObject, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)

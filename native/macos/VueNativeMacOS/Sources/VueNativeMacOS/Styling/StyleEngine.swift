@@ -105,6 +105,12 @@ enum StyleEngine {
     private static func applyLayoutProp(key: String, value: Any?, to view: NSView) -> Bool {
         let node = view.ensureLayoutNode()
 
+        // A missing key is delivered as nil by the renderer. LayoutNode is
+        // stateful, so reset the old value rather than silently retaining it.
+        if value == nil {
+            return resetLayoutProp(key: key, node: node, view: view)
+        }
+
         switch key {
 
         // MARK: Flex container properties
@@ -527,6 +533,125 @@ enum StyleEngine {
         }
     }
 
+    /// Restore the LayoutNode/AppKit defaults for a recognized layout key.
+    @discardableResult
+    private static func resetLayoutProp(key: String, node: LayoutNode, view: NSView) -> Bool {
+        switch key {
+        case "flexDirection":
+            node.flexDirection = .column
+        case "justifyContent":
+            node.justifyContent = .flexStart
+        case "alignItems":
+            node.alignItems = .stretch
+        case "alignSelf":
+            node.alignSelf = .auto
+        case "alignContent":
+            node.alignContent = .stretch
+        case "flexWrap":
+            node.flexWrap = .noWrap
+
+        case "flex":
+            node.flexGrow = 0
+            node.flexShrink = 1
+            node.flexBasis = .undefined
+        case "flexGrow":
+            node.flexGrow = 0
+        case "flexShrink":
+            node.flexShrink = 1
+        case "flexBasis":
+            node.flexBasis = .undefined
+
+        case "width":
+            node.width = .undefined
+        case "height":
+            node.height = .undefined
+        case "minWidth":
+            node.minWidth = .undefined
+        case "minHeight":
+            node.minHeight = .undefined
+        case "maxWidth":
+            node.maxWidth = .undefined
+        case "maxHeight":
+            node.maxHeight = .undefined
+        case "aspectRatio":
+            node.aspectRatio = nil
+
+        case "padding":
+            node.padding = .zero
+        case "paddingTop":
+            node.padding.top = 0
+        case "paddingRight":
+            node.padding.right = 0
+        case "paddingBottom":
+            node.padding.bottom = 0
+        case "paddingLeft":
+            node.padding.left = 0
+        case "paddingHorizontal":
+            node.padding.left = 0
+            node.padding.right = 0
+        case "paddingVertical":
+            node.padding.top = 0
+            node.padding.bottom = 0
+        case "paddingStart":
+            node.padding.left = 0
+        case "paddingEnd":
+            node.padding.right = 0
+
+        case "margin":
+            node.margin = .zero
+        case "marginTop":
+            node.margin.top = 0
+        case "marginRight":
+            node.margin.right = 0
+        case "marginBottom":
+            node.margin.bottom = 0
+        case "marginLeft":
+            node.margin.left = 0
+        case "marginHorizontal":
+            node.margin.left = 0
+            node.margin.right = 0
+        case "marginVertical":
+            node.margin.top = 0
+            node.margin.bottom = 0
+        case "marginStart":
+            node.margin.left = 0
+        case "marginEnd":
+            node.margin.right = 0
+
+        case "gap":
+            node.gap = 0
+        case "rowGap":
+            node.rowGap = nil
+        case "columnGap":
+            node.columnGap = nil
+
+        case "position":
+            node.positionType = .relative
+        case "top":
+            node.positionTop = .undefined
+        case "right":
+            node.positionRight = .undefined
+        case "bottom":
+            node.positionBottom = .undefined
+        case "left", "start":
+            node.positionLeft = .undefined
+        case "end":
+            node.positionRight = .undefined
+        case "overflow":
+            view.layer?.masksToBounds = false
+        case "display":
+            node.display = .flex
+            view.isHidden = false
+        case "direction":
+            node.layoutDirection = .leftToRight
+        default:
+            return false
+        }
+
+        node.markDirty()
+        return true
+    }
+
     // MARK: - Visual Properties (NSView / CALayer)
 
     /// Apply a visual property directly on the NSView. Returns true if recognized.
@@ -722,6 +847,15 @@ enum StyleEngine {
                 default:           break
                 }
             }
+            return true
+
+        case "accessibilityState":
+            let state = value as? [String: Any]
+            view.setAccessibilityEnabled(state?["disabled"] as? Bool != true)
+
+            let selected = state?["selected"] as? Bool == true
+                || state?["checked"] as? Bool == true
+            view.setAccessibilitySelected(selected)
             return true
 
         case "accessible":

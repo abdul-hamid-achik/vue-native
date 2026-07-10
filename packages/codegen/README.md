@@ -251,21 +251,17 @@ class HapticsModule: NativeModule {
 // ────────────────────────────────────────────────────────────────────────────────
 
 import Foundation
-import VueNativeCore
+import UIKit
 
 /// Auto-generated native module from Haptics.vue
 /// Platform: ios
+/// Module: Haptics
 final class HapticsModule: NativeModule {
-    var moduleName: String { "Haptics" }
-    
-    // User-provided implementation
-    class HapticsModule: NativeModule {
-      var moduleName: String { "Haptics" }
-      
-      func invoke(method: String, args: [Any], callback: @escaping (Any?, String?) -> Void) {
-        // ...
-      }
-    }
+  var moduleName: String { "Haptics" }
+
+  func invoke(method: String, args: [Any], callback: @escaping (Any?, String?) -> Void) {
+    // ...
+  }
 }
 ```
 

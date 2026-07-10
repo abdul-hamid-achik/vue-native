@@ -30,7 +30,7 @@ class AudioModule : NativeModule {
     private var progressRunnable: Runnable? = null
 
     override fun initialize(context: Context, bridge: NativeBridge) {
-        this.context = context
+        this.context = context.applicationContext
         this.bridge = bridge
     }
 

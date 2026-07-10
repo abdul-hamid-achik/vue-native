@@ -3,10 +3,14 @@ pre-commit:
   commands:
     lint:
       glob: "*.{ts,js,mjs,vue}"
-      run: bunx eslint --fix {staged_files}
-      stage_fixed: true
+      run: bun run lint:staged -- {staged_files}
     typecheck:
       run: bun run typecheck
+
+pre-push:
+  commands:
+    typescript-quality:
+      run: bun run check:ts
 
 # Uncomment to enforce conventional commits:
 # commit-msg:

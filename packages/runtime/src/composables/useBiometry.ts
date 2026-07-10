@@ -1,6 +1,6 @@
 import { NativeBridge } from '../bridge'
 
-export type BiometryType = 'faceID' | 'touchID' | 'opticID' | 'none'
+export type BiometryType = 'faceID' | 'touchID' | 'opticID' | 'biometric' | 'none'
 
 export interface BiometryResult {
   success: boolean
@@ -12,7 +12,7 @@ export interface BiometryResult {
  *
  * @example
  * const { authenticate, getSupportedBiometry } = useBiometry()
- * const type = await getSupportedBiometry() // 'faceID' | 'touchID' | 'none'
+ * const type = await getSupportedBiometry() // 'faceID' | 'touchID' | 'biometric' | 'none'
  * const result = await authenticate('Confirm your identity')
  */
 export function useBiometry() {

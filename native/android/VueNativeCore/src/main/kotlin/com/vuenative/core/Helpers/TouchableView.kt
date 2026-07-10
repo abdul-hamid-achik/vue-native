@@ -6,7 +6,6 @@ import android.view.MotionEvent
 import android.view.ViewGroup
 import com.google.android.flexbox.AlignItems
 import com.google.android.flexbox.FlexDirection
-import com.google.android.flexbox.FlexboxLayout
 import com.google.android.flexbox.JustifyContent
 
 /**
@@ -14,7 +13,7 @@ import com.google.android.flexbox.JustifyContent
  * with configurable active opacity and support for press and long press events.
  * Mirrors the Swift TouchableView (UIView subclass) for Android.
  */
-open class TouchableView(context: Context) : FlexboxLayout(context) {
+open class TouchableView(context: Context) : VueNativeFlexboxLayout(context) {
 
     /** The opacity to apply when the user is pressing the view. */
     var activeOpacity: Float = 1.0f

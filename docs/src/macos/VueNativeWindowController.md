@@ -1,6 +1,6 @@
 # VueNativeWindowController
 
-`VueNativeWindowController` is the base `NSWindowController` for Vue Native apps on macOS. Subclass it to get the JS runtime, native bridge, and hot reload wired up automatically.
+`VueNativeWindowController` is the supported `NSWindowController` host for Vue Native apps on macOS. It owns the JavaScript runtime, native bridge, root AppKit view, resize events, and optional hot reload for one window.
 
 ## Usage
 
@@ -8,157 +8,106 @@
 import VueNativeMacOS
 
 class MainWindowController: VueNativeWindowController {
-    // Required: name of the JS bundle resource (without extension)
     override var bundleName: String { "vue-native-bundle" }
 
-    // Optional: WebSocket URL for hot reload (development only)
     override var devServerURL: URL? {
         #if DEBUG
-        return URL(string: "ws://localhost:8174")
+        URL(string: "ws://localhost:8174")
         #else
-        return nil
+        nil
         #endif
     }
 }
 ```
 
-## Properties
+The inherited convenience initializer creates a resizable 800 × 600 window titled `Vue Native`. Its content view is a `FlippedView`, so layout uses a CSS-compatible top-left origin.
+
+## Public properties
 
 ### `bundleName: String`
 
-The name of the JS bundle resource bundled in your app target (without `.js` extension).
+The name of the JavaScript bundle resource in the application bundle, without the `.js` extension.
 
 Default: `"vue-native-bundle"`
 
 ### `devServerURL: URL?`
 
-WebSocket URL of the Vite dev server. When non-nil, `HotReloadManager` connects and listens for bundle updates. The embedded bundle is still loaded as an initial fallback.
+The WebSocket URL used by the hot-reload client. Return `nil` in production. The embedded bundle remains the deterministic initial bundle and fallback.
 
 Default: `nil`
 
-### `windowTitle: String`
+These are the only window-controller configuration properties currently exposed for overriding. `windowTitle`, `windowSize`, `windowMinSize`, `registerCustomModules()`, and `registerCustomComponents()` are not public `VueNativeWindowController` APIs.
 
-The title displayed in the window title bar.
+## Window configuration
 
-Default: `"Vue Native"`
-
-### `windowSize: NSSize`
-
-The initial size of the window.
-
-Default: `NSSize(width: 800, height: 600)`
-
-### `windowMinSize: NSSize`
-
-The minimum size the window can be resized to.
-
-Default: `NSSize(width: 400, height: 300)`
-
-## What it does
-
-`VueNativeWindowController` handles:
-
-1. Creates an `NSWindow` with the configured title, size, and style mask
-2. Sets the window's `contentView` to a `FlippedView` (top-left origin for CSS-consistent layout)
-3. Calls `JSRuntime.shared.initialize` — creates the JSContext and registers polyfills
-4. Inside the runtime callback, calls `NativeBridge.shared.initialize(rootView:)` — registers `__VN_flushOperations` on the now-existing JSContext
-5. Loads the JS bundle from the embedded resource (or dev server)
-6. Optionally connects hot reload via `HotReloadManager.shared`
-
-::: warning Init order matters
-The bridge **must** be initialized after the runtime creates the JSContext. If `bridge.initialize()` runs first, it tries to register `__VN_flushOperations` on a nil context — the registration is silently dropped, and the window renders empty. This follows the same pattern as `VueNativeViewController` on iOS.
-:::
-
-## Customization
-
-### Custom window configuration
-
-Override properties to customize the window:
+Configure the inherited `window` before returning the controller from your app delegate:
 
 ```swift
-class MainWindowController: VueNativeWindowController {
-    override var bundleName: String { "vue-native-bundle" }
-    override var windowTitle: String { "My App" }
-    override var windowSize: NSSize { NSSize(width: 1024, height: 768) }
-    override var windowMinSize: NSSize { NSSize(width: 600, height: 400) }
-}
-```
-
-### Registering custom native modules
-
-Override `registerCustomModules()` to register additional native modules before the JS bundle loads:
-
-```swift
-class MainWindowController: VueNativeWindowController {
-    override var bundleName: String { "vue-native-bundle" }
-
-    override func registerCustomModules() {
-        NativeModuleRegistry.shared.register("MyModule", module: MyCustomModule())
-    }
-}
-```
-
-### Registering custom components
-
-Override `registerCustomComponents()` to register additional native component factories:
-
-```swift
-class MainWindowController: VueNativeWindowController {
-    override var bundleName: String { "vue-native-bundle" }
-
-    override func registerCustomComponents() {
-        NativeComponentRegistry.shared.register("MyWidget") { props in
-            MyWidgetFactory(props: props)
-        }
-    }
-}
-```
-
-## Manual setup
-
-If you need more control, you can set up the runtime manually without subclassing:
-
-```swift
+import AppKit
 import VueNativeMacOS
 
-class AppDelegate: NSObject, NSApplicationDelegate {
-    var window: NSWindow!
-
-    func applicationDidFinishLaunching(_ notification: Notification) {
-        window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable],
-            backing: .buffered,
-            defer: false
-        )
-        window.title = "My App"
-
-        let rootView = FlippedView()
-        window.contentView = rootView
-
-        // Runtime MUST initialize first (creates JSContext).
-        // Bridge init goes inside the callback so the context exists.
-        JSRuntime.shared.initialize {
-            NativeBridge.shared.initialize(rootView: rootView)
-            DispatchQueue.main.async {
-                JSRuntime.shared.loadBundle(
-                    source: .embedded(name: "vue-native-bundle")
-                ) { _ in }
-            }
-        }
-
-        window.center()
-        window.makeKeyAndOrderFront(nil)
+@main
+class AppDelegate: VueNativeAppDelegate {
+    override func createWindowController() -> VueNativeWindowController {
+        let controller = MainWindowController()
+        controller.window?.title = "My App"
+        controller.window?.setContentSize(NSSize(width: 1024, height: 768))
+        controller.window?.contentMinSize = NSSize(width: 600, height: 400)
+        return controller
     }
 }
 ```
 
-## Lifecycle
+This uses only the public controller and `NSWindow` APIs; no framework registry access is required.
 
-The window controller manages the following lifecycle:
+## What the controller owns
 
-1. **`windowDidLoad()`** — Configures the window and starts the runtime
-2. **`windowWillClose(_:)`** — Tears down the JS runtime and disconnects hot reload
-3. **`windowDidResize(_:)`** — Triggers a Yoga layout pass on the root view
+When the window loads, the controller:
 
-The JS runtime runs on the main thread for macOS (unlike iOS where it uses a dedicated serial queue), since macOS apps are less constrained by main thread performance.
+1. Uses the window's `FlippedView` content view as the native root.
+2. creates a fresh JavaScriptCore context for the host on the dedicated serial JavaScript queue;
+3. initializes `NativeBridge` on the main thread and registers the built-in components and native modules;
+4. loads the embedded bundle named by `bundleName`;
+5. connects `HotReloadManager` when `devServerURL` is non-nil in a debug build; and
+6. publishes the initial dimensions and later window-size changes through the `dimensionsChange` global event.
+
+The initialization order is managed internally. Application code should not separately call `JSRuntime.initialize()`, `NativeBridge.initialize()`, or registry setup when using this controller.
+
+## Lifecycle and threading
+
+- JavaScriptCore runs on a dedicated serial queue, not on the AppKit main thread.
+- Bridge view operations and all AppKit work run on the main thread.
+- Window resize notifications update `useDimensions()` after the bundle has loaded.
+- When the controller is released, it removes its resize observer and releases the bridge/runtime only if it still owns the active host.
+
+Keep a strong reference to the window controller for as long as the window should remain open. `VueNativeAppDelegate` does this through its public `windowController` property.
+
+## Adding native functionality
+
+The macOS native-module and component registries are framework internals; there are no `registerCustomModules()` or `registerCustomComponents()` override hooks on the window controller.
+
+For application-specific native modules, use [Native Blocks](/guide/native-blocks.md), which generates registration code during the build. A public application-level custom-component registration API is not currently available.
+
+## Hot reload
+
+Enable hot reload only for debug builds:
+
+```swift
+class MainWindowController: VueNativeWindowController {
+    override var devServerURL: URL? {
+        #if DEBUG
+        URL(string: "ws://localhost:8174")
+        #else
+        nil
+        #endif
+    }
+}
+```
+
+The controller loads the embedded bundle first. Subsequent bundles received from the development server replace the JavaScript context while preserving the native host window.
+
+## See also
+
+- [macOS setup](/macos/setup.md)
+- [Native Blocks](/guide/native-blocks.md)
+- [Dual-thread architecture](/architecture/dual-thread.md)

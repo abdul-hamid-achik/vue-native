@@ -7,7 +7,7 @@ import VueNativeShared
 /// Native module for checking and requesting system permissions on macOS.
 ///
 /// Methods:
-///   - check(type: String) -> "granted"/"denied"/"undetermined"
+///   - check(type: String) -> "granted"/"denied"/"notDetermined"
 ///   - request(type: String) -> "granted"/"denied"
 ///
 /// Supported permission types: "camera", "microphone", "notifications", "location", "contacts"
@@ -55,9 +55,9 @@ final class PermissionsModule: NativeModule {
                 case .denied:
                     result = "denied"
                 case .notDetermined:
-                    result = "undetermined"
+                    result = "notDetermined"
                 @unknown default:
-                    result = "undetermined"
+                    result = "notDetermined"
                 }
                 callback(result, nil)
             }
@@ -75,9 +75,9 @@ final class PermissionsModule: NativeModule {
             case .denied, .restricted:
                 callback("denied", nil)
             case .notDetermined:
-                callback("undetermined", nil)
+                callback("notDetermined", nil)
             @unknown default:
-                callback("undetermined", nil)
+                callback("notDetermined", nil)
             }
 
         default:
@@ -129,8 +129,8 @@ final class PermissionsModule: NativeModule {
         switch status {
         case .authorized: return "granted"
         case .denied, .restricted: return "denied"
-        case .notDetermined: return "undetermined"
-        @unknown default: return "undetermined"
+        case .notDetermined: return "notDetermined"
+        @unknown default: return "notDetermined"
         }
     }
 
@@ -141,9 +141,9 @@ final class PermissionsModule: NativeModule {
         case .denied, .restricted:
             return "denied"
         case .notDetermined:
-            return "undetermined"
+            return "notDetermined"
         @unknown default:
-            return "undetermined"
+            return "notDetermined"
         }
     }
 }

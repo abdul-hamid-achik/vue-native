@@ -31,7 +31,7 @@ final class VModalFactory: NativeComponentFactory {
     func updateProp(view: NSView, key: String, value: Any?) {
         switch key {
         case "visible":
-            let visible = (value as? Bool) ?? ((value as? Int) != nil && (value as! Int) != 0)
+            let visible = (value as? Bool) ?? (value as? NSNumber)?.boolValue ?? false
             let wasVisible = objc_getAssociatedObject(view, &VModalFactory.visibleKey) as? Bool ?? false
             objc_setAssociatedObject(view, &VModalFactory.visibleKey, visible, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
             if visible && !wasVisible {
@@ -63,7 +63,10 @@ final class VModalFactory: NativeComponentFactory {
             )
 
         default:
-            break
+            // Apply public VModal styles to the panel content rather than the
+            // hidden placeholder in the logical view tree.
+            let overlay = getOrCreateOverlay(for: view)
+            StyleEngine.apply(key: key, value: value, to: overlay)
         }
     }
 
@@ -100,7 +103,7 @@ final class VModalFactory: NativeComponentFactory {
     // Custom child management: route children to the overlay container
     func insertChild(_ child: NSView, into parent: NSView, before anchor: NSView?) {
         let overlay = getOrCreateOverlay(for: parent)
-        if let anchor = anchor, let idx = overlay.subviews.firstIndex(of: anchor) {
+        if let anchor = anchor, overlay.subviews.contains(anchor) {
             overlay.addSubview(child, positioned: .below, relativeTo: anchor)
         } else {
             overlay.addSubview(child)

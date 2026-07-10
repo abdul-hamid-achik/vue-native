@@ -1,0 +1,28 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    "build": {
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/native/**",
+        "!$TURBO_ROOT$/native/**/.DS_Store",
+        "!$TURBO_ROOT$/native/**/.build/**",
+        "!$TURBO_ROOT$/native/**/build/**",
+        "!$TURBO_ROOT$/native/**/.gradle/**",
+        "!$TURBO_ROOT$/native/**/.swiftpm/**",
+        "!$TURBO_ROOT$/native/**/DerivedData/**",
+        "!$TURBO_ROOT$/native/**/node_modules/**",
+        "!$TURBO_ROOT$/native/android/build-tools/**",
+        "!$TURBO_ROOT$/native/android/platform-tools/**",
+        "!$TURBO_ROOT$/native/android/platforms/**",
+        "!$TURBO_ROOT$/native/android/licenses/**",
+        "!$TURBO_ROOT$/native/**/*.aar",
+        "!$TURBO_ROOT$/native/**/*.apk",
+        "!$TURBO_ROOT$/native/**/*.aab",
+        "!$TURBO_ROOT$/native/**/local.properties"
+      ],
+      "outputs": ["dist/**", "native/**"]
+    }
+  }
+}

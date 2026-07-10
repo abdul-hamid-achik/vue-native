@@ -32,7 +32,7 @@
  * @packageDocumentation
  */
 
-export { generateCode, writeGeneratedFiles, cleanGeneratedFiles } from './codegen'
+export { generateCode, writeGeneratedFiles, cleanGeneratedFiles, hasGeneratedArtifacts } from './codegen'
 
 export {
   validateNativeBlocks,

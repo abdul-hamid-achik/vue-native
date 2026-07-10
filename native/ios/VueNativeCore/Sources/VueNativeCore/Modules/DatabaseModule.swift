@@ -13,7 +13,11 @@ final class DatabaseModule: NativeModule {
 
     /// Directory for database files.
     private var dbDirectory: URL {
-        let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        let baseDirectory = FileManager.default.urls(
+            for: .documentDirectory,
+            in: .userDomainMask
+        ).first ?? FileManager.default.temporaryDirectory
+        let dir = baseDirectory
             .appendingPathComponent("databases", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir

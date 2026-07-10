@@ -21,20 +21,23 @@ interface FetchResponse {
   status: number
   ok: boolean
   json(): Promise<unknown>
+  text?(): Promise<string>
   headers?: FetchHeaders
+}
+
+interface AbortControllerLike {
+  readonly signal: unknown
+  abort(): void
+}
+
+interface HttpGlobals {
+  AbortController?: new () => AbortControllerLike
 }
 
 declare function fetch(
   input: string,
   init?: RequestInit,
 ): Promise<FetchResponse>
-
-// AbortController may be available in newer JSC runtimes (iOS 15+).
-// Declare it here since the ES2020 lib doesn't include it.
-declare class AbortController {
-  readonly signal: unknown
-  abort(): void
-}
 
 declare global {
   var __VN_configurePins: ((pinsJson: string) => void) | undefined
@@ -80,6 +83,31 @@ function isQueryRequestOptions(
   return 'params' in value || 'headers' in value
 }
 
+function getHeader(headers: Record<string, string>, name: string): string | undefined {
+  const expected = name.toLowerCase()
+  return Object.entries(headers).find(([key]) => key.toLowerCase() === expected)?.[1]
+}
+
+async function parseResponseBody<T>(
+  response: FetchResponse,
+  headers: Record<string, string>,
+): Promise<T> {
+  // RFC-compatible empty-response statuses do not have a JSON body. Returning
+  // undefined keeps GET/POST typing flexible without making 204 a rejection.
+  if (response.status === 204 || response.status === 205) return undefined as T
+
+  const contentType = getHeader(headers, 'content-type')?.toLowerCase() ?? ''
+  // Preserve the existing JSON-first behavior when a lightweight/native
+  // response does not expose headers at all.
+  const expectsJson = contentType === '' || contentType.includes('json') || contentType.includes('+json')
+
+  if (!expectsJson && typeof response.text === 'function') {
+    return await response.text() as T
+  }
+
+  return await response.json() as T
+}
+
 /**
  * HTTP client composable with reactive loading/error state.
  * Uses the native fetch polyfill under the hood.
@@ -89,6 +117,8 @@ function isQueryRequestOptions(
  * const users = await http.get<User[]>('/users')
  */
 export function useHttp(config: HttpRequestConfig = {}) {
+  let configurePinsPromise: Promise<unknown> | undefined
+
   // Configure certificate pins on the native side if provided.
   // iOS: uses __VN_configurePins (registered in JSPolyfills.registerFetch).
   // Android: uses Http module's configurePins method via the bridge.
@@ -96,13 +126,15 @@ export function useHttp(config: HttpRequestConfig = {}) {
     const configurePins = globalThis.__VN_configurePins
     if (typeof configurePins === 'function') {
       configurePins(JSON.stringify(config.pins))
+      configurePinsPromise = Promise.resolve()
     } else {
-      NativeBridge.invokeNativeModule('Http', 'configurePins', [config.pins])
+      configurePinsPromise = NativeBridge.invokeNativeModule('Http', 'configurePins', [config.pins])
     }
   }
 
   const loading = ref(false)
   const error = ref<string | null>(null)
+  let activeRequestCount = 0
 
   // Guard against updating reactive state after the owning component unmounts.
   let isMounted = true
@@ -139,18 +171,24 @@ export function useHttp(config: HttpRequestConfig = {}) {
     options: RequestOptions = {},
   ): Promise<HttpResponse<T>> {
     const fullUrl = config.baseURL ? `${config.baseURL}${url}` : url
+    activeRequestCount++
     loading.value = true
     error.value = null
 
-    // Set up AbortController for timeout if configured
-    let controller: AbortController | undefined
+    // Native JSC/J2V8 fetch implementations do not always expose
+    // AbortController. Use it when present, while racing the response with a
+    // timer so callers still get a reliable timeout without it.
+    const AbortControllerCtor = (globalThis as typeof globalThis & HttpGlobals).AbortController
+    const controller = config.timeout && config.timeout > 0 && typeof AbortControllerCtor === 'function'
+      ? new AbortControllerCtor()
+      : undefined
     let timeoutId: ReturnType<typeof setTimeout> | undefined
-    if (config.timeout && config.timeout > 0 && typeof AbortController !== 'undefined') {
-      controller = new AbortController()
-      timeoutId = setTimeout(() => controller!.abort(), config.timeout)
-    }
 
     try {
+      if (configurePinsPromise) {
+        await configurePinsPromise
+      }
+
       const upperMethod = method.toUpperCase()
 
       const mergedHeaders: Record<string, string> = {
@@ -158,8 +196,15 @@ export function useHttp(config: HttpRequestConfig = {}) {
         ...(options.headers ?? {}),
       }
 
-      // Only set Content-Type: application/json for methods that carry a body
-      if (BODY_METHODS.has(upperMethod) && !mergedHeaders['Content-Type']) {
+      // Only set JSON content type when the caller has not supplied one. Header
+      // names are case-insensitive, and a string body should remain raw rather
+      // than being JSON-encoded a second time.
+      const hasContentType = getHeader(mergedHeaders, 'content-type') !== undefined
+      if (
+        BODY_METHODS.has(upperMethod)
+        && !hasContentType
+        && (options.body === undefined || typeof options.body !== 'string')
+      ) {
         mergedHeaders['Content-Type'] = 'application/json'
       }
 
@@ -173,12 +218,25 @@ export function useHttp(config: HttpRequestConfig = {}) {
       }
 
       if (options.body !== undefined) {
-        fetchOptions.body = JSON.stringify(options.body)
+        fetchOptions.body = typeof options.body === 'string'
+          ? options.body
+          : JSON.stringify(options.body)
       }
 
-      const response = await fetch(fullUrl, fetchOptions)
-      const data = await response.json() as T
+      const fetchPromise = fetch(fullUrl, fetchOptions)
+      const response = config.timeout && config.timeout > 0
+        ? await Promise.race([
+            fetchPromise,
+            new Promise<FetchResponse>((_resolve, reject) => {
+              timeoutId = setTimeout(() => {
+                controller?.abort()
+                reject(new Error(`[VueNative] ${upperMethod} ${fullUrl} timed out after ${config.timeout}ms`))
+              }, config.timeout)
+            }),
+          ])
+        : await fetchPromise
       const responseHeaders = parseResponseHeaders(response)
+      const data = await parseResponseBody<T>(response, responseHeaders)
 
       if (!isMounted) {
         return { data, status: response.status, ok: response.ok, headers: responseHeaders }
@@ -200,8 +258,9 @@ export function useHttp(config: HttpRequestConfig = {}) {
       if (timeoutId !== undefined) {
         clearTimeout(timeoutId)
       }
+      activeRequestCount = Math.max(0, activeRequestCount - 1)
       if (isMounted) {
-        loading.value = false
+        loading.value = activeRequestCount > 0
       }
     }
   }

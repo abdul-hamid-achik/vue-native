@@ -42,11 +42,17 @@ final class VActivityIndicatorFactory: NativeComponentFactory {
         case "color":
             if let colorStr = value as? String {
                 indicator.appearance = nil // Reset to allow tinting
-                indicator.contentFilters = [CIFilter(name: "CIFalseColor",
+                let color = NSColor.fromHex(colorStr)
+                if let ciColor = CIColor(color: color),
+                   let filter = CIFilter(name: "CIFalseColor",
                     parameters: [
-                        "inputColor0": CIColor(color: NSColor.fromHex(colorStr))!,
-                        "inputColor1": CIColor(color: NSColor.fromHex(colorStr))!
-                    ])!]
+                        "inputColor0": ciColor,
+                        "inputColor1": ciColor,
+                    ]) {
+                    indicator.contentFilters = [filter]
+                } else {
+                    indicator.contentFilters = []
+                }
             } else {
                 indicator.contentFilters = []
             }

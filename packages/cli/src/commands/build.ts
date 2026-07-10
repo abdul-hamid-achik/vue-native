@@ -1,32 +1,16 @@
 import { Command } from 'commander'
-import { spawn, execSync } from 'node:child_process'
+import { execSync } from 'node:child_process'
 import { existsSync, readdirSync, mkdirSync, copyFileSync } from 'node:fs'
 import { join, basename } from 'node:path'
 import pc from 'picocolors'
-import { ConfigError } from '../config.js'
+import { ConfigError, loadConfig } from '../config.js'
+import { runManagedProcess } from '../managed-process.js'
+import { ensureXcodeProject, findXcodeProject, installAndroidBundle } from '../native-project.js'
 
-function findXcodeProject(iosDir: string): { path: string, isWorkspace: boolean } | null {
-  if (!existsSync(iosDir)) return null
+type BuildMode = 'debug' | 'release'
 
-  // Look for .xcworkspace first (CocoaPods), then .xcodeproj
-  for (const ext of ['.xcworkspace', '.xcodeproj'] as const) {
-    try {
-      const entries = readdirSync(iosDir)
-      const match = entries.find(e => e.endsWith(ext))
-      if (match) {
-        return {
-          path: join(iosDir, match),
-          isWorkspace: ext === '.xcworkspace',
-        }
-      }
-    } catch {}
-  }
-
-  return null
-}
-
-function findReleaseApk(androidDir: string): string | null {
-  const apkDir = join(androidDir, 'app', 'build', 'outputs', 'apk', 'release')
+function findAndroidApk(androidDir: string, mode: BuildMode): string | null {
+  const apkDir = join(androidDir, 'app', 'build', 'outputs', 'apk', mode)
   if (existsSync(apkDir)) {
     try {
       const entries = readdirSync(apkDir)
@@ -39,8 +23,8 @@ function findReleaseApk(androidDir: string): string | null {
   return null
 }
 
-function findReleaseAab(androidDir: string): string | null {
-  const aabDir = join(androidDir, 'app', 'build', 'outputs', 'bundle', 'release')
+function findAndroidAab(androidDir: string, mode: BuildMode): string | null {
+  const aabDir = join(androidDir, 'app', 'build', 'outputs', 'bundle', mode)
   if (existsSync(aabDir)) {
     try {
       const entries = readdirSync(aabDir)
@@ -60,7 +44,7 @@ function ensureOutputDir(outputPath: string): void {
 }
 
 export const buildCommand = new Command('build')
-  .description('Create a release build of the app')
+  .description('Create a native build of the app')
   .argument('<platform>', 'platform to build for (ios, android, macos)')
   .option('--mode <mode>', 'build mode', 'release')
   .option('--output <path>', 'output directory for the build artifact', './build')
@@ -75,8 +59,17 @@ export const buildCommand = new Command('build')
     if (platform !== 'ios' && platform !== 'android' && platform !== 'macos') {
       throw new ConfigError('Platform must be "ios", "android", or "macos"')
     }
+    if (options.mode !== 'debug' && options.mode !== 'release') {
+      throw new ConfigError('Build mode must be "debug" or "release"')
+    }
 
     const cwd = process.cwd()
+    const config = await loadConfig(cwd)
+    const resolvedOptions = {
+      ...options,
+      mode: options.mode as BuildMode,
+      scheme: options.scheme ?? config?.ios.scheme,
+    }
     const outputDir = join(cwd, options.output)
 
     // Step 1: Build the JS bundle
@@ -91,28 +84,28 @@ export const buildCommand = new Command('build')
     }
 
     if (platform === 'ios') {
-      buildIOS(cwd, outputDir, options)
+      await buildIOS(cwd, outputDir, resolvedOptions)
     } else if (platform === 'android') {
-      buildAndroid(cwd, outputDir, options)
+      await buildAndroid(cwd, outputDir, resolvedOptions)
     } else {
-      buildMacOS(cwd, outputDir, options)
+      await buildMacOS(cwd, outputDir, resolvedOptions)
     }
   })
 
-function buildIOS(
+async function buildIOS(
   cwd: string,
   outputDir: string,
   options: {
-    mode: string
+    mode: BuildMode
     scheme?: string
   },
-) {
+): Promise<void> {
   const iosDir = join(cwd, 'ios')
-  const project = findXcodeProject(iosDir)
+  const project = ensureXcodeProject(iosDir)
 
   if (!project) {
     console.log(pc.yellow('  No Xcode project found in ./ios/'))
-    console.log(pc.dim('  To add iOS support, create an Xcode project in the ios/ directory.'))
+    console.log(pc.dim('  Add ios/project.yml or an .xcodeproj/.xcworkspace, then retry.'))
     console.log(pc.dim('  Bundle has been built to dist/vue-native-bundle.js\n'))
     return
   }
@@ -127,80 +120,68 @@ function buildIOS(
   console.log(pc.white(`  Archiving ${scheme} (${configuration})...`))
   console.log(pc.dim(`  Archive path: ${archivePath}`))
 
-  const xcodebuild = spawn(
-    'xcodebuild',
-    [
+  let result
+  try {
+    result = await runManagedProcess('xcodebuild', [
       projectFlag, project.path,
       '-scheme', scheme,
       '-configuration', configuration,
       '-destination', 'generic/platform=iOS',
       '-archivePath', archivePath,
       'archive',
-    ],
-    {
+    ], {
       cwd,
       stdio: 'pipe',
-      env: { ...process.env, DEVELOPER_DIR: '/Applications/Xcode.app/Contents/Developer' },
-    },
-  )
-
-  // Ensure xcodebuild process is cleaned up on exit or interruption
-  const cleanup = () => {
-    if (xcodebuild && !xcodebuild.killed) {
-      xcodebuild.kill()
-    }
+      env: { ...process.env },
+    }, {
+      stdout: (data) => {
+        const text = data.toString().trim()
+        if (text.includes('Compiling') || text.includes('Linking') || text.includes('Signing')) {
+          console.log(pc.dim(`  ${text.split('\n').pop()}`))
+        }
+      },
+      stderr: (data) => {
+        const text = data.toString().trim()
+        if (text.includes('error:')) {
+          console.log(pc.red(`  ${text}`))
+        } else if (text.includes('warning:')) {
+          console.log(pc.yellow(`  ${text}`))
+        }
+      },
+    })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.error(pc.red(`  xcodebuild process error: ${message}`))
+    throw new ConfigError(`iOS archive process failed: ${message}`)
   }
-  process.on('exit', cleanup)
-  process.on('SIGINT', cleanup)
-  process.on('SIGTERM', cleanup)
 
-  xcodebuild.stdout?.on('data', (data: Buffer) => {
-    const text = data.toString().trim()
-    // Show progress indicators from xcodebuild
-    if (text.includes('Compiling') || text.includes('Linking') || text.includes('Signing')) {
-      console.log(pc.dim(`  ${text.split('\n').pop()}`))
-    }
-  })
+  if (result.code !== 0) {
+    const outcome = result.code === null
+      ? `signal ${result.signal ?? 'unknown'}`
+      : `exit code ${result.code}`
+    console.error(pc.red(`  ✗ Archive failed (${outcome})`))
+    throw new ConfigError(`iOS archive failed with ${outcome}`)
+  }
 
-  xcodebuild.stderr?.on('data', (data: Buffer) => {
-    const text = data.toString().trim()
-    if (text.includes('error:')) {
-      console.log(pc.red(`  ${text}`))
-    } else if (text.includes('warning:')) {
-      console.log(pc.yellow(`  ${text}`))
-    }
-  })
+  console.log(pc.green('  ✓ Archive successful\n'))
 
-  xcodebuild.on('error', (err) => {
-    console.error(pc.red(`  xcodebuild process error: ${err.message}`))
-    cleanup()
-  })
-
-  xcodebuild.on('close', (code) => {
-    if (code !== 0) {
-      console.error(pc.red(`  ✗ Archive failed (exit code ${code})`))
-      throw new ConfigError(`iOS archive failed with exit code ${code}`)
-    }
-
-    console.log(pc.green('  ✓ Archive successful\n'))
-
-    if (existsSync(archivePath)) {
-      console.log(pc.green(`  Archive: ${archivePath}`))
-      console.log(pc.dim('  To export an IPA, open the archive in Xcode Organizer or run:'))
-      console.log(pc.dim(`  xcodebuild -exportArchive -archivePath "${archivePath}" -exportOptionsPlist ExportOptions.plist -exportPath "${outputDir}"\n`))
-    } else {
-      console.log(pc.yellow('  Archive path not found. Check Xcode build settings.\n'))
-    }
-  })
+  if (existsSync(archivePath)) {
+    console.log(pc.green(`  Archive: ${archivePath}`))
+    console.log(pc.dim('  To export an IPA, open the archive in Xcode Organizer or run:'))
+    console.log(pc.dim(`  xcodebuild -exportArchive -archivePath "${archivePath}" -exportOptionsPlist ExportOptions.plist -exportPath "${outputDir}"\n`))
+  } else {
+    console.log(pc.yellow('  Archive path not found. Check Xcode build settings.\n'))
+  }
 }
 
-function buildAndroid(
+async function buildAndroid(
   cwd: string,
   outputDir: string,
   options: {
+    mode: BuildMode
     aab?: boolean
   },
-) {
+): Promise<void> {
   const androidDir = join(cwd, 'android')
 
   if (!existsSync(androidDir)) {
@@ -217,95 +198,88 @@ function buildAndroid(
       'gradlew not found in android/ directory. Make sure your Android project has the Gradle wrapper.',
     )
   }
-  const gradleTask = options.aab ? 'bundleRelease' : 'assembleRelease'
+
+  installAndroidBundle(cwd, androidDir)
+  console.log(pc.green('  ✓ JS bundle copied to Android assets'))
+
+  const buildType = options.mode === 'release' ? 'Release' : 'Debug'
+  const gradleTask = `${options.aab ? 'bundle' : 'assemble'}${buildType}`
   const artifactType = options.aab ? 'AAB' : 'APK'
 
   ensureOutputDir(outputDir)
 
-  console.log(pc.white(`  Building release ${artifactType} with Gradle...`))
+  console.log(pc.white(`  Building ${options.mode} ${artifactType} with Gradle...`))
 
-  const gradle = spawn(
-    './gradlew',
-    [gradleTask],
-    {
+  let result
+  try {
+    result = await runManagedProcess('./gradlew', [gradleTask], {
       cwd: androidDir,
       stdio: 'pipe',
       env: { ...process.env },
-    },
-  )
+    }, {
+      stdout: (data) => {
+        const text = data.toString().trim()
+        if (text) {
+          console.log(pc.dim(`  ${text}`))
+        }
+      },
+      stderr: (data) => {
+        const text = data.toString().trim()
+        if (text.includes('ERROR') || text.includes('FAILURE')) {
+          console.log(pc.red(`  ${text}`))
+        }
+      },
+    })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.error(pc.red(`  Gradle process error: ${message}`))
+    throw new ConfigError(`Android Gradle process failed: ${message}`)
+  }
 
-  // Ensure Gradle process is cleaned up on exit or interruption
-  const cleanupGradle = () => {
-    if (gradle && !gradle.killed) {
-      gradle.kill()
+  if (result.code !== 0) {
+    const outcome = result.code === null
+      ? `signal ${result.signal ?? 'unknown'}`
+      : `exit code ${result.code}`
+    console.error(pc.red(`  ✗ Gradle build failed (${outcome})`))
+    throw new ConfigError(`Android Gradle build failed with ${outcome}`)
+  }
+
+  console.log(pc.green('  ✓ Build successful\n'))
+
+  // Find and copy the artifact to the output directory
+  if (options.aab) {
+    const aabPath = findAndroidAab(androidDir, options.mode)
+    if (aabPath) {
+      const destPath = join(outputDir, basename(aabPath))
+      copyFileSync(aabPath, destPath)
+      console.log(pc.green(`  AAB copied to: ${destPath}`))
+      console.log(pc.dim('  Upload this file to the Google Play Console.\n'))
+    } else {
+      console.log(pc.yellow(`  Could not locate ${options.mode} AAB.`))
+      console.log(pc.dim(`  Expected at android/app/build/outputs/bundle/${options.mode}/\n`))
+    }
+  } else {
+    const apkPath = findAndroidApk(androidDir, options.mode)
+    if (apkPath) {
+      const destPath = join(outputDir, basename(apkPath))
+      copyFileSync(apkPath, destPath)
+      console.log(pc.green(`  APK copied to: ${destPath}`))
+      console.log(pc.dim('  Install with: adb install -r "' + destPath + '"\n'))
+    } else {
+      console.log(pc.yellow(`  Could not locate ${options.mode} APK.`))
+      console.log(pc.dim(`  Expected at android/app/build/outputs/apk/${options.mode}/\n`))
     }
   }
-  process.on('exit', cleanupGradle)
-  process.on('SIGINT', cleanupGradle)
-  process.on('SIGTERM', cleanupGradle)
-
-  gradle.stdout?.on('data', (data: Buffer) => {
-    const text = data.toString().trim()
-    if (text) {
-      console.log(pc.dim(`  ${text}`))
-    }
-  })
-
-  gradle.stderr?.on('data', (data: Buffer) => {
-    const text = data.toString().trim()
-    if (text.includes('ERROR') || text.includes('FAILURE')) {
-      console.log(pc.red(`  ${text}`))
-    }
-  })
-
-  gradle.on('error', (err) => {
-    console.error(pc.red(`  Gradle process error: ${err.message}`))
-    cleanupGradle()
-  })
-
-  gradle.on('close', (code) => {
-    if (code !== 0) {
-      console.error(pc.red(`  ✗ Gradle build failed (exit code ${code})`))
-      throw new ConfigError(`Android Gradle build failed with exit code ${code}`)
-    }
-
-    console.log(pc.green('  ✓ Build successful\n'))
-
-    // Find and copy the artifact to the output directory
-    if (options.aab) {
-      const aabPath = findReleaseAab(androidDir)
-      if (aabPath) {
-        const destPath = join(outputDir, basename(aabPath))
-        copyFileSync(aabPath, destPath)
-        console.log(pc.green(`  AAB copied to: ${destPath}`))
-        console.log(pc.dim('  Upload this file to the Google Play Console.\n'))
-      } else {
-        console.log(pc.yellow('  Could not locate release AAB.'))
-        console.log(pc.dim('  Expected at android/app/build/outputs/bundle/release/\n'))
-      }
-    } else {
-      const apkPath = findReleaseApk(androidDir)
-      if (apkPath) {
-        const destPath = join(outputDir, basename(apkPath))
-        copyFileSync(apkPath, destPath)
-        console.log(pc.green(`  APK copied to: ${destPath}`))
-        console.log(pc.dim('  Install with: adb install -r "' + destPath + '"\n'))
-      } else {
-        console.log(pc.yellow('  Could not locate release APK.'))
-        console.log(pc.dim('  Expected at android/app/build/outputs/apk/release/\n'))
-      }
-    }
-  })
 }
 
-function buildMacOS(
+async function buildMacOS(
   cwd: string,
   outputDir: string,
   options: {
-    mode: string
+    mode: BuildMode
     scheme?: string
   },
-) {
+): Promise<void> {
   const macosDir = join(cwd, 'macos')
   const project = findXcodeProject(macosDir)
 
@@ -326,67 +300,56 @@ function buildMacOS(
   console.log(pc.white(`  Archiving ${scheme} (${configuration}) for macOS...`))
   console.log(pc.dim(`  Archive path: ${archivePath}`))
 
-  const xcodebuild = spawn(
-    'xcodebuild',
-    [
+  let result
+  try {
+    result = await runManagedProcess('xcodebuild', [
       projectFlag, project.path,
       '-scheme', scheme,
       '-configuration', configuration,
       '-destination', 'generic/platform=macOS',
       '-archivePath', archivePath,
       'archive',
-    ],
-    {
+    ], {
       cwd,
       stdio: 'pipe',
-      env: { ...process.env, DEVELOPER_DIR: '/Applications/Xcode.app/Contents/Developer' },
-    },
-  )
-
-  const cleanup = () => {
-    if (xcodebuild && !xcodebuild.killed) {
-      xcodebuild.kill()
-    }
+      env: { ...process.env },
+    }, {
+      stdout: (data) => {
+        const text = data.toString().trim()
+        if (text.includes('Compiling') || text.includes('Linking') || text.includes('Signing')) {
+          console.log(pc.dim(`  ${text.split('\n').pop()}`))
+        }
+      },
+      stderr: (data) => {
+        const text = data.toString().trim()
+        if (text.includes('error:')) {
+          console.log(pc.red(`  ${text}`))
+        } else if (text.includes('warning:')) {
+          console.log(pc.yellow(`  ${text}`))
+        }
+      },
+    })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.error(pc.red(`  xcodebuild process error: ${message}`))
+    throw new ConfigError(`macOS archive process failed: ${message}`)
   }
-  process.on('exit', cleanup)
-  process.on('SIGINT', cleanup)
-  process.on('SIGTERM', cleanup)
 
-  xcodebuild.stdout?.on('data', (data: Buffer) => {
-    const text = data.toString().trim()
-    if (text.includes('Compiling') || text.includes('Linking') || text.includes('Signing')) {
-      console.log(pc.dim(`  ${text.split('\n').pop()}`))
-    }
-  })
+  if (result.code !== 0) {
+    const outcome = result.code === null
+      ? `signal ${result.signal ?? 'unknown'}`
+      : `exit code ${result.code}`
+    console.error(pc.red(`  ✗ Archive failed (${outcome})`))
+    throw new ConfigError(`macOS archive failed with ${outcome}`)
+  }
 
-  xcodebuild.stderr?.on('data', (data: Buffer) => {
-    const text = data.toString().trim()
-    if (text.includes('error:')) {
-      console.log(pc.red(`  ${text}`))
-    } else if (text.includes('warning:')) {
-      console.log(pc.yellow(`  ${text}`))
-    }
-  })
+  console.log(pc.green('  ✓ Archive successful\n'))
 
-  xcodebuild.on('error', (err) => {
-    console.error(pc.red(`  xcodebuild process error: ${err.message}`))
-    cleanup()
-  })
-
-  xcodebuild.on('close', (code) => {
-    if (code !== 0) {
-      console.error(pc.red(`  ✗ Archive failed (exit code ${code})`))
-      throw new ConfigError(`macOS archive failed with exit code ${code}`)
-    }
-
-    console.log(pc.green('  ✓ Archive successful\n'))
-
-    if (existsSync(archivePath)) {
-      console.log(pc.green(`  Archive: ${archivePath}`))
-      console.log(pc.dim('  To export a .app or .pkg, open the archive in Xcode Organizer or run:'))
-      console.log(pc.dim(`  xcodebuild -exportArchive -archivePath "${archivePath}" -exportOptionsPlist ExportOptions.plist -exportPath "${outputDir}"\n`))
-    } else {
-      console.log(pc.yellow('  Archive path not found. Check Xcode build settings.\n'))
-    }
-  })
+  if (existsSync(archivePath)) {
+    console.log(pc.green(`  Archive: ${archivePath}`))
+    console.log(pc.dim('  To export a .app or .pkg, open the archive in Xcode Organizer or run:'))
+    console.log(pc.dim(`  xcodebuild -exportArchive -archivePath "${archivePath}" -exportOptionsPlist ExportOptions.plist -exportPath "${outputDir}"\n`))
+  } else {
+    console.log(pc.yellow('  Archive path not found. Check Xcode build settings.\n'))
+  }
 }

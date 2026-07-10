@@ -8,7 +8,7 @@ This guide walks through every step to get a Vue Native app building and running
 |------|---------|---------|
 | **Xcode** | 16+ | [Mac App Store](https://apps.apple.com/app/xcode/id497799835) |
 | **Xcode Command Line Tools** | (bundled) | `xcode-select --install` |
-| **Bun** (or Node 18+) | 1.3+ | `curl -fsSL https://bun.sh/install \| bash` |
+| **Bun** | 1.3+ | `curl -fsSL https://bun.sh/install \| bash` |
 
 Verify your environment:
 

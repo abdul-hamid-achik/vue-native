@@ -222,7 +222,9 @@ public final class AudioModule: NSObject, NativeModule {
         progressTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
             self?.reportProgress()
         }
-        RunLoop.main.add(progressTimer!, forMode: .common)
+        if let progressTimer {
+            RunLoop.main.add(progressTimer, forMode: .common)
+        }
     }
 
     private func stopProgressReporting() {
@@ -335,6 +337,25 @@ public final class AudioModule: NSObject, NativeModule {
                 status["volume"] = player.volume
             }
             callback(status, nil)
+        }
+    }
+
+    public func destroy() {
+        let cleanup = {
+            self.stopProgressReporting()
+            self.player?.stop()
+            self.player?.delegate = nil
+            self.player = nil
+            self.playerDelegate = nil
+            self.recorder?.stop()
+            self.recorder = nil
+            self.isPlaying = false
+        }
+
+        if Thread.isMainThread {
+            cleanup()
+        } else {
+            DispatchQueue.main.sync(execute: cleanup)
         }
     }
 }

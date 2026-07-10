@@ -33,12 +33,14 @@ export const VActionSheet = defineComponent({
   setup(props, { emit }) {
     return () =>
       h('VActionSheet', {
-        visible: props.visible,
         title: props.title,
         message: props.message,
         actions: props.actions,
         onAction: (e: { label: string }) => emit('action', e),
         onCancel: () => emit('cancel'),
+        // Presentation is triggered by the visible update on native. Apply it
+        // only after content and event handlers have reached the bridge.
+        visible: props.visible,
       })
   },
 })

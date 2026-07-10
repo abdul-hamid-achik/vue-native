@@ -4,14 +4,15 @@ import VueNativeShared
 /// Native module providing biometric authentication (Touch ID) on macOS.
 ///
 /// Methods:
-///   - isAvailable() -> { available: Bool, biometryType: "touchId"/"none" }
+///   - getSupportedBiometry() -> "touchID"/"none"
+///   - isAvailable() -> Bool
 ///   - authenticate(reason: String) -> { success: Bool }
 final class BiometryModule: NativeModule {
     let moduleName = "Biometry"
 
     func invoke(method: String, args: [Any], callback: @escaping (Any?, String?) -> Void) {
         switch method {
-        case "isAvailable":
+        case "getSupportedBiometry", "isAvailable":
             let context = LAContext()
             var error: NSError?
             let canEvaluate = context.canEvaluatePolicy(
@@ -23,7 +24,7 @@ final class BiometryModule: NativeModule {
             if canEvaluate {
                 switch context.biometryType {
                 case .touchID:
-                    biometryType = "touchId"
+                    biometryType = "touchID"
                 default:
                     biometryType = "none"
                 }
@@ -31,11 +32,11 @@ final class BiometryModule: NativeModule {
                 biometryType = "none"
             }
 
-            let result: [String: Any] = [
-                "available": canEvaluate,
-                "biometryType": biometryType
-            ]
-            callback(result, nil)
+            if method == "isAvailable" {
+                callback(canEvaluate, nil)
+            } else {
+                callback(biometryType, nil)
+            }
 
         case "authenticate":
             let reason = args.first as? String ?? "Authenticate"
@@ -49,7 +50,7 @@ final class BiometryModule: NativeModule {
                     callback(["success": true], nil)
                 } else {
                     let message = error?.localizedDescription ?? "Authentication failed"
-                    callback(nil, message)
+                    callback(["success": false, "error": message], nil)
                 }
             }
 

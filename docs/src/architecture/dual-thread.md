@@ -89,7 +89,11 @@ JS invokeNativeModule(module, method, args)
 
 The TypeScript bridge keeps a 30 second timeout for async module calls. That timeout is part of the reliability contract and should not be removed.
 
-Sync native modules use `invokeNativeModuleSync`. They block the JS owner and should only be used for small, predictable reads.
+All public native-module calls are asynchronous. The bridge is intentionally
+batched and JSON-shaped, so a call cannot synchronously return a native value
+without breaking its thread-ownership guarantees. `invokeNativeModuleSync` is
+kept only as a deprecated compatibility alias and returns the same `Promise` as
+`invokeNativeModule`; new code must use `invokeNativeModule` directly.
 
 ## Thread Safety Rules
 

@@ -16,6 +16,7 @@ class VAlertDialogFactory : NativeComponentFactory {
     private val confirmHandlers = mutableMapOf<View, (Any?) -> Unit>()
     private val cancelHandlers = mutableMapOf<View, (Any?) -> Unit>()
     private val actionHandlers = mutableMapOf<View, (Any?) -> Unit>()
+    private val dialogs = mutableMapOf<View, AlertDialog>()
 
     override fun createView(context: Context): View {
         return View(context).apply {
@@ -28,7 +29,11 @@ class VAlertDialogFactory : NativeComponentFactory {
         val p = props.getOrPut(view) { DialogProps() }
         when (key) {
             "visible" -> {
-                if (value == true || value == "true") showDialog(view, p)
+                if (value == true || value == "true") {
+                    showDialog(view, p)
+                } else {
+                    dialogs.remove(view)?.dismiss()
+                }
             }
             "title" -> p.title = value?.toString() ?: ""
             "message" -> p.message = value?.toString() ?: ""
@@ -47,6 +52,7 @@ class VAlertDialogFactory : NativeComponentFactory {
 
     private fun showDialog(view: View, p: DialogProps) {
         val ctx = view.context
+        dialogs.remove(view)?.dismiss()
         val builder = AlertDialog.Builder(ctx)
             .setTitle(p.title.ifEmpty { null })
             .setMessage(p.message.ifEmpty { null })
@@ -54,7 +60,9 @@ class VAlertDialogFactory : NativeComponentFactory {
         if (p.buttons.isEmpty()) {
             builder.setPositiveButton("OK") { d, _ ->
                 d.dismiss()
-                confirmHandlers[view]?.invoke(null)
+                val payload = mapOf("label" to "OK")
+                confirmHandlers[view]?.invoke(payload)
+                actionHandlers[view]?.invoke(payload)
             }
         } else {
             p.buttons.forEach { btn ->
@@ -67,16 +75,25 @@ class VAlertDialogFactory : NativeComponentFactory {
                     }
                     "destructive" -> builder.setNeutralButton(label) { d, _ ->
                         d.dismiss()
-                        confirmHandlers[view]?.invoke(mapOf("label" to label))
+                        val payload = mapOf("label" to label)
+                        confirmHandlers[view]?.invoke(payload)
+                        actionHandlers[view]?.invoke(payload)
                     }
                     else -> builder.setPositiveButton(label) { d, _ ->
                         d.dismiss()
-                        confirmHandlers[view]?.invoke(mapOf("label" to label))
+                        val payload = mapOf("label" to label)
+                        confirmHandlers[view]?.invoke(payload)
+                        actionHandlers[view]?.invoke(payload)
                     }
                 }
             }
         }
-        builder.create().show()
+        val dialog = builder.create()
+        dialog.setOnDismissListener {
+            dialogs.remove(view, dialog)
+        }
+        dialogs[view] = dialog
+        dialog.show()
     }
 
     override fun addEventListener(view: View, event: String, handler: (Any?) -> Unit) {
@@ -92,5 +109,13 @@ class VAlertDialogFactory : NativeComponentFactory {
             "cancel" -> cancelHandlers.remove(view)
             "action" -> actionHandlers.remove(view)
         }
+    }
+
+    override fun destroyView(view: View) {
+        dialogs.remove(view)?.dismiss()
+        props.remove(view)
+        confirmHandlers.remove(view)
+        cancelHandlers.remove(view)
+        actionHandlers.remove(view)
     }
 }

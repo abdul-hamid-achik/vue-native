@@ -122,4 +122,12 @@ class VDropdownFactory : NativeComponentFactory {
             spinner.setSelection(idx + 1) // +1 for placeholder
         }
     }
+
+    override fun destroyView(view: View) {
+        val spinner = view as? Spinner ?: return
+        spinner.onItemSelectedListener = null
+        changeHandlers.remove(spinner)
+        optionValues.remove(spinner)
+        optionLabels.remove(spinner)
+    }
 }

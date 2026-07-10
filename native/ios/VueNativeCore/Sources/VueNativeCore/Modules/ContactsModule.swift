@@ -126,7 +126,10 @@ final class ContactsModule: NativeModule {
             }
             do {
                 let contact = try contactStore.unifiedContact(withIdentifier: contactId, keysToFetch: [CNContactIdentifierKey as CNKeyDescriptor])
-                let mutable = contact.mutableCopy() as! CNMutableContact
+                guard let mutable = contact.mutableCopy() as? CNMutableContact else {
+                    callback(nil, "ContactsModule: failed to create a mutable contact")
+                    return
+                }
                 let saveRequest = CNSaveRequest()
                 saveRequest.delete(mutable)
                 try contactStore.execute(saveRequest)

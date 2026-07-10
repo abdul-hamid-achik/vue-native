@@ -1,6 +1,14 @@
 import { defineComponent, h, type PropType } from '@vue/runtime-core'
 import type { ViewStyle } from '../types/styles'
 
+function getSliderValue(payload: unknown): number | null {
+  const value = typeof payload === 'object' && payload !== null && 'value' in payload
+    ? (payload as { value?: unknown }).value
+    : payload
+
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
 export const VSlider = defineComponent({
   name: 'VSlider',
   props: {
@@ -24,9 +32,12 @@ export const VSlider = defineComponent({
       accessibilityRole: props.accessibilityRole,
       accessibilityHint: props.accessibilityHint,
       accessibilityState: props.accessibilityState,
-      onChange: (val: number) => {
-        emit('update:modelValue', val)
-        emit('change', val)
+      onChange: (payload: unknown) => {
+        const value = getSliderValue(payload)
+        if (value === null) return
+
+        emit('update:modelValue', value)
+        emit('change', value)
       },
     })
   },

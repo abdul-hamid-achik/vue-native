@@ -71,7 +71,7 @@ describe('Integration Tests', () => {
         <native platform="android">
         class TestModule: NativeModule {
           override val moduleName: String = "Test"
-          override fun invoke(method: String, args: List<Any?>, callback: (Any?, String?) -> Unit) {
+          override fun invoke(method: String, args: List<Any?>, bridge: NativeBridge, callback: (Any?, String?) -> Unit) {
             callback(null, null)
           }
         }
@@ -135,7 +135,8 @@ describe('Integration Tests', () => {
 
       const codegen = generateCode(parseResult.allNativeBlocks)
 
-      expect(codegen.stats.swiftFiles).toBe(3)
+      // Two module files plus the iOS and macOS generated registries.
+      expect(codegen.stats.swiftFiles).toBe(4)
       expect(codegen.stats.typescriptFiles).toBe(2)
     }))
 
@@ -184,7 +185,7 @@ describe('Integration Tests', () => {
         class CompilableModule: NativeModule {
           override val moduleName: String = "Compilable"
 
-          override fun invoke(method: String, args: List<Any?>, callback: (Any?, String?) -> Unit) {
+          override fun invoke(method: String, args: List<Any?>, bridge: NativeBridge, callback: (Any?, String?) -> Unit) {
             when (method) {
               "test" -> {
                 testMethod()
@@ -293,7 +294,7 @@ describe('Integration Tests', () => {
         <native platform="android">
         class TestModule: NativeModule {
           override val moduleName: String = "AndroidModule"
-          override fun invoke(method: String, args: List<Any?>, callback: (Any?, String?) -> Unit) {
+          override fun invoke(method: String, args: List<Any?>, bridge: NativeBridge, callback: (Any?, String?) -> Unit) {
             callback(null, null)
           }
         }
@@ -328,7 +329,7 @@ describe('Integration Tests', () => {
         <native platform="android">
         class ConsistentModule: NativeModule {
           override val moduleName: String = "Consistent"
-          override fun invoke(method: String, args: List<Any?>, callback: (Any?, String?) -> Unit) {
+          override fun invoke(method: String, args: List<Any?>, bridge: NativeBridge, callback: (Any?, String?) -> Unit) {
             when (method) {
               "method1" -> method1()
               "method2" -> method2()
@@ -403,7 +404,8 @@ describe('Integration Tests', () => {
       const duration = performance.now() - start
 
       expect(duration).toBeLessThan(500)
-      expect(codegen.stats.swiftFiles).toBe(11)
+      // Ten module files plus the iOS and macOS generated registries.
+      expect(codegen.stats.swiftFiles).toBe(12)
       expect(codegen.stats.typescriptFiles).toBe(10)
     }))
   })

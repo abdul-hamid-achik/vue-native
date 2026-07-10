@@ -15,7 +15,7 @@ class VScrollViewFactory : NativeComponentFactory {
     private val states = mutableMapOf<SwipeRefreshLayout, ScrollState>()
 
     override fun createView(context: Context): View {
-        val content = FlexboxLayout(context).apply {
+        val content = VueNativeFlexboxLayout(context).apply {
             flexDirection = FlexDirection.COLUMN
             layoutParams = ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -125,5 +125,22 @@ class VScrollViewFactory : NativeComponentFactory {
     override fun removeChild(parent: View, child: View) {
         val srf = parent as? SwipeRefreshLayout ?: return
         states[srf]?.content?.removeView(child)
+    }
+
+    override fun destroyView(view: View) {
+        val srf = view as? SwipeRefreshLayout ?: return
+        srf.setOnRefreshListener(null)
+        srf.isRefreshing = false
+        srf.isEnabled = false
+
+        val state = states.remove(srf)
+        scrollListeners.remove(srf)?.let { listener ->
+            state?.scrollView?.viewTreeObserver?.let { observer ->
+                if (observer.isAlive) {
+                    observer.removeOnScrollChangedListener(listener)
+                }
+            }
+        }
+        scrollThrottles.remove(srf)?.cancel()
     }
 }

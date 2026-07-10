@@ -21,14 +21,14 @@ final class NotificationsModule: NativeModule {
     var moduleName: String { "Notifications" }
     private weak var bridge: NativeBridge?
 
-    /// Serial queue for thread-safe access to the device token.
-    private let tokenQueue = DispatchQueue(label: "com.vuenative.notifications.token")
-    /// Backing storage for deviceToken. Access only via the computed property.
-    private var _deviceToken: String?
-    /// Cached APNS device token (hex string). Thread-safe.
-    private var deviceToken: String? {
-        get { tokenQueue.sync { _deviceToken } }
-        set { tokenQueue.sync { _deviceToken = newValue } }
+    /// APNs tokens belong to the application process, not to a particular
+    /// bridge/view-controller host. Keeping this cache static ensures
+    /// `getToken()` still works when APNs responds before a host replacement.
+    private static let tokenQueue = DispatchQueue(label: "com.vuenative.notifications.token")
+    private static var _cachedDeviceToken: String?
+    static var cachedDeviceToken: String? {
+        get { tokenQueue.sync { _cachedDeviceToken } }
+        set { tokenQueue.sync { _cachedDeviceToken = newValue } }
     }
 
     init(bridge: NativeBridge) {
@@ -81,7 +81,7 @@ final class NotificationsModule: NativeModule {
             }
             callback(true, nil)
         case "getToken":
-            callback(deviceToken, nil)
+            callback(Self.cachedDeviceToken, nil)
         default:
             callback(nil, "NotificationsModule: Unknown method '\(method)'")
         }
@@ -92,7 +92,7 @@ final class NotificationsModule: NativeModule {
     /// Call this from your AppDelegate's `application(_:didRegisterForRemoteNotificationsWithDeviceToken:)`
     func didRegisterForRemoteNotifications(deviceToken data: Data) {
         let token = data.map { String(format: "%02x", $0) }.joined()
-        self.deviceToken = token
+        Self.cachedDeviceToken = token
         DispatchQueue.main.async { [weak self] in
             self?.bridge?.dispatchGlobalEvent("push:token", payload: ["token": token])
         }
@@ -150,6 +150,16 @@ final class NotificationsModule: NativeModule {
     }
 
     func invokeSync(method: String, args: [Any]) -> Any? { nil }
+
+    func destroy() {
+        let delegate = NotificationCenterDelegate.shared
+        delegate.onNotification = nil
+        delegate.onPushReceived = nil
+        let center = UNUserNotificationCenter.current()
+        if center.delegate === delegate {
+            center.delegate = nil
+        }
+    }
 }
 
 // MARK: - UNUserNotificationCenterDelegate

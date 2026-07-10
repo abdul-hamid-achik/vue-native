@@ -1,6 +1,7 @@
 package com.vuenative.core
 
 import android.content.Intent
+import android.content.res.Configuration
 import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
@@ -68,7 +69,7 @@ abstract class VueNativeActivity : AppCompatActivity() {
         runtime.bridge.hostContainer = rootContainer
 
         // Register native modules
-        NativeModuleRegistry.getInstance(this).registerDefaults(runtime.bridge)
+        NativeModuleRegistry.getInstance(this).registerDefaults(runtime.bridge, this)
 
         // Provide Activity reference for modules that need it (e.g. PermissionsModule)
         PermissionsModule.setActivity(this)
@@ -123,9 +124,44 @@ abstract class VueNativeActivity : AppCompatActivity() {
             }
             hotReloadManager?.connect(devUrl, bundleHttpUrl)
 
-            // Also load from assets as fallback
+            // Development uses the embedded bundle as its deterministic
+            // fallback. An applied OTA must not race the live-reload source.
             loadFromAssets()
         } else {
+            loadAppliedBundleOrAssets()
+        }
+    }
+
+    private fun loadAppliedBundleOrAssets() {
+        val otaBundle = OTAModule.activeBundleFile(this)
+        if (otaBundle == null) {
+            loadFromAssets()
+            return
+        }
+
+        try {
+            val bundleCode = otaBundle.readText(Charsets.UTF_8)
+            runtime.loadBundle(bundleCode) { success, errorMessage ->
+                if (success) {
+                    Log.i(TAG, "Loaded verified OTA bundle ${otaBundle.name}")
+                } else {
+                    // Prevent a permanently broken startup loop. A runtime
+                    // evaluation failure may have partially mutated this V8
+                    // context, so the embedded bundle is selected on the next
+                    // clean Activity rather than evaluated into the same context.
+                    OTAModule.invalidateActiveBundle(this)
+                    Log.e(TAG, "OTA bundle evaluation failed; embedded bundle restored for next launch: $errorMessage")
+                    if (!isFinishing && !isDestroyed) {
+                        recreate()
+                    }
+                }
+            }
+        } catch (error: Exception) {
+            // The resolver verified the file immediately before this read, but
+            // storage can still change in between. Clear stale state and use the
+            // immutable asset in the current launch.
+            OTAModule.invalidateActiveBundle(this)
+            Log.w(TAG, "OTA bundle became unreadable; falling back to assets", error)
             loadFromAssets()
         }
     }
@@ -147,11 +183,27 @@ abstract class VueNativeActivity : AppCompatActivity() {
         }
     }
 
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        // Hosts that opt into configChanges retain the same JS runtime, so emit
+        // the two environment changes that composables subscribe to. Hosts that
+        // recreate the Activity still receive the same values through getInfo.
+        runtime.bridge.dispatchGlobalEvent("dimensionsChange", DeviceInfoModule.dimensions(this))
+        runtime.bridge.dispatchGlobalEvent(
+            "colorScheme:change",
+            mapOf("colorScheme" to DeviceInfoModule.colorScheme(newConfig)),
+        )
+    }
+
     override fun onDestroy() {
-        PermissionsModule.setActivity(null)
-        BackHandlerModule.setActivity(null)
+        PermissionsModule.clearActivity(this)
+        BackHandlerModule.clearActivity(this)
         hotReloadManager?.disconnect()
-        runtime.release()
+        if (::runtime.isInitialized) {
+            runtime.bridge.destroyHost()
+            NativeModuleRegistry.getInstance(this).destroyAll(runtime.bridge)
+            runtime.release()
+        }
         super.onDestroy()
     }
 

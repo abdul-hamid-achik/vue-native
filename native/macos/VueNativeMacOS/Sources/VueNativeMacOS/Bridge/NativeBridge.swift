@@ -46,9 +46,13 @@ public final class NativeBridge: @preconcurrency NativeEventDispatcher {
 
     /// The root NSView that contains all rendered native views.
     private weak var rootView: NSView?
+    private var rootConstraints: [NSLayoutConstraint] = []
+    private var modalConstraints: [NSLayoutConstraint] = []
+    private var appearanceObserver: NSObjectProtocol?
 
     /// The window's content view that hosts everything.
     private weak var contentView: NSView?
+    private var activeHostID: UUID?
 
     /// The component registry for creating views and handling props/events.
     private let registry = ComponentRegistry.shared
@@ -81,7 +85,7 @@ public final class NativeBridge: @preconcurrency NativeEventDispatcher {
 
     /// Register `__VN_flushOperations`, `__VN_teardown`, `__VN_log`, and `__VN_handleError`
     /// on the given JSContext.
-    private func registerBridgeFunctions(on context: JSContext) {
+    nonisolated private func registerBridgeFunctions(on context: JSContext) {
         let flushOps: @convention(block) (JSValue) -> Void = { [weak self] opsValue in
             guard let self = self else { return }
             guard let jsonString = opsValue.toString(), !jsonString.isEmpty else {
@@ -95,15 +99,14 @@ public final class NativeBridge: @preconcurrency NativeEventDispatcher {
                 return
             }
 
-            DispatchQueue.main.async { [weak self] in
+            Task { @MainActor [weak self] in
                 self?.processOperations(operations)
             }
         }
         context.setObject(flushOps, forKeyedSubscript: "__VN_flushOperations" as NSString)
 
-        let teardown: @convention(block) () -> Void = { [weak self] in
+        let teardown: @convention(block) () -> Void = {
             NSLog("[VueNative macOS] Teardown called from JS")
-            _ = self
         }
         context.setObject(teardown, forKeyedSubscript: "__VN_teardown" as NSString)
 
@@ -133,8 +136,17 @@ public final class NativeBridge: @preconcurrency NativeEventDispatcher {
     // MARK: - Setup
 
     /// Initialize the bridge. Must be called after JSRuntime.initialize().
-    public func initialize(contentView: NSView) {
+    public func initialize(contentView: NSView, hostID: UUID? = nil) {
+        // The bridge is process-wide but host windows can be replaced. Clear
+        // the old hierarchy while the old contentView is still available so
+        // constraints and the distributed appearance observer cannot leak
+        // into the next host.
+        if let currentHost = self.contentView,
+           currentHost !== contentView {
+            clearManagedViewState()
+        }
         self.contentView = contentView
+        activeHostID = hostID
 
         let runtime = self.runtime
 
@@ -149,6 +161,15 @@ public final class NativeBridge: @preconcurrency NativeEventDispatcher {
             dispatcher: self,
             viewLookup: { [weak self] nodeId in self?.view(forId: nodeId) }
         )
+    }
+
+    @discardableResult
+    func releaseHost(hostID: UUID) -> Bool {
+        guard activeHostID == hostID else { return false }
+        reset()
+        contentView = nil
+        activeHostID = nil
+        return true
     }
 
     // MARK: - Operation Processing
@@ -369,15 +390,7 @@ public final class NativeBridge: @preconcurrency NativeEventDispatcher {
             return
         }
 
-        nodeParent[childId] = parentId
-        childrenOf[parentId, default: []].append(childId)
-
-        let container = childContainer(for: parentView)
-        if let factory = ComponentRegistry.factory(for: parentView) {
-            factory.insertChild(childView, into: container, before: nil)
-        } else {
-            container.addSubview(childView)
-        }
+        moveChild(childView, id: childId, to: parentView, parentId: parentId, before: nil)
     }
 
     /// insertBefore: [parentId: Int, childId: Int, beforeId: Int]
@@ -395,23 +408,65 @@ public final class NativeBridge: @preconcurrency NativeEventDispatcher {
             return
         }
 
-        nodeParent[childId] = parentId
+        // A keyed diff can ask us to insert a node before itself. There is
+        // nothing to move in that case, and detaching it would invalidate the
+        // anchor before the native factory sees it.
+        guard childId != beforeId else { return }
+
+        moveChild(childView, id: childId, to: parentView, parentId: parentId, before: (beforeId, beforeView))
+    }
+
+    /// Move (or insert) a child while keeping the bridge's logical ownership
+    /// map in lockstep with AppKit and custom containers such as VList/VText.
+    /// AppKit reparents normal views automatically, but custom factories keep
+    /// their own ordered arrays, so they must be asked to detach first.
+    private func moveChild(
+        _ childView: NSView,
+        id childId: Int,
+        to parentView: NSView,
+        parentId: Int,
+        before anchor: (id: Int, view: NSView)?
+    ) {
+        detachChildForMove(childView, id: childId)
+
         var siblings = childrenOf[parentId, default: []]
-        if let idx = siblings.firstIndex(of: beforeId) {
-            siblings.insert(childId, at: idx)
+        siblings.removeAll { $0 == childId }
+        if let anchor, let index = siblings.firstIndex(of: anchor.id) {
+            siblings.insert(childId, at: index)
         } else {
             siblings.append(childId)
         }
         childrenOf[parentId] = siblings
+        nodeParent[childId] = parentId
 
         let container = childContainer(for: parentView)
         if let factory = ComponentRegistry.factory(for: parentView) {
-            factory.insertChild(childView, into: container, before: beforeView)
-        } else if let subviews = container.subviews as? [NSView],
-                  let index = subviews.firstIndex(of: beforeView) {
-            container.addSubview(childView, positioned: .below, relativeTo: beforeView)
+            factory.insertChild(childView, into: container, before: anchor?.view)
+        } else if let anchor = anchor,
+                  container.subviews.firstIndex(of: anchor.view) != nil {
+            container.addSubview(childView, positioned: .below, relativeTo: anchor.view)
         } else {
             container.addSubview(childView)
+        }
+    }
+
+    /// Detach a node for a move without unregistering it or its descendants.
+    /// `handleRemoveChild` remains the destructive path used for unmounts.
+    private func detachChildForMove(_ childView: NSView, id childId: Int) {
+        guard let oldParentId = nodeParent[childId] else { return }
+
+        childrenOf[oldParentId]?.removeAll { $0 == childId }
+
+        guard let oldParentView = viewRegistry[oldParentId] else {
+            childView.removeFromSuperview()
+            return
+        }
+
+        let oldContainer = childContainer(for: oldParentView)
+        if let oldFactory = ComponentRegistry.factory(for: oldParentView) {
+            oldFactory.removeChild(childView, from: oldContainer)
+        } else {
+            childView.removeFromSuperview()
         }
     }
 
@@ -433,6 +488,7 @@ public final class NativeBridge: @preconcurrency NativeEventDispatcher {
         }
 
         guard let childView = viewRegistry[childId] else { return }
+        let removingRoot = childView === rootView
 
         removeDescendantsFromIndex(childId)
 
@@ -450,9 +506,25 @@ public final class NativeBridge: @preconcurrency NativeEventDispatcher {
         }
 
         cleanupNodeRegistries(childId)
+
+        if removingRoot {
+            clearRootConstraints()
+            rootView = nil
+        }
     }
 
     private func cleanupNodeRegistries(_ nodeId: Int) {
+        if let view = viewRegistry[nodeId],
+           let keys = eventKeysPerNode[nodeId] {
+            let prefix = "\(nodeId):"
+            for key in keys where key.hasPrefix(prefix) {
+                registry.removeEventListener(
+                    view: view,
+                    event: String(key.dropFirst(prefix.count))
+                )
+            }
+        }
+
         nodeParent.removeValue(forKey: nodeId)
         viewRegistry.removeValue(forKey: nodeId)
         typeRegistry.removeValue(forKey: nodeId)
@@ -533,18 +605,23 @@ public final class NativeBridge: @preconcurrency NativeEventDispatcher {
 
         NSLog("[VueNative macOS Bridge] Setting up root view, contentView bounds: %.1f x %.1f", contentView.bounds.width, contentView.bounds.height)
 
+        if let oldRoot = rootView, oldRoot !== view {
+            oldRoot.removeFromSuperview()
+        }
+        clearRootConstraints()
         rootView = view
         view.translatesAutoresizingMaskIntoConstraints = false
 
         contentView.addSubview(view)
 
         // Pin root view to content view edges
-        NSLayoutConstraint.activate([
+        rootConstraints = [
             view.topAnchor.constraint(equalTo: contentView.topAnchor),
             view.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
             view.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
             view.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
-        ])
+        ]
+        NSLayoutConstraint.activate(rootConstraints)
 
         contentView.needsLayout = true
         contentView.layoutSubtreeIfNeeded()
@@ -561,15 +638,22 @@ public final class NativeBridge: @preconcurrency NativeEventDispatcher {
 
     /// Set up observation for dark mode (effective appearance) changes.
     private func setupAppearanceObserver() {
+        guard appearanceObserver == nil else { return }
+
         // On macOS, observe NSApp.effectiveAppearance via KVO
         // or use DistributedNotificationCenter for theme changes.
-        DistributedNotificationCenter.default().addObserver(
+        appearanceObserver = DistributedNotificationCenter.default().addObserver(
             forName: NSNotification.Name("AppleInterfaceThemeChangedNotification"),
             object: nil,
             queue: .main
         ) { [weak self] _ in
             let isDark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-            self?.dispatchGlobalEvent("colorScheme:change", payload: ["colorScheme": isDark ? "dark" : "light"])
+            Task { @MainActor [weak self] in
+                self?.dispatchGlobalEvent(
+                    "colorScheme:change",
+                    payload: ["colorScheme": isDark ? "dark" : "light"]
+                )
+            }
         }
     }
 
@@ -651,14 +735,18 @@ public final class NativeBridge: @preconcurrency NativeEventDispatcher {
     }
 
     private func installModalContainerIfNeeded() {
-        guard let rootView = rootView, modalContainer.superview == nil else { return }
+        guard let rootView, modalContainer.superview !== rootView else { return }
+        modalContainer.removeFromSuperview()
+        NSLayoutConstraint.deactivate(modalConstraints)
+        modalConstraints.removeAll()
         rootView.addSubview(modalContainer)
-        NSLayoutConstraint.activate([
+        modalConstraints = [
             modalContainer.topAnchor.constraint(equalTo: rootView.topAnchor),
             modalContainer.leadingAnchor.constraint(equalTo: rootView.leadingAnchor),
             modalContainer.trailingAnchor.constraint(equalTo: rootView.trailingAnchor),
             modalContainer.bottomAnchor.constraint(equalTo: rootView.bottomAnchor),
-        ])
+        ]
+        NSLayoutConstraint.activate(modalConstraints)
     }
 
     // MARK: - Native Module Handlers
@@ -814,29 +902,18 @@ public final class NativeBridge: @preconcurrency NativeEventDispatcher {
 
         NSLog("[VueNative macOS Bridge] reloadWithBundle: clearing view hierarchy...")
 
-        for (_, view) in viewRegistry {
-            view.removeFromSuperview()
-        }
-        viewRegistry.removeAll()
-        typeRegistry.removeAll()
-        eventHandlers.removeAll()
-        eventKeysPerNode.removeAll()
-        nodeParent.removeAll()
-        childrenOf.removeAll()
-        teleportMarkers.removeAll()
-        teleportContainers.removeAll()
-        modalContainer.removeFromSuperview()
+        clearManagedViewState()
 
-        runtime.reload(bundle: bundle) { [weak self] success in
-            guard let self = self else { return }
+        runtime.reload(bundle: bundle, teardownOldContext: false, prepareContext: { [weak self] context in
+            self?.registerBridgeFunctions(on: context)
+        }) { success in
             guard success else {
                 NSLog("[VueNative macOS Bridge] reloadWithBundle: runtime reload failed")
-                ErrorOverlayView.show(error: "Hot reload failed.\n\nThe new bundle could not be evaluated. Check the terminal for the JS error.\n\nSave the file again to retry.")
+                DispatchQueue.main.async {
+                    ErrorOverlayView.show(error: "Hot reload failed.\n\nThe new bundle could not be evaluated. Check the terminal for the JS error.\n\nSave the file again to retry.")
+                }
                 return
             }
-
-            guard let context = self.runtime.context else { return }
-            self.registerBridgeFunctions(on: context)
 
             NSLog("[VueNative macOS Bridge] reloadWithBundle: bridge re-registered on new context")
         }
@@ -845,21 +922,47 @@ public final class NativeBridge: @preconcurrency NativeEventDispatcher {
     // MARK: - Cleanup
 
     public func reset() {
-        DispatchQueue.main.async { [weak self] in
-            guard let self = self else { return }
-            for (_, view) in self.viewRegistry {
-                view.removeFromSuperview()
-            }
-            self.viewRegistry.removeAll()
-            self.typeRegistry.removeAll()
-            self.eventHandlers.removeAll()
-            self.eventKeysPerNode.removeAll()
-            self.nodeParent.removeAll()
-            self.childrenOf.removeAll()
-            self.teleportMarkers.removeAll()
-            self.teleportContainers.removeAll()
-            self.modalContainer.removeFromSuperview()
-            self.rootView = nil
+        clearManagedViewState()
+        NativeModuleRegistry.shared.removeAll()
+    }
+
+    /// Clear all native state owned by the current content view. Host
+    /// replacement invokes this synchronously before installing a new weak
+    /// contentView reference.
+    private func clearManagedViewState() {
+        for view in viewRegistry.values {
+            view.removeFromSuperview()
+        }
+        for container in teleportContainers.values {
+            container.removeFromSuperview()
+        }
+        clearRootConstraints()
+
+        for nodeId in Array(viewRegistry.keys) {
+            cleanupNodeRegistries(nodeId)
+        }
+
+        viewRegistry.removeAll()
+        typeRegistry.removeAll()
+        eventHandlers.removeAll()
+        eventKeysPerNode.removeAll()
+        nodeParent.removeAll()
+        childrenOf.removeAll()
+        teleportMarkers.removeAll()
+        teleportContainers.removeAll()
+        rootView = nil
+    }
+
+    private func clearRootConstraints() {
+        NSLayoutConstraint.deactivate(rootConstraints)
+        NSLayoutConstraint.deactivate(modalConstraints)
+        rootConstraints.removeAll()
+        modalConstraints.removeAll()
+        modalContainer.removeFromSuperview()
+
+        if let appearanceObserver {
+            DistributedNotificationCenter.default().removeObserver(appearanceObserver)
+            self.appearanceObserver = nil
         }
     }
 

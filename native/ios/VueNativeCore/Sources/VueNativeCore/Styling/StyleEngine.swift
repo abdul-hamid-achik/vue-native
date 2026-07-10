@@ -102,6 +102,14 @@ enum StyleEngine {
     private static func applyLayoutProp(key: String, value: Any?, to view: UIView) -> Bool {
         let flex = view.flex
 
+        // The renderer sends `nil` when a key disappears from a style object.
+        // FlexLayout retains its previous Yoga value unless we explicitly put
+        // it back to the platform default, which made conditional styles stick
+        // around after they were removed.
+        if value == nil {
+            return resetLayoutProp(key: key, to: view)
+        }
+
         switch key {
 
         // MARK: Flex container properties
@@ -508,6 +516,126 @@ enum StyleEngine {
         }
     }
 
+    /// Restore the default value for a recognized layout property.
+    ///
+    /// FlexLayout only exposes `nil` resets for dimensions and flex basis. Its
+    /// margin, padding, gap, and edge APIs accept concrete values, so zero is
+    /// the CSS/Yoga default used to clear a previously applied value.
+    @discardableResult
+    private static func resetLayoutProp(key: String, to view: UIView) -> Bool {
+        let flex = view.flex
+
+        switch key {
+        case "flexDirection":
+            flex.direction(.column)
+        case "justifyContent":
+            flex.justifyContent(.start)
+        case "alignItems":
+            flex.alignItems(.stretch)
+        case "alignSelf":
+            flex.alignSelf(.auto)
+        case "alignContent":
+            flex.alignContent(.stretch)
+        case "flexWrap":
+            flex.wrap(.noWrap)
+
+        case "flex":
+            flex.grow(0).shrink(0).basis(nil)
+        case "flexGrow":
+            flex.grow(0)
+        case "flexShrink":
+            flex.shrink(0)
+        case "flexBasis":
+            flex.basis(nil)
+
+        case "width":
+            flex.width(nil)
+        case "height":
+            flex.height(nil)
+        case "minWidth":
+            flex.minWidth(nil)
+        case "minHeight":
+            flex.minHeight(nil)
+        case "maxWidth":
+            flex.maxWidth(nil)
+        case "maxHeight":
+            flex.maxHeight(nil)
+        case "aspectRatio":
+            flex.aspectRatio(nil)
+
+        case "padding":
+            flex.padding(0)
+        case "paddingTop":
+            flex.paddingTop(0)
+        case "paddingRight":
+            flex.paddingRight(0)
+        case "paddingBottom":
+            flex.paddingBottom(0)
+        case "paddingLeft":
+            flex.paddingLeft(0)
+        case "paddingHorizontal":
+            flex.paddingHorizontal(0)
+        case "paddingVertical":
+            flex.paddingVertical(0)
+        case "paddingStart":
+            flex.paddingStart(0)
+        case "paddingEnd":
+            flex.paddingEnd(0)
+
+        case "margin":
+            flex.margin(0)
+        case "marginTop":
+            flex.marginTop(0)
+        case "marginRight":
+            flex.marginRight(0)
+        case "marginBottom":
+            flex.marginBottom(0)
+        case "marginLeft":
+            flex.marginLeft(0)
+        case "marginHorizontal":
+            flex.marginHorizontal(0)
+        case "marginVertical":
+            flex.marginVertical(0)
+        case "marginStart":
+            flex.marginStart(0)
+        case "marginEnd":
+            flex.marginEnd(0)
+
+        case "gap":
+            flex.gap(0)
+        case "rowGap":
+            flex.rowGap(0)
+        case "columnGap":
+            flex.columnGap(0)
+
+        case "position":
+            flex.position(.relative)
+        case "top":
+            flex.top(0)
+        case "right":
+            flex.right(0)
+        case "bottom":
+            flex.bottom(0)
+        case "left":
+            flex.left(0)
+        case "start":
+            flex.start(0)
+        case "end":
+            flex.end(0)
+        case "overflow":
+            view.clipsToBounds = false
+        case "display":
+            flex.display(.flex)
+            view.isHidden = false
+        case "direction":
+            flex.layoutDirection(.inherit)
+        default:
+            return false
+        }
+
+        return true
+    }
+
     // MARK: - Visual Properties (UIView)
 
     /// Apply a visual property directly on the UIView. Returns true if recognized.
@@ -711,14 +839,18 @@ enum StyleEngine {
             return true
 
         case "accessibilityState":
-            if let state = value as? [String: Any] {
-                var traits = view.accessibilityTraits
-                if let disabled = state["disabled"] as? Bool, disabled { traits.insert(.notEnabled) }
-                if let selected = state["selected"] as? Bool, selected { traits.insert(.selected) }
-                if let checked = state["checked"] as? Bool, checked { traits.insert(.selected) }
-                view.accessibilityTraits = traits
-                view.isAccessibilityElement = true
+            let state = value as? [String: Any] ?? [:]
+            var traits = view.accessibilityTraits
+            // State props are reactive. Remove the traits owned by the previous
+            // state snapshot before applying the new one so true -> false and
+            // prop removal cannot leave stale VoiceOver announcements.
+            traits.remove([.notEnabled, .selected])
+            if state["disabled"] as? Bool == true { traits.insert(.notEnabled) }
+            if state["selected"] as? Bool == true || state["checked"] as? Bool == true {
+                traits.insert(.selected)
             }
+            view.accessibilityTraits = traits
+            view.isAccessibilityElement = true
             return true
 
         case "accessible":

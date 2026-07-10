@@ -100,4 +100,11 @@ class VRadioFactory : NativeComponentFactory {
             child?.id?.let { rg.check(it) }
         }
     }
+
+    override fun destroyView(view: View) {
+        val rg = view as? RadioGroup ?: return
+        rg.setOnCheckedChangeListener(null)
+        changeHandlers.remove(rg)
+        optionValues.remove(rg)
+    }
 }

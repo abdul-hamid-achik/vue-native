@@ -24,6 +24,9 @@ class PermissionsModule : NativeModule {
         /** Pending callbacks keyed by request code. */
         internal val pendingCallbacks = mutableMapOf<Int, (Any?, String?) -> Unit>()
 
+        /** Owner tokens let sibling modules cancel only the requests they initiated. */
+        private val pendingOwners = mutableMapOf<Int, Any>()
+
         /** Request code counter. */
         private var nextRequestCode = REQUEST_CODE_BASE
 
@@ -31,17 +34,55 @@ class PermissionsModule : NativeModule {
             activityRef = if (activity != null) WeakReference(activity) else null
         }
 
+        fun clearActivity(activity: Activity) {
+            if (activityRef?.get() === activity) activityRef = null
+        }
+
         /**
          * Called from VueNativeActivity.onRequestPermissionsResult to resolve pending callbacks.
          */
+        @Suppress("UNUSED_PARAMETER")
         fun onPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
-            val callback = pendingCallbacks.remove(requestCode) ?: return
+            val callback = synchronized(this) {
+                pendingOwners.remove(requestCode)
+                pendingCallbacks.remove(requestCode)
+            } ?: return
             if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 callback("granted", null)
             } else {
                 callback("denied", null)
             }
         }
+
+        private fun addPendingRequest(
+            owner: Any,
+            callback: (Any?, String?) -> Unit,
+        ): Int = synchronized(this) {
+            val requestCode = nextRequestCode++
+            pendingCallbacks[requestCode] = callback
+            pendingOwners[requestCode] = owner
+            requestCode
+        }
+
+        private fun removePendingRequests(owner: Any): List<(Any?, String?) -> Unit> =
+            synchronized(this) {
+                val requestCodes = pendingOwners
+                    .filterValues { it === owner }
+                    .keys
+                    .toList()
+                requestCodes.mapNotNull { requestCode ->
+                    pendingOwners.remove(requestCode)
+                    pendingCallbacks.remove(requestCode)
+                }
+            }
+
+        private fun removeAllPendingRequests(): List<(Any?, String?) -> Unit> =
+            synchronized(this) {
+                val callbacks = pendingCallbacks.values.toList()
+                pendingCallbacks.clear()
+                pendingOwners.clear()
+                callbacks
+            }
     }
 
     override fun initialize(context: Context, bridge: NativeBridge) {
@@ -50,57 +91,73 @@ class PermissionsModule : NativeModule {
     }
 
     override fun invoke(method: String, args: List<Any?>, bridge: NativeBridge, callback: (Any?, String?) -> Unit) {
+        when (method) {
+            "check" -> {
+                checkNamedPermission(args.getOrNull(0)?.toString(), callback)
+            }
+            "request" -> {
+                requestNamedPermission(args.getOrNull(0)?.toString(), this, callback)
+            }
+            else -> callback(null, "Unknown method: $method")
+        }
+    }
+
+    /** Check a public Vue Native permission name without displaying a prompt. */
+    internal fun checkNamedPermission(
+        permission: String?,
+        callback: (Any?, String?) -> Unit,
+    ) {
         val ctx = context ?: run {
             callback(null, "Not initialized")
             return
         }
-        when (method) {
-            "check" -> {
-                val permission = args.getOrNull(0)?.toString() ?: run {
-                    callback("denied", null)
-                    return
-                }
-                val androidPerm = mapPermission(permission)
-                if (androidPerm == null) {
-                    callback("denied", null)
-                    return
-                }
-                callback(checkStatus(ctx, androidPerm), null)
-            }
-            "request" -> {
-                val permission = args.getOrNull(0)?.toString() ?: run {
-                    callback("denied", null)
-                    return
-                }
-                val androidPerm = mapPermission(permission)
-                if (androidPerm == null) {
-                    callback("denied", null)
-                    return
-                }
-
-                // If already granted, return immediately
-                if (ContextCompat.checkSelfPermission(ctx, androidPerm) == PackageManager.PERMISSION_GRANTED) {
-                    callback("granted", null)
-                    return
-                }
-
-                // Try to request via Activity
-                val activity = activityRef?.get()
-                if (activity == null) {
-                    // No Activity reference — fall back to returning current status
-                    callback(checkStatus(ctx, androidPerm), null)
-                    return
-                }
-
-                // Mark this permission as having been requested
-                prefs?.edit()?.putBoolean(androidPerm, true)?.apply()
-
-                val requestCode = nextRequestCode++
-                pendingCallbacks[requestCode] = callback
-                ActivityCompat.requestPermissions(activity, arrayOf(androidPerm), requestCode)
-            }
-            else -> callback(null, "Unknown method: $method")
+        val androidPerm = permission?.let(::mapPermission) ?: run {
+            callback("denied", null)
+            return
         }
+        callback(checkStatus(ctx, androidPerm), null)
+    }
+
+    /**
+     * Request a public Vue Native permission name on behalf of [owner].
+     *
+     * Notification permission uses this path too, so every runtime permission is
+     * routed through the Activity's single `onRequestPermissionsResult` handler.
+     */
+    internal fun requestNamedPermission(
+        permission: String?,
+        owner: Any,
+        callback: (Any?, String?) -> Unit,
+    ) {
+        val ctx = context ?: run {
+            callback(null, "Not initialized")
+            return
+        }
+        val androidPerm = permission?.let(::mapPermission) ?: run {
+            callback("denied", null)
+            return
+        }
+
+        if (ContextCompat.checkSelfPermission(ctx, androidPerm) == PackageManager.PERMISSION_GRANTED) {
+            callback("granted", null)
+            return
+        }
+
+        val activity = activityRef?.get()
+        if (activity == null) {
+            // A request cannot display a system prompt without an active host.
+            callback(checkStatus(ctx, androidPerm), null)
+            return
+        }
+
+        prefs?.edit()?.putBoolean(androidPerm, true)?.apply()
+        val requestCode = addPendingRequest(owner, callback)
+        ActivityCompat.requestPermissions(activity, arrayOf(androidPerm), requestCode)
+    }
+
+    /** Reject outstanding requests owned by a module that is being destroyed. */
+    internal fun cancelPendingRequests(owner: Any, message: String) {
+        removePendingRequests(owner).forEach { callback -> callback(null, message) }
     }
 
     /**
@@ -131,5 +188,13 @@ class PermissionsModule : NativeModule {
         "locationAlways" -> Manifest.permission.ACCESS_BACKGROUND_LOCATION
         "notifications" -> if (android.os.Build.VERSION.SDK_INT >= 33) Manifest.permission.POST_NOTIFICATIONS else null
         else -> null
+    }
+
+    override fun destroy() {
+        context = null
+        prefs = null
+        removeAllPendingRequests().forEach { callback ->
+            callback(null, "Permission request cancelled because the native host was destroyed")
+        }
     }
 }

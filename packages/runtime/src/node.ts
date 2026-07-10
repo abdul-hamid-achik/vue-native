@@ -36,6 +36,11 @@ export function releaseNodeId(id: number): void {
   activeNodeIds.delete(id)
 }
 
+/** @internal Exposed to renderer tests to verify subtree cleanup. */
+export function getActiveNodeIdCount(): number {
+  return activeNodeIds.size
+}
+
 /**
  * Get the next node ID, wrapping around at MAX_NODE_ID to prevent overflow
  * on platforms using 32-bit integers for node IDs.

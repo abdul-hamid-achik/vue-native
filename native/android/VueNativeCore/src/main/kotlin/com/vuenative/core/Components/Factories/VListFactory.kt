@@ -24,9 +24,10 @@ class VListFactory : NativeComponentFactory {
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
         }
-        childViews[rv] = mutableListOf()
+        val items = mutableListOf<View>()
+        childViews[rv] = items
         firedEndReached[rv] = false
-        rv.adapter = VListAdapter(childViews[rv]!!)
+        rv.adapter = VListAdapter(items)
         return rv
     }
 
@@ -135,9 +136,17 @@ class VListFactory : NativeComponentFactory {
     override fun insertChild(parent: View, child: View, index: Int) {
         val rv = parent as? RecyclerView ?: return
         val list = childViews[rv] ?: return
-        val insertIdx = if (index >= list.size) list.size else index
+        // NativeBridge passes a logical adapter index. Do not use RecyclerView's
+        // attached child count here: it only reflects visible rows.
+        val previousIndex = list.indexOf(child)
+        if (previousIndex >= 0) list.removeAt(previousIndex)
+        val insertIdx = index.coerceIn(0, list.size)
         list.add(insertIdx, child)
-        rv.adapter?.notifyItemInserted(insertIdx)
+        when {
+            previousIndex < 0 -> rv.adapter?.notifyItemInserted(insertIdx)
+            previousIndex != insertIdx -> rv.adapter?.notifyItemMoved(previousIndex, insertIdx)
+            else -> rv.adapter?.notifyItemChanged(insertIdx)
+        }
     }
 
     override fun removeChild(parent: View, child: View) {

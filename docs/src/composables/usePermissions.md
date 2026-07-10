@@ -65,6 +65,7 @@ usePermissions(): {
 |----------|---------|
 | iOS | Uses native iOS permission APIs (AVFoundation, Photos, CoreLocation, UserNotifications) |
 | Android | Uses Android runtime permissions via ActivityCompat. Requires the corresponding permissions in AndroidManifest.xml. |
+| macOS | Supports camera, microphone, notifications, location, and contacts through the corresponding system frameworks. |
 
 ## Example
 

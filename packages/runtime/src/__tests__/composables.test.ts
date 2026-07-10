@@ -27,7 +27,20 @@ describe('Composables', () => {
 
     // Mock invokeNativeModule to return resolved promises
     invokeModuleSpy = vi.spyOn(NativeBridge, 'invokeNativeModule').mockImplementation(
-      () => Promise.resolve(undefined as any),
+      (moduleName, methodName) => {
+        // Composables that hydrate state during setup need a structurally valid
+        // baseline response; individual tests still override this per call.
+        if (moduleName === 'Network' && methodName === 'getStatus') {
+          return Promise.resolve({ isConnected: false, connectionType: 'none' } as any)
+        }
+        if (moduleName === 'Sensors' && methodName === 'isAvailable') {
+          return Promise.resolve({ available: false } as any)
+        }
+        if (moduleName === 'OTA' && methodName === 'getCurrentVersion') {
+          return Promise.resolve({ version: '0.0.0' } as any)
+        }
+        return Promise.resolve(undefined as any)
+      },
     )
 
     // Spy on onGlobalEvent but let it work and also track handlers
@@ -290,14 +303,17 @@ describe('Composables', () => {
       const { useNetwork } = await import('../composables/useNetwork')
       const { isConnected, connectionType } = await withSetup(() => useNetwork())
 
-      // Defaults
-      expect(isConnected.value).toBe(true)
+      // The mock native snapshot starts offline.
+      await vi.waitFor(() => {
+        expect(isConnected.value).toBe(false)
+        expect(connectionType.value).toBe('none')
+      })
 
       // Simulate network change
-      triggerGlobalEvent('network:change', { isConnected: false, connectionType: 'none' })
+      triggerGlobalEvent('network:change', { isConnected: true, connectionType: 'wifi' })
 
-      expect(isConnected.value).toBe(false)
-      expect(connectionType.value).toBe('none')
+      expect(isConnected.value).toBe(true)
+      expect(connectionType.value).toBe('wifi')
     })
 
     it('fetches initial status from Network.getStatus', async () => {
@@ -347,6 +363,44 @@ describe('Composables', () => {
       expect(isDark.value).toBe(false)
 
       triggerGlobalEvent('colorScheme:change', { colorScheme: 'dark' })
+
+      expect(colorScheme.value).toBe('dark')
+      expect(isDark.value).toBe(true)
+    })
+
+    it('uses the initial native color scheme instead of waiting for a change event', async () => {
+      invokeModuleSpy.mockResolvedValueOnce({ colorScheme: 'dark' })
+      const { useColorScheme } = await import('../composables/useColorScheme')
+      const { colorScheme, isDark } = await withSetup(() => useColorScheme())
+
+      await new Promise(resolve => setTimeout(resolve, 0))
+
+      expect(invokeModuleSpy).toHaveBeenCalledWith('DeviceInfo', 'getInfo', [])
+      expect(colorScheme.value).toBe('dark')
+      expect(isDark.value).toBe(true)
+    })
+
+    it('ignores malformed color scheme events', async () => {
+      const { useColorScheme } = await import('../composables/useColorScheme')
+      const { colorScheme, isDark } = await withSetup(() => useColorScheme())
+
+      triggerGlobalEvent('colorScheme:change', { colorScheme: 'system' })
+
+      expect(colorScheme.value).toBe('light')
+      expect(isDark.value).toBe(false)
+    })
+
+    it('does not overwrite a newer native event with a delayed initial snapshot', async () => {
+      let resolveInfo: ((value: { colorScheme: string }) => void) | undefined
+      invokeModuleSpy.mockImplementationOnce(() => new Promise((resolve) => {
+        resolveInfo = resolve
+      }))
+      const { useColorScheme } = await import('../composables/useColorScheme')
+      const { colorScheme, isDark } = await withSetup(() => useColorScheme())
+
+      triggerGlobalEvent('colorScheme:change', { colorScheme: 'dark' })
+      resolveInfo?.({ colorScheme: 'light' })
+      await Promise.resolve()
 
       expect(colorScheme.value).toBe('dark')
       expect(isDark.value).toBe(true)
@@ -704,6 +758,8 @@ describe('Composables', () => {
   // useOTAUpdate
   // ---------------------------------------------------------------------------
   describe('useOTAUpdate', () => {
+    const bundleHash = 'a'.repeat(64)
+
     it('fetches current version on init', async () => {
       invokeModuleSpy.mockResolvedValue({ version: '3', isUsingOTA: true, bundlePath: '/path' })
       const { useOTAUpdate } = await import('../composables/useOTAUpdate')
@@ -716,7 +772,7 @@ describe('Composables', () => {
         updateAvailable: true,
         version: '2.0.0',
         downloadUrl: 'https://cdn.example.com/bundle.js',
-        hash: 'abc123',
+        hash: bundleHash,
         size: 1024,
         releaseNotes: 'Bug fixes',
       })
@@ -736,8 +792,12 @@ describe('Composables', () => {
       const { useOTAUpdate } = await import('../composables/useOTAUpdate')
       const { downloadUpdate, isDownloading, status } = await withSetup(() => useOTAUpdate('https://updates.example.com/check'))
 
-      await downloadUpdate('https://cdn.example.com/bundle.js', 'abc123')
-      expect(invokeModuleSpy).toHaveBeenCalledWith('OTA', 'downloadUpdate', ['https://cdn.example.com/bundle.js', 'abc123'])
+      await downloadUpdate('https://cdn.example.com/bundle.js', bundleHash, '2.0.0')
+      expect(invokeModuleSpy).toHaveBeenCalledWith('OTA', 'downloadUpdate', [
+        'https://cdn.example.com/bundle.js',
+        bundleHash,
+        '2.0.0',
+      ])
       expect(isDownloading.value).toBe(false)
       expect(status.value).toBe('ready')
     })
@@ -751,10 +811,42 @@ describe('Composables', () => {
       expect(status.value).toBe('error')
     })
 
+    it('downloadUpdate requires verified hash and version metadata', async () => {
+      const { useOTAUpdate } = await import('../composables/useOTAUpdate')
+      const { downloadUpdate, error, status } = await withSetup(() => useOTAUpdate('https://updates.example.com/check'))
+
+      await expect(downloadUpdate('https://cdn.example.com/bundle.js', 'not-a-hash', '2.0.0'))
+        .rejects.toThrow('SHA-256')
+      expect(error.value).toContain('SHA-256')
+      expect(status.value).toBe('error')
+
+      await expect(downloadUpdate('https://cdn.example.com/bundle.js', bundleHash))
+        .rejects.toThrow('No update version')
+    })
+
+    it('rejects incomplete update metadata before downloading', async () => {
+      invokeModuleSpy
+        .mockResolvedValueOnce({ version: '1', isUsingOTA: false, bundlePath: '' })
+        .mockResolvedValueOnce({
+          updateAvailable: true,
+          version: '2.0.0',
+          downloadUrl: 'https://cdn.example.com/bundle.js',
+          hash: 'unsigned',
+          size: 1024,
+          releaseNotes: '',
+        })
+      const { useOTAUpdate } = await import('../composables/useOTAUpdate')
+      const { checkForUpdate, error, status } = await withSetup(() => useOTAUpdate('https://updates.example.com/check'))
+
+      await expect(checkForUpdate()).rejects.toThrow('invalid update metadata')
+      expect(error.value).toContain('invalid update metadata')
+      expect(status.value).toBe('error')
+    })
+
     it('applyUpdate calls OTA.applyUpdate and refreshes version', async () => {
       invokeModuleSpy
         .mockResolvedValueOnce({ version: '1', isUsingOTA: false, bundlePath: '' }) // getCurrentVersion on init
-        .mockResolvedValueOnce({ updateAvailable: true, version: '2', downloadUrl: 'https://example.com/bundle.js', hash: 'abc123', size: 1024, releaseNotes: '' }) // checkForUpdate
+        .mockResolvedValueOnce({ updateAvailable: true, version: '2', downloadUrl: 'https://example.com/bundle.js', hash: bundleHash, size: 1024, releaseNotes: '' }) // checkForUpdate
         .mockResolvedValueOnce(undefined) // downloadUpdate
         .mockResolvedValueOnce(undefined) // verifyBundle
         .mockResolvedValueOnce({ applied: true }) // applyUpdate
@@ -769,6 +861,33 @@ describe('Composables', () => {
       expect(invokeModuleSpy).toHaveBeenCalledWith('OTA', 'verifyBundle', [])
       expect(invokeModuleSpy).toHaveBeenCalledWith('OTA', 'applyUpdate', [])
       expect(currentVersion.value).toBe('2')
+    })
+
+    it('cleans a pending bundle when final verification fails', async () => {
+      invokeModuleSpy
+        .mockResolvedValueOnce({ version: '1', isUsingOTA: false, bundlePath: '' })
+        .mockResolvedValueOnce({
+          updateAvailable: true,
+          version: '2',
+          downloadUrl: 'https://example.com/bundle.js',
+          hash: bundleHash,
+          size: 1024,
+          releaseNotes: '',
+        })
+        .mockResolvedValueOnce(undefined)
+        .mockRejectedValueOnce(new Error('hash mismatch'))
+        .mockResolvedValueOnce({ cleaned: true })
+      const { useOTAUpdate } = await import('../composables/useOTAUpdate')
+      const { applyUpdate, checkForUpdate, downloadUpdate, error, status } = await withSetup(() =>
+        useOTAUpdate('https://updates.example.com/check'),
+      )
+
+      await checkForUpdate()
+      await downloadUpdate()
+      await expect(applyUpdate()).rejects.toThrow('hash mismatch')
+      expect(invokeModuleSpy).toHaveBeenCalledWith('OTA', 'cleanupPartialDownload', [])
+      expect(error.value).toContain('Bundle verification failed')
+      expect(status.value).toBe('error')
     })
 
     it('rollback calls OTA.rollback', async () => {
@@ -1331,6 +1450,23 @@ describe('Composables', () => {
       await info.fetchInfo()
       expect(invokeModuleSpy).toHaveBeenCalledWith('DeviceInfo', 'getInfo', [])
     })
+
+    it('accepts legacy Android deviceName and screenScale fields', async () => {
+      const androidData = {
+        model: 'Google Pixel',
+        deviceName: 'Pixel 9',
+        screenWidth: 412,
+        screenHeight: 915,
+        screenScale: 2.75,
+      }
+      invokeModuleSpy.mockResolvedValue(androidData)
+      const { useDeviceInfo } = await import('../composables/useDeviceInfo')
+      const info = await withSetup(() => useDeviceInfo())
+      await info.fetchInfo()
+
+      expect(info.name.value).toBe('Pixel 9')
+      expect(info.scale.value).toBe(2.75)
+    })
   })
 
   // ---------------------------------------------------------------------------
@@ -1371,6 +1507,15 @@ describe('Composables', () => {
       expect(locale.value).toBe('fr-FR')
       expect(isRTL.value).toBe(false)
     })
+
+    it('uses the cross-platform DeviceInfo.getInfo method', async () => {
+      invokeModuleSpy.mockResolvedValueOnce({ locale: 'en-GB' })
+      const { useI18n } = await import('../composables/useI18n')
+      await withSetup(() => useI18n())
+      await new Promise(resolve => setTimeout(resolve, 0))
+
+      expect(invokeModuleSpy).toHaveBeenCalledWith('DeviceInfo', 'getInfo', [])
+    })
   })
 
   // ---------------------------------------------------------------------------
@@ -1399,6 +1544,34 @@ describe('Composables', () => {
       expect(width.value).toBe(0)
       expect(height.value).toBe(0)
       expect(scale.value).toBe(1)
+    })
+
+    it('accepts the legacy Android screenScale field for the initial value', async () => {
+      invokeModuleSpy.mockResolvedValueOnce({ screenWidth: 360, screenHeight: 800, screenScale: 3 })
+      const { useDimensions } = await import('../composables/useDimensions')
+      const { width, height, scale } = await withSetup(() => useDimensions())
+      await new Promise(resolve => setTimeout(resolve, 0))
+
+      expect(width.value).toBe(360)
+      expect(height.value).toBe(800)
+      expect(scale.value).toBe(3)
+    })
+
+    it('does not overwrite a newer resize event with a delayed initial snapshot', async () => {
+      let resolveInfo: ((value: { screenWidth: number, screenHeight: number, scale: number }) => void) | undefined
+      invokeModuleSpy.mockImplementationOnce(() => new Promise((resolve) => {
+        resolveInfo = resolve
+      }))
+      const { useDimensions } = await import('../composables/useDimensions')
+      const { width, height, scale } = await withSetup(() => useDimensions())
+
+      triggerGlobalEvent('dimensionsChange', { width: 1024, height: 768, scale: 2 })
+      resolveInfo?.({ screenWidth: 320, screenHeight: 640, scale: 1 })
+      await Promise.resolve()
+
+      expect(width.value).toBe(1024)
+      expect(height.value).toBe(768)
+      expect(scale.value).toBe(2)
     })
   })
 
@@ -1491,6 +1664,31 @@ describe('Composables', () => {
       const { useGeolocation } = await import('../composables/useGeolocation')
       const { clearWatch } = useGeolocation()
       await clearWatch(42)
+      expect(invokeModuleSpy).toHaveBeenCalledWith('Geolocation', 'clearWatch', [42])
+    })
+
+    it('cleans up listeners and the active native watch on unmount', async () => {
+      invokeModuleSpy.mockResolvedValueOnce(42)
+      const { useGeolocation } = await import('../composables/useGeolocation')
+      const { baseCreateApp } = await import('../renderer')
+      const { createNativeNode } = await import('../node')
+      let geolocation!: ReturnType<typeof useGeolocation>
+      const app = baseCreateApp({
+        setup() {
+          geolocation = useGeolocation()
+          return () => null
+        },
+      })
+      app.mount(createNativeNode('__ROOT__'))
+
+      await geolocation.watchPosition()
+      expect(globalEventHandlers.get('location:update')).toHaveLength(1)
+      expect(globalEventHandlers.get('location:error')).toHaveLength(1)
+
+      app.unmount()
+
+      expect(globalEventHandlers.get('location:update')).toHaveLength(0)
+      expect(globalEventHandlers.get('location:error')).toHaveLength(0)
       expect(invokeModuleSpy).toHaveBeenCalledWith('Geolocation', 'clearWatch', [42])
     })
   })
@@ -1604,6 +1802,21 @@ describe('Composables', () => {
 
       const payload = { title: 'New message', body: 'You have a new message', data: { chatId: '123' }, remote: true as const }
       triggerGlobalEvent('push:received', payload)
+      expect(handler).toHaveBeenCalledWith(payload)
+    })
+
+    it('onPushError subscribes to push:error event', async () => {
+      const { useNotifications } = await import('../composables/useNotifications')
+      const handler = vi.fn()
+      await withSetup(() => {
+        const notifications = useNotifications()
+        notifications.onPushError(handler)
+        return notifications
+      })
+
+      expect(onGlobalEventSpy).toHaveBeenCalledWith('push:error', handler)
+      const payload = { message: 'APNs registration failed' }
+      triggerGlobalEvent('push:error', payload)
       expect(handler).toHaveBeenCalledWith(payload)
     })
   })
@@ -1757,6 +1970,7 @@ describe('Composables', () => {
 
     afterEach(() => {
       (globalThis as any).fetch = originalFetch
+      delete (globalThis as any).__VN_configurePins
     })
 
     function mockFetch(data: any, status = 200, ok = true) {
@@ -1915,6 +2129,22 @@ describe('Composables', () => {
       expect(fetchCall[1].headers['Content-Type']).toBe('application/json')
     })
 
+    it('preserves a raw string body and case-insensitive caller content type', async () => {
+      mockFetch({})
+      const { useHttp } = await import('../composables/useHttp')
+      const { post } = await withSetup(() => useHttp())
+
+      await post('https://api.test.com/form', 'name=Alice', {
+        'content-type': 'application/x-www-form-urlencoded',
+      })
+
+      const fetchCall = (globalThis as any).fetch.mock.calls[0]
+      expect(fetchCall[1].body).toBe('name=Alice')
+      expect(fetchCall[1].headers).toEqual({
+        'content-type': 'application/x-www-form-urlencoded',
+      })
+    })
+
     it('works without baseURL', async () => {
       mockFetch({ ok: true })
       const { useHttp } = await import('../composables/useHttp')
@@ -1936,7 +2166,107 @@ describe('Composables', () => {
       ;(globalThis as any).__VN_configurePins = configurePins
       await withSetup(() => useHttp({ pins }))
       expect(configurePins).toHaveBeenCalledWith(JSON.stringify(pins))
-      delete (globalThis as any).__VN_configurePins
+    })
+
+    it('waits for Android certificate pins before fetching', async () => {
+      mockFetch({})
+      const { useHttp } = await import('../composables/useHttp')
+      const pins = { 'api.example.com': ['sha256/AAAA'] }
+      let resolvePins: ((value: unknown) => void) | undefined
+      invokeModuleSpy.mockImplementationOnce(() => new Promise((resolve) => {
+        resolvePins = resolve
+      }))
+
+      const { get } = await withSetup(() => useHttp({ pins }))
+      const request = get('https://api.example.com/data')
+      await Promise.resolve()
+
+      expect(invokeModuleSpy).toHaveBeenCalledWith('Http', 'configurePins', [pins])
+      expect((globalThis as any).fetch).not.toHaveBeenCalled()
+
+      resolvePins?.(true)
+      await request
+
+      expect((globalThis as any).fetch).toHaveBeenCalledWith(
+        'https://api.example.com/data',
+        expect.objectContaining({ method: 'GET' }),
+      )
+    })
+
+    it('returns undefined for an empty 204 response without parsing JSON', async () => {
+      ;(globalThis as any).fetch = vi.fn().mockResolvedValue({
+        status: 204,
+        ok: true,
+        json: vi.fn().mockRejectedValue(new Error('must not parse empty body')),
+        text: vi.fn().mockResolvedValue(''),
+        headers: { forEach: () => {} },
+      })
+      const { useHttp } = await import('../composables/useHttp')
+      const { get } = await withSetup(() => useHttp())
+
+      const result = await get('https://api.test.com/empty')
+
+      expect(result.data).toBeUndefined()
+      expect((globalThis as any).fetch.mock.results[0].value).toBeDefined()
+    })
+
+    it('uses text for non-JSON responses', async () => {
+      const json = vi.fn()
+      const text = vi.fn().mockResolvedValue('healthy')
+      ;(globalThis as any).fetch = vi.fn().mockResolvedValue({
+        status: 200,
+        ok: true,
+        json,
+        text,
+        headers: {
+          forEach: (cb: (value: string, key: string) => void) => cb('text/plain', 'content-type'),
+        },
+      })
+      const { useHttp } = await import('../composables/useHttp')
+      const { get } = await withSetup(() => useHttp())
+
+      const result = await get<string>('https://api.test.com/health')
+
+      expect(result.data).toBe('healthy')
+      expect(text).toHaveBeenCalledOnce()
+      expect(json).not.toHaveBeenCalled()
+    })
+
+    it('rejects a timed-out request without relying on AbortController', async () => {
+      ;(globalThis as any).fetch = vi.fn().mockImplementation(() => new Promise(() => {}))
+      const { useHttp } = await import('../composables/useHttp')
+      const { get, loading } = await withSetup(() => useHttp({ timeout: 1 }))
+
+      await expect(get('https://api.test.com/slow')).rejects.toThrow('timed out after 1ms')
+      expect(loading.value).toBe(false)
+    })
+
+    it('keeps loading true until concurrent requests all settle', async () => {
+      let resolveFirst: ((value: unknown) => void) | undefined
+      let resolveSecond: ((value: unknown) => void) | undefined
+      const response = (data: unknown) => ({
+        status: 200,
+        ok: true,
+        json: () => Promise.resolve(data),
+        headers: { forEach: () => {} },
+      })
+      ;(globalThis as any).fetch = vi.fn()
+        .mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve }))
+        .mockImplementationOnce(() => new Promise((resolve) => { resolveSecond = resolve }))
+      const { useHttp } = await import('../composables/useHttp')
+      const { get, loading } = await withSetup(() => useHttp())
+
+      const first = get('https://api.test.com/one')
+      const second = get('https://api.test.com/two')
+      expect(loading.value).toBe(true)
+
+      resolveFirst?.(response({ one: true }))
+      await first
+      expect(loading.value).toBe(true)
+
+      resolveSecond?.(response({ two: true }))
+      await second
+      expect(loading.value).toBe(false)
     })
   })
 

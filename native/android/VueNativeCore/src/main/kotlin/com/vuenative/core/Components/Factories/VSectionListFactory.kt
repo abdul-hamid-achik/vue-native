@@ -26,9 +26,10 @@ class VSectionListFactory : NativeComponentFactory {
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
         }
-        childViews[rv] = mutableListOf()
+        val items = mutableListOf<View>()
+        childViews[rv] = items
         firedEndReached[rv] = false
-        rv.adapter = VSectionListAdapter(childViews[rv]!!)
+        rv.adapter = VSectionListAdapter(items)
         return rv
     }
 
@@ -113,8 +114,18 @@ class VSectionListFactory : NativeComponentFactory {
     override fun insertChild(parent: View, child: View, index: Int) {
         val rv = parent as? RecyclerView ?: return
         val list = childViews[rv] ?: return
-        if (index >= list.size) list.add(child) else list.add(index, child)
-        rv.adapter?.notifyItemInserted(if (index >= list.size - 1) list.size - 1 else index)
+        // NativeBridge passes a logical adapter index. RecyclerView.childCount
+        // only describes currently attached (visible) rows and must not be used
+        // to determine data-set order.
+        val previousIndex = list.indexOf(child)
+        if (previousIndex >= 0) list.removeAt(previousIndex)
+        val insertIdx = index.coerceIn(0, list.size)
+        list.add(insertIdx, child)
+        when {
+            previousIndex < 0 -> rv.adapter?.notifyItemInserted(insertIdx)
+            previousIndex != insertIdx -> rv.adapter?.notifyItemMoved(previousIndex, insertIdx)
+            else -> rv.adapter?.notifyItemChanged(insertIdx)
+        }
     }
 
     override fun removeChild(parent: View, child: View) {
@@ -126,22 +137,47 @@ class VSectionListFactory : NativeComponentFactory {
             rv.adapter?.notifyItemRemoved(idx)
         }
     }
+
+    override fun destroyView(view: View) {
+        val rv = view as? RecyclerView ?: return
+        scrollListeners.remove(rv)?.let { rv.removeOnScrollListener(it) }
+        scrollHandlers.remove(rv)
+        endReachedHandlers.remove(rv)
+        firedEndReached.remove(rv)
+        childViews.remove(rv)
+        rv.adapter = null
+    }
 }
 
 private class VSectionListAdapter(private val items: List<View>) : RecyclerView.Adapter<VSectionListAdapter.VH>() {
-    class VH(val view: View) : RecyclerView.ViewHolder(view)
+    class VH(itemView: View) : RecyclerView.ViewHolder(itemView)
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
-        val v = items.getOrNull(viewType) ?: android.widget.FrameLayout(parent.context)
-        (v.parent as? ViewGroup)?.removeView(v)
-        v.layoutParams = RecyclerView.LayoutParams(
+        val container = android.widget.FrameLayout(parent.context).apply {
+            layoutParams = RecyclerView.LayoutParams(
             RecyclerView.LayoutParams.MATCH_PARENT,
             RecyclerView.LayoutParams.WRAP_CONTENT
         )
-        return VH(v)
+        }
+        return VH(container)
     }
 
-    override fun onBindViewHolder(holder: VH, position: Int) {}
+    override fun onBindViewHolder(holder: VH, position: Int) {
+        val container = holder.itemView as android.widget.FrameLayout
+        container.removeAllViews()
+        val itemView = items.getOrNull(position) ?: return
+        (itemView.parent as? ViewGroup)?.removeView(itemView)
+        container.addView(
+            itemView,
+            ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
+    }
+
     override fun getItemCount(): Int = items.size
-    override fun getItemViewType(position: Int): Int = position
+
+    // Item views are rebound into containers, so all rows can safely recycle.
+    override fun getItemViewType(position: Int): Int = 0
 }

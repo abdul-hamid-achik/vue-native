@@ -2,6 +2,7 @@ package com.vuenative.core
 
 import android.content.Context
 import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.util.TypedValue
@@ -19,6 +20,7 @@ import com.google.android.flexbox.FlexWrap
 import com.google.android.flexbox.FlexboxLayout
 import com.google.android.flexbox.JustifyContent
 import kotlin.math.PI
+import kotlin.math.roundToInt
 
 /**
  * Converts JS style props to Android View properties.
@@ -37,16 +39,19 @@ object StyleEngine {
         when (key) {
             // --- Background & Visual ---
             "backgroundColor" -> {
-                val color = parseColor(value) ?: return
+                // A removed style is represented by null from the JS renderer.
+                // Keep any border/radius drawable but reset its fill to transparent.
+                val color = if (value == null) Color.TRANSPARENT else parseColor(value) ?: return
                 ensureBackground(view).setColor(color)
                 view.background = view.background
                 view.invalidate()
             }
             "opacity" -> view.alpha = toFloat(value, 1f)
             "overflow" -> {
-                if (value == "hidden") {
-                    (view as? ViewGroup)?.clipChildren = true
-                    (view as? ViewGroup)?.clipToPadding = true
+                val shouldClip = value == "hidden"
+                (view as? ViewGroup)?.let { group ->
+                    group.clipChildren = shouldClip
+                    group.clipToPadding = shouldClip
                 }
             }
 
@@ -84,12 +89,13 @@ object StyleEngine {
             }
             "borderWidth" -> {
                 val px = dpToPx(ctx, toFloat(value, 0f)).toInt()
+                view.setTag(TAG_BORDER_WIDTH, px)
                 val color = (view.getTag(TAG_BORDER_COLOR) as? Int) ?: Color.TRANSPARENT
                 ensureBackground(view).setStroke(px, color)
                 view.background = view.background
             }
             "borderColor" -> {
-                val color = parseColor(value) ?: return
+                val color = if (value == null) Color.TRANSPARENT else parseColor(value) ?: return
                 view.setTag(TAG_BORDER_COLOR, color)
                 val width = (view.getTag(TAG_BORDER_WIDTH) as? Int) ?: 1
                 ensureBackground(view).setStroke(width, color)
@@ -97,42 +103,43 @@ object StyleEngine {
             }
             "borderBottomWidth" -> {
                 val px = dpToPx(ctx, toFloat(value, 0f)).toInt()
-                val pad = view.paddingBottom
-                view.setPadding(view.paddingLeft, view.paddingTop, view.paddingRight, pad + px)
+                updatePaddingState(view) { state -> state.copy(borderBottom = px) }
             }
             "borderTopWidth" -> {
                 val px = dpToPx(ctx, toFloat(value, 0f)).toInt()
-                view.setPadding(view.paddingLeft, view.paddingTop + px, view.paddingRight, view.paddingBottom)
+                updatePaddingState(view) { state -> state.copy(borderTop = px) }
             }
 
             // --- Padding ---
             "padding" -> {
-                val px = dpToPx(ctx, toFloat(value, 0f)).toInt()
-                view.setPadding(px, px, px, px)
+                val px = value?.let { dpToPx(ctx, toFloat(it, 0f)).toInt() }
+                updatePaddingState(view) { state ->
+                    state.copy(left = px, top = px, right = px, bottom = px)
+                }
             }
             "paddingHorizontal" -> {
-                val px = dpToPx(ctx, toFloat(value, 0f)).toInt()
-                view.setPadding(px, view.paddingTop, px, view.paddingBottom)
+                val px = value?.let { dpToPx(ctx, toFloat(it, 0f)).toInt() }
+                updatePaddingState(view) { state -> state.copy(left = px, right = px) }
             }
             "paddingVertical" -> {
-                val px = dpToPx(ctx, toFloat(value, 0f)).toInt()
-                view.setPadding(view.paddingLeft, px, view.paddingRight, px)
+                val px = value?.let { dpToPx(ctx, toFloat(it, 0f)).toInt() }
+                updatePaddingState(view) { state -> state.copy(top = px, bottom = px) }
             }
             "paddingLeft", "paddingStart" -> {
-                val px = dpToPx(ctx, toFloat(value, 0f)).toInt()
-                view.setPadding(px, view.paddingTop, view.paddingRight, view.paddingBottom)
+                val px = value?.let { dpToPx(ctx, toFloat(it, 0f)).toInt() }
+                updatePaddingState(view) { state -> state.copy(left = px) }
             }
             "paddingRight", "paddingEnd" -> {
-                val px = dpToPx(ctx, toFloat(value, 0f)).toInt()
-                view.setPadding(view.paddingLeft, view.paddingTop, px, view.paddingBottom)
+                val px = value?.let { dpToPx(ctx, toFloat(it, 0f)).toInt() }
+                updatePaddingState(view) { state -> state.copy(right = px) }
             }
             "paddingTop" -> {
-                val px = dpToPx(ctx, toFloat(value, 0f)).toInt()
-                view.setPadding(view.paddingLeft, px, view.paddingRight, view.paddingBottom)
+                val px = value?.let { dpToPx(ctx, toFloat(it, 0f)).toInt() }
+                updatePaddingState(view) { state -> state.copy(top = px) }
             }
             "paddingBottom" -> {
-                val px = dpToPx(ctx, toFloat(value, 0f)).toInt()
-                view.setPadding(view.paddingLeft, view.paddingTop, view.paddingRight, px)
+                val px = value?.let { dpToPx(ctx, toFloat(it, 0f)).toInt() }
+                updatePaddingState(view) { state -> state.copy(bottom = px) }
             }
 
             // --- Margin (stored in FlexProps, applied when inserted into parent) ---
@@ -174,12 +181,31 @@ object StyleEngine {
             }
             "minWidth" -> updateFlexProps(view) { fp -> fp.copy(minWidth = dpToPx(ctx, toFloat(value, 0f)).toInt()) }
             "minHeight" -> updateFlexProps(view) { fp -> fp.copy(minHeight = dpToPx(ctx, toFloat(value, 0f)).toInt()) }
-            "maxWidth" -> updateFlexProps(view) { fp -> fp.copy(maxWidth = dpToPx(ctx, toFloat(value, 0f)).toInt()) }
+            "maxWidth" -> updateFlexProps(view) { fp ->
+                fp.copy(maxWidth = value?.let { dpToPx(ctx, toFloat(it, 0f)).toInt() } ?: Int.MAX_VALUE)
+            }
+            "maxHeight" -> updateFlexProps(view) { fp ->
+                fp.copy(maxHeight = value?.let { dpToPx(ctx, toFloat(it, 0f)).toInt() } ?: Int.MAX_VALUE)
+            }
 
             // --- Flex props (stored in FlexProps, applied when inserted) ---
             "flex" -> {
-                val f = toFloat(value, 0f)
-                updateFlexProps(view) { fp -> fp.copy(flexGrow = f, flexShrink = 1f, width = 0, height = 0) }
+                updateFlexProps(view) { fp ->
+                    if (value == null) {
+                        // Reset the shorthand without discarding explicit width
+                        // or height values that may still be supplied separately.
+                        fp.copy(flexGrow = 0f, flexShrink = 1f, flexBasisPercent = -1f)
+                    } else {
+                        // `flex: n` uses a zero basis, but storing it as flex
+                        // basis (rather than overwriting width/height) keeps
+                        // conditional flex styles reversible.
+                        fp.copy(
+                            flexGrow = toFloat(value, 0f),
+                            flexShrink = 1f,
+                            flexBasisPercent = 0f,
+                        )
+                    }
+                }
             }
             "flexGrow" -> updateFlexProps(view) { fp -> fp.copy(flexGrow = toFloat(value, 0f)) }
             "flexShrink" -> updateFlexProps(view) { fp -> fp.copy(flexShrink = toFloat(value, 1f)) }
@@ -217,16 +243,16 @@ object StyleEngine {
                 (view as? FlexboxLayout)?.justifyContent = parseJustifyContent(value)
             }
             "gap" -> {
-                val px = dpToPx(ctx, toFloat(value, 0f)).toInt()
-                view.setTag(TAG_GAP, px)
+                val px = value?.let { dpToPx(ctx, toFloat(it, 0f)).toInt() } ?: 0
+                updateGap(view) { state -> state.copy(row = px, column = px) }
             }
             "rowGap" -> {
-                val px = dpToPx(ctx, toFloat(value, 0f)).toInt()
-                view.setTag(TAG_GAP, px)
+                val px = value?.let { dpToPx(ctx, toFloat(it, 0f)).toInt() } ?: 0
+                updateGap(view) { state -> state.copy(row = px) }
             }
             "columnGap" -> {
-                val px = dpToPx(ctx, toFloat(value, 0f)).toInt()
-                view.setTag(TAG_GAP, px)
+                val px = value?.let { dpToPx(ctx, toFloat(it, 0f)).toInt() } ?: 0
+                updateGap(view) { state -> state.copy(column = px) }
             }
 
             // --- Position (absolute) ---
@@ -321,8 +347,20 @@ object StyleEngine {
             // --- Interaction ---
             "pointerEvents" -> {
                 if (value == "none") {
+                    if (view.getTag(TAG_POINTER_EVENTS_STATE) == null) {
+                        view.setTag(
+                            TAG_POINTER_EVENTS_STATE,
+                            PointerEventsState(view.isClickable, view.isFocusable),
+                        )
+                    }
                     view.isClickable = false
                     view.isFocusable = false
+                } else {
+                    (view.getTag(TAG_POINTER_EVENTS_STATE) as? PointerEventsState)?.let { state ->
+                        view.isClickable = state.clickable
+                        view.isFocusable = state.focusable
+                    }
+                    view.setTag(TAG_POINTER_EVENTS_STATE, null)
                 }
             }
 
@@ -377,18 +415,15 @@ object StyleEngine {
                 view.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
             }
             "accessibilityState" -> {
-                if (value is Map<*, *>) {
-                    val disabled = value["disabled"]
-                    val selected = value["selected"]
-                    val checked = value["checked"]
+                val state = value as? Map<*, *>
+                view.isEnabled = state?.get("disabled") != true
+                view.isSelected = state?.get("selected") == true
 
-                    if (disabled == true) view.isEnabled = false
-                    if (selected == true) view.isSelected = true
-
-                    if (checked != null) {
-                        val stateDesc = if (checked == true) "checked" else "unchecked"
-                        ViewCompat.setStateDescription(view, stateDesc)
-                    }
+                if (state?.containsKey("checked") == true) {
+                    val stateDesc = if (state["checked"] == true) "checked" else "unchecked"
+                    ViewCompat.setStateDescription(view, stateDesc)
+                } else {
+                    ViewCompat.setStateDescription(view, null)
                 }
                 view.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
             }
@@ -480,6 +515,71 @@ object StyleEngine {
         }
     }
 
+    // -- View-state helpers -------------------------------------------------------
+
+    /**
+     * Android stores border insets and content padding in the same View padding
+     * fields. Track the CSS values independently so repeated border updates do
+     * not accumulate and removing a style restores the original native padding.
+     */
+    private data class PaddingState(
+        val initialLeft: Int,
+        val initialTop: Int,
+        val initialRight: Int,
+        val initialBottom: Int,
+        val left: Int? = null,
+        val top: Int? = null,
+        val right: Int? = null,
+        val bottom: Int? = null,
+        val borderTop: Int = 0,
+        val borderBottom: Int = 0,
+    )
+
+    private data class PointerEventsState(val clickable: Boolean, val focusable: Boolean)
+
+    private data class GapState(val row: Int = 0, val column: Int = 0)
+
+    private class GapDrawable(private val width: Int, private val height: Int) :
+        ColorDrawable(Color.TRANSPARENT) {
+        override fun getIntrinsicWidth(): Int = width
+        override fun getIntrinsicHeight(): Int = height
+    }
+
+    private fun updatePaddingState(view: View, update: (PaddingState) -> PaddingState) {
+        val current = view.getTag(TAG_PADDING_STATE) as? PaddingState ?: PaddingState(
+            initialLeft = view.paddingLeft,
+            initialTop = view.paddingTop,
+            initialRight = view.paddingRight,
+            initialBottom = view.paddingBottom,
+        )
+        val next = update(current)
+        view.setTag(TAG_PADDING_STATE, next)
+        view.setPadding(
+            next.left ?: next.initialLeft,
+            (next.top ?: next.initialTop) + next.borderTop,
+            next.right ?: next.initialRight,
+            (next.bottom ?: next.initialBottom) + next.borderBottom,
+        )
+    }
+
+    private fun updateGap(view: View, update: (GapState) -> GapState) {
+        val current = view.getTag(TAG_GAP) as? GapState ?: GapState()
+        val next = update(current)
+        view.setTag(TAG_GAP, next)
+
+        (view as? FlexboxLayout)?.let { flexbox ->
+            flexbox.setDividerDrawableHorizontal(GapDrawable(0, next.row))
+            flexbox.setDividerDrawableVertical(GapDrawable(next.column, 0))
+            flexbox.setShowDividerHorizontal(
+                if (next.row > 0) FlexboxLayout.SHOW_DIVIDER_MIDDLE else FlexboxLayout.SHOW_DIVIDER_NONE,
+            )
+            flexbox.setShowDividerVertical(
+                if (next.column > 0) FlexboxLayout.SHOW_DIVIDER_MIDDLE else FlexboxLayout.SHOW_DIVIDER_NONE,
+            )
+            flexbox.requestLayout()
+        }
+    }
+
     // -- Flex Props ---------------------------------------------------------------
 
     data class FlexProps(
@@ -526,6 +626,34 @@ object StyleEngine {
         return flexLayoutParamsFromProps(getFlexProps(view))
     }
 
+    fun applyPercentDimensions(parent: ViewGroup, availableWidth: Int, availableHeight: Int) {
+        for (i in 0 until parent.childCount) {
+            val child = parent.getChildAt(i)
+            val fp = getFlexProps(child)
+            if (fp.widthPercent < 0f && fp.heightPercent < 0f) continue
+
+            val lp = child.layoutParams as? FlexboxLayout.LayoutParams ?: continue
+            var changed = false
+            if (fp.widthPercent >= 0f && availableWidth >= 0) {
+                val width = (availableWidth * fp.widthPercent).roundToInt()
+                if (lp.width != width) {
+                    lp.width = width
+                    changed = true
+                }
+            }
+            if (fp.heightPercent >= 0f && availableHeight >= 0) {
+                val height = (availableHeight * fp.heightPercent).roundToInt()
+                if (lp.height != height) {
+                    lp.height = height
+                    changed = true
+                }
+            }
+            if (changed) {
+                child.layoutParams = lp
+            }
+        }
+    }
+
     private fun flexLayoutParamsFromProps(fp: FlexProps): FlexboxLayout.LayoutParams {
         return FlexboxLayout.LayoutParams(fp.width, fp.height).apply {
             setMargins(fp.marginLeft, fp.marginTop, fp.marginRight, fp.marginBottom)
@@ -540,8 +668,6 @@ object StyleEngine {
             minHeight = fp.minHeight
             maxWidth = fp.maxWidth
             maxHeight = fp.maxHeight
-            // Percentage dimensions stored as tags for custom layout logic
-            // (FlexboxLayout.LayoutParams does not have widthPercent/heightPercent)
         }
     }
 
@@ -687,7 +813,7 @@ object StyleEngine {
         "width", "height", "flex", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "order",
         "margin", "marginHorizontal", "marginVertical",
         "marginLeft", "marginRight", "marginTop", "marginBottom",
-        "marginStart", "marginEnd", "minWidth", "minHeight"
+        "marginStart", "marginEnd", "minWidth", "minHeight", "maxWidth", "maxHeight"
     )
 
     // -- Shadow helpers -----------------------------------------------------------

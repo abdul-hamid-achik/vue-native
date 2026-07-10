@@ -60,10 +60,19 @@ class HapticsModule: NativeModule {
 </native>
 
 <native platform="android">
+import android.os.Build
+import android.os.VibrationEffect
+import android.os.Vibrator
+
 class HapticsModule: NativeModule {
   override val moduleName: String = "Haptics"
-  
-  override fun invoke(method: String, args: List<Any>, callback: (Any?, String?) -> Unit) {
+  private lateinit var context: Context
+
+  override fun initialize(context: Context, bridge: NativeBridge) {
+    this.context = context
+  }
+
+  override fun invoke(method: String, args: List<Any?>, bridge: NativeBridge, callback: (Any?, String?) -> Unit) {
     when (method) {
       "vibrate" -> {
         val style = args[0] as? String ?: "medium"
@@ -82,7 +91,12 @@ class HapticsModule: NativeModule {
       "heavy" -> 40L
       else -> 20L
     }
-    vibrator.vibrate(VibrationEffect.createOneShot(duration, VibrationEffect.DEFAULT_AMPLITUDE))
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+      vibrator.vibrate(VibrationEffect.createOneShot(duration, VibrationEffect.DEFAULT_AMPLITUDE))
+    } else {
+      @Suppress("DEPRECATION")
+      vibrator.vibrate(duration)
+    }
   }
 }
 </native>
@@ -107,7 +121,7 @@ class IosModule: NativeModule {
 <native platform="android">
 class AndroidModule: NativeModule {
   override val moduleName: String = "AndroidModule"
-  override fun invoke(method: String, args: List<Any>, callback: (Any?, String?) -> Unit) {
+  override fun invoke(method: String, args: List<Any?>, bridge: NativeBridge, callback: (Any?, String?) -> Unit) {
     // Android implementation
   }
 }
@@ -165,7 +179,7 @@ The code generator creates three types of files:
 ```swift
 // Auto-generated from Haptics.vue
 import Foundation
-import VueNativeCore
+import UIKit
 
 final class HapticsModule: NativeModule {
     var moduleName: String { "Haptics" }
@@ -185,13 +199,14 @@ final class HapticsModule: NativeModule {
 // Auto-generated from Haptics.vue
 package com.vuenative.core.GeneratedModules
 
-import com.vuenative.core.Bridge.NativeModule
+import com.vuenative.core.NativeBridge
+import com.vuenative.core.NativeModule
 
 class HapticsModule: NativeModule {
     override val moduleName: String = "Haptics"
     
     // Your implementation from <native> block
-    override fun invoke(method: String, args: List<Any>, callback: (Any?, String?) -> Unit) {
+    override fun invoke(method: String, args: List<Any?>, bridge: NativeBridge, callback: (Any?, String?) -> Unit) {
       // ...
     }
 }
@@ -334,7 +349,7 @@ class AIChatModule: NativeModule {
   
   private var streamingConnection: okhttp3.Call?
   
-  override fun invoke(method: String, args: List<Any>, callback: (Any?, String?) -> Unit) {
+  override fun invoke(method: String, args: List<Any?>, bridge: NativeBridge, callback: (Any?, String?) -> Unit) {
     when (method) {
       "send" -> {
         val message = args[0] as String

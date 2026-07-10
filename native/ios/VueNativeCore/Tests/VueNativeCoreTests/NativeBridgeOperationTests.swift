@@ -15,17 +15,12 @@ final class NativeBridgeOperationTests: XCTestCase {
     override func setUp() {
         super.setUp()
         bridge = NativeBridge.shared
-        // Reset the bridge state synchronously on main thread.
-        // Since reset() dispatches async to main and tests already run on main,
-        // we clear state by calling processOperations to remove views, then
-        // drain the run loop to ensure reset completes.
+        // NativeBridge is main-actor isolated, so reset completes synchronously.
         bridge.reset()
-        RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.05))
     }
 
     override func tearDown() {
         bridge.reset()
-        RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.05))
         bridge = nil
         super.tearDown()
     }
@@ -40,6 +35,28 @@ final class NativeBridgeOperationTests: XCTestCase {
     /// Process multiple operations in a single batch.
     private func processBatch(_ operations: [[String: Any]]) {
         bridge.processOperations(operations)
+    }
+
+    // MARK: - Public Host Integration
+
+    func testHostIntegrationSeedsInitialURL() {
+        let url = URL(string: "vuenative://profile/42")!
+        bridge.setInitialURL(url)
+
+        var result: Any?
+        LinkingModule().invoke(method: "getInitialURL", args: []) { value, error in
+            XCTAssertNil(error)
+            result = value
+        }
+
+        XCTAssertEqual(result as? String, url.absoluteString)
+        bridge.setInitialURL(nil)
+    }
+
+    func testHostIntegrationCachesAPNsTokenForGetToken() {
+        bridge.didRegisterForRemoteNotifications(deviceToken: Data([0x01, 0xab, 0xff]))
+
+        XCTAssertEqual(NotificationsModule.cachedDeviceToken, "01abff")
     }
 
     // MARK: - create Tests
@@ -122,6 +139,64 @@ final class NativeBridgeOperationTests: XCTestCase {
 
         XCTAssertTrue(child1.isDescendant(of: parent), "First child should be in parent")
         XCTAssertTrue(child2.isDescendant(of: parent), "Second child should be in parent")
+    }
+
+    func testInsertBeforeMovesExistingChildWithoutDuplicatingIt() {
+        processOp("create", args: [1, "VView"])
+        processOp("create", args: [2, "VView"])
+        processOp("create", args: [3, "VView"])
+        processOp("appendChild", args: [1, 2])
+        processOp("appendChild", args: [1, 3])
+
+        processOp("insertBefore", args: [1, 3, 2])
+
+        let parent = bridge.view(forNodeId: 1)!
+        let first = bridge.view(forNodeId: 2)!
+        let second = bridge.view(forNodeId: 3)!
+        XCTAssertEqual(parent.subviews.first, second, "Moved child should be before its anchor")
+        XCTAssertEqual(parent.subviews.dropFirst().first, first)
+        XCTAssertEqual(parent.subviews.filter { $0 === second }.count, 1, "A keyed move must not duplicate the view")
+    }
+
+    func testReparentedChildSurvivesRemovingItsOldParent() {
+        processOp("create", args: [1, "VView"])
+        processOp("create", args: [2, "VView"])
+        processOp("create", args: [3, "VView"])
+        processOp("appendChild", args: [1, 3])
+
+        processOp("appendChild", args: [2, 3])
+
+        let newParent = bridge.view(forNodeId: 2)!
+        let child = bridge.view(forNodeId: 3)!
+        XCTAssertTrue(child.isDescendant(of: newParent))
+
+        processOp("removeChild", args: [1])
+
+        XCTAssertNotNil(bridge.view(forNodeId: 3), "Removing the old parent must not unregister a moved child")
+        XCTAssertTrue(child.isDescendant(of: newParent))
+    }
+
+    func testInitializeWithNewHostClearsOldRootBeforeReplacingController() {
+        let firstController = UIViewController()
+        firstController.loadViewIfNeeded()
+        bridge.prepareHost(rootViewController: firstController)
+
+        processOp("create", args: [1, "__ROOT__"])
+        processOp("setRootView", args: [1])
+        let oldRoot = bridge.view(forNodeId: 1)
+        XCTAssertTrue(oldRoot?.superview === firstController.view)
+
+        let secondController = UIViewController()
+        secondController.loadViewIfNeeded()
+        bridge.prepareHost(rootViewController: secondController)
+
+        XCTAssertEqual(bridge.registeredViewCount, 0)
+        XCTAssertNil(oldRoot?.superview)
+        XCTAssertTrue(firstController.view.subviews.isEmpty)
+
+        processOp("create", args: [2, "__ROOT__"])
+        processOp("setRootView", args: [2])
+        XCTAssertTrue(bridge.view(forNodeId: 2)?.superview === secondController.view)
     }
 
     // MARK: - removeChild Tests

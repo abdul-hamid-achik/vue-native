@@ -64,7 +64,7 @@ class PerformanceModule : NativeModule {
 
         mainHandler.post {
             // Choreographer for FPS measurement
-            frameCallback = object : Choreographer.FrameCallback {
+            val callbackForFrames = object : Choreographer.FrameCallback {
                 override fun doFrame(frameTimeNanos: Long) {
                     if (!isProfiling) return
 
@@ -87,17 +87,19 @@ class PerformanceModule : NativeModule {
                     Choreographer.getInstance().postFrameCallback(this)
                 }
             }
-            Choreographer.getInstance().postFrameCallback(frameCallback!!)
+            frameCallback = callbackForFrames
+            Choreographer.getInstance().postFrameCallback(callbackForFrames)
 
             // Periodic metrics dispatch (every 1 second)
-            metricsRunnable = object : Runnable {
+            val metricsTask = object : Runnable {
                 override fun run() {
                     if (!isProfiling) return
                     dispatchMetrics()
                     mainHandler.postDelayed(this, 1000)
                 }
             }
-            mainHandler.postDelayed(metricsRunnable!!, 1000)
+            metricsRunnable = metricsTask
+            mainHandler.postDelayed(metricsTask, 1000)
         }
 
         callback(true, null)

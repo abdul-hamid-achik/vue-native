@@ -6,14 +6,20 @@
  * it tests the RendererOptions object (nodeOps) in isolation, which avoids
  * needing a real component lifecycle while still verifying every bridge call.
  */
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { installMockBridge, nextTick } from './helpers'
 
 // Install mock bridge BEFORE importing any module that touches NativeBridge
 const mockBridge = installMockBridge()
 
 const { NativeBridge } = await import('../bridge')
-const { createNativeNode, createTextNode: _createTextNode, createCommentNode: _createCommentNode, resetNodeId } = await import('../node')
+const {
+  createNativeNode,
+  createTextNode: _createTextNode,
+  createCommentNode: _createCommentNode,
+  getActiveNodeIdCount,
+  resetNodeId,
+} = await import('../node')
 const { nodeOps } = await import('../renderer')
 
 describe('NativeRenderer (nodeOps)', () => {
@@ -130,6 +136,20 @@ describe('NativeRenderer (nodeOps)', () => {
 
       const ops = mockBridge.getOpsByType('setElementText')
       expect(ops[0].args[1]).toBe('inline text')
+      expect(mockBridge.getOpsByType('removeChild')[0].args).toEqual([child.id])
+    })
+
+    it('releases IDs for descendants replaced by element text', () => {
+      const parent = nodeOps.createElement('VView')
+      const child = nodeOps.createElement('VView')
+      const grandchild = nodeOps.createText('nested')
+      nodeOps.insert(child, parent, null)
+      nodeOps.insert(grandchild, child, null)
+
+      expect(getActiveNodeIdCount()).toBe(3)
+      nodeOps.setElementText(parent, 'inline text')
+
+      expect(getActiveNodeIdCount()).toBe(1)
     })
   })
 
@@ -198,6 +218,19 @@ describe('NativeRenderer (nodeOps)', () => {
       expect(ops[0].args[1]).toBe('press')
     })
 
+    it('preserves camelCase in multi-word native event names', async () => {
+      const el = nodeOps.createElement('VPressable')
+      await nextTick()
+      mockBridge.reset()
+
+      nodeOps.patchProp(el, 'onLongPress', null, () => {})
+      nodeOps.patchProp(el, 'onItemClick', null, () => {})
+      await nextTick()
+
+      const eventNames = mockBridge.getOpsByType('addEventListener').map(op => op.args[1])
+      expect(eventNames).toEqual(['longPress', 'itemClick'])
+    })
+
     it('removes old listener before adding new one when handler changes', async () => {
       const el = nodeOps.createElement('VButton')
       const handler1 = () => {}
@@ -228,18 +261,35 @@ describe('NativeRenderer (nodeOps)', () => {
       expect(mockBridge.getOpsByType('addEventListener')).toHaveLength(0)
     })
 
-    it('does not treat non-handler "on*" strings as events', async () => {
-      // "onFoo" where "F" is uppercase is an event; but plain props are not
-      const el = nodeOps.createElement('VView')
+    it('treats non-function on-prefixed props as regular props', async () => {
+      const el = nodeOps.createElement('VSwitch')
       await nextTick()
       mockBridge.reset()
 
-      // This is a regular prop, NOT an event handler
-      nodeOps.patchProp(el, 'value', null, 'hello')
+      nodeOps.patchProp(el, 'onTintColor', null, '#34C759')
       await nextTick()
 
       expect(mockBridge.getOpsByType('addEventListener')).toHaveLength(0)
       expect(mockBridge.getOpsByType('updateProp')).toHaveLength(1)
+      expect(mockBridge.getOpsByType('updateProp')[0].args).toEqual([el.id, 'onTintColor', '#34C759'])
+    })
+
+    it('combines Vue handler arrays into one native listener', async () => {
+      const el = nodeOps.createElement('VButton')
+      const first = vi.fn()
+      const second = vi.fn()
+      await nextTick()
+      mockBridge.reset()
+
+      nodeOps.patchProp(el, 'onPress', null, [first, second])
+      await nextTick()
+
+      const [listener] = mockBridge.getOpsByType('addEventListener')
+      expect(listener.args[1]).toBe('press')
+
+      NativeBridge.handleNativeEvent(el.id, 'press', { source: 'native' })
+      expect(first).toHaveBeenCalledWith({ source: 'native' })
+      expect(second).toHaveBeenCalledWith({ source: 'native' })
     })
   })
 
@@ -356,6 +406,19 @@ describe('NativeRenderer (nodeOps)', () => {
       await nextTick()
 
       expect(mockBridge.getOpsByType('removeChild')).toHaveLength(0)
+    })
+
+    it('releases all descendant IDs when native removes a subtree', () => {
+      const parent = nodeOps.createElement('VView')
+      const child = nodeOps.createElement('VView')
+      const grandchild = nodeOps.createText('nested')
+      nodeOps.insert(child, parent, null)
+      nodeOps.insert(grandchild, child, null)
+
+      nodeOps.remove(child)
+
+      expect(getActiveNodeIdCount()).toBe(1)
+      expect(child.children).toHaveLength(0)
     })
   })
 

@@ -1,5 +1,6 @@
 import AVFoundation
 import AppKit
+import UniformTypeIdentifiers
 import VueNativeShared
 
 /// Native module providing camera access on macOS.
@@ -7,7 +8,8 @@ import VueNativeShared
 /// Methods:
 ///   - checkPermission() -> "granted"/"denied"/"undetermined"
 ///   - requestPermission() -> Bool
-///   - takePicture() -> { uri, width, height }
+///   - launchCamera() -> { uri, width, height, type }
+///   - launchImageLibrary() -> { uri, width, height, type }
 ///   - getAvailableCameras() -> [{ id, name, position }]
 final class CameraModule: NativeModule {
     let moduleName = "Camera"
@@ -34,12 +36,21 @@ final class CameraModule: NativeModule {
                 callback(granted, nil)
             }
 
-        case "takePicture":
+        case "launchCamera", "takePicture":
             takePicture(callback: callback)
+
+        case "launchImageLibrary":
+            chooseImage(callback: callback)
+
+        case "captureVideo", "scanQRCode":
+            callback(nil, "Camera.\(method) is not supported on macOS")
+
+        case "stopQRScan":
+            callback(nil, nil)
 
         case "getAvailableCameras":
             let discoverySession = AVCaptureDevice.DiscoverySession(
-                deviceTypes: [.builtInWideAngleCamera, .externalUnknown],
+                deviceTypes: [.builtInWideAngleCamera, .external],
                 mediaType: .video,
                 position: .unspecified
             )
@@ -102,6 +113,41 @@ final class CameraModule: NativeModule {
         let settings = AVCapturePhotoSettings()
         photoOutput.capturePhoto(with: settings, delegate: delegate)
     }
+
+    private func chooseImage(callback: @escaping (Any?, String?) -> Void) {
+        DispatchQueue.main.async {
+            let panel = NSOpenPanel()
+            panel.canChooseFiles = true
+            panel.canChooseDirectories = false
+            panel.allowsMultipleSelection = false
+            panel.allowedContentTypes = [.image]
+            panel.begin { response in
+                guard response == .OK, let url = panel.url else {
+                    callback([
+                        "uri": "",
+                        "width": 0,
+                        "height": 0,
+                        "type": "",
+                        "didCancel": true,
+                    ], nil)
+                    return
+                }
+                guard let image = NSImage(contentsOf: url) else {
+                    callback(nil, "Selected file is not a readable image")
+                    return
+                }
+                let mimeType = (try? url.resourceValues(forKeys: [.contentTypeKey]).contentType)?
+                    .preferredMIMEType ?? "image/*"
+                callback([
+                    "uri": url.absoluteString,
+                    "width": image.size.width,
+                    "height": image.size.height,
+                    "type": mimeType,
+                    "didCancel": false,
+                ], nil)
+            }
+        }
+    }
 }
 
 // MARK: - PhotoCaptureDelegate
@@ -158,9 +204,11 @@ private final class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegat
         }
 
         let result: [String: Any] = [
-            "uri": filePath,
+            "uri": URL(fileURLWithPath: filePath).absoluteString,
             "width": image.size.width,
-            "height": image.size.height
+            "height": image.size.height,
+            "type": "image/jpeg",
+            "didCancel": false,
         ]
         callback(result, nil)
     }

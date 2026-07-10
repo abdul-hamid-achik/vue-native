@@ -140,14 +140,12 @@ class JSPolyfillsTest {
     }
 
     // -------------------------------------------------------------------------
-    // httpClient exists
+    // Fetch uses the shared HttpModule client so native certificate pins apply
     // -------------------------------------------------------------------------
 
     @Test
-    fun testHttpClientExists() {
-        val field = JSPolyfills::class.java.getDeclaredField("httpClient")
-        field.isAccessible = true
-        val client = field.get(null)
-        assertNotNull("httpClient should not be null", client)
+    fun testSharedHttpClientExists() {
+        val client = HttpModule.client()
+        assertNotNull("shared HttpModule client should not be null", client)
     }
 }

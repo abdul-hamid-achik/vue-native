@@ -30,11 +30,8 @@ final class ComponentFactoryTests: XCTestCase {
     func testVViewFactoryRegistersPressTapGesture() {
         let factory = VViewFactory()
         let view = factory.createView()
-        var handlerCalled = false
 
-        factory.addEventListener(view: view, event: "press") { _ in
-            handlerCalled = true
-        }
+        factory.addEventListener(view: view, event: "press") { _ in }
 
         XCTAssertTrue(view.isUserInteractionEnabled, "User interaction should be enabled after adding press event")
         let tapRecognizers = view.gestureRecognizers?.compactMap { $0 as? UITapGestureRecognizer } ?? []
@@ -252,11 +249,8 @@ final class ComponentFactoryTests: XCTestCase {
     func testVInputFactoryHandlesChangeTextEvent() {
         let factory = VInputFactory()
         let textField = factory.createView() as! UITextField
-        var receivedText: String?
 
-        factory.addEventListener(view: textField, event: "changetext") { payload in
-            receivedText = payload as? String
-        }
+        factory.addEventListener(view: textField, event: "changetext") { _ in }
 
         // Verify delegate is set up
         XCTAssertNotNil(textField.delegate, "UITextField delegate should be set after addEventListener")
@@ -462,6 +456,24 @@ final class ComponentFactoryTests: XCTestCase {
         XCTAssertTrue(container.itemViews.isEmpty, "itemViews should start empty")
     }
 
+    // MARK: - VSectionListFactory Tests
+
+    func testVSectionListFactoryHonorsInsertBeforeOrder() {
+        let factory = VSectionListFactory()
+        let container = factory.createView() as! VSectionListContainerView
+        let first = UIView()
+        let second = UIView()
+        let moved = UIView()
+
+        factory.insertChild(first, into: container, before: nil)
+        factory.insertChild(second, into: container, before: nil)
+        factory.insertChild(moved, into: container, before: first)
+
+        XCTAssertTrue(container.allChildren[0] === moved)
+        XCTAssertTrue(container.allChildren[1] === first)
+        XCTAssertTrue(container.allChildren[2] === second)
+    }
+
     // MARK: - VSliderFactory Tests
 
     func testVSliderFactoryCreatesUISlider() {
@@ -513,6 +525,35 @@ final class ComponentFactoryTests: XCTestCase {
         // Should not crash
     }
 
+    // MARK: - VPickerFactory Tests
+
+    func testVPickerFactoryUsesThePublicDateTimeModes() {
+        let factory = VPickerFactory()
+        let picker = factory.createView() as! UIDatePicker
+
+        factory.updateProp(view: picker, key: "mode", value: "time")
+        XCTAssertEqual(picker.datePickerMode, .time)
+
+        factory.updateProp(view: picker, key: "mode", value: "datetime")
+        XCTAssertEqual(picker.datePickerMode, .dateAndTime)
+
+        factory.updateProp(view: picker, key: "mode", value: nil)
+        XCTAssertEqual(picker.datePickerMode, .date)
+    }
+
+    func testVPickerFactoryClearsDateBoundsAndNormalizesMinuteIntervals() {
+        let factory = VPickerFactory()
+        let picker = factory.createView() as! UIDatePicker
+
+        factory.updateProp(view: picker, key: "minimumDate", value: 1_725_043_755_000.0)
+        XCTAssertNotNil(picker.minimumDate)
+        factory.updateProp(view: picker, key: "minimumDate", value: nil)
+        XCTAssertNil(picker.minimumDate)
+
+        factory.updateProp(view: picker, key: "minuteInterval", value: 7)
+        XCTAssertEqual(picker.minuteInterval, 1)
+    }
+
     // MARK: - VModalFactory Tests
 
     func testVModalFactoryCreatesPlaceholderView() {
@@ -527,6 +568,18 @@ final class ComponentFactoryTests: XCTestCase {
         let view = factory.createView()
         // The placeholder has flex width(0) height(0) — verify it's created
         XCTAssertNotNil(view, "Placeholder should exist")
+    }
+
+    func testVModalFactoryAppliesStyleToVisibleOverlay() {
+        let factory = VModalFactory()
+        let placeholder = factory.createView()
+
+        factory.updateProp(view: placeholder, key: "backgroundColor", value: "#ff0000")
+        let child = UIView()
+        factory.insertChild(child, into: placeholder, before: nil)
+
+        XCTAssertEqual(child.superview?.backgroundColor, UIColor.red)
+        XCTAssertNil(placeholder.backgroundColor)
     }
 
     // MARK: - VActivityIndicatorFactory Tests

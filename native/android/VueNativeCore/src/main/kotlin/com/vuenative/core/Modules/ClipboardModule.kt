@@ -18,12 +18,12 @@ class ClipboardModule : NativeModule {
             return
         }
         when (method) {
-            "setString", "setContent" -> {
+            "copy", "setString", "setContent" -> {
                 val text = args.getOrNull(0)?.toString() ?: ""
                 cb.setPrimaryClip(ClipData.newPlainText("VueNative", text))
                 callback(null, null)
             }
-            "getString", "getContent" -> {
+            "paste", "getString", "getContent" -> {
                 val clip = cb.primaryClip
                 val text = if (clip != null && clip.itemCount > 0) {
                     clip.getItemAt(0)?.text?.toString()

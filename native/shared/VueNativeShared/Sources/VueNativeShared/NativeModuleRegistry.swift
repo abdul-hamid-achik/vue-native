@@ -14,7 +14,17 @@ public final class NativeModuleRegistry {
     // MARK: - Registration
 
     public func register(_ module: NativeModule) {
-        modules[module.moduleName] = module
+        let previous = modules.updateValue(module, forKey: module.moduleName)
+        if let previous, previous !== module {
+            previous.destroy()
+        }
+    }
+
+    /// Destroy and unregister every module in the current snapshot.
+    public func removeAll() {
+        let registeredModules = Array(modules.values)
+        modules.removeAll(keepingCapacity: true)
+        registeredModules.forEach { $0.destroy() }
     }
 
     // MARK: - Invocation

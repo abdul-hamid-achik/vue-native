@@ -166,7 +166,7 @@ final class VScrollViewFactory: NativeComponentFactory {
         guard let scrollView = parent as? NSScrollView,
               let documentView = scrollView.documentView else {
             // Fallback: add directly
-            if let anchor = anchor, let idx = parent.subviews.firstIndex(of: anchor) {
+            if let anchor = anchor, parent.subviews.contains(anchor) {
                 parent.addSubview(child, positioned: .below, relativeTo: anchor)
             } else {
                 parent.addSubview(child)
@@ -175,7 +175,7 @@ final class VScrollViewFactory: NativeComponentFactory {
             return
         }
 
-        if let anchor = anchor, let idx = documentView.subviews.firstIndex(of: anchor) {
+        if let anchor = anchor, documentView.subviews.contains(anchor) {
             documentView.addSubview(child, positioned: .below, relativeTo: anchor)
         } else {
             documentView.addSubview(child)
