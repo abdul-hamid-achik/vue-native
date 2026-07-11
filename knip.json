@@ -20,5 +20,5 @@
     "tools/**"
   ],
   "exclude": ["classMembers", "exports", "types", "duplicates"],
-  "ignoreBinaries": ["maestro", "swift"]
+  "ignoreBinaries": ["swift"]
 }
