@@ -89,6 +89,8 @@ jobs:
       - name: Check for changesets
         id: changesets
         shell: bash
+        env:
+          RELEASE_SHA: ${{ needs.release-context.outputs.release_sha }}
         run: |
           echo "Checking for changesets..."
           mapfile -t CHANGESET_FILES < <(find .changeset -maxdepth 1 -type f -name '*.md' ! -name 'README.md' | sort)
@@ -102,6 +104,9 @@ jobs:
           echo "hasChangesets=true" >> "$GITHUB_OUTPUT"
           echo "Found ${#CHANGESET_FILES[@]} changeset(s):"
           printf '  %s\n' "${CHANGESET_FILES[@]}"
+          # An exact-SHA checkout is detached. Changesets resolves its configured
+          # base branch by local name, so anchor that name to the validated SHA.
+          git branch --force main "$RELEASE_SHA"
           bun run version:check -- --verbose
 
   # ── TypeScript validation ────────────────────────────────
