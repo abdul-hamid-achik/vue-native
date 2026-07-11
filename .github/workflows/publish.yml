@@ -622,7 +622,7 @@ jobs:
           mapfile -t TARGETS < targets.txt
 
           VERIFIED=false
-          for ATTEMPT in {1..12}; do
+          for ATTEMPT in {1..36}; do
             rm -rf node_modules package-lock.json audit.json
             if npm install --ignore-scripts --no-audit --no-fund --save-exact "${TARGETS[@]}" &&
                npm audit signatures --json --include-attestations > audit.json; then
@@ -711,7 +711,7 @@ jobs:
           done
 
           if [ "$VERIFIED" != "true" ]; then
-            echo "npm release verification failed after 12 attempts."
+            echo "npm release verification failed after 36 attempts."
             exit 1
           fi
 

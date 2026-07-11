@@ -185,7 +185,10 @@ class NativeBridge(private val context: Context) {
     private fun handleCreate(args: JSONArray) {
         val nodeId = args.getInt(0)
         val type = args.getString(1)
-        val view = componentRegistry.createView(type) ?: return
+        // Factories are process-wide, but Views belong to this bridge's host.
+        // Preserve the Activity context for window tokens, host theming, and
+        // components such as VModal and VStatusBar.
+        val view = componentRegistry.createView(type, context) ?: return
         nodeViews[nodeId] = view
         nodeTypes[nodeId] = type
     }

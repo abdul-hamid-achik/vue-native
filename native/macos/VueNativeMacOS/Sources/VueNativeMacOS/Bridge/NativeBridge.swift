@@ -60,6 +60,12 @@ public final class NativeBridge: @preconcurrency NativeEventDispatcher {
     /// Reference to the JS runtime.
     private let runtime = JSRuntime.shared
 
+    /// Identifies the native host / JavaScript world that owns asynchronous
+    /// module callbacks. Host replacement, reset, and reload all advance this
+    /// value before releasing old state so late completions cannot resolve a
+    /// callback ID that has since been reused by a fresh JS context.
+    private var nativeCallbackGeneration: UInt64 = 0
+
     // MARK: - Teleport Support
 
     /// Maps teleport marker IDs (start, end) for cleanup.
@@ -761,12 +767,19 @@ public final class NativeBridge: @preconcurrency NativeEventDispatcher {
             return
         }
 
+        let originatingGeneration = nativeCallbackGeneration
         NativeModuleRegistry.shared.invoke(
             module: moduleName,
             method: methodName,
             args: moduleArgs
         ) { [weak self] result, error in
-            self?.resolveNativeCallback(callbackId: callbackId, result: result, error: error)
+            Task { @MainActor [weak self] in
+                guard let self,
+                      self.nativeCallbackGeneration == originatingGeneration else {
+                    return
+                }
+                self.resolveNativeCallback(callbackId: callbackId, result: result, error: error)
+            }
         }
     }
 
@@ -937,6 +950,8 @@ public final class NativeBridge: @preconcurrency NativeEventDispatcher {
     /// replacement invokes this synchronously before installing a new weak
     /// contentView reference.
     private func clearManagedViewState() {
+        nativeCallbackGeneration &+= 1
+
         for view in viewRegistry.values {
             view.removeFromSuperview()
         }

@@ -1,6 +1,7 @@
 #if canImport(UIKit)
 import XCTest
 import UIKit
+import JavaScriptCore
 @testable import VueNativeCore
 
 @MainActor
@@ -35,6 +36,48 @@ final class NativeBridgeOperationTests: XCTestCase {
     /// Process multiple operations in a single batch.
     private func processBatch(_ operations: [[String: Any]]) {
         bridge.processOperations(operations)
+    }
+
+    private func installNativeCallbackResolver(
+        _ handler: @escaping (Int, String?) -> Void
+    ) async {
+        let runtime = JSRuntime.shared
+        let initialized = expectation(description: "JavaScript runtime initialized")
+        runtime.initialize {
+            initialized.fulfill()
+        }
+        await fulfillment(of: [initialized], timeout: 2)
+
+        runtime.jsQueue.sync {
+            guard let context = runtime.context else {
+                return XCTFail("Expected an initialized JavaScript context")
+            }
+            let resolver: @convention(block) (JSValue, JSValue, JSValue) -> Void = { callbackIDValue, resultValue, _ in
+                let callbackID = Int(callbackIDValue.toInt32())
+                let result = resultValue.isNull || resultValue.isUndefined
+                    ? nil
+                    : resultValue.toString()
+                Task { @MainActor in
+                    handler(callbackID, result)
+                }
+            }
+            context.setObject(
+                resolver,
+                forKeyedSubscript: "__VN_resolveCallback" as NSString
+            )
+        }
+    }
+
+    private func uninstallNativeCallbackResolver() {
+        let runtime = JSRuntime.shared
+        runtime.jsQueue.sync {
+            guard let context = runtime.context else { return }
+            let resolver: @convention(block) (JSValue, JSValue, JSValue) -> Void = { _, _, _ in }
+            context.setObject(
+                resolver,
+                forKeyedSubscript: "__VN_resolveCallback" as NSString
+            )
+        }
     }
 
     // MARK: - Public Host Integration
@@ -366,6 +409,49 @@ final class NativeBridgeOperationTests: XCTestCase {
 
     // MARK: - Reset Tests
 
+    func testHostReplacementIgnoresStaleNativeCallbackWhenIDIsReused() async {
+        let resolved = expectation(description: "Only the current callback resolves")
+        var resolvedCallbackIDs: [Int] = []
+        var resolvedValues: [String?] = []
+        await installNativeCallbackResolver { callbackID, result in
+            resolvedCallbackIDs.append(callbackID)
+            resolvedValues.append(result)
+            resolved.fulfill()
+        }
+        defer { uninstallNativeCallbackResolver() }
+
+        let firstController = UIViewController()
+        firstController.loadViewIfNeeded()
+        bridge.prepareHost(rootViewController: firstController)
+
+        let module = DelayedCallbackModule()
+        NativeModuleRegistry.shared.register(module)
+        processOp(
+            "invokeNativeModule",
+            args: [module.moduleName, "wait", [], 42]
+        )
+        XCTAssertEqual(module.pendingCallbackCount, 1)
+
+        let replacementController = UIViewController()
+        replacementController.loadViewIfNeeded()
+        bridge.prepareHost(rootViewController: replacementController)
+
+        processOp(
+            "invokeNativeModule",
+            args: [module.moduleName, "wait", [], 42]
+        )
+        XCTAssertEqual(module.pendingCallbackCount, 2)
+
+        module.completeNext(with: "stale")
+        module.completeNext(with: "current")
+
+        await fulfillment(of: [resolved], timeout: 2)
+        try? await Task.sleep(nanoseconds: 50_000_000)
+
+        XCTAssertEqual(resolvedCallbackIDs, [42])
+        XCTAssertEqual(resolvedValues, ["current"])
+    }
+
     func testResetClearsAllState() {
         processOp("create", args: [100, "VView"])
         processOp("create", args: [101, "VText"])
@@ -526,6 +612,26 @@ private final class DestroyProbeFactory: NativeComponentFactory {
 
     func destroyView(view: UIView) {
         destroyedViewIDs.append(ObjectIdentifier(view))
+    }
+}
+
+private final class DelayedCallbackModule: NativeModule {
+    let moduleName = "DelayedCallbackProbe"
+    private var callbacks: [(Any?, String?) -> Void] = []
+
+    var pendingCallbackCount: Int { callbacks.count }
+
+    func invoke(
+        method: String,
+        args: [Any],
+        callback: @escaping (Any?, String?) -> Void
+    ) {
+        callbacks.append(callback)
+    }
+
+    func completeNext(with result: Any?) {
+        guard !callbacks.isEmpty else { return }
+        callbacks.removeFirst()(result, nil)
     }
 }
 #endif

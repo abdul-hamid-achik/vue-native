@@ -1,5 +1,6 @@
 package com.vuenative.core
 
+import android.app.Activity
 import android.content.Context
 import android.view.View
 import android.widget.TextView
@@ -8,10 +9,12 @@ import com.google.android.flexbox.FlexboxLayout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
@@ -74,6 +77,20 @@ class ComponentRegistryTest {
         val view = registry.createView("VView")!!
         val factory = registry.factoryForView(view)
         assertNotNull("factoryForView should return non-null after createView", factory)
+    }
+
+    @Test
+    fun testCreateViewUsesProvidedHostContext() {
+        val controller = Robolectric.buildActivity(Activity::class.java).setup()
+        val activity = controller.get()
+
+        try {
+            val view = registry.createView("VView", activity)
+
+            assertSame("The registry should pass through the current host context", activity, view?.context)
+        } finally {
+            controller.pause().stop().destroy()
+        }
     }
 
     // -------------------------------------------------------------------------

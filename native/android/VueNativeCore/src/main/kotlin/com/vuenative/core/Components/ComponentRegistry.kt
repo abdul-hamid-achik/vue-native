@@ -7,7 +7,7 @@ import android.view.View
  * Singleton registry mapping component type strings to factories.
  * Also maps views to the factory that created them (via view tag).
  */
-class ComponentRegistry private constructor(private val context: Context) {
+class ComponentRegistry private constructor(private val applicationContext: Context) {
 
     companion object {
         @Volatile private var instance: ComponentRegistry? = null
@@ -59,12 +59,22 @@ class ComponentRegistry private constructor(private val context: Context) {
         factories[type] = factory
     }
 
-    fun createView(type: String): View? {
+    /**
+     * Create a view with the process-safe application context.
+     *
+     * NativeBridge should use [createView] with its host context so components
+     * that depend on an Activity window or theme receive the correct context.
+     * This overload remains for callers that explicitly do not have a host.
+     */
+    fun createView(type: String): View? = createView(type, applicationContext)
+
+    /** Create a view using the current native host's context. */
+    fun createView(type: String, hostContext: Context): View? {
         val factory = factories[type] ?: run {
             android.util.Log.w("VueNative", "No factory for type: $type")
             return null
         }
-        val view = factory.createView(context)
+        val view = factory.createView(hostContext)
         view.setTag(TAG_FACTORY, factory)
         return view
     }

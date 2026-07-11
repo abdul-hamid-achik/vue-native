@@ -11,8 +11,19 @@ final class DatabaseModule: NativeModule {
     /// Open database handles keyed by database name.
     private var databases: [String: OpaquePointer] = [:]
 
+    /// Optional directory override used by package tests.
+    private let databaseDirectoryOverride: URL?
+
     /// Directory for database files.
     private var dbDirectory: URL {
+        if let databaseDirectoryOverride {
+            try? FileManager.default.createDirectory(
+                at: databaseDirectoryOverride,
+                withIntermediateDirectories: true
+            )
+            return databaseDirectoryOverride
+        }
+
         let baseDirectory = FileManager.default.urls(
             for: .documentDirectory,
             in: .userDomainMask
@@ -22,6 +33,17 @@ final class DatabaseModule: NativeModule {
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
     }
+
+    init() {
+        databaseDirectoryOverride = nil
+    }
+
+    init(databaseDirectory: URL) {
+        databaseDirectoryOverride = databaseDirectory
+    }
+
+    /// Internal lifecycle diagnostic used by package tests.
+    var openDatabaseCount: Int { databases.count }
 
     func invoke(method: String, args: [Any], callback: @escaping (Any?, String?) -> Void) {
         switch method {
@@ -89,17 +111,17 @@ final class DatabaseModule: NativeModule {
     private func execute(name: String, sql: String, params: [Any], callback: @escaping (Any?, String?) -> Void) {
         guard let db = getOrOpen(name: name, callback: callback) else { return }
 
-        var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
-            let err = String(cString: sqlite3_errmsg(db))
-            callback(nil, "SQL prepare error: \(err)")
-            return
-        }
-        defer { sqlite3_finalize(stmt) }
+        guard let statement = prepareStatement(
+            database: db,
+            sql: sql,
+            errorPrefix: "SQL prepare error",
+            callback: callback
+        ) else { return }
+        defer { sqlite3_finalize(statement) }
 
-        bindParams(stmt: stmt!, params: params)
+        bindParams(stmt: statement, params: params)
 
-        let stepResult = sqlite3_step(stmt)
+        let stepResult = sqlite3_step(statement)
         if stepResult == SQLITE_DONE || stepResult == SQLITE_ROW {
             let rowsAffected = sqlite3_changes(db)
             let lastInsertId = sqlite3_last_insert_rowid(db)
@@ -119,24 +141,24 @@ final class DatabaseModule: NativeModule {
     private func query(name: String, sql: String, params: [Any], callback: @escaping (Any?, String?) -> Void) {
         guard let db = getOrOpen(name: name, callback: callback) else { return }
 
-        var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
-            let err = String(cString: sqlite3_errmsg(db))
-            callback(nil, "SQL prepare error: \(err)")
-            return
-        }
-        defer { sqlite3_finalize(stmt) }
+        guard let statement = prepareStatement(
+            database: db,
+            sql: sql,
+            errorPrefix: "SQL prepare error",
+            callback: callback
+        ) else { return }
+        defer { sqlite3_finalize(statement) }
 
-        bindParams(stmt: stmt!, params: params)
+        bindParams(stmt: statement, params: params)
 
         var rows: [[String: Any]] = []
-        let columnCount = sqlite3_column_count(stmt)
+        let columnCount = sqlite3_column_count(statement)
 
-        while sqlite3_step(stmt) == SQLITE_ROW {
+        while sqlite3_step(statement) == SQLITE_ROW {
             var row: [String: Any] = [:]
             for i in 0..<columnCount {
-                let colName = String(cString: sqlite3_column_name(stmt, i))
-                row[colName] = columnValue(stmt: stmt!, index: i)
+                let colName = String(cString: sqlite3_column_name(statement, i))
+                row[colName] = columnValue(stmt: statement, index: i)
             }
             rows.append(row)
         }
@@ -157,18 +179,24 @@ final class DatabaseModule: NativeModule {
             let sql = stmtData["sql"] as? String ?? ""
             let params = stmtData["params"] as? [Any] ?? []
 
-            var stmt: OpaquePointer?
-            guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
-                let err = String(cString: sqlite3_errmsg(db))
+            var rawStatement: OpaquePointer?
+            let prepareResult = sqlite3_prepare_v2(db, sql, -1, &rawStatement, nil)
+            guard prepareResult == SQLITE_OK, let statement = rawStatement else {
+                if let rawStatement {
+                    sqlite3_finalize(rawStatement)
+                }
+                let err = prepareResult == SQLITE_OK
+                    ? "no executable statement"
+                    : String(cString: sqlite3_errmsg(db))
                 sqlite3_exec(db, "ROLLBACK", nil, nil, nil)
                 callback(nil, "Transaction SQL prepare error: \(err)")
                 return
             }
 
-            bindParams(stmt: stmt!, params: params)
+            bindParams(stmt: statement, params: params)
 
-            let stepResult = sqlite3_step(stmt)
-            sqlite3_finalize(stmt)
+            let stepResult = sqlite3_step(statement)
+            sqlite3_finalize(statement)
 
             if stepResult == SQLITE_DONE || stepResult == SQLITE_ROW {
                 let rowsAffected = sqlite3_changes(db)
@@ -191,6 +219,29 @@ final class DatabaseModule: NativeModule {
     }
 
     // MARK: - Helpers
+
+    private func prepareStatement(
+        database: OpaquePointer,
+        sql: String,
+        errorPrefix: String,
+        callback: @escaping (Any?, String?) -> Void
+    ) -> OpaquePointer? {
+        var rawStatement: OpaquePointer?
+        let prepareResult = sqlite3_prepare_v2(database, sql, -1, &rawStatement, nil)
+
+        guard prepareResult == SQLITE_OK, let statement = rawStatement else {
+            if let rawStatement {
+                sqlite3_finalize(rawStatement)
+            }
+            let message = prepareResult == SQLITE_OK
+                ? "no executable statement"
+                : String(cString: sqlite3_errmsg(database))
+            callback(nil, "\(errorPrefix): \(message)")
+            return nil
+        }
+
+        return statement
+    }
 
     /// Get an existing database handle or auto-open it.
     private func getOrOpen(name: String, callback: @escaping (Any?, String?) -> Void) -> OpaquePointer? {
@@ -257,6 +308,22 @@ final class DatabaseModule: NativeModule {
             return NSNull()
         default:
             return NSNull()
+        }
+    }
+
+    func destroy() {
+        closeAllDatabases()
+    }
+
+    deinit {
+        closeAllDatabases()
+    }
+
+    private func closeAllDatabases() {
+        let openHandles = Array(databases.values)
+        databases.removeAll()
+        for database in openHandles {
+            sqlite3_close_v2(database)
         }
     }
 }
