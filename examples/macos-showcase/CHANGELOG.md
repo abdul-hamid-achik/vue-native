@@ -1,5 +1,12 @@
 # @thelacanians/vue-native-example-macos-showcase
 
+## 0.0.6
+
+### Patch Changes
+
+- Updated dependencies [7f39222]
+  - @thelacanians/vue-native-runtime@0.7.1
+
 ## 0.0.5
 
 ### Patch Changes

@@ -1,6 +1,6 @@
 {
   "name": "@thelacanians/vue-native-example-camera-app",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "private": true,
   "scripts": {
     "build": "vite build",
