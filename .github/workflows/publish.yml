@@ -502,6 +502,11 @@ jobs:
           ref: ${{ needs.release-context.outputs.release_sha }}
           fetch-depth: 0
 
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
       - name: Verify prepared commit is still main
         env:
           RELEASE_SHA: ${{ needs.release-context.outputs.release_sha }}
@@ -622,7 +627,7 @@ jobs:
           mapfile -t TARGETS < targets.txt
 
           VERIFIED=false
-          for ATTEMPT in {1..36}; do
+          for ATTEMPT in {1..72}; do
             rm -rf node_modules package-lock.json audit.json
             if npm install --ignore-scripts --no-audit --no-fund --save-exact "${TARGETS[@]}" &&
                npm audit signatures --json --include-attestations > audit.json; then
@@ -711,7 +716,7 @@ jobs:
           done
 
           if [ "$VERIFIED" != "true" ]; then
-            echo "npm release verification failed after 36 attempts."
+            echo "npm release verification failed after 72 attempts."
             exit 1
           fi
 
