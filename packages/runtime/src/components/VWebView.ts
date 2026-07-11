@@ -39,9 +39,12 @@ export const VWebView = defineComponent({
 
     return () =>
       h('VWebView', {
+        // Native WKWebView factories begin navigation as soon as `source` is
+        // applied. Keep this first so the initial navigation observes the
+        // requested JavaScript policy as well as subsequent navigations.
+        javaScriptEnabled: props.javaScriptEnabled,
         source: sanitizedSource.value,
         style: props.style,
-        javaScriptEnabled: props.javaScriptEnabled,
         onLoad: (event: unknown) => emit('load', event),
         onError: (event: unknown) => emit('error', event),
         onMessage: (event: unknown) => emit('message', event),

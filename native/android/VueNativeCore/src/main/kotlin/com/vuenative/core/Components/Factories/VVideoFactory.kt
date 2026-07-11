@@ -11,6 +11,63 @@ import android.view.ViewGroup
 import android.widget.FrameLayout
 import org.json.JSONObject
 
+internal enum class VideoPlaybackAction {
+    NONE,
+    PLAY,
+    PAUSE,
+}
+
+/**
+ * Keeps MediaPlayer state transitions deterministic without touching the player
+ * before it has reached the prepared state.
+ */
+internal data class VideoPlaybackState(
+    var autoplay: Boolean = false,
+    var paused: Boolean = false,
+    var prepared: Boolean = false,
+    var volume: Float = 1f,
+    var muted: Boolean = false,
+) {
+    fun updateAutoplay(value: Boolean): VideoPlaybackAction {
+        autoplay = value
+        return if (prepared && autoplay && !paused) {
+            VideoPlaybackAction.PLAY
+        } else {
+            VideoPlaybackAction.NONE
+        }
+    }
+
+    fun updatePaused(value: Boolean): VideoPlaybackAction {
+        paused = value
+        if (!prepared) return VideoPlaybackAction.NONE
+
+        return if (paused) VideoPlaybackAction.PAUSE else VideoPlaybackAction.PLAY
+    }
+
+    fun didPrepare(): VideoPlaybackAction {
+        prepared = true
+        return if (autoplay && !paused) {
+            VideoPlaybackAction.PLAY
+        } else {
+            VideoPlaybackAction.NONE
+        }
+    }
+
+    fun resetForSource() {
+        prepared = false
+    }
+
+    fun updateVolume(value: Float) {
+        volume = value.coerceIn(0f, 1f)
+    }
+
+    fun updateMuted(value: Boolean) {
+        muted = value
+    }
+
+    fun effectiveVolume(): Float = if (muted) 0f else volume
+}
+
 /**
  * VVideoFactory — factory for the VVideo component.
  * Uses SurfaceView + MediaPlayer for inline video playback.
@@ -23,9 +80,8 @@ class VVideoFactory : NativeComponentFactory {
     private val uiHandler = Handler(Looper.getMainLooper())
 
     // Per-view state
-    private val autoplayFlags = mutableMapOf<View, Boolean>()
+    private val playbackStates = mutableMapOf<View, VideoPlaybackState>()
     private val loopFlags = mutableMapOf<View, Boolean>()
-    private val mutedFlags = mutableMapOf<View, Boolean>()
 
     override fun createView(context: Context): View {
         val frame = FrameLayout(context).apply {
@@ -34,6 +90,7 @@ class VVideoFactory : NativeComponentFactory {
                 ViewGroup.LayoutParams.WRAP_CONTENT
             )
         }
+        playbackStates[frame] = VideoPlaybackState()
         return frame
     }
 
@@ -53,29 +110,26 @@ class VVideoFactory : NativeComponentFactory {
                 }
                 setupPlayer(frame, uri)
             }
-            "autoplay" -> autoplayFlags[frame] = value as? Boolean ?: false
+            "autoplay" -> {
+                val action = playbackState(frame).updateAutoplay(value as? Boolean ?: false)
+                executePlaybackAction(frame, action)
+            }
             "loop" -> {
                 loopFlags[frame] = value as? Boolean ?: false
                 players[frame]?.isLooping = value as? Boolean ?: false
             }
             "muted" -> {
-                mutedFlags[frame] = value as? Boolean ?: false
-                val vol = if (value as? Boolean == true) 0f else 1f
-                players[frame]?.setVolume(vol, vol)
+                playbackState(frame).updateMuted(value as? Boolean ?: false)
+                applyAudioState(frame)
             }
             "paused" -> {
-                val paused = value as? Boolean ?: false
-                val mp = players[frame]
-                if (paused) {
-                    mp?.pause()
-                } else {
-                    mp?.start()
-                    startProgressReporting(frame)
-                }
+                val action = playbackState(frame).updatePaused(value as? Boolean ?: false)
+                executePlaybackAction(frame, action)
             }
             "volume" -> {
                 val vol = (value as? Number)?.toFloat()?.coerceIn(0f, 1f) ?: 1f
-                players[frame]?.setVolume(vol, vol)
+                playbackState(frame).updateVolume(vol)
+                applyAudioState(frame)
             }
             "resizeMode" -> {
                 // SurfaceView doesn't directly support resize modes like AVPlayerLayer
@@ -110,64 +164,127 @@ class VVideoFactory : NativeComponentFactory {
 
         surfaceView.holder.addCallback(object : SurfaceHolder.Callback {
             override fun surfaceCreated(holder: SurfaceHolder) {
+                if (players[frame] !== mp) return
+
                 try {
                     mp.setDisplay(holder)
                     mp.setDataSource(uri)
                     mp.isLooping = loopFlags[frame] ?: false
-
-                    val muted = mutedFlags[frame] ?: false
-                    if (muted) mp.setVolume(0f, 0f)
+                    applyAudioState(frame, mp)
 
                     mp.setOnPreparedListener { player ->
+                        if (players[frame] !== player) return@setOnPreparedListener
+
+                        val action = playbackState(frame).didPrepare()
                         val duration = player.duration.toDouble() / 1000.0
                         fireEvent(frame, "ready", mapOf("duration" to duration))
-                        if (autoplayFlags[frame] == true) {
-                            player.start()
-                            startProgressReporting(frame)
-                        }
+                        executePlaybackAction(frame, action, player)
                     }
 
-                    mp.setOnCompletionListener {
+                    mp.setOnCompletionListener { player ->
+                        if (players[frame] !== player) return@setOnCompletionListener
+
                         stopProgressReporting(frame)
                         fireEvent(frame, "end", null)
                     }
 
-                    mp.setOnErrorListener { _, what, extra ->
+                    mp.setOnErrorListener { player, what, extra ->
+                        if (players[frame] !== player) return@setOnErrorListener true
+
                         stopProgressReporting(frame)
+                        playbackState(frame).resetForSource()
                         fireEvent(frame, "error", mapOf("message" to "MediaPlayer error: what=$what extra=$extra"))
                         true
                     }
 
                     mp.prepareAsync()
                 } catch (e: Exception) {
-                    fireEvent(frame, "error", mapOf("message" to (e.message ?: "Setup error")))
+                    if (players[frame] === mp) {
+                        val message = e.message ?: "Setup error"
+                        cleanupPlayer(frame)
+                        fireEvent(frame, "error", mapOf("message" to message))
+                    }
                 }
             }
 
             override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {}
             override fun surfaceDestroyed(holder: SurfaceHolder) {
-                mp.setDisplay(null)
+                if (players[frame] === mp) {
+                    try {
+                        mp.setDisplay(null)
+                    } catch (_: IllegalStateException) {
+                        // The player may have been released during a source change.
+                    }
+                }
             }
         })
     }
 
     private fun cleanupPlayer(frame: FrameLayout) {
         stopProgressReporting(frame)
-        players[frame]?.release()
-        players.remove(frame)
+        playbackStates[frame]?.resetForSource()
+        val player = players.remove(frame)
+        player?.setOnPreparedListener(null)
+        player?.setOnCompletionListener(null)
+        player?.setOnErrorListener(null)
+        player?.release()
         frame.removeAllViews()
     }
 
-    private fun startProgressReporting(frame: FrameLayout) {
+    private fun playbackState(frame: FrameLayout): VideoPlaybackState =
+        playbackStates.getOrPut(frame) { VideoPlaybackState() }
+
+    private fun executePlaybackAction(
+        frame: FrameLayout,
+        action: VideoPlaybackAction,
+        player: MediaPlayer? = players[frame],
+    ) {
+        if (action == VideoPlaybackAction.NONE || player == null || players[frame] !== player) return
+
+        try {
+            when (action) {
+                VideoPlaybackAction.NONE -> Unit
+                VideoPlaybackAction.PLAY -> {
+                    player.start()
+                    startProgressReporting(frame, player)
+                }
+                VideoPlaybackAction.PAUSE -> {
+                    if (player.isPlaying) player.pause()
+                    stopProgressReporting(frame)
+                }
+            }
+        } catch (_: IllegalStateException) {
+            // A source replacement may release the old player between callbacks.
+        }
+    }
+
+    private fun applyAudioState(frame: FrameLayout, player: MediaPlayer? = players[frame]) {
+        if (player == null || players[frame] !== player) return
+
+        val volume = playbackState(frame).effectiveVolume()
+        try {
+            player.setVolume(volume, volume)
+        } catch (_: IllegalStateException) {
+            // A source replacement may release the old player between callbacks.
+        }
+    }
+
+    private fun startProgressReporting(
+        frame: FrameLayout,
+        expectedPlayer: MediaPlayer? = players[frame],
+    ) {
         stopProgressReporting(frame)
+        if (expectedPlayer == null || players[frame] !== expectedPlayer) return
+
         val runnable = object : Runnable {
             override fun run() {
-                val mp = players[frame] ?: return
+                if (players[frame] !== expectedPlayer) return
+
                 try {
-                    if (mp.isPlaying) {
+                    if (expectedPlayer.isPlaying) {
                         fireEvent(frame, "progress", mapOf(
-                            "currentTime" to mp.currentPosition.toDouble() / 1000.0,
-                            "duration" to mp.duration.toDouble() / 1000.0
+                            "currentTime" to expectedPlayer.currentPosition.toDouble() / 1000.0,
+                            "duration" to expectedPlayer.duration.toDouble() / 1000.0
                         ))
                         uiHandler.postDelayed(this, 250)
                     }
@@ -193,8 +310,7 @@ class VVideoFactory : NativeComponentFactory {
         val frame = view as? FrameLayout ?: return
         cleanupPlayer(frame)
         handlers.remove(frame)
-        autoplayFlags.remove(frame)
+        playbackStates.remove(frame)
         loopFlags.remove(frame)
-        mutedFlags.remove(frame)
     }
 }

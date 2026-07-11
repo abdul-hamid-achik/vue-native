@@ -8,6 +8,12 @@ import ObjectiveC
 /// Caches decoded images in a shared NSCache.
 final class VImageFactory: NativeComponentFactory {
 
+    private let urlSession: URLSession
+
+    init(urlSession: URLSession = .shared) {
+        self.urlSession = urlSession
+    }
+
     // MARK: - Shared image cache
 
     // NSCache is thread-safe, so nonisolated(unsafe) is correct here.
@@ -34,7 +40,8 @@ final class VImageFactory: NativeComponentFactory {
 
     private static var onLoadKey: UInt8 = 0
     private static var onErrorKey: UInt8 = 0
-    private static var currentURLKey: UInt8 = 1
+    private static var loadTaskKey: UInt8 = 0
+    private static var requestTokenKey: UInt8 = 0
 
     // MARK: - NativeComponentFactory
 
@@ -57,6 +64,8 @@ final class VImageFactory: NativeComponentFactory {
 
         switch key {
         case "source":
+            invalidateImageLoad(for: imageView)
+
             guard let sourceDict = value as? [String: Any],
                   let uriString = sourceDict["uri"] as? String,
                   !uriString.isEmpty else {
@@ -103,6 +112,11 @@ final class VImageFactory: NativeComponentFactory {
         }
     }
 
+    func destroyView(view: UIView) {
+        guard let imageView = view as? UIImageView else { return }
+        invalidateImageLoad(for: imageView)
+    }
+
     // MARK: - Image loading
 
     @MainActor
@@ -119,42 +133,86 @@ final class VImageFactory: NativeComponentFactory {
             return
         }
 
-        // Store current URL to handle rapid source changes
-        objc_setAssociatedObject(imageView, &VImageFactory.currentURLKey, urlString as NSString, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        let requestToken = UUID().uuidString
+        objc_setAssociatedObject(
+            imageView,
+            &VImageFactory.requestTokenKey,
+            requestToken as NSString,
+            .OBJC_ASSOCIATION_RETAIN_NONATOMIC
+        )
 
-        URLSession.shared.dataTask(with: url) { [weak imageView] data, _, error in
-            guard let imageView = imageView else { return }
-
-            if let error = error {
-                DispatchQueue.main.async { [weak imageView] in
-                    guard let imageView = imageView else { return }
-                    VImageFactory.fireErrorHandler(for: imageView, message: error.localizedDescription)
-                }
-                return
-            }
-
-            guard let data = data, let image = UIImage(data: data) else {
-                DispatchQueue.main.async { [weak imageView] in
-                    guard let imageView = imageView else { return }
-                    VImageFactory.fireErrorHandler(for: imageView, message: "Failed to decode image")
-                }
-                return
-            }
-
-            let cost = data.count
-            VImageFactory.imageCache.setObject(image, forKey: urlString as NSString, cost: cost)
+        let task = urlSession.dataTask(with: url) { [weak imageView] data, _, error in
+            let decodedImage = data.flatMap(UIImage.init(data:))
 
             DispatchQueue.main.async { [weak imageView] in
-                guard let imageView = imageView else { return }
-                // Only update if the URL hasn't changed
-                let current = objc_getAssociatedObject(imageView, &VImageFactory.currentURLKey) as? NSString
-                if current as String? == urlString {
-                    imageView.image = image
-                    imageView.flex.markDirty()
-                    VImageFactory.fireLoadHandler(for: imageView)
+                guard let imageView,
+                      VImageFactory.isCurrentRequest(requestToken, for: imageView) else { return }
+
+                VImageFactory.finishRequest(for: imageView)
+
+                if let error {
+                    VImageFactory.fireErrorHandler(for: imageView, message: error.localizedDescription)
+                    return
                 }
+
+                guard let data, let image = decodedImage else {
+                    VImageFactory.fireErrorHandler(for: imageView, message: "Failed to decode image")
+                    return
+                }
+
+                VImageFactory.imageCache.setObject(
+                    image,
+                    forKey: urlString as NSString,
+                    cost: data.count
+                )
+                imageView.image = image
+                imageView.flex.markDirty()
+                VImageFactory.fireLoadHandler(for: imageView)
             }
-        }.resume()
+        }
+
+        objc_setAssociatedObject(
+            imageView,
+            &VImageFactory.loadTaskKey,
+            task,
+            .OBJC_ASSOCIATION_RETAIN_NONATOMIC
+        )
+        task.resume()
+    }
+
+    @MainActor
+    private func invalidateImageLoad(for imageView: UIImageView) {
+        let task = objc_getAssociatedObject(
+            imageView,
+            &VImageFactory.loadTaskKey
+        ) as? URLSessionDataTask
+        task?.cancel()
+        VImageFactory.finishRequest(for: imageView)
+    }
+
+    @MainActor
+    private static func isCurrentRequest(_ requestToken: String, for imageView: UIImageView) -> Bool {
+        let currentToken = objc_getAssociatedObject(
+            imageView,
+            &VImageFactory.requestTokenKey
+        ) as? String
+        return currentToken == requestToken
+    }
+
+    @MainActor
+    private static func finishRequest(for imageView: UIImageView) {
+        objc_setAssociatedObject(
+            imageView,
+            &VImageFactory.loadTaskKey,
+            nil,
+            .OBJC_ASSOCIATION_RETAIN_NONATOMIC
+        )
+        objc_setAssociatedObject(
+            imageView,
+            &VImageFactory.requestTokenKey,
+            nil,
+            .OBJC_ASSOCIATION_RETAIN_NONATOMIC
+        )
     }
 
     private static func fireLoadHandler(for view: UIView) {

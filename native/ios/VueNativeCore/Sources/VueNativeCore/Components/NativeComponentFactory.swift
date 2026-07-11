@@ -24,6 +24,11 @@ protocol NativeComponentFactory {
     /// Default implementation is a no-op.
     func removeEventListener(view: UIView, event: String)
 
+    /// Release resources owned by a view that is permanently leaving the
+    /// native tree. Moves and reparenting do not call this method.
+    /// Default implementation is a no-op.
+    func destroyView(view: UIView)
+
     /// Insert a child view into the parent. Called by the bridge instead of addSubview.
     /// Default implementation calls parent.addSubview(child) or insertSubview(at:) with anchor.
     func insertChild(_ child: UIView, into parent: UIView, before anchor: UIView?)
@@ -37,6 +42,10 @@ protocol NativeComponentFactory {
 extension NativeComponentFactory {
     func removeEventListener(view: UIView, event: String) {
         // Default no-op. Factories can override to clean up specific listeners.
+    }
+
+    func destroyView(view: UIView) {
+        // Default no-op. Factories can override to release per-view resources.
     }
 
     func insertChild(_ child: UIView, into parent: UIView, before anchor: UIView?) {

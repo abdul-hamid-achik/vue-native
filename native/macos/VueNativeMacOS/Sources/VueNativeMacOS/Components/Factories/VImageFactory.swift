@@ -6,11 +6,18 @@ import ObjectiveC
 /// NSCache for in-memory caching, and various resize modes.
 final class VImageFactory: NativeComponentFactory {
 
+    private let urlSession: URLSession
+
+    init(urlSession: URLSession = .shared) {
+        self.urlSession = urlSession
+    }
+
     // MARK: - Associated object keys
 
     private static var loadTaskKey: UInt8 = 0
     private static var loadHandlerKey: UInt8 = 0
     private static var errorHandlerKey: UInt8 = 0
+    private static var requestTokenKey: UInt8 = 0
 
     // MARK: - Shared image cache
 
@@ -37,7 +44,7 @@ final class VImageFactory: NativeComponentFactory {
             // Cancel any in-flight load
             cancelLoad(on: view)
 
-            guard let source = value as? String, !source.isEmpty else {
+            guard let source = sourceURI(from: value), !source.isEmpty else {
                 imageView.image = nil
                 return
             }
@@ -153,6 +160,10 @@ final class VImageFactory: NativeComponentFactory {
         }
     }
 
+    func destroyView(view: NSView) {
+        cancelLoad(on: view)
+    }
+
     // MARK: - Async image loading
 
     private func loadImageFromURL(_ url: URL, into imageView: NSImageView) {
@@ -165,9 +176,20 @@ final class VImageFactory: NativeComponentFactory {
             return
         }
 
-        let task = URLSession.shared.dataTask(with: url) { [weak imageView] data, response, error in
-            DispatchQueue.main.async {
-                guard let imageView = imageView else { return }
+        let requestToken = UUID().uuidString
+        objc_setAssociatedObject(
+            imageView,
+            &VImageFactory.requestTokenKey,
+            requestToken as NSString,
+            .OBJC_ASSOCIATION_RETAIN_NONATOMIC
+        )
+
+        let task = urlSession.dataTask(with: url) { [weak imageView] data, _, error in
+            DispatchQueue.main.async { [weak imageView] in
+                guard let imageView,
+                      VImageFactory.isCurrentRequest(requestToken, for: imageView) else { return }
+
+                VImageFactory.finishRequest(for: imageView)
 
                 if let error = error {
                     self.fireErrorEvent(for: imageView, message: error.localizedDescription)
@@ -186,23 +208,41 @@ final class VImageFactory: NativeComponentFactory {
                 self.fireLoadEvent(for: imageView, image: image)
             }
         }
-        task.resume()
-
         // Store the task so we can cancel it if source changes
         objc_setAssociatedObject(
             imageView, &VImageFactory.loadTaskKey,
             task, .OBJC_ASSOCIATION_RETAIN_NONATOMIC
         )
+        task.resume()
     }
 
     private func cancelLoad(on view: NSView) {
-        if let task = objc_getAssociatedObject(view, &VImageFactory.loadTaskKey) as? URLSessionDataTask {
-            task.cancel()
-            objc_setAssociatedObject(
-                view, &VImageFactory.loadTaskKey,
-                nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC
-            )
-        }
+        let task = objc_getAssociatedObject(view, &VImageFactory.loadTaskKey) as? URLSessionDataTask
+        task?.cancel()
+        VImageFactory.finishRequest(for: view)
+    }
+
+    private static func isCurrentRequest(_ requestToken: String, for view: NSView) -> Bool {
+        let currentToken = objc_getAssociatedObject(
+            view,
+            &VImageFactory.requestTokenKey
+        ) as? String
+        return currentToken == requestToken
+    }
+
+    private static func finishRequest(for view: NSView) {
+        objc_setAssociatedObject(
+            view,
+            &VImageFactory.loadTaskKey,
+            nil,
+            .OBJC_ASSOCIATION_RETAIN_NONATOMIC
+        )
+        objc_setAssociatedObject(
+            view,
+            &VImageFactory.requestTokenKey,
+            nil,
+            .OBJC_ASSOCIATION_RETAIN_NONATOMIC
+        )
     }
 
     private func loadFromBundle(_ name: String) -> NSImage? {
@@ -220,6 +260,22 @@ final class VImageFactory: NativeComponentFactory {
                 return NSImage(contentsOfFile: path)
             }
         }
+        return nil
+    }
+
+    private func sourceURI(from value: Any?) -> String? {
+        if let source = value as? String {
+            return source
+        }
+
+        if let source = value as? [String: Any] {
+            return source["uri"] as? String
+        }
+
+        if let source = value as? NSDictionary {
+            return source["uri"] as? String
+        }
+
         return nil
     }
 
@@ -243,7 +299,7 @@ final class VImageFactory: NativeComponentFactory {
         ) as? (Any?) -> Void else { return }
 
         let payload: [String: Any] = [
-            "error": message
+            "message": message
         ]
         handler(payload)
     }

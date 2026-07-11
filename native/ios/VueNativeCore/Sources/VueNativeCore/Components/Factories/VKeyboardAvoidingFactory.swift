@@ -28,6 +28,10 @@ final class VKeyboardAvoidingFactory: NativeComponentFactory {
     func addEventListener(view: UIView, event: String, handler: @escaping (Any?) -> Void) {
         // No events exposed for keyboard avoiding view
     }
+
+    func destroyView(view: UIView) {
+        (view as? KeyboardAvoidingView)?.removeKeyboardObservers()
+    }
 }
 
 // MARK: - KeyboardAvoidingView
@@ -50,8 +54,18 @@ private final class KeyboardAvoidingView: UIView {
     }
 
     deinit {
-        if let obs = showObserver { NotificationCenter.default.removeObserver(obs) }
-        if let obs = hideObserver { NotificationCenter.default.removeObserver(obs) }
+        removeKeyboardObservers()
+    }
+
+    fileprivate func removeKeyboardObservers() {
+        if let showObserver {
+            NotificationCenter.default.removeObserver(showObserver)
+            self.showObserver = nil
+        }
+        if let hideObserver {
+            NotificationCenter.default.removeObserver(hideObserver)
+            self.hideObserver = nil
+        }
     }
 
     private func setupKeyboardObservers() {

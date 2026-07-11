@@ -960,6 +960,24 @@ describe('Components', () => {
       expect(ops.find(o => o.args[1] === 'loop')?.args[2]).toBe(true)
       expect(ops.find(o => o.args[1] === 'muted')?.args[2]).toBe(true)
     })
+
+    it('sends playback intent before the source', async () => {
+      renderComponent(createVNode(VVideo, {
+        source: { uri: 'http://vid.mp4' },
+        autoplay: false,
+        paused: false,
+      }))
+      await nextTick()
+
+      const propNames = mockBridge
+        .getOpsByType('updateProp')
+        .map(o => o.args[1])
+      const sourceIndex = propNames.indexOf('source')
+
+      expect(sourceIndex).toBeGreaterThan(-1)
+      expect(propNames.indexOf('autoplay')).toBeLessThan(sourceIndex)
+      expect(propNames.indexOf('paused')).toBeLessThan(sourceIndex)
+    })
   })
 
   // ---------------------------------------------------------------------------
@@ -1275,13 +1293,17 @@ describe('Components', () => {
       warnSpy.mockRestore()
     })
 
-    it('forwards javaScriptEnabled prop', async () => {
+    it('forwards javaScriptEnabled before the initial source navigation', async () => {
       renderComponent(createVNode(VWebView, { source: { uri: 'https://example.com' }, javaScriptEnabled: false }))
       await nextTick()
       const ops = mockBridge.getOpsByType('updateProp')
-      const prop = ops.find(o => o.args[1] === 'javaScriptEnabled')
-      expect(prop).toBeDefined()
-      expect(prop!.args[2]).toBe(false)
+      const javaScriptIndex = ops.findIndex(o => o.args[1] === 'javaScriptEnabled')
+      const sourceIndex = ops.findIndex(o => o.args[1] === 'source')
+
+      expect(javaScriptIndex).toBeGreaterThanOrEqual(0)
+      expect(sourceIndex).toBeGreaterThanOrEqual(0)
+      expect(ops[javaScriptIndex]!.args[2]).toBe(false)
+      expect(javaScriptIndex).toBeLessThan(sourceIndex)
     })
   })
 

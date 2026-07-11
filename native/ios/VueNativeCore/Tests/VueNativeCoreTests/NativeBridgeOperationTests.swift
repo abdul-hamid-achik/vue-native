@@ -441,6 +441,44 @@ final class NativeBridgeOperationTests: XCTestCase {
         XCTAssertNil(bridge.view(forNodeId: 3), "Descendant should be cleaned up recursively")
     }
 
+    func testRemoveChildDestroysEachViewInSubtreeExactlyOnce() {
+        let factory = DestroyProbeFactory()
+        ComponentRegistry.shared.register("DestroyProbe", factory: factory)
+        defer { ComponentRegistry.shared.unregister("DestroyProbe") }
+
+        processOp("create", args: [201, "DestroyProbe"])
+        processOp("create", args: [202, "DestroyProbe"])
+        processOp("appendChild", args: [201, 202])
+
+        processOp("removeChild", args: [201])
+        processOp("removeChild", args: [201])
+
+        let createdIDs = Set(factory.createdViews.map { ObjectIdentifier($0) })
+        XCTAssertEqual(factory.destroyedViewIDs.count, 2)
+        XCTAssertEqual(Set(factory.destroyedViewIDs), createdIDs)
+    }
+
+    func testMoveDoesNotDestroyViewAndResetDestroysItOnce() {
+        let factory = DestroyProbeFactory()
+        ComponentRegistry.shared.register("DestroyProbe", factory: factory)
+        defer { ComponentRegistry.shared.unregister("DestroyProbe") }
+
+        processOp("create", args: [211, "VView"])
+        processOp("create", args: [212, "VView"])
+        processOp("create", args: [213, "DestroyProbe"])
+        processOp("appendChild", args: [211, 213])
+
+        processOp("appendChild", args: [212, 213])
+
+        XCTAssertTrue(factory.destroyedViewIDs.isEmpty, "Reparenting must not destroy a live node")
+
+        bridge.reset()
+        bridge.reset()
+
+        XCTAssertEqual(factory.destroyedViewIDs.count, 1, "Reset must destroy each registered view once")
+        XCTAssertEqual(factory.destroyedViewIDs.first, factory.createdViews.first.map { ObjectIdentifier($0) })
+    }
+
     // MARK: - setElementText Tests
 
     func testSetElementTextUpdatesLabel() {
@@ -468,6 +506,26 @@ final class NativeBridgeOperationTests: XCTestCase {
 
     func testEmptyBatchDoesNotCrash() {
         processBatch([])
+    }
+}
+
+@MainActor
+private final class DestroyProbeFactory: NativeComponentFactory {
+    private(set) var createdViews: [UIView] = []
+    private(set) var destroyedViewIDs: [ObjectIdentifier] = []
+
+    func createView() -> UIView {
+        let view = UIView()
+        createdViews.append(view)
+        return view
+    }
+
+    func updateProp(view: UIView, key: String, value: Any?) {}
+
+    func addEventListener(view: UIView, event: String, handler: @escaping (Any?) -> Void) {}
+
+    func destroyView(view: UIView) {
+        destroyedViewIDs.append(ObjectIdentifier(view))
     }
 }
 #endif

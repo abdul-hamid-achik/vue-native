@@ -100,8 +100,8 @@ These notes are for agents and maintainers continuing the same branch. They shou
 ### Current local notes
 
 - `~/notes/projects/vue-native/progress-2026-07-10.md`
-- `~/notes/projects/vue-native/handoff-2026-07-09.md`
-- `~/notes/projects/vue-native/CHANGELOG-draft-2026-07-09.md`
+- `~/notes/projects/vue-native/handoff-2026-07-10.md`
+- `~/notes/projects/vue-native/CHANGELOG-draft-2026-07-10.md`
 - Historical notes: `~/notes/projects/vue-native/archive/2026-05-26/` and `~/notes/projects/vue-native/archive/2026-07-09/`
 
 ### When to create or update notes
@@ -306,6 +306,7 @@ Both platforms override `insertChild`/`removeChild` in VListFactory. Item views 
 - Swift 5.9+, iOS 16+, UIKit only (no SwiftUI)
 - No force-unwraps (`!`) in production paths — use `guard let` or `if let`
 - Factories implement `NativeComponentFactory` — always implement `insertChild` and `removeChild` (default impls use `addSubview`/`removeFromSuperview`, but override if needed)
+- Factories that own tasks, observers, controllers, overlays, or other resources outside the normal view hierarchy must implement `destroyView(view:)`; it runs for permanent removal/reset, never for reparenting moves
 - `StyleEngine.apply(key:value:to:)` is the single entry point for all style props — call it for unknown props from within a factory's `updateProp`
 - Tests use XCTest with `@MainActor`, `#if canImport(UIKit)` guard
 - Tests in `Tests/VueNativeCoreTests/`
@@ -314,6 +315,7 @@ Both platforms override `insertChild`/`removeChild` in VListFactory. Item views 
 - Swift 5.9+ (swiftLanguageMode .v5), macOS 15+, AppKit only (no SwiftUI)
 - Depends on `VueNativeShared` — use `import VueNativeShared` for NativeModule, EventThrottle, etc.
 - Factories implement `NativeComponentFactory` — same protocol as iOS but returns `NSView`
+- Factories that attach windows, toolbars, tasks, observers, or other external resources must implement `destroyView(view:)`; cleanup must be idempotent and must not fire user events during unmount
 - `StyleEngine.apply(key:value:to:)` routes layout props to LayoutNode and visual props to NSView.layer
 - Associated object keys accessed from `@objc` proxy classes must use `nonisolated(unsafe) static var`
 - Use `NSColor.fromHex()` (not UIColor) for hex color parsing
@@ -323,6 +325,7 @@ Both platforms override `insertChild`/`removeChild` in VListFactory. Item views 
 - Kotlin 1.9+, API 21+, AppCompat
 - Prefer `?.` safe calls over `!!` — treat `!!` as a code smell
 - Factories implement `ComponentFactory` interface — same `insertChild`/`removeChild` pattern as Swift
+- Factories that own players, WebViews, handlers, dialogs, or other external resources must implement idempotent `destroyView`; permanent removal/reset invokes it, while reparenting moves do not
 - `StyleEngine.apply(view, key, value)` is the single entry point for style props
 - Tests use JUnit4 + Robolectric (`@RunWith(RobolectricTestRunner::class)`, `@Config(sdk = [34])`)
 - Tests in `src/test/kotlin/com/vuenative/core/`

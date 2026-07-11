@@ -21,4 +21,10 @@ Make fresh CLI scaffolds self-contained and verifiable: package the native runti
 
 Strengthen release gates with native contract checks, Knip, non-mutating Lefthook hooks, integrated local-tarball scaffold smoke tests, example and editor-tool type checks, least-privilege publish jobs, and post-version validation before publication.
 
+Require publication to follow a successful CI run for the exact trusted main-branch commit, and reject stale releases if main advances during validation.
+
+Close additional native parity gaps around image source loading and stale requests, WebView listener isolation and initial JavaScript policy, pre-Android-13 notification permission status, and deterministic Apple view-factory destruction.
+
+Make video autoplay and programmatic pause state safe across source preparation and replacement on iOS, Android, and macOS, and clean up native media, dialog, modal, toolbar, keyboard, image, and WebView resources during unmount or hot reload. Lay out detached macOS modal content and keep user-close dismissal state exact and reopenable.
+
 Polish public runtime and navigation behavior across transitions, drawer/tab declarative screens, push errors, accessibility state, modal styling, deep links, and documented examples.

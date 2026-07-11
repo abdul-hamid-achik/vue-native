@@ -112,6 +112,51 @@ final class VToolbarFactory: NativeComponentFactory {
         }
     }
 
+    func destroyView(view: NSView) {
+        let installedToolbar = objc_getAssociatedObject(
+            view, &VToolbarFactory.toolbarKey
+        ) as? NSToolbar
+
+        if let installedToolbar {
+            let ownerWindow = view.window ?? NSApplication.shared.windows.first(where: {
+                $0.toolbar === installedToolbar
+            })
+            if ownerWindow?.toolbar === installedToolbar {
+                ownerWindow?.toolbar = nil
+            }
+            installedToolbar.delegate = nil
+        }
+
+        if let placeholder = view as? ToolbarPlaceholderView {
+            placeholder.onWindowChange = nil
+        }
+
+        objc_setAssociatedObject(
+            view, &VToolbarFactory.toolbarKey,
+            nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC
+        )
+        objc_setAssociatedObject(
+            view, &VToolbarFactory.toolbarDelegateKey,
+            nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC
+        )
+        objc_setAssociatedObject(
+            view, &VToolbarFactory.toolbarItemsKey,
+            nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC
+        )
+        objc_setAssociatedObject(
+            view, &VToolbarFactory.itemClickHandlerKey,
+            nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC
+        )
+        objc_setAssociatedObject(
+            view, &VToolbarFactory.displayModeKey,
+            nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC
+        )
+        objc_setAssociatedObject(
+            view, &VToolbarFactory.showsBaselineSeparatorKey,
+            nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC
+        )
+    }
+
     // MARK: - Toolbar management
 
     private func rebuildToolbar(for view: NSView) {

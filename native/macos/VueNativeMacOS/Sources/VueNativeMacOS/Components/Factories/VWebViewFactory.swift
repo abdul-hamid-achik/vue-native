@@ -3,14 +3,16 @@ import WebKit
 import ObjectiveC
 
 /// Factory for VWebView — wraps WKWebView for macOS.
-/// Supports loading URLs and inline HTML, plus load/error/loadStart events.
+/// Supports loading URLs and inline HTML, plus load/error/loadStart/message events.
 final class VWebViewFactory: NativeComponentFactory {
 
     // nonisolated(unsafe) for keys accessed from WKNavigationDelegate callbacks
     nonisolated(unsafe) fileprivate static var onLoadKey: UInt8 = 0
     nonisolated(unsafe) fileprivate static var onErrorKey: UInt8 = 1
     nonisolated(unsafe) fileprivate static var onLoadStartKey: UInt8 = 2
-    fileprivate static var delegateKey: UInt8 = 3
+    nonisolated(unsafe) fileprivate static var onMessageKey: UInt8 = 3
+    fileprivate static var delegateKey: UInt8 = 4
+    fileprivate static var msgHandlerKey: UInt8 = 5
 
     // MARK: - NativeComponentFactory
 
@@ -46,9 +48,7 @@ final class VWebViewFactory: NativeComponentFactory {
             }
 
         case "javaScriptEnabled":
-            // WKWebView has JS enabled by default; disabling requires WKPreferences on the
-            // configuration object, which cannot be changed after init. Silently ignore.
-            break
+            webView.configuration.defaultWebpagePreferences.allowsContentJavaScript = value as? Bool ?? true
 
         case "scrollEnabled":
             // On macOS, WKWebView uses an enclosing scroll view
@@ -95,6 +95,21 @@ final class VWebViewFactory: NativeComponentFactory {
             )
             ensureDelegate(for: webView)
 
+        case "message":
+            objc_setAssociatedObject(
+                view, &VWebViewFactory.onMessageKey,
+                handler as AnyObject,
+                .OBJC_ASSOCIATION_RETAIN_NONATOMIC
+            )
+            webView.configuration.userContentController.removeScriptMessageHandler(forName: "vueNative")
+            let msgHandler = MacWebViewMessageHandler(view: view)
+            webView.configuration.userContentController.add(msgHandler, name: "vueNative")
+            objc_setAssociatedObject(
+                view, &VWebViewFactory.msgHandlerKey,
+                msgHandler,
+                .OBJC_ASSOCIATION_RETAIN_NONATOMIC
+            )
+
         default:
             break
         }
@@ -108,9 +123,29 @@ final class VWebViewFactory: NativeComponentFactory {
             objc_setAssociatedObject(view, &VWebViewFactory.onErrorKey, nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
         case "loadStart":
             objc_setAssociatedObject(view, &VWebViewFactory.onLoadStartKey, nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        case "message":
+            objc_setAssociatedObject(view, &VWebViewFactory.onMessageKey, nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+            if let webView = view as? WKWebView {
+                webView.configuration.userContentController.removeScriptMessageHandler(forName: "vueNative")
+            }
+            objc_setAssociatedObject(view, &VWebViewFactory.msgHandlerKey, nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
         default:
             break
         }
+    }
+
+    func destroyView(view: NSView) {
+        guard let webView = view as? WKWebView else { return }
+        webView.stopLoading()
+        webView.navigationDelegate = nil
+        webView.uiDelegate = nil
+        webView.configuration.userContentController.removeScriptMessageHandler(forName: "vueNative")
+        objc_setAssociatedObject(view, &VWebViewFactory.onLoadKey, nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        objc_setAssociatedObject(view, &VWebViewFactory.onErrorKey, nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        objc_setAssociatedObject(view, &VWebViewFactory.onLoadStartKey, nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        objc_setAssociatedObject(view, &VWebViewFactory.onMessageKey, nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        objc_setAssociatedObject(view, &VWebViewFactory.delegateKey, nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        objc_setAssociatedObject(view, &VWebViewFactory.msgHandlerKey, nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
     }
 
     // MARK: - Helpers
@@ -124,6 +159,23 @@ final class VWebViewFactory: NativeComponentFactory {
             .OBJC_ASSOCIATION_RETAIN_NONATOMIC
         )
         webView.navigationDelegate = delegate
+    }
+}
+
+// MARK: - MacWebViewMessageHandler
+
+private final class MacWebViewMessageHandler: NSObject, WKScriptMessageHandler {
+    private weak var view: NSView?
+
+    init(view: NSView) { self.view = view }
+
+    func userContentController(
+        _ userContentController: WKUserContentController,
+        didReceive message: WKScriptMessage
+    ) {
+        guard let view else { return }
+        let handler = objc_getAssociatedObject(view, &VWebViewFactory.onMessageKey) as? ((Any?) -> Void)
+        handler?(["data": message.body])
     }
 }
 

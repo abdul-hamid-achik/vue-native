@@ -214,11 +214,9 @@ public final class NativeBridge: @preconcurrency NativeEventDispatcher {
             if !needsLayout && op == "updateStyle",
                args.count >= 2,
                let styles = args[1] as? [String: Any] {
-                for key in styles.keys {
-                    if NativeBridge.layoutAffectingStyles.contains(key) {
-                        needsLayout = true
-                        break
-                    }
+                for key in styles.keys where NativeBridge.layoutAffectingStyles.contains(key) {
+                    needsLayout = true
+                    break
                 }
             }
 
@@ -443,7 +441,7 @@ public final class NativeBridge: @preconcurrency NativeEventDispatcher {
         if let factory = ComponentRegistry.factory(for: parentView) {
             factory.insertChild(childView, into: container, before: anchor?.view)
         } else if let anchor = anchor,
-                  container.subviews.firstIndex(of: anchor.view) != nil {
+                  container.subviews.contains(anchor.view) {
             container.addSubview(childView, positioned: .below, relativeTo: anchor.view)
         } else {
             container.addSubview(childView)
@@ -514,15 +512,17 @@ public final class NativeBridge: @preconcurrency NativeEventDispatcher {
     }
 
     private func cleanupNodeRegistries(_ nodeId: Int) {
-        if let view = viewRegistry[nodeId],
-           let keys = eventKeysPerNode[nodeId] {
-            let prefix = "\(nodeId):"
-            for key in keys where key.hasPrefix(prefix) {
-                registry.removeEventListener(
-                    view: view,
-                    event: String(key.dropFirst(prefix.count))
-                )
+        if let view = viewRegistry[nodeId] {
+            if let keys = eventKeysPerNode[nodeId] {
+                let prefix = "\(nodeId):"
+                for key in keys where key.hasPrefix(prefix) {
+                    registry.removeEventListener(
+                        view: view,
+                        event: String(key.dropFirst(prefix.count))
+                    )
+                }
             }
+            registry.destroyView(view: view)
         }
 
         nodeParent.removeValue(forKey: nodeId)
@@ -806,6 +806,7 @@ public final class NativeBridge: @preconcurrency NativeEventDispatcher {
 
         guard bounds.width > 0 && bounds.height > 0 else {
             NSLog("[VueNative macOS Bridge] triggerLayout() skipped: bounds not yet resolved")
+            ExternalLayoutRootRegistry.layoutAll()
             return
         }
 
@@ -813,6 +814,7 @@ public final class NativeBridge: @preconcurrency NativeEventDispatcher {
         if let layoutNode = rootView.layoutNode {
             layoutNode.layout(availableWidth: bounds.width, availableHeight: bounds.height)
         }
+        ExternalLayoutRootRegistry.layoutAll()
     }
 
     private func triggerLayoutWithRetries(remaining: Int) {
@@ -904,19 +906,24 @@ public final class NativeBridge: @preconcurrency NativeEventDispatcher {
 
         clearManagedViewState()
 
-        runtime.reload(bundle: bundle, teardownOldContext: false, prepareContext: { [weak self] context in
-            self?.registerBridgeFunctions(on: context)
-        }) { success in
-            guard success else {
-                NSLog("[VueNative macOS Bridge] reloadWithBundle: runtime reload failed")
-                DispatchQueue.main.async {
-                    ErrorOverlayView.show(error: "Hot reload failed.\n\nThe new bundle could not be evaluated. Check the terminal for the JS error.\n\nSave the file again to retry.")
+        runtime.reload(
+            bundle: bundle,
+            teardownOldContext: false,
+            prepareContext: { [weak self] context in
+                self?.registerBridgeFunctions(on: context)
+            },
+            completion: { success in
+                guard success else {
+                    NSLog("[VueNative macOS Bridge] reloadWithBundle: runtime reload failed")
+                    DispatchQueue.main.async {
+                        ErrorOverlayView.show(error: "Hot reload failed.\n\nThe new bundle could not be evaluated. Check the terminal for the JS error.\n\nSave the file again to retry.")
+                    }
+                    return
                 }
-                return
-            }
 
-            NSLog("[VueNative macOS Bridge] reloadWithBundle: bridge re-registered on new context")
-        }
+                NSLog("[VueNative macOS Bridge] reloadWithBundle: bridge re-registered on new context")
+            }
+        )
     }
 
     // MARK: - Cleanup

@@ -1,6 +1,6 @@
 # VWebView
 
-An embedded web view component for displaying web content. Maps to `WKWebView` on iOS and `android.webkit.WebView` on Android.
+An embedded web view component for displaying web content. Maps to `WKWebView` on iOS and macOS, and `android.webkit.WebView` on Android.
 
 ## Usage
 
@@ -36,8 +36,8 @@ Provide either `uri` or `html`, not both.
 | Event | Payload | Description |
 |-------|---------|-------------|
 | `@load` | `{ url: string }` | Fired when the page finishes loading |
-| `@error` | `{ message: string }` | Fired when navigation fails |
-| `@message` | `{ data: any }` | Fired when the web page posts a message via `window.webkit.messageHandlers.vueNative.postMessage(data)` |
+| `@error` | `{ message: string, url?: string }` | Fired when navigation fails; Android includes the failing URL |
+| `@message` | `{ data: any }` | Fired when the web page posts a message through the platform's `vueNative` bridge |
 
 ## Example
 
@@ -104,11 +104,18 @@ const styles = createStyleSheet({
 
 ### Receiving messages from web content
 
-The web page can send messages to your Vue Native app using the `vueNative` message handler:
+The web page can send messages to your Vue Native app using the platform's `vueNative` message handler.
+
+On iOS and macOS, use WebKit's script message handler. The payload may be any value supported by `WKScriptMessage`:
 
 ```js
-// Inside the web page's JavaScript
 window.webkit.messageHandlers.vueNative.postMessage({ type: 'ready', count: 42 })
+```
+
+On Android, use the injected `window.vueNative` interface. Android receives a string, so serialize structured data explicitly:
+
+```js
+window.vueNative.postMessage(JSON.stringify({ type: 'ready', count: 42 }))
 ```
 
 ```vue
@@ -122,7 +129,8 @@ window.webkit.messageHandlers.vueNative.postMessage({ type: 'ready', count: 42 }
 
 <script setup>
 function onMessage(e) {
-  console.log('Received from web:', e.data)
+  const data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data
+  console.log('Received from web:', data)
 }
 </script>
 ```
@@ -130,5 +138,6 @@ function onMessage(e) {
 ## Notes
 
 - `VWebView` should typically be given `flex: 1` or explicit dimensions, as it has no intrinsic content size.
-- The `javaScriptEnabled` prop is `true` by default. On iOS, WKWebView has JavaScript enabled at initialization and cannot be toggled at runtime.
-- On iOS, the `@message` event uses `WKScriptMessageHandler` with the channel name `"vueNative"`.
+- The `javaScriptEnabled` prop is `true` by default and can be toggled at runtime. On iOS and macOS, changes use `WKWebpagePreferences` and apply to future navigations; they do not reload the current page.
+- On iOS and macOS, the `@message` event uses `WKScriptMessageHandler` with the channel name `"vueNative"`.
+- Android blocks mixed HTTP content inside HTTPS pages by default.

@@ -46,9 +46,7 @@ final class VWebViewFactory: NativeComponentFactory {
                 }
             }
         case "javaScriptEnabled":
-            // WKWebView has JS enabled by default; disabling requires WKPreferences on the
-            // configuration object, which cannot be changed after init. Silently ignore.
-            break
+            webView.configuration.defaultWebpagePreferences.allowsContentJavaScript = value as? Bool ?? true
         default:
             StyleEngine.apply(key: key, value: value, to: view)
         }
@@ -110,6 +108,19 @@ final class VWebViewFactory: NativeComponentFactory {
         default:
             break
         }
+    }
+
+    func destroyView(view: UIView) {
+        guard let webView = view as? WKWebView else { return }
+        webView.stopLoading()
+        webView.navigationDelegate = nil
+        webView.uiDelegate = nil
+        webView.configuration.userContentController.removeScriptMessageHandler(forName: "vueNative")
+        objc_setAssociatedObject(view, &VWebViewFactory.onLoadKey, nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        objc_setAssociatedObject(view, &VWebViewFactory.onErrorKey, nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        objc_setAssociatedObject(view, &VWebViewFactory.onMessageKey, nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        objc_setAssociatedObject(view, &VWebViewFactory.delegateKey, nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        objc_setAssociatedObject(view, &VWebViewFactory.msgHandlerKey, nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
     }
 
     // MARK: - Helpers

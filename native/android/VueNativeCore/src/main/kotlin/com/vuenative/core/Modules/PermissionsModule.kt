@@ -111,6 +111,10 @@ class PermissionsModule : NativeModule {
             callback(null, "Not initialized")
             return
         }
+        if (isImplicitlyGranted(permission)) {
+            callback("granted", null)
+            return
+        }
         val androidPerm = permission?.let(::mapPermission) ?: run {
             callback("denied", null)
             return
@@ -131,6 +135,10 @@ class PermissionsModule : NativeModule {
     ) {
         val ctx = context ?: run {
             callback(null, "Not initialized")
+            return
+        }
+        if (isImplicitlyGranted(permission)) {
+            callback("granted", null)
             return
         }
         val androidPerm = permission?.let(::mapPermission) ?: run {
@@ -179,6 +187,10 @@ class PermissionsModule : NativeModule {
         // Already requested and denied
         return "denied"
     }
+
+    private fun isImplicitlyGranted(permission: String?): Boolean =
+        permission == "notifications" &&
+            android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.TIRAMISU
 
     private fun mapPermission(name: String): String? = when (name) {
         "camera" -> Manifest.permission.CAMERA

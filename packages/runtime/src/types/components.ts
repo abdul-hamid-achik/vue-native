@@ -234,9 +234,11 @@ export interface VVideoProps extends AccessibilityProps {
   loop?: boolean
   muted?: boolean
   paused?: boolean
+  /** Reserved for native transport controls; currently has no effect. */
   controls?: boolean
   volume?: number
   resizeMode?: 'cover' | 'contain' | 'stretch' | 'center'
+  /** Reserved for native poster rendering; currently has no effect. */
   poster?: string
   style?: ViewStyle
   testID?: string

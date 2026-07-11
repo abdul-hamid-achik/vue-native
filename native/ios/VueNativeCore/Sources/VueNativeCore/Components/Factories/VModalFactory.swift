@@ -98,6 +98,33 @@ final class VModalFactory: NativeComponentFactory {
         }
     }
 
+    func destroyView(view: UIView) {
+        removeEventListener(view: view, event: "dismiss")
+
+        if let overlay = objc_getAssociatedObject(
+            view,
+            &VModalFactory.overlayKey
+        ) as? UIView {
+            overlay.removeFromSuperview()
+            for child in overlay.subviews {
+                child.removeFromSuperview()
+            }
+        }
+
+        objc_setAssociatedObject(
+            view,
+            &VModalFactory.overlayKey,
+            nil,
+            .OBJC_ASSOCIATION_RETAIN_NONATOMIC
+        )
+        objc_setAssociatedObject(
+            view,
+            &VModalFactory.visibleKey,
+            nil,
+            .OBJC_ASSOCIATION_RETAIN_NONATOMIC
+        )
+    }
+
     // Custom child management: route children to the overlay view
     func insertChild(_ child: UIView, into parent: UIView, before anchor: UIView?) {
         let overlay = getOrCreateOverlay(for: parent)

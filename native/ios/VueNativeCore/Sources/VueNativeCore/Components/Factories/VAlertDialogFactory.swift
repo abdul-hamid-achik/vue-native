@@ -7,6 +7,17 @@ import ObjectiveC
 @MainActor
 final class VAlertDialogFactory: NativeComponentFactory {
 
+    private let presentationHandler: (UIAlertController) -> Bool
+    private let dismissalHandler: (UIAlertController) -> Void
+
+    init(
+        presentationHandler: ((UIAlertController) -> Bool)? = nil,
+        dismissalHandler: ((UIAlertController) -> Void)? = nil
+    ) {
+        self.presentationHandler = presentationHandler ?? VAlertDialogFactory.presentUsingApplication
+        self.dismissalHandler = dismissalHandler ?? { $0.dismiss(animated: true) }
+    }
+
     // MARK: - Associated-object keys (each must be a unique address)
 
     private static var titleKey: UInt8 = 0
@@ -31,6 +42,8 @@ final class VAlertDialogFactory: NativeComponentFactory {
             let visible = (value as? Bool) ?? (value as? NSNumber)?.boolValue ?? false
             if visible {
                 presentAlert(for: view)
+            } else {
+                dismissAlert(for: view)
             }
         case "title":
             objc_setAssociatedObject(
@@ -85,17 +98,24 @@ final class VAlertDialogFactory: NativeComponentFactory {
         case "confirm":
             objc_setAssociatedObject(view, &VAlertDialogFactory.onConfirmKey, nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
         case "cancel":
-            objc_setAssociatedObject(view, &VAlertDialogFactory.onCancelKey,  nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+            objc_setAssociatedObject(view, &VAlertDialogFactory.onCancelKey, nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
         case "action":
-            objc_setAssociatedObject(view, &VAlertDialogFactory.onActionKey,  nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+            objc_setAssociatedObject(view, &VAlertDialogFactory.onActionKey, nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
         default:
             break
         }
     }
 
+    func destroyView(view: UIView) {
+        clearCallbacks(for: view)
+        dismissAlert(for: view)
+    }
+
     // MARK: - Alert Presentation
 
     private func presentAlert(for view: UIView) {
+        guard objc_getAssociatedObject(view, &VAlertDialogFactory.presentedKey) == nil else { return }
+
         let title   = objc_getAssociatedObject(view, &VAlertDialogFactory.titleKey)   as? String
         let message = objc_getAssociatedObject(view, &VAlertDialogFactory.messageKey) as? String
         let buttons = objc_getAssociatedObject(view, &VAlertDialogFactory.buttonsKey) as? [[String: Any]] ?? []
@@ -114,6 +134,10 @@ final class VAlertDialogFactory: NativeComponentFactory {
 
             alert.addAction(UIAlertAction(title: label, style: style) { [weak view] _ in
                 guard let view = view else { return }
+                objc_setAssociatedObject(
+                    view, &VAlertDialogFactory.presentedKey,
+                    nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC
+                )
                 if styleStr == "cancel" {
                     if let h = objc_getAssociatedObject(view, &VAlertDialogFactory.onCancelKey) as? ((Any?) -> Void) {
                         h(nil)
@@ -133,17 +157,50 @@ final class VAlertDialogFactory: NativeComponentFactory {
         if alert.actions.isEmpty {
             alert.addAction(UIAlertAction(title: "OK", style: .default) { [weak view] _ in
                 guard let view = view else { return }
+                objc_setAssociatedObject(
+                    view, &VAlertDialogFactory.presentedKey,
+                    nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC
+                )
                 if let h = objc_getAssociatedObject(view, &VAlertDialogFactory.onConfirmKey) as? ((Any?) -> Void) {
                     h(nil)
                 }
             })
         }
 
-        // Find the topmost presented view controller to present from
-        guard let rootVC = UIApplication.shared.vn_keyWindow?.rootViewController else { return }
-        var topVC = rootVC
-        while let presented = topVC.presentedViewController { topVC = presented }
-        topVC.present(alert, animated: true)
+        guard presentationHandler(alert) else { return }
+        objc_setAssociatedObject(
+            view, &VAlertDialogFactory.presentedKey,
+            alert, .OBJC_ASSOCIATION_RETAIN_NONATOMIC
+        )
+    }
+
+    private func dismissAlert(for view: UIView) {
+        guard let alert = objc_getAssociatedObject(
+            view, &VAlertDialogFactory.presentedKey
+        ) as? UIAlertController else { return }
+        objc_setAssociatedObject(
+            view, &VAlertDialogFactory.presentedKey,
+            nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC
+        )
+        dismissalHandler(alert)
+    }
+
+    private func clearCallbacks(for view: UIView) {
+        objc_setAssociatedObject(view, &VAlertDialogFactory.onConfirmKey, nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        objc_setAssociatedObject(view, &VAlertDialogFactory.onCancelKey, nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        objc_setAssociatedObject(view, &VAlertDialogFactory.onActionKey, nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+    }
+
+    private static func presentUsingApplication(_ alert: UIAlertController) -> Bool {
+        guard let rootViewController = UIApplication.shared.vn_keyWindow?.rootViewController else {
+            return false
+        }
+        var topViewController = rootViewController
+        while let presented = topViewController.presentedViewController {
+            topViewController = presented
+        }
+        topViewController.present(alert, animated: true)
+        return true
     }
 }
 #endif

@@ -8,8 +8,55 @@ import ObjectiveC
 // File-level keys used in non-isolated contexts (e.g. deinit).
 // Must live outside the @MainActor-isolated class so they can be
 // passed as `inout` without actor-isolation violations.
-private nonisolated(unsafe) var _timeObserverKey: UInt8 = 7
-private nonisolated(unsafe) var _endObserverKey: UInt8 = 9
+nonisolated(unsafe) private var _timeObserverKey: UInt8 = 7
+nonisolated(unsafe) private var _endObserverKey: UInt8 = 9
+
+enum VideoPlaybackAction: Equatable {
+    case none
+    case play
+    case pause
+}
+
+struct VideoPlaybackState {
+    private(set) var autoplay = false
+    private(set) var paused = false
+    private(set) var isReady = false
+    private(set) var volume: Float = 1
+    private(set) var muted = false
+    private(set) var videoGravity: AVLayerVideoGravity = .resizeAspectFill
+
+    mutating func updateAutoplay(_ value: Bool) -> VideoPlaybackAction {
+        autoplay = value
+        return isReady && autoplay && !paused ? .play : .none
+    }
+
+    mutating func updatePaused(_ value: Bool) -> VideoPlaybackAction {
+        paused = value
+        guard isReady else { return .none }
+        return paused ? .pause : .play
+    }
+
+    mutating func didBecomeReady() -> VideoPlaybackAction {
+        isReady = true
+        return autoplay && !paused ? .play : .none
+    }
+
+    mutating func resetForSource() {
+        isReady = false
+    }
+
+    mutating func updateVolume(_ value: Float) {
+        volume = max(0, min(1, value))
+    }
+
+    mutating func updateMuted(_ value: Bool) {
+        muted = value
+    }
+
+    mutating func updateVideoGravity(_ value: AVLayerVideoGravity) {
+        videoGravity = value
+    }
+}
 
 /// Factory for VVideo — the video playback component.
 /// Uses AVPlayer + AVPlayerLayer for inline video playback.
@@ -52,23 +99,19 @@ final class VVideoFactory: NativeComponentFactory {
             setupPlayer(url: url, in: container)
 
         case "autoplay":
-            // Handled during source setup; store as flag
-            container.autoplay = value as? Bool ?? false
+            let action = container.playbackState.updateAutoplay(value as? Bool ?? false)
+            applyPlaybackAction(action, to: container)
 
         case "loop":
             container.loop = value as? Bool ?? false
 
         case "muted":
-            let muted = value as? Bool ?? false
-            container.player?.isMuted = muted
+            container.playbackState.updateMuted(value as? Bool ?? false)
+            applyAudioState(to: container)
 
         case "paused":
-            let paused = value as? Bool ?? false
-            if paused {
-                container.player?.pause()
-            } else {
-                container.player?.play()
-            }
+            let action = container.playbackState.updatePaused(value as? Bool ?? false)
+            applyPlaybackAction(action, to: container)
 
         case "controls":
             // For inline playback we don't show native controls
@@ -83,11 +126,16 @@ final class VVideoFactory: NativeComponentFactory {
             case "center":  gravity = .resizeAspect
             default:        gravity = .resizeAspectFill // "cover"
             }
-            container.playerLayer?.videoGravity = gravity
+            container.playbackState.updateVideoGravity(gravity)
+            applyVideoGravity(to: container)
 
         case "volume":
             if let vol = value as? Double {
-                container.player?.volume = Float(max(0, min(1, vol)))
+                container.playbackState.updateVolume(Float(vol))
+                applyAudioState(to: container)
+            } else if let vol = value as? Int {
+                container.playbackState.updateVolume(Float(vol))
+                applyAudioState(to: container)
             }
 
         default:
@@ -123,6 +171,12 @@ final class VVideoFactory: NativeComponentFactory {
         objc_setAssociatedObject(view, keyPtr, nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
     }
 
+    func destroyView(view: UIView) {
+        guard let container = view as? VideoContainerView else { return }
+        cleanupPlayer(for: container)
+        clearEventHandlers(for: container)
+    }
+
     // MARK: - Player setup
 
     private func setupPlayer(url: URL, in container: VideoContainerView) {
@@ -131,26 +185,31 @@ final class VVideoFactory: NativeComponentFactory {
         let playerItem = AVPlayerItem(url: url)
         let player = AVPlayer(playerItem: playerItem)
         container.player = player
+        applyAudioState(to: container)
 
         let playerLayer = AVPlayerLayer(player: player)
-        playerLayer.videoGravity = .resizeAspectFill
+        playerLayer.videoGravity = container.playbackState.videoGravity
         playerLayer.frame = container.bounds
         container.layer.addSublayer(playerLayer)
         container.playerLayer = playerLayer
 
         // Observe item status for ready/error
-        let statusObserver = playerItem.observe(\.status, options: [.new]) { [weak container] item, _ in
-            DispatchQueue.main.async {
-                guard let container = container else { return }
+        let statusObserver = playerItem.observe(\.status, options: [.new]) { [weak self, weak container, weak player] item, _ in
+            DispatchQueue.main.async { [weak self, weak container, weak player] in
+                guard let self,
+                      let container,
+                      let player,
+                      container.player === player,
+                      player.currentItem === item else { return }
                 switch item.status {
                 case .readyToPlay:
+                    let action = container.playbackState.didBecomeReady()
                     let duration = CMTimeGetSeconds(item.duration)
                     self.fireEvent(for: container, key: &VVideoFactory.onReadyKey,
                                    payload: ["duration": duration.isFinite ? duration : 0])
-                    if container.autoplay {
-                        container.player?.play()
-                    }
+                    self.applyPlaybackAction(action, to: container)
                 case .failed:
+                    container.playbackState.resetForSource()
                     let message = item.error?.localizedDescription ?? "Unknown playback error"
                     self.fireEvent(for: container, key: &VVideoFactory.onErrorKey,
                                    payload: ["message": message])
@@ -163,11 +222,13 @@ final class VVideoFactory: NativeComponentFactory {
 
         // Periodic time observer for progress
         let interval = CMTime(seconds: 0.25, preferredTimescale: CMTimeScale(NSEC_PER_SEC))
-        let timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: nil) { [weak self, weak container] time in
-            DispatchQueue.main.async { [weak self, weak container] in
+        let timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: nil) { [weak self, weak container, weak player] time in
+            DispatchQueue.main.async { [weak self, weak container, weak player] in
                 guard let self,
                       let container,
-                      let duration = container.player?.currentItem?.duration else { return }
+                      let player,
+                      container.player === player,
+                      let duration = player.currentItem?.duration else { return }
                 let currentTime = CMTimeGetSeconds(time)
                 let dur = CMTimeGetSeconds(duration)
                 if currentTime.isFinite && dur.isFinite {
@@ -183,11 +244,17 @@ final class VVideoFactory: NativeComponentFactory {
             forName: .AVPlayerItemDidPlayToEndTime,
             object: playerItem,
             queue: nil
-        ) { [weak self, weak container] _ in
-            DispatchQueue.main.async { [weak self, weak container] in
-                guard let self, let container else { return }
+        ) { [weak self, weak container, weak player, weak playerItem] notification in
+            DispatchQueue.main.async { [weak self, weak container, weak player, weak playerItem] in
+                guard let self,
+                      let container,
+                      let player,
+                      let playerItem,
+                      container.player === player,
+                      player.currentItem === playerItem,
+                      notification.object as AnyObject? === playerItem else { return }
                 self.fireEvent(for: container, key: &VVideoFactory.onEndKey, payload: nil)
-                if container.loop {
+                if container.loop && !container.playbackState.paused {
                     container.player?.seek(to: .zero)
                     container.player?.play()
                 }
@@ -197,6 +264,8 @@ final class VVideoFactory: NativeComponentFactory {
     }
 
     private func cleanupPlayer(for container: VideoContainerView) {
+        container.playbackState.resetForSource()
+
         // Remove time observer
         if let timeObserver = objc_getAssociatedObject(container, &_timeObserverKey) {
             container.player?.removeTimeObserver(timeObserver)
@@ -218,6 +287,32 @@ final class VVideoFactory: NativeComponentFactory {
         container.playerLayer = nil
     }
 
+    private func applyPlaybackAction(_ action: VideoPlaybackAction, to container: VideoContainerView) {
+        switch action {
+        case .none:
+            break
+        case .play:
+            container.player?.play()
+        case .pause:
+            container.player?.pause()
+        }
+    }
+
+    private func applyAudioState(to container: VideoContainerView) {
+        container.player?.volume = container.playbackState.volume
+        container.player?.isMuted = container.playbackState.muted
+    }
+
+    private func applyVideoGravity(to container: VideoContainerView) {
+        container.playerLayer?.videoGravity = container.playbackState.videoGravity
+    }
+
+    private func clearEventHandlers(for container: VideoContainerView) {
+        for event in ["ready", "play", "pause", "end", "error", "progress"] {
+            removeEventListener(view: container, event: event)
+        }
+    }
+
     private func fireEvent(for view: UIView, key: inout UInt8, payload: Any?) {
         if let handler = objc_getAssociatedObject(view, &key) as? ((Any?) -> Void) {
             handler(payload)
@@ -231,7 +326,7 @@ final class VVideoFactory: NativeComponentFactory {
 private class VideoContainerView: UIView {
     var player: AVPlayer?
     var playerLayer: AVPlayerLayer?
-    var autoplay: Bool = false
+    var playbackState = VideoPlaybackState()
     var loop: Bool = false
 
     override func layoutSubviews() {

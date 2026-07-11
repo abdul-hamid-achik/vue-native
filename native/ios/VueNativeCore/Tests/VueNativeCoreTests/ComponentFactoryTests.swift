@@ -3,8 +3,40 @@ import XCTest
 import UIKit
 @testable import VueNativeCore
 
+private class VImageURLProtocolStub: URLProtocol {
+    static var onStart: ((VImageURLProtocolStub) -> Void)?
+    static var onStop: (() -> Void)?
+
+    override class func canInit(with request: URLRequest) -> Bool {
+        true
+    }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
+        request
+    }
+
+    override func startLoading() {
+        VImageURLProtocolStub.onStart?(self)
+    }
+
+    override func stopLoading() {
+        VImageURLProtocolStub.onStop?()
+    }
+
+    static func reset() {
+        onStart = nil
+        onStop = nil
+    }
+}
+
 @MainActor
 final class ComponentFactoryTests: XCTestCase {
+
+    private func makeVImageTestSession() -> URLSession {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [VImageURLProtocolStub.self]
+        return URLSession(configuration: configuration)
+    }
 
     // MARK: - VViewFactory Tests
 
@@ -351,6 +383,116 @@ final class ComponentFactoryTests: XCTestCase {
         // Set a source with invalid data to test nil handling
         factory.updateProp(view: imageView, key: "source", value: nil)
         XCTAssertNil(imageView.image, "Nil source should clear the image")
+    }
+
+    func testVImageFactoryClearingSourceCancelsInFlightRequest() {
+        let requestStarted = expectation(description: "image request started")
+        let requestCancelled = expectation(description: "image request cancelled")
+        let staleError = expectation(description: "cancelled request does not emit an error")
+        staleError.isInverted = true
+        VImageURLProtocolStub.onStart = { _ in requestStarted.fulfill() }
+        VImageURLProtocolStub.onStop = { requestCancelled.fulfill() }
+
+        let session = makeVImageTestSession()
+        defer {
+            VImageURLProtocolStub.reset()
+            session.invalidateAndCancel()
+        }
+        let factory = VImageFactory(urlSession: session)
+        let imageView = factory.createView() as! UIImageView
+        imageView.image = UIImage()
+        factory.addEventListener(view: imageView, event: "error") { _ in
+            staleError.fulfill()
+        }
+
+        factory.updateProp(
+            view: imageView,
+            key: "source",
+            value: ["uri": "https://example.invalid/old.png"]
+        )
+        wait(for: [requestStarted], timeout: 1)
+
+        factory.updateProp(view: imageView, key: "source", value: nil)
+
+        wait(for: [requestCancelled], timeout: 1)
+        wait(for: [staleError], timeout: 0.1)
+        XCTAssertNil(imageView.image)
+    }
+
+    func testVImageFactoryReplacingSourceCancelsPreviousRequest() {
+        let firstRequestStarted = expectation(description: "first image request started")
+        let secondRequestStarted = expectation(description: "second image request started")
+        let firstRequestCancelled = expectation(description: "first image request cancelled")
+        let lock = NSLock()
+        var requestCount = 0
+        VImageURLProtocolStub.onStart = { _ in
+            lock.lock()
+            requestCount += 1
+            let currentRequest = requestCount
+            lock.unlock()
+
+            if currentRequest == 1 {
+                firstRequestStarted.fulfill()
+            } else if currentRequest == 2 {
+                secondRequestStarted.fulfill()
+            }
+        }
+        VImageURLProtocolStub.onStop = { firstRequestCancelled.fulfill() }
+
+        let session = makeVImageTestSession()
+        defer {
+            VImageURLProtocolStub.reset()
+            session.invalidateAndCancel()
+        }
+        let factory = VImageFactory(urlSession: session)
+        let imageView = factory.createView() as! UIImageView
+
+        factory.updateProp(
+            view: imageView,
+            key: "source",
+            value: ["uri": "https://example.invalid/first.png"]
+        )
+        wait(for: [firstRequestStarted], timeout: 1)
+
+        factory.updateProp(
+            view: imageView,
+            key: "source",
+            value: ["uri": "https://example.invalid/second.png"]
+        )
+
+        wait(for: [firstRequestCancelled, secondRequestStarted], timeout: 1)
+    }
+
+    func testVImageFactoryDestroyViewCancelsInFlightRequest() {
+        let requestStarted = expectation(description: "image request started")
+        let requestCancelled = expectation(description: "image request cancelled")
+        let staleError = expectation(description: "destroyed request does not emit an error")
+        staleError.isInverted = true
+        VImageURLProtocolStub.onStart = { _ in requestStarted.fulfill() }
+        VImageURLProtocolStub.onStop = { requestCancelled.fulfill() }
+
+        let session = makeVImageTestSession()
+        defer {
+            VImageURLProtocolStub.reset()
+            session.invalidateAndCancel()
+        }
+        let factory = VImageFactory(urlSession: session)
+        let imageView = factory.createView() as! UIImageView
+        factory.addEventListener(view: imageView, event: "error") { _ in
+            staleError.fulfill()
+        }
+
+        factory.updateProp(
+            view: imageView,
+            key: "source",
+            value: ["uri": "https://example.invalid/destroyed.png"]
+        )
+        wait(for: [requestStarted], timeout: 1)
+
+        factory.destroyView(view: imageView)
+
+        wait(for: [requestCancelled], timeout: 1)
+        wait(for: [staleError], timeout: 0.1)
     }
 
     // MARK: - VScrollViewFactory Tests

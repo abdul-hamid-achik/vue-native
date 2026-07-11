@@ -1,3 +1,4 @@
+import AppKit
 import XCTest
 @testable import VueNativeMacOS
 
@@ -79,5 +80,63 @@ final class NativeBridgeOperationTests: XCTestCase {
         process("create", [2, "__ROOT__"])
         process("setRootView", [2])
         XCTAssertTrue(bridge.view(forNodeId: 2)?.superview === secondContentView)
+    }
+
+    func testRemoveChildDestroysEachViewInSubtreeExactlyOnce() {
+        let factory = DestroyProbeFactory()
+        ComponentRegistry.shared.register("DestroyProbe", factory: factory)
+        defer { ComponentRegistry.shared.unregister("DestroyProbe") }
+
+        process("create", [201, "DestroyProbe"])
+        process("create", [202, "DestroyProbe"])
+        process("appendChild", [201, 202])
+
+        process("removeChild", [201])
+        process("removeChild", [201])
+
+        let createdIDs = Set(factory.createdViews.map { ObjectIdentifier($0) })
+        XCTAssertEqual(factory.destroyedViewIDs.count, 2)
+        XCTAssertEqual(Set(factory.destroyedViewIDs), createdIDs)
+    }
+
+    func testMoveDoesNotDestroyViewAndResetDestroysItOnce() {
+        let factory = DestroyProbeFactory()
+        ComponentRegistry.shared.register("DestroyProbe", factory: factory)
+        defer { ComponentRegistry.shared.unregister("DestroyProbe") }
+
+        process("create", [211, "VView"])
+        process("create", [212, "VView"])
+        process("create", [213, "DestroyProbe"])
+        process("appendChild", [211, 213])
+
+        process("appendChild", [212, 213])
+
+        XCTAssertTrue(factory.destroyedViewIDs.isEmpty, "Reparenting must not destroy a live node")
+
+        bridge.reset()
+        bridge.reset()
+
+        XCTAssertEqual(factory.destroyedViewIDs.count, 1, "Reset must destroy each registered view once")
+        XCTAssertEqual(factory.destroyedViewIDs.first, factory.createdViews.first.map { ObjectIdentifier($0) })
+    }
+}
+
+@MainActor
+private final class DestroyProbeFactory: NativeComponentFactory {
+    private(set) var createdViews: [NSView] = []
+    private(set) var destroyedViewIDs: [ObjectIdentifier] = []
+
+    func createView() -> NSView {
+        let view = NSView()
+        createdViews.append(view)
+        return view
+    }
+
+    func updateProp(view: NSView, key: String, value: Any?) {}
+
+    func addEventListener(view: NSView, event: String, handler: @escaping (Any?) -> Void) {}
+
+    func destroyView(view: NSView) {
+        destroyedViewIDs.append(ObjectIdentifier(view))
     }
 }

@@ -1,6 +1,7 @@
 package com.vuenative.core
 
 import android.content.Context
+import android.os.Build
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.WebChromeClient
@@ -20,7 +21,7 @@ class VWebViewFactory : NativeComponentFactory {
         return WebView(context).apply {
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
-            settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+            settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
             layoutParams = ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
@@ -29,11 +30,23 @@ class VWebViewFactory : NativeComponentFactory {
                 override fun onPageFinished(view: WebView, url: String) {
                     loadHandlers[view]?.invoke(mapOf("url" to url))
                 }
+
                 override fun onReceivedError(view: WebView, req: WebResourceRequest, err: WebResourceError) {
-                    errorHandlers[view]?.invoke(mapOf(
-                        "url" to (req.url?.toString() ?: ""),
-                        "description" to (if (android.os.Build.VERSION.SDK_INT >= 23) err.description.toString() else "Error")
-                    ))
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && req.isForMainFrame) {
+                        emitError(view, err.description.toString(), req.url?.toString() ?: "")
+                    }
+                }
+
+                @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
+                override fun onReceivedError(
+                    view: WebView,
+                    errorCode: Int,
+                    description: String,
+                    failingUrl: String
+                ) {
+                    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+                        emitError(view, description, failingUrl)
+                    }
                 }
             }
             webChromeClient = WebChromeClient()
@@ -85,9 +98,11 @@ class VWebViewFactory : NativeComponentFactory {
 
     override fun removeEventListener(view: View, event: String) {
         val wv = view as? WebView ?: return
-        loadHandlers.remove(wv)
-        errorHandlers.remove(wv)
-        messageHandlers.remove(wv)
+        when (event) {
+            "load" -> loadHandlers.remove(wv)
+            "error" -> errorHandlers.remove(wv)
+            "message" -> messageHandlers.remove(wv)
+        }
     }
 
     override fun destroyView(view: View) {
@@ -101,5 +116,14 @@ class VWebViewFactory : NativeComponentFactory {
         wv.webChromeClient = null
         wv.removeAllViews()
         wv.destroy()
+    }
+
+    private fun emitError(view: WebView, message: String, url: String) {
+        errorHandlers[view]?.invoke(
+            mapOf(
+                "message" to message,
+                "url" to url
+            )
+        )
     }
 }

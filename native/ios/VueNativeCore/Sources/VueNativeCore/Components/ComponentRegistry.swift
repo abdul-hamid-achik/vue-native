@@ -144,6 +144,13 @@ final class ComponentRegistry {
         guard let factory = ComponentRegistry.factory(for: view) else { return }
         factory.removeEventListener(view: view, event: event)
     }
+
+    /// Destroy a view using the factory that created it. The bridge calls this
+    /// once when a node is permanently unregistered, never during a move.
+    func destroyView(view: UIView) {
+        guard let factory = ComponentRegistry.factory(for: view) else { return }
+        factory.destroyView(view: view)
+    }
 }
 
 // MARK: - FactoryBox

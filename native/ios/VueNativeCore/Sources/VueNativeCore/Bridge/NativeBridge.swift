@@ -573,15 +573,17 @@ public final class NativeBridge {
     /// Clean up all registry entries for a single node ID.
     /// Uses the eventKeysPerNode index for O(1) event handler cleanup.
     private func cleanupNodeRegistries(_ nodeId: Int) {
-        if let view = viewRegistry[nodeId],
-           let keys = eventKeysPerNode[nodeId] {
-            let prefix = "\(nodeId):"
-            for key in keys where key.hasPrefix(prefix) {
-                registry.removeEventListener(
-                    view: view,
-                    event: String(key.dropFirst(prefix.count))
-                )
+        if let view = viewRegistry[nodeId] {
+            if let keys = eventKeysPerNode[nodeId] {
+                let prefix = "\(nodeId):"
+                for key in keys where key.hasPrefix(prefix) {
+                    registry.removeEventListener(
+                        view: view,
+                        event: String(key.dropFirst(prefix.count))
+                    )
+                }
             }
+            registry.destroyView(view: view)
         }
 
         nodeParent.removeValue(forKey: nodeId)

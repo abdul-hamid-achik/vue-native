@@ -1,15 +1,17 @@
 # VVideo
 
-A video player component. Maps to `AVPlayer` on iOS and `MediaPlayer` on Android.
+A video player component. Maps to `AVPlayer` on Apple platforms and
+`MediaPlayer` on Android.
 
-Supports streaming and local video playback with built-in transport controls.
+The current native implementations support streaming and local playback with
+programmatic play/pause state. Build transport controls in Vue when you need a
+play button, seeking, or fullscreen behavior.
 
 ## Usage
 
 ```vue
 <VVideo
   :source="{ uri: 'https://example.com/video.mp4' }"
-  :controls="true"
   :style="{ width: '100%', aspectRatio: 16 / 9 }"
 />
 ```
@@ -19,14 +21,14 @@ Supports streaming and local video playback with built-in transport controls.
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
 | `source` | `{ uri: string }` | -- | Video source object containing a `uri` string |
-| `autoplay` | `Boolean` | `false` | Automatically begins playback when the source is ready |
+| `autoplay` | `Boolean` | `false` | Begins playback when the source becomes ready, unless `paused` is `true` |
 | `loop` | `Boolean` | `false` | Restarts playback from the beginning when it reaches the end |
 | `muted` | `Boolean` | `false` | Mutes audio output |
-| `paused` | `Boolean` | `false` | Pauses playback when `true` |
-| `controls` | `Boolean` | `true` | Shows native transport controls (play/pause, seek, fullscreen) |
+| `paused` | `Boolean` | `false` | Pauses playback when `true`; after readiness, changing it to `false` starts or resumes playback |
+| `controls` | `Boolean` | `true` | Reserved for native transport controls; currently has no effect |
 | `volume` | `Number` | `1.0` | Audio volume from `0.0` (silent) to `1.0` (full) |
 | `resizeMode` | `'cover' \| 'contain' \| 'stretch' \| 'center'` | `'cover'` | How the video is scaled within the frame |
-| `poster` | `String` | -- | URL of a poster image displayed before playback starts |
+| `poster` | `String` | -- | Reserved for poster rendering; currently has no effect |
 | `style` | `ViewStyle` | -- | Layout + appearance styles |
 | `testID` | `String` | -- | Test identifier for end-to-end testing |
 | `accessibilityLabel` | `String` | -- | Accessibility label read by screen readers |
@@ -36,8 +38,8 @@ Supports streaming and local video playback with built-in transport controls.
 | Event | Payload | Description |
 |-------|---------|-------------|
 | `ready` | -- | Emitted when the video is loaded and ready to play |
-| `play` | -- | Emitted when playback starts or resumes |
-| `pause` | -- | Emitted when playback is paused |
+| `play` | -- | Reserved for playback-state events; not currently emitted |
+| `pause` | -- | Reserved for playback-state events; not currently emitted |
 | `end` | -- | Emitted when playback reaches the end |
 | `error` | `{ message: string }` | Emitted when a playback error occurs |
 | `progress` | `{ currentTime: number, duration: number }` | Emitted periodically during playback with time information |
@@ -69,13 +71,9 @@ function formatTime(seconds) {
     <VVideo
       :source="{ uri: 'https://example.com/sample-video.mp4' }"
       :paused="isPaused"
-      :controls="true"
       resizeMode="contain"
-      poster="https://example.com/poster.jpg"
       :style="{ width: '100%', aspectRatio: 16 / 9 }"
       @ready="() => console.log('Video ready')"
-      @play="() => (isPaused = false)"
-      @pause="() => (isPaused = true)"
       @end="() => (isPaused = true)"
       @error="(e) => console.warn('Playback error:', e.message)"
       @progress="onProgress"
@@ -103,3 +101,15 @@ function formatTime(seconds) {
   </VView>
 </template>
 ```
+
+## Current platform limitations
+
+- `controls` and `poster` are retained for API compatibility but are not yet
+  rendered by the native players. Use Vue Native views for custom controls and
+  an overlaid `VImage` for a poster.
+- `play` and `pause` listeners are retained for API compatibility but are not
+  yet emitted. Treat your `paused` state as the source of truth.
+- Android currently uses `SurfaceView`, so `resizeMode` does not yet provide the
+  same scaling modes as `AVPlayerLayer`.
+- Automatic playback through `autoplay` and programmatic playback through
+  `paused` are implemented on iOS, Android, and macOS.
