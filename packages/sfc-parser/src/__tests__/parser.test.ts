@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import { parseSFC, getNativeBlocks, groupBlocksByComponent, groupBlocksByPlatform } from '../parser'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { basename, join } from 'node:path'
+import { parseSFC, parseDirectory, getNativeBlocks, groupBlocksByComponent, groupBlocksByPlatform } from '../parser'
 import type { NativeBlock } from '../types'
 
 describe('SFC Parser', () => {
@@ -58,6 +61,63 @@ describe('SFC Parser', () => {
       expect(block.content).toContain('class TestModule: NativeModule')
       expect(block.startLine).toBeDefined()
       expect(block.endLine).toBeDefined()
+    })
+
+    it('should run the configured custom validator for every native block', () => {
+      const validatedPlatforms: string[] = []
+      const result = parseSFC(
+        '<template><VView /></template><native platform="ios">class TestModule: NativeModule { }</native>',
+        {
+          sourceFile: '/test/Validated.vue',
+          parserOptions: {
+            validate(block) {
+              validatedPlatforms.push(block.platform)
+              return {
+                file: block.sourceFile,
+                line: block.startLine,
+                message: 'Custom validation rejected this block',
+              }
+            },
+          },
+        },
+      )
+
+      expect(validatedPlatforms).toEqual(['ios'])
+      expect(result.nativeBlocks).toHaveLength(1)
+      expect(result.errors).toEqual([
+        expect.objectContaining({ message: 'Custom validation rejected this block' }),
+      ])
+    })
+
+    it('should report custom validator exceptions as parse errors', () => {
+      const result = parseSFC(
+        '<template><VView /></template><native platform="ios">class TestModule: NativeModule { }</native>',
+        {
+          sourceFile: '/test/ThrowingValidator.vue',
+          parserOptions: {
+            validate() {
+              throw new Error('validator exploded')
+            },
+          },
+        },
+      )
+
+      expect(result.nativeBlocks).toHaveLength(1)
+      expect(result.errors).toEqual([
+        expect.objectContaining({
+          file: '/test/ThrowingValidator.vue',
+          message: 'Custom validation failed: validator exploded',
+        }),
+      ])
+    })
+
+    it('should derive component names from Windows paths', () => {
+      const result = parseSFC(
+        '<native platform="android">class TestModule: NativeModule { }</native>',
+        { sourceFile: 'C:\\projects\\app\\WindowsComponent.vue' },
+      )
+
+      expect(result.nativeBlocks[0].componentName).toBe('WindowsComponent')
     })
 
     it('should extract Android native block with kotlin language', () => {
@@ -359,6 +419,42 @@ class TestModule: NativeModule { }
       expect(result.nativeBlocks).toHaveLength(1)
       expect(result.nativeBlocks[0].content).toContain('java.net.URL')
       expect(result.nativeBlocks[0].content).toContain('use {')
+    })
+  })
+
+  describe('parseDirectory', () => {
+    it('should return a parse error when the directory cannot be read', () => {
+      const root = mkdtempSync(join(tmpdir(), 'vue-native-parser-missing-'))
+      rmSync(root, { recursive: true, force: true })
+
+      const result = parseDirectory(root)
+
+      expect(result.sfcs).toHaveLength(0)
+      expect(result.allNativeBlocks).toHaveLength(0)
+      expect(result.errors).toEqual([
+        expect.objectContaining({
+          file: root,
+          message: expect.stringContaining('Failed to read directory'),
+        }),
+      ])
+    })
+
+    it('should parse directory entries in deterministic filename order', () => {
+      const root = mkdtempSync(join(tmpdir(), 'vue-native-parser-order-'))
+      try {
+        writeFileSync(join(root, 'Zeta.vue'), '<template><VView /></template>')
+        writeFileSync(join(root, 'Alpha.vue'), '<template><VView /></template>')
+
+        const result = parseDirectory(root)
+
+        expect(result.errors).toHaveLength(0)
+        expect(result.sfcs.map(sfc => basename(sfc.sourceFile))).toEqual([
+          'Alpha.vue',
+          'Zeta.vue',
+        ])
+      } finally {
+        rmSync(root, { recursive: true, force: true })
+      }
     })
   })
 

@@ -6,12 +6,27 @@ on:
     types: [completed]
     branches: [main]
   workflow_dispatch:
+    inputs:
+      release_sha:
+        description: Exact version commit produced by a successful Prepare Release job
+        required: true
+        type: string
+      validated_sha:
+        description: CI-validated parent commit used to prepare the release
+        required: true
+        type: string
+      prepare_run_id:
+        description: Automatic Publish run that prepared the version commit
+        required: true
+        type: string
 
 permissions:
   actions: read
   contents: read
 
 concurrency:
+  # The self-dispatched publish run queues until preparation has fully exited.
+  # This also prevents a new preparation from overlapping an active publish.
   group: publish-main
   cancel-in-progress: false
 
@@ -20,8 +35,10 @@ env:
   TURBO_TEAM: ${{ vars.TURBO_TEAM }}
 
 jobs:
-  # Publish only a successful CI result for a trusted push to main. Manual
-  # dispatch remains available from main for deliberate recovery operations.
+  # Automatic runs accept only a successful CI result for a trusted push to
+  # main. Dispatch runs accept only the exact child commit produced by the
+  # successful preparation job; the originating run may have failed only while
+  # dispatching that proven commit, which keeps manual recovery auditable.
   release-context:
     name: Release Context
     runs-on: ubuntu-latest
@@ -34,34 +51,108 @@ jobs:
       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
     outputs:
       release_sha: ${{ steps.context.outputs.release_sha }}
+      validated_sha: ${{ steps.context.outputs.validated_sha }}
+      prepare_run_id: ${{ steps.context.outputs.prepare_run_id }}
 
     steps:
       - name: Resolve validated commit
         id: context
         env:
-          RELEASE_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
-        run: echo "release_sha=$RELEASE_SHA" >> "$GITHUB_OUTPUT"
+          EVENT_NAME: ${{ github.event_name }}
+          AUTOMATIC_SHA: ${{ github.event.workflow_run.head_sha }}
+          DISPATCH_RELEASE_SHA: ${{ inputs.release_sha }}
+          DISPATCH_VALIDATED_SHA: ${{ inputs.validated_sha }}
+          DISPATCH_PREPARE_RUN_ID: ${{ inputs.prepare_run_id }}
+          EVENT_SHA: ${{ github.sha }}
+          CURRENT_RUN_ID: ${{ github.run_id }}
+        run: |
+          if [ "$EVENT_NAME" = "workflow_run" ]; then
+            RELEASE_SHA="$AUTOMATIC_SHA"
+            VALIDATED_SHA="$AUTOMATIC_SHA"
+            PREPARE_RUN_ID="$CURRENT_RUN_ID"
+          else
+            RELEASE_SHA="$DISPATCH_RELEASE_SHA"
+            VALIDATED_SHA="$DISPATCH_VALIDATED_SHA"
+            PREPARE_RUN_ID="$DISPATCH_PREPARE_RUN_ID"
 
-      - name: Verify manual commit passed CI
+            if [[ ! "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]] ||
+               [[ ! "$VALIDATED_SHA" =~ ^[0-9a-f]{40}$ ]] ||
+               [[ ! "$PREPARE_RUN_ID" =~ ^[0-9]+$ ]]; then
+              echo "Dispatch inputs must contain full commit SHAs and a numeric preparation run ID."
+              exit 1
+            fi
+            if [ "$EVENT_SHA" != "$RELEASE_SHA" ]; then
+              echo "Dispatch resolved $EVENT_SHA, not prepared release $RELEASE_SHA; refusing stale provenance."
+              exit 1
+            fi
+          fi
+
+          echo "release_sha=$RELEASE_SHA" >> "$GITHUB_OUTPUT"
+          echo "validated_sha=$VALIDATED_SHA" >> "$GITHUB_OUTPUT"
+          echo "prepare_run_id=$PREPARE_RUN_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Verify dispatched release lineage
         if: github.event_name == 'workflow_dispatch'
         env:
           GH_REPO: ${{ github.repository }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_SHA: ${{ steps.context.outputs.release_sha }}
+          VALIDATED_SHA: ${{ steps.context.outputs.validated_sha }}
+          PREPARE_RUN_ID: ${{ steps.context.outputs.prepare_run_id }}
         run: |
-          CI_RUN="$(
-            gh run list \
-              --workflow CI \
-              --commit "$RELEASE_SHA" \
-              --event push \
-              --status completed \
-              --limit 1 \
-              --json headSha,conclusion \
-              --jq '.[0] | [.headSha, .conclusion] | @tsv'
+          MAIN_SHA="$(gh api "repos/$GH_REPO/git/ref/heads/main" --jq '.object.sha')"
+          if [ "$MAIN_SHA" != "$RELEASE_SHA" ]; then
+            echo "main is $MAIN_SHA, not prepared release $RELEASE_SHA; refusing stale publication."
+            exit 1
+          fi
+
+          PARENT_COUNT="$(gh api "repos/$GH_REPO/commits/$RELEASE_SHA" --jq '.parents | length')"
+          PARENT_SHA="$(gh api "repos/$GH_REPO/commits/$RELEASE_SHA" --jq '.parents[0].sha // ""')"
+          if [ "$PARENT_COUNT" != "1" ] || [ "$PARENT_SHA" != "$VALIDATED_SHA" ]; then
+            echo "$RELEASE_SHA is not the single-child version commit of validated SHA $VALIDATED_SHA."
+            exit 1
+          fi
+
+          RUN_PATH="$(gh api "repos/$GH_REPO/actions/runs/$PREPARE_RUN_ID" --jq '.path')"
+          RUN_EVENT="$(gh api "repos/$GH_REPO/actions/runs/$PREPARE_RUN_ID" --jq '.event')"
+          RUN_SHA="$(gh api "repos/$GH_REPO/actions/runs/$PREPARE_RUN_ID" --jq '.head_sha')"
+          RUN_BRANCH="$(gh api "repos/$GH_REPO/actions/runs/$PREPARE_RUN_ID" --jq '.head_branch')"
+          if [ "$RUN_PATH" != ".github/workflows/publish.yml" ] ||
+             [ "$RUN_EVENT" != "workflow_run" ] ||
+             [ "$RUN_SHA" != "$VALIDATED_SHA" ] ||
+             [ "$RUN_BRANCH" != "main" ]; then
+            echo "Run $PREPARE_RUN_ID is not the trusted preparation run for $VALIDATED_SHA."
+            exit 1
+          fi
+
+          RECOVERABLE_ATTEMPT_COUNT="$(
+            gh api "repos/$GH_REPO/actions/runs/$PREPARE_RUN_ID/jobs?filter=all&per_page=100" \
+              --jq '
+                [
+                  .jobs[] |
+                  select(.name == "Prepare Release") |
+                  select(.conclusion == "success") |
+                  select(any(.steps[]; .name == "Validate versioned packages" and .conclusion == "success")) |
+                  select(any(.steps[]; .name == "Push version commit" and .conclusion == "success")) |
+                  .run_attempt
+                ] as $prepared_attempts |
+                [
+                  $prepared_attempts[] as $attempt |
+                  select(
+                    [
+                      .jobs[] |
+                      select(.run_attempt == $attempt) |
+                      select(.conclusion != "success" and .conclusion != "skipped") |
+                      .name
+                    ] |
+                    all(. == "Dispatch Prepared Release")
+                  )
+                ] |
+                length
+              '
           )"
-          read -r CI_SHA CI_CONCLUSION <<< "$CI_RUN"
-          if [ "$CI_SHA" != "$RELEASE_SHA" ] || [ "$CI_CONCLUSION" != "success" ]; then
-            echo "No successful CI push run found for $RELEASE_SHA; refusing manual publication."
+          if [ "$RECOVERABLE_ATTEMPT_COUNT" = "0" ]; then
+            echo "Run $PREPARE_RUN_ID has no attempt with a proven preparation and no failure outside dispatch."
             exit 1
           fi
 
@@ -70,6 +161,7 @@ jobs:
     name: Changeset Status
     runs-on: ubuntu-latest
     needs: release-context
+    if: github.event_name == 'workflow_run'
     outputs:
       hasChangesets: ${{ steps.changesets.outputs.hasChangesets }}
 
@@ -114,6 +206,7 @@ jobs:
     name: Validate
     runs-on: ubuntu-latest
     needs: release-context
+    if: github.event_name == 'workflow_run'
 
     steps:
       - uses: actions/checkout@v6
@@ -165,6 +258,7 @@ jobs:
     name: Native Builds
     runs-on: macos-15
     needs: release-context
+    if: github.event_name == 'workflow_run'
 
     steps:
       - uses: actions/checkout@v6
@@ -250,6 +344,7 @@ jobs:
     name: Android Build
     runs-on: ubuntu-latest
     needs: release-context
+    if: github.event_name == 'workflow_run'
 
     steps:
       - uses: actions/checkout@v6
@@ -287,16 +382,16 @@ jobs:
         run: ./gradlew :VueNativeCore:testDebugUnitTest :VueNativeCore:testReleaseUnitTest
         working-directory: native/android
 
-  # ── Publish packages (main with changesets) ─────────────
-  publish:
-    name: Publish Packages
+  # ── Prepare an exact version commit ─────────────────────
+  prepare:
+    name: Prepare Release
     runs-on: ubuntu-latest
     needs: [release-context, changesets, validate, native-builds, android-build]
-    if: needs.changesets.outputs.hasChangesets == 'true'
+    if: github.event_name == 'workflow_run' && needs.changesets.outputs.hasChangesets == 'true'
+    outputs:
+      version_sha: ${{ steps.version_commit.outputs.version_sha }}
     permissions:
       contents: write
-      id-token: write
-      packages: write
 
     steps:
       - uses: actions/checkout@v6
@@ -312,6 +407,108 @@ jobs:
           REMOTE_SHA="$(git ls-remote origin refs/heads/main | cut -f1)"
           if [ "$REMOTE_SHA" != "$RELEASE_SHA" ]; then
             echo "main moved from validated commit $RELEASE_SHA to $REMOTE_SHA; refusing to publish stale code."
+            exit 1
+          fi
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.8
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Version bump
+        run: |
+          bun run version
+
+          if git diff --quiet HEAD -- .; then
+            echo "A Changeset was detected, but it produced no version changes. Refusing to publish."
+            exit 1
+          fi
+
+      - name: Refresh versioned dependencies
+        run: bun install
+
+      - name: Validate versioned packages
+        run: bun run check:ts
+
+      - name: Commit version bump
+        run: |
+          git add .
+          if git diff --cached --quiet; then
+            echo "Versioning produced no committable changes."
+            exit 1
+          fi
+          git commit -m "chore: bump versions [skip ci]"
+
+      - name: Push version commit
+        id: version_commit
+        run: |
+          git push origin HEAD:main
+          echo "version_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  # ── Dispatch publication after preparation succeeds ─────
+  dispatch:
+    name: Dispatch Prepared Release
+    runs-on: ubuntu-latest
+    needs: [release-context, prepare]
+    if: github.event_name == 'workflow_run' && needs.prepare.result == 'success'
+    permissions:
+      actions: write
+      contents: read
+
+    steps:
+      - name: Dispatch prepared release
+        env:
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION_SHA: ${{ needs.prepare.outputs.version_sha }}
+          VALIDATED_SHA: ${{ needs.release-context.outputs.validated_sha }}
+          PREPARE_RUN_ID: ${{ github.run_id }}
+        run: |
+          REMOTE_SHA="$(gh api "repos/$GH_REPO/git/ref/heads/main" --jq '.object.sha')"
+          if [ "$REMOTE_SHA" != "$VERSION_SHA" ]; then
+            echo "main moved from prepared release $VERSION_SHA to $REMOTE_SHA; refusing to dispatch."
+            exit 1
+          fi
+
+          gh workflow run publish.yml \
+            --repo "$GH_REPO" \
+            --ref main \
+            --raw-field "release_sha=$VERSION_SHA" \
+            --raw-field "validated_sha=$VALIDATED_SHA" \
+            --raw-field "prepare_run_id=$PREPARE_RUN_ID"
+
+  # ── Publish an already-versioned exact commit ───────────
+  publish:
+    name: Publish Packages
+    runs-on: ubuntu-latest
+    needs: release-context
+    if: github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: write
+      id-token: write
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          ref: ${{ needs.release-context.outputs.release_sha }}
+          fetch-depth: 0
+
+      - name: Verify prepared commit is still main
+        env:
+          RELEASE_SHA: ${{ needs.release-context.outputs.release_sha }}
+        run: |
+          REMOTE_SHA="$(git ls-remote origin refs/heads/main | cut -f1)"
+          if [ "$REMOTE_SHA" != "$RELEASE_SHA" ]; then
+            echo "main moved from prepared release $RELEASE_SHA to $REMOTE_SHA; refusing to publish stale code."
             exit 1
           fi
 
@@ -340,83 +537,246 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Configure git
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-      - name: Version bump
-        id: versioning
-        run: |
-          bun run version
-
-          if git diff --quiet HEAD -- .; then
-            echo "A Changeset was detected, but it produced no version changes. Refusing to publish."
-            exit 1
-          fi
-
-          if git diff --quiet HEAD -- packages/runtime/package.json; then
-            echo "framework_changed=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "framework_changed=true" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Refresh versioned dependencies
-        run: bun install
-
-      - name: Validate versioned packages
+      - name: Validate prepared release
         run: bun run check:ts
 
-      - name: Commit version bump
+      - name: Resolve release metadata
+        id: release
         run: |
-          git add .
-          if git diff --cached --quiet; then
-            echo "Versioning produced no committable changes."
+          if git diff --quiet HEAD^ HEAD -- packages/runtime/package.json; then
+            echo "framework_changed=false" >> "$GITHUB_OUTPUT"
+          else
+            VERSION="$(node -p "require('./packages/runtime/package.json').version")"
+            echo "framework_changed=true" >> "$GITHUB_OUTPUT"
+            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+            echo "Version: $VERSION"
+          fi
+
+      - name: Preflight release tag
+        if: steps.release.outputs.version != ''
+        env:
+          RELEASE_SHA: ${{ needs.release-context.outputs.release_sha }}
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          TAG_REF="refs/tags/v$VERSION"
+          if git ls-remote --exit-code origin "$TAG_REF" >/dev/null 2>&1; then
+            git fetch --force origin "$TAG_REF:$TAG_REF"
+            EXISTING_SHA="$(git rev-list -n 1 "$TAG_REF")"
+            if [ "$EXISTING_SHA" != "$RELEASE_SHA" ]; then
+              echo "v$VERSION points to $EXISTING_SHA, not release $RELEASE_SHA."
+              exit 1
+            fi
+            echo "v$VERSION already points to $RELEASE_SHA; finalization will reuse it."
+          else
+            STATUS=$?
+            if [ "$STATUS" -ne 2 ]; then
+              echo "Could not determine whether v$VERSION already exists."
+              exit "$STATUS"
+            fi
+          fi
+
+      - name: Reverify prepared commit is still main
+        env:
+          RELEASE_SHA: ${{ needs.release-context.outputs.release_sha }}
+        run: |
+          REMOTE_SHA="$(git ls-remote origin refs/heads/main | cut -f1)"
+          if [ "$REMOTE_SHA" != "$RELEASE_SHA" ]; then
+            echo "main moved from prepared release $RELEASE_SHA to $REMOTE_SHA; refusing to publish stale code."
             exit 1
           fi
-          git commit -m "chore: bump versions [skip ci]"
 
-      - name: Push version commit
-        run: git push origin HEAD:main
-
+      # Re-running this workflow run keeps GITHUB_RUN_ID stable, and Changesets
+      # skips versions that already exist, so partial npm publication is safe.
       - name: Publish to npm
         run: bun run release
 
+      - name: Verify npm release
+        env:
+          EXPECTED_REF: refs/heads/main
+          NPM_CONFIG_FETCH_RETRIES: 2
+          NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT: 5000
+          NPM_CONFIG_FETCH_RETRY_MINTIMEOUT: 1000
+          NPM_CONFIG_FETCH_TIMEOUT: 15000
+          RELEASE_SHA: ${{ needs.release-context.outputs.release_sha }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          VERIFY_DIR="$RUNNER_TEMP/npm-release-verification"
+          rm -rf "$VERIFY_DIR"
+          mkdir -p "$VERIFY_DIR"
+
+          git diff --name-only HEAD^ HEAD -- 'packages/*/package.json' |
+            while IFS= read -r manifest; do
+              node -e '
+                const pkg = require("./" + process.argv[1])
+                if (!pkg.private) process.stdout.write(`${pkg.name}@${pkg.version}\n`)
+              ' "$manifest"
+            done > "$VERIFY_DIR/targets.txt"
+
+          if [ ! -s "$VERIFY_DIR/targets.txt" ]; then
+            echo "No public package versions were found in the prepared release."
+            exit 1
+          fi
+
+          cd "$VERIFY_DIR"
+          npm init --yes >/dev/null
+          mapfile -t TARGETS < targets.txt
+
+          VERIFIED=false
+          for ATTEMPT in {1..12}; do
+            rm -rf node_modules package-lock.json audit.json
+            if npm install --ignore-scripts --no-audit --no-fund --save-exact "${TARGETS[@]}" &&
+               npm audit signatures --json --include-attestations > audit.json; then
+              if node <<'NODE'
+          const { execFileSync } = require('node:child_process')
+          const { readFileSync } = require('node:fs')
+
+          const audit = JSON.parse(readFileSync('audit.json', 'utf8'))
+          const targets = readFileSync('targets.txt', 'utf8').trim().split('\n')
+          const repository = process.env.REPOSITORY
+          const releaseSha = process.env.RELEASE_SHA
+          const expectedRef = process.env.EXPECTED_REF
+          const expectedRepositoryURL = `https://github.com/${repository}`
+          const expectedSourceURI = `git+https://github.com/${repository}@${expectedRef}`
+
+          if (audit.invalid?.length || audit.missing?.length) {
+            throw new Error('npm reported invalid or missing registry signatures')
+          }
+
+          for (const spec of targets) {
+            const separator = spec.lastIndexOf('@')
+            const name = spec.slice(0, separator)
+            const version = spec.slice(separator + 1)
+            const verified = audit.verified?.find(
+              entry => entry.name === name && entry.version === version,
+            )
+            if (!verified) throw new Error(`${spec} was not verified by npm`)
+            if (verified.attestations?.provenance?.predicateType !== 'https://slsa.dev/provenance/v1') {
+              throw new Error(`${spec} has no verified SLSA provenance`)
+            }
+
+            const provenance = verified.attestationBundles?.find(
+              attestation => attestation.predicateType === 'https://slsa.dev/provenance/v1',
+            )
+            const envelope = provenance?.bundle?.dsseEnvelope
+            if (envelope?.payloadType !== 'application/vnd.in-toto+json') {
+              throw new Error(`${spec} has an unexpected provenance payload type`)
+            }
+            const statement = JSON.parse(Buffer.from(envelope.payload, 'base64').toString('utf8'))
+            if (statement._type !== 'https://in-toto.io/Statement/v1' ||
+                statement.predicateType !== 'https://slsa.dev/provenance/v1') {
+              throw new Error(`${spec} has an unexpected provenance statement type`)
+            }
+
+            const build = statement.predicate?.buildDefinition
+            const workflow = build?.externalParameters?.workflow
+            if (workflow?.repository !== expectedRepositoryURL ||
+                workflow?.path?.replace(/^\/+/, '') !== '.github/workflows/publish.yml' ||
+                workflow?.ref !== expectedRef) {
+              throw new Error(`${spec} provenance does not identify this release workflow`)
+            }
+            const sourceMatches = build?.resolvedDependencies?.some(
+              dependency => dependency.uri === expectedSourceURI &&
+                dependency.digest?.gitCommit === releaseSha,
+            )
+            if (!sourceMatches) {
+              throw new Error(`${spec} provenance does not resolve to ${releaseSha}`)
+            }
+
+            const invocation = new URL(statement.predicate?.runDetails?.metadata?.invocationId)
+            const expectedPrefix = `/${repository}/actions/runs/`
+            if (invocation.origin !== 'https://github.com' ||
+                !invocation.pathname.startsWith(expectedPrefix) ||
+                !/\/attempts\/\d+$/.test(invocation.pathname)) {
+              throw new Error(`${spec} provenance has an unexpected workflow invocation`)
+            }
+
+            const gitHead = JSON.parse(execFileSync(
+              'npm', ['view', spec, 'gitHead', '--json'], { encoding: 'utf8' },
+            ))
+            if (gitHead !== releaseSha) {
+              throw new Error(`${spec} gitHead is ${gitHead}, expected ${releaseSha}`)
+            }
+          }
+
+          process.stdout.write(`npm cryptographically verified ${targets.length} released package(s).\n`)
+          NODE
+              then
+                VERIFIED=true
+                break
+              fi
+            fi
+
+            echo "npm release verification attempt $ATTEMPT did not complete; waiting for registry propagation."
+            sleep 5
+          done
+
+          if [ "$VERIFIED" != "true" ]; then
+            echo "npm release verification failed after 12 attempts."
+            exit 1
+          fi
+
       - name: Setup Java for Android
-        if: needs.android-build.result == 'success' && steps.versioning.outputs.framework_changed == 'true'
+        if: steps.release.outputs.framework_changed == 'true'
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 17
 
       - name: Publish Android to GitHub Packages
-        if: needs.android-build.result == 'success' && steps.versioning.outputs.framework_changed == 'true'
+        if: steps.release.outputs.framework_changed == 'true'
         run: |
-          ./gradlew :VueNativeCore:publishReleasePublicationToGitHubPackagesRepository
+          set +e
+          OUTPUT="$(./gradlew :VueNativeCore:publishReleasePublicationToGitHubPackagesRepository 2>&1)"
+          STATUS=$?
+          set -e
+          printf '%s\n' "$OUTPUT"
+
+          if [ "$STATUS" -eq 0 ]; then
+            exit 0
+          fi
+          if [[ "$OUTPUT" == *"status code 409"* ]] || [[ "$OUTPUT" == *"409 Conflict"* ]]; then
+            echo "::warning::Version already exists in GitHub Packages; continuing recovery."
+            exit 0
+          fi
+          exit "$STATUS"
         working-directory: native/android
         env:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Get new version
-        id: version
-        if: steps.versioning.outputs.framework_changed == 'true'
-        run: |
-          VERSION=$(node -p "require('./packages/runtime/package.json').version")
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Version: $VERSION"
-
       - name: Tag release
-        if: steps.version.outputs.version != ''
+        if: steps.release.outputs.version != ''
+        env:
+          RELEASE_SHA: ${{ needs.release-context.outputs.release_sha }}
+          VERSION: ${{ steps.release.outputs.version }}
         run: |
-          git tag -a v${{ steps.version.outputs.version }} -m "Release v${{ steps.version.outputs.version }}"
-          git push origin v${{ steps.version.outputs.version }}
+          TAG_NAME="v$VERSION"
+          TAG_REF="refs/tags/$TAG_NAME"
+
+          if git ls-remote --exit-code origin "$TAG_REF" >/dev/null 2>&1; then
+            git fetch --force origin "$TAG_REF:$TAG_REF"
+            EXISTING_SHA="$(git rev-list -n 1 "$TAG_REF")"
+            if [ "$EXISTING_SHA" != "$RELEASE_SHA" ]; then
+              echo "$TAG_NAME points to $EXISTING_SHA, not release $RELEASE_SHA."
+              exit 1
+            fi
+            echo "$TAG_NAME already points to $RELEASE_SHA; continuing recovery."
+          else
+            STATUS=$?
+            if [ "$STATUS" -ne 2 ]; then
+              echo "Could not determine whether $TAG_NAME already exists."
+              exit "$STATUS"
+            fi
+            git tag -a "$TAG_NAME" -m "Release $TAG_NAME"
+            git push origin "$TAG_REF"
+          fi
 
       - name: Extract release notes from CHANGELOG
         id: notes
-        if: steps.version.outputs.version != ''
+        if: steps.release.outputs.version != ''
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
           # Pull the section for this version from the runtime CHANGELOG
           # (the fixed-group packages share the same version, so any of them works).
           NOTES=$(awk -v ver="## $VERSION" '
@@ -444,12 +804,21 @@ jobs:
           } >> $GITHUB_OUTPUT
 
       - name: Create GitHub Release
-        if: steps.version.outputs.version != ''
+        if: steps.release.outputs.version != ''
         run: |
-          gh release create "v${{ steps.version.outputs.version }}" \
-            --title "v${{ steps.version.outputs.version }}" \
-            --notes "$RELEASE_NOTES" \
-            --latest
+          TAG_NAME="v$VERSION"
+          if gh release view "$TAG_NAME" >/dev/null 2>&1; then
+            gh release edit "$TAG_NAME" \
+              --title "$TAG_NAME" \
+              --notes "$RELEASE_NOTES" \
+              --latest
+          else
+            gh release create "$TAG_NAME" \
+              --title "$TAG_NAME" \
+              --notes "$RELEASE_NOTES" \
+              --latest
+          fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_NOTES: ${{ steps.notes.outputs.notes }}
+          VERSION: ${{ steps.release.outputs.version }}

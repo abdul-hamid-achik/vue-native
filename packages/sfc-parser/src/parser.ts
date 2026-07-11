@@ -1,5 +1,5 @@
 import { parse } from '@vue/compiler-sfc'
-import { readFileSync, readdirSync } from 'node:fs'
+import { readFileSync, readdirSync, type Dirent } from 'node:fs'
 import { resolve, join } from 'node:path'
 import { extractNativeBlocks } from './extractor'
 import type {
@@ -70,6 +70,21 @@ export function parseSFC(
 
   // Merge errors
   errors.push(...extractErrors)
+
+  if (parserOptions.validate) {
+    for (const block of nativeBlocks) {
+      try {
+        const validationError = parserOptions.validate(block)
+        if (validationError) errors.push(validationError)
+      } catch (error) {
+        errors.push({
+          file: block.sourceFile,
+          line: block.startLine,
+          message: `Custom validation failed: ${error instanceof Error ? error.message : String(error)}`,
+        })
+      }
+    }
+  }
 
   return {
     descriptor,
@@ -158,10 +173,21 @@ export function parseDirectory(
   const absoluteDir = resolve(options.root || globalThis.process.cwd(), dirPath)
 
   const vueFiles: string[] = []
+  const scanErrors: ParseError[] = []
 
   // Recursively find all .vue files
   function scanDirectory(dir: string): void {
-    const entries = readdirSync(dir, { withFileTypes: true })
+    let entries: Dirent[]
+    try {
+      entries = readdirSync(dir, { withFileTypes: true })
+        .sort((left, right) => left.name < right.name ? -1 : left.name > right.name ? 1 : 0)
+    } catch (error) {
+      scanErrors.push({
+        file: dir,
+        message: `Failed to read directory: ${error instanceof Error ? error.message : String(error)}`,
+      })
+      return
+    }
 
     for (const entry of entries) {
       const fullPath = join(dir, entry.name)
@@ -181,7 +207,11 @@ export function parseDirectory(
 
   scanDirectory(absoluteDir)
 
-  return parseSFCFiles(vueFiles, parserOptions)
+  const result = parseSFCFiles(vueFiles, parserOptions)
+  return {
+    ...result,
+    errors: [...scanErrors, ...result.errors],
+  }
 }
 
 /**

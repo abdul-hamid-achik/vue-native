@@ -194,8 +194,8 @@ function extractLanguageAttr(attrs: SFCBlock['attrs'], platform: string): string
  */
 function getComponentNameFromPath(filePath: string): string {
   // Get filename without extension
-  const filename = filePath.split('/').pop() || filePath.split('\\').pop() || 'Unknown'
-  return filename.replace(/\.(vue|ts|js)$/, '')
+  const filename = filePath.split(/[\\/]/).pop() || 'Unknown'
+  return filename.replace(/\.(vue|ts|js)$/i, '')
 }
 
 /**

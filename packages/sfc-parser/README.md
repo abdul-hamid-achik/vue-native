@@ -284,6 +284,11 @@ interface ParserOptions {
 }
 ```
 
+The optional `validate` callback runs once for every extracted native block.
+Returned errors—and exceptions thrown by the callback—are reported through the
+result's `errors` array without discarding the parsed block. Directory read
+failures are reported through the same array instead of being thrown.
+
 ## License
 
 MIT
