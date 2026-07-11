@@ -1,5 +1,11 @@
 # @thelacanians/vue-native-sfc-parser
 
+## 0.6.5
+
+### Patch Changes
+
+- b1d4eb3: Run custom native-block validators, derive component names correctly from Windows paths, and report deterministic directory-scan errors instead of throwing.
+
 ## 0.0.2
 
 ### Patch Changes
