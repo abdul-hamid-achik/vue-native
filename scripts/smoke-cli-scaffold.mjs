@@ -43,7 +43,16 @@ try {
   }
 
   run('bun', ['init', '-y'], tempRoot)
-  run('bun', ['add', ...Object.values(archives)], tempRoot)
+  const installerManifestPath = join(tempRoot, 'package.json')
+  const installerManifest = JSON.parse(readFileSync(installerManifestPath, 'utf8'))
+  const packedArchive = packageName => `file:./${archives[packageName].split('/').pop()}`
+  const packedDependencies = Object.fromEntries(
+    Object.keys(packageDirs).map(packageName => [packageName, packedArchive(packageName)]),
+  )
+  installerManifest.dependencies = packedDependencies
+  installerManifest.overrides = packedDependencies
+  writeFileSync(installerManifestPath, `${JSON.stringify(installerManifest, null, 2)}\n`)
+  run('bun', ['install'], tempRoot)
 
   const cli = join(tempRoot, 'node_modules', '.bin', 'vue-native')
   run(cli, ['create', 'smoke-app'], tempRoot)
