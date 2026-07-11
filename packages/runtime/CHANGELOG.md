@@ -1,5 +1,11 @@
 # @thelacanians/vue-native-runtime
 
+## 0.7.2
+
+### Patch Changes
+
+- 385dd68: Preserve Android Activity context for native views, safely tear down Apple database handles, reject empty SQLite statements without crashing, and ignore async native callbacks from replaced JavaScript hosts.
+
 ## 0.7.1
 
 ### Patch Changes

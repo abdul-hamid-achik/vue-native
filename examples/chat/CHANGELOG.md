@@ -1,5 +1,12 @@
 # @thelacanians/vue-native-example-chat
 
+## 0.1.6
+
+### Patch Changes
+
+- Updated dependencies [385dd68]
+  - @thelacanians/vue-native-runtime@0.7.2
+
 ## 0.1.5
 
 ### Patch Changes
