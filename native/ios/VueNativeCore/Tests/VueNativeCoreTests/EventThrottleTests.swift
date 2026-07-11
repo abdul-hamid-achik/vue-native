@@ -58,7 +58,7 @@ final class EventThrottleTests: XCTestCase {
 
     // MARK: - Events After Window Expires Fire
 
-    func testEventsAfterWindowExpireFire() {
+    func testEventsAfterWindowExpireFire() async {
         let expectation = self.expectation(description: "Throttled event fires after window")
         var fireCount = 0
 
@@ -78,13 +78,13 @@ final class EventThrottleTests: XCTestCase {
             throttle.fire("second")
         }
 
-        waitForExpectations(timeout: 1.0)
+        await fulfillment(of: [expectation], timeout: 1.0)
         XCTAssertEqual(fireCount, 2, "Event after window expiry should fire")
     }
 
     // MARK: - Trailing Call Delivers Latest Payload
 
-    func testTrailingCallDeliversLatestPayload() {
+    func testTrailingCallDeliversLatestPayload() async {
         let expectation = self.expectation(description: "Trailing call fires")
         var payloads: [String] = []
 
@@ -105,7 +105,7 @@ final class EventThrottleTests: XCTestCase {
         throttle.fire("third")
         throttle.fire("fourth")
 
-        waitForExpectations(timeout: 1.0)
+        await fulfillment(of: [expectation], timeout: 1.0)
 
         XCTAssertEqual(payloads.first, "first", "First payload should be 'first'")
         XCTAssertEqual(payloads.last, "fourth", "Trailing call should deliver the latest payload")
