@@ -14,10 +14,10 @@ final class VWebViewFactory: NativeComponentFactory {
     // fileprivate so the inner delegate/handler classes in this file can access them.
     // nonisolated(unsafe) allows usage from non-isolated contexts (WKNavigationDelegate,
     // WKScriptMessageHandler callbacks) without actor-isolation errors.
-    nonisolated(unsafe) fileprivate static var onLoadKey:    UInt8 = 0
-    nonisolated(unsafe) fileprivate static var onErrorKey:   UInt8 = 1
+    nonisolated(unsafe) fileprivate static var onLoadKey: UInt8 = 0
+    nonisolated(unsafe) fileprivate static var onErrorKey: UInt8 = 1
     nonisolated(unsafe) fileprivate static var onMessageKey: UInt8 = 2
-    fileprivate static var delegateKey:  UInt8 = 3
+    fileprivate static var delegateKey: UInt8 = 3
     fileprivate static var msgHandlerKey: UInt8 = 4
 
     // MARK: - NativeComponentFactory
@@ -94,9 +94,9 @@ final class VWebViewFactory: NativeComponentFactory {
     func removeEventListener(view: UIView, event: String) {
         switch event {
         case "load":
-            objc_setAssociatedObject(view, &VWebViewFactory.onLoadKey,    nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+            objc_setAssociatedObject(view, &VWebViewFactory.onLoadKey, nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
         case "error":
-            objc_setAssociatedObject(view, &VWebViewFactory.onErrorKey,   nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+            objc_setAssociatedObject(view, &VWebViewFactory.onErrorKey, nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
         case "message":
             objc_setAssociatedObject(view, &VWebViewFactory.onMessageKey, nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
             // Remove the script message handler from WKUserContentController to break

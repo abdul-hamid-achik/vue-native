@@ -29,7 +29,9 @@ class VModalFactory : NativeComponentFactory {
                 val show = value == true || value == "true"
                 if (show) showModal(view) else dismissModal(view)
             }
-            "animationType" -> {} // TODO: dialog animation
+            "animationType" -> {
+                // Reserved for future native dialog animation support.
+            }
             "transparent" -> {
                 if (value == true) {
                     dialogs[view]?.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
@@ -94,15 +96,15 @@ class VModalFactory : NativeComponentFactory {
 
     /**
      * Clean up all state associated with a modal view when it is removed from the tree.
-     * Dismisses the dialog and clears all map entries that reference the view,
-     * preventing memory leaks.
+     * Detaches callbacks before dismissal and clears all map entries that reference
+     * the view, preventing teardown events and memory leaks.
      */
     override fun destroyView(view: View) {
-        dialogs[view]?.let { dialog ->
+        dismissHandlers.remove(view)
+        dialogs.remove(view)?.let { dialog ->
+            dialog.setOnDismissListener(null)
             if (dialog.isShowing) dialog.dismiss()
         }
-        dialogs.remove(view)
         contentContainers.remove(view)
-        dismissHandlers.remove(view)
     }
 }

@@ -130,6 +130,7 @@ final class VListContainerView: UIView {
         shouldGroupAccessibilityChildren = true
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     override func layoutSubviews() {
@@ -141,13 +142,12 @@ final class VListContainerView: UIView {
         guard width > 0 else { return }
 
         var changedIndexPaths: [IndexPath] = []
-        for (idx, itemView) in itemViews.enumerated() {
-            // Only recompute if width changed (avoids re-entrant layout loops)
-            if abs(itemView.frame.size.width - width) > 0.5 {
-                itemView.frame.size.width = width
-                itemView.flex.layout(mode: .adjustHeight)
-                changedIndexPaths.append(IndexPath(row: idx, section: 0))
-            }
+        // Only recompute if width changed (avoids re-entrant layout loops)
+        for (idx, itemView) in itemViews.enumerated()
+            where abs(itemView.frame.size.width - width) > 0.5 {
+            itemView.frame.size.width = width
+            itemView.flex.layout(mode: .adjustHeight)
+            changedIndexPaths.append(IndexPath(row: idx, section: 0))
         }
         if !changedIndexPaths.isEmpty {
             // Reload only the rows whose heights changed, not the entire table
@@ -159,8 +159,7 @@ final class VListContainerView: UIView {
 // MARK: - VListInternalDelegate
 
 private final class VListInternalDelegate: NSObject,
-    UITableViewDataSource, UITableViewDelegate
-{
+    UITableViewDataSource, UITableViewDelegate {
     private weak var container: VListContainerView?
 
     init(container: VListContainerView) {
@@ -245,6 +244,7 @@ final class VListCell: UITableViewCell {
         accessibilityTraits = .none
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     func setItemView(_ view: UIView) {

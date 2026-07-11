@@ -68,9 +68,10 @@ final class HotReloadManagerTests: XCTestCase {
     // MARK: - URLSessionWebSocketDelegate Conformance
 
     func testConformsToURLSessionWebSocketDelegate() {
-        // Verify HotReloadManager conforms to the delegate protocol
-        XCTAssertTrue(manager is URLSessionWebSocketDelegate,
-                      "HotReloadManager should conform to URLSessionWebSocketDelegate")
+        // Assigning to the protocol existential keeps this a compile-time
+        // conformance check without an always-true runtime type test.
+        let delegate: URLSessionWebSocketDelegate = manager
+        XCTAssertTrue((delegate as AnyObject) === manager)
     }
 
     // MARK: - Connect/Disconnect Cycle

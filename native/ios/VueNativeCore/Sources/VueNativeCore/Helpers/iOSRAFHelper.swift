@@ -81,10 +81,8 @@ enum IOSRAFHelper {
         runtime.jsQueue.async { [weak runtime] in
             guard let runtime = runtime, let context = runtime.context else { return }
 
-            for (_, callback) in callbacks {
-                if !callback.isUndefined {
-                    callback.call(withArguments: [timestamp])
-                }
+            for (_, callback) in callbacks where !callback.isUndefined {
+                callback.call(withArguments: [timestamp])
             }
 
             // Drain microtasks after all RAF callbacks

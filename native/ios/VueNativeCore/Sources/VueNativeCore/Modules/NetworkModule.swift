@@ -47,10 +47,15 @@ final class NetworkModule: NativeModule {
             let path = monitor.currentPath
             let isConnected = path.status == .satisfied
             let connectionType: String
-            if path.usesInterfaceType(.wifi) { connectionType = "wifi" }
-            else if path.usesInterfaceType(.cellular) { connectionType = "cellular" }
-            else if path.usesInterfaceType(.wiredEthernet) { connectionType = "ethernet" }
-            else { connectionType = "none" }
+            if path.usesInterfaceType(.wifi) {
+                connectionType = "wifi"
+            } else if path.usesInterfaceType(.cellular) {
+                connectionType = "cellular"
+            } else if path.usesInterfaceType(.wiredEthernet) {
+                connectionType = "ethernet"
+            } else {
+                connectionType = "none"
+            }
             callback(["isConnected": isConnected, "connectionType": connectionType], nil)
         default:
             callback(nil, "Unknown method: \(method)")

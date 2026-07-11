@@ -18,7 +18,7 @@ final class NativeModuleTests: XCTestCase {
         let module = HapticsModule()
         let expectation = self.expectation(description: "vibrate callback")
 
-        module.invoke(method: "vibrate", args: ["medium"]) { result, error in
+        module.invoke(method: "vibrate", args: ["medium"]) { _, error in
             XCTAssertNil(error, "vibrate should not return an error")
             expectation.fulfill()
         }

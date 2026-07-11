@@ -46,10 +46,15 @@ final class VRefreshControlFactory: NativeComponentFactory {
         switch key {
         case "refreshing":
             let refreshing: Bool
-            if let b = value as? Bool { refreshing = b }
-            else if let n = value as? NSNumber { refreshing = n.boolValue }
-            else if let n = value as? Int { refreshing = n != 0 }
-            else { refreshing = false }
+            if let boolValue = value as? Bool {
+                refreshing = boolValue
+            } else if let numberValue = value as? NSNumber {
+                refreshing = numberValue.boolValue
+            } else if let intValue = value as? Int {
+                refreshing = intValue != 0
+            } else {
+                refreshing = false
+            }
 
             if refreshing {
                 refreshControl.beginRefreshing()

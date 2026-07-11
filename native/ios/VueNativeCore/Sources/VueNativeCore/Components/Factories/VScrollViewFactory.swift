@@ -57,9 +57,13 @@ final class VScrollViewFactory: NativeComponentFactory {
         switch key {
         case "horizontal":
             let horizontal: Bool
-            if let h = value as? Bool { horizontal = h }
-            else if let h = value as? Int { horizontal = h != 0 }
-            else { horizontal = false }
+            if let boolValue = value as? Bool {
+                horizontal = boolValue
+            } else if let intValue = value as? Int {
+                horizontal = intValue != 0
+            } else {
+                horizontal = false
+            }
             scrollView.alwaysBounceHorizontal = horizontal
             scrollView.alwaysBounceVertical = !horizontal
 
@@ -70,8 +74,11 @@ final class VScrollViewFactory: NativeComponentFactory {
             if let shows = value as? Bool { scrollView.showsHorizontalScrollIndicator = shows }
 
         case "scrollEnabled":
-            if let enabled = value as? Bool { scrollView.isScrollEnabled = enabled }
-            else if let enabled = value as? Int { scrollView.isScrollEnabled = enabled != 0 }
+            if let enabled = value as? Bool {
+                scrollView.isScrollEnabled = enabled
+            } else if let enabled = value as? Int {
+                scrollView.isScrollEnabled = enabled != 0
+            }
 
         case "bounces":
             if let bounces = value as? Bool { scrollView.bounces = bounces }
@@ -81,9 +88,13 @@ final class VScrollViewFactory: NativeComponentFactory {
 
         case "refreshing":
             let refreshing: Bool
-            if let b = value as? Bool { refreshing = b }
-            else if let n = value as? NSNumber { refreshing = n.boolValue }
-            else { refreshing = false }
+            if let boolValue = value as? Bool {
+                refreshing = boolValue
+            } else if let numberValue = value as? NSNumber {
+                refreshing = numberValue.boolValue
+            } else {
+                refreshing = false
+            }
 
             if refreshing {
                 // Add UIRefreshControl if not already present

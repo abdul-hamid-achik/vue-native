@@ -16,6 +16,7 @@ final class ErrorOverlayView: UIView {
         setupUI()
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     private func setupUI() {

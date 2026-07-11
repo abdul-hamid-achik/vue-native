@@ -1,3 +1,6 @@
+import org.gradle.api.file.DuplicatesStrategy
+import org.gradle.jvm.tasks.Jar
+
 plugins {
     id("com.android.library")
     id("org.jetbrains.kotlin.android")
@@ -128,6 +131,14 @@ ktlint {
 }
 
 afterEvaluate {
+    // AGP's generated release source archive receives src/main/kotlin through
+    // overlapping source providers. Keep one copy of each physical source file.
+    tasks.named<Jar>("releaseSourcesJar") {
+        eachFile {
+            duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+        }
+    }
+
     publishing {
         publications {
             create<MavenPublication>("release") {

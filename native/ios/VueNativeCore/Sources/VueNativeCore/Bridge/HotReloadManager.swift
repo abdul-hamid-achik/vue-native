@@ -22,7 +22,7 @@ public final class HotReloadManager: NSObject, URLSessionWebSocketDelegate {
     private var reconnectAttempts = 0
     private let maxReconnectAttempts = 10
 
-    private override init() {
+    override private init() {
         super.init()
     }
 

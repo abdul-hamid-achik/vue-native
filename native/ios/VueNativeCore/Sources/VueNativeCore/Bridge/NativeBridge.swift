@@ -253,11 +253,9 @@ public final class NativeBridge {
             if !needsLayout && op == "updateStyle",
                args.count >= 2,
                let styles = args[1] as? [String: Any] {
-                for key in styles.keys {
-                    if NativeBridge.layoutAffectingStyles.contains(key) {
-                        needsLayout = true
-                        break
-                    }
+                for key in styles.keys where NativeBridge.layoutAffectingStyles.contains(key) {
+                    needsLayout = true
+                    break
                 }
             }
 
@@ -958,7 +956,6 @@ public final class NativeBridge {
         runtime.callFunction("__VN_handleEvent", withArguments: [nodeId, eventName, safePayload])
     }
 
-
     /// Dispatch a global event to the JS side (not tied to any specific node).
     /// Safe to call from any thread — dispatches to the JS queue internally.
     /// JS must register a handler via `__VN_handleGlobalEvent(eventName, payloadJSON)`.
@@ -1026,19 +1023,24 @@ public final class NativeBridge {
         // Step 2: JSRuntime.reload creates a fresh JSContext. Install bridge
         // functions before evaluating the new bundle so its initial render and
         // module calls cannot hit temporary polyfill stubs.
-        runtime.reload(bundle: bundle, teardownOldContext: false, prepareContext: { [weak self] context in
-            self?.registerBridgeFunctions(on: context)
-        }) { success in
-            guard success else {
-                NSLog("[VueNative Bridge] reloadWithBundle: runtime reload failed — showing error overlay")
-                DispatchQueue.main.async {
-                    ErrorOverlayView.show(error: "Hot reload failed.\n\nThe new bundle could not be evaluated. Check the terminal for the JS error.\n\nSave the file again to retry.")
+        runtime.reload(
+            bundle: bundle,
+            teardownOldContext: false,
+            prepareContext: { [weak self] context in
+                self?.registerBridgeFunctions(on: context)
+            },
+            completion: { success in
+                guard success else {
+                    NSLog("[VueNative Bridge] reloadWithBundle: runtime reload failed — showing error overlay")
+                    DispatchQueue.main.async {
+                        ErrorOverlayView.show(error: "Hot reload failed.\n\nThe new bundle could not be evaluated. Check the terminal for the JS error.\n\nSave the file again to retry.")
+                    }
+                    return
                 }
-                return
-            }
 
-            NSLog("[VueNative Bridge] reloadWithBundle: bridge re-registered on new context")
-        }
+                NSLog("[VueNative Bridge] reloadWithBundle: bridge re-registered on new context")
+            }
+        )
     }
 
     // MARK: - Memory Warning
@@ -1233,6 +1235,5 @@ private final class TraitObserverView: UIView {
         }
     }
 }
-
 
 #endif

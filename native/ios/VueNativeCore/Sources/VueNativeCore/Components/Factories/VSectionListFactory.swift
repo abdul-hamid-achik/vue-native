@@ -123,6 +123,7 @@ final class VSectionListContainerView: UIView {
         super.addSubview(tableView)
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     /// Rebuild section data from the flat allChildren array.
@@ -161,12 +162,10 @@ final class VSectionListContainerView: UIView {
         // table sections/rows; reloading the whole table from layoutSubviews
         // can re-enter layout and is especially expensive for large lists.
         var changedChildren = Set<ObjectIdentifier>()
-        for child in allChildren {
-            if abs(child.frame.size.width - width) > 0.5 {
-                child.frame.size.width = width
-                child.flex.layout(mode: .adjustHeight)
-                changedChildren.insert(ObjectIdentifier(child))
-            }
+        for child in allChildren where abs(child.frame.size.width - width) > 0.5 {
+            child.frame.size.width = width
+            child.flex.layout(mode: .adjustHeight)
+            changedChildren.insert(ObjectIdentifier(child))
         }
 
         guard !changedChildren.isEmpty else { return }
@@ -201,8 +200,7 @@ final class VSectionListContainerView: UIView {
 // MARK: - VSectionListInternalDelegate
 
 private final class VSectionListInternalDelegate: NSObject,
-    UITableViewDataSource, UITableViewDelegate
-{
+    UITableViewDataSource, UITableViewDelegate {
     private weak var container: VSectionListContainerView?
 
     init(container: VSectionListContainerView) {

@@ -29,6 +29,12 @@ import UIKit
 /// ```
 open class VueNativeViewController: UIViewController {
 
+    private struct ViewDimensions: Equatable {
+        let width: CGFloat
+        let height: CGFloat
+        let scale: CGFloat
+    }
+
     // MARK: - Overridable API
 
     /// Name of the JS bundle resource (without extension) bundled in your app target.
@@ -46,7 +52,7 @@ open class VueNativeViewController: UIViewController {
     private let runtime = JSRuntime.shared
     private let bridge  = NativeBridge.shared
     private let hostID = UUID()
-    private var lastDimensions: (width: CGFloat, height: CGFloat, scale: CGFloat)?
+    private var lastDimensions: ViewDimensions?
     private var hasLoadedBundle = false
 
     // MARK: - Lifecycle
@@ -87,12 +93,9 @@ open class VueNativeViewController: UIViewController {
         let size = view.bounds.size
         guard size.width > 0, size.height > 0 else { return }
         let scale = view.window?.screen.scale ?? UIScreen.main.scale
-        let dimensions = (width: size.width, height: size.height, scale: scale)
+        let dimensions = ViewDimensions(width: size.width, height: size.height, scale: scale)
 
-        if let previous = lastDimensions,
-           previous.width == dimensions.width,
-           previous.height == dimensions.height,
-           previous.scale == dimensions.scale {
+        if lastDimensions == dimensions {
             return
         }
 

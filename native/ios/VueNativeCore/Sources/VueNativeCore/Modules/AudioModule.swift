@@ -154,7 +154,7 @@ final class AudioModule: NSObject, NativeModule {
         player.volume = volume
         player.numberOfLoops = loop ? -1 : 0
 
-        let delegate = AudioPlayerDelegate { [weak self] successfully in
+        let delegate = AudioPlayerDelegate { [weak self] _ in
             guard let self = self else { return }
             self.isPlaying = false
             self.stopProgressReporting()
