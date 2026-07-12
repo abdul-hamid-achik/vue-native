@@ -1,5 +1,13 @@
 # @thelacanians/vue-native-vite-plugin
 
+## 0.7.5
+
+### Patch Changes
+
+- Updated dependencies [edaa4d4]
+  - @thelacanians/vue-native-codegen@0.6.6
+  - @thelacanians/vue-native-sfc-parser@0.6.6
+
 ## 0.7.4
 
 ### Patch Changes

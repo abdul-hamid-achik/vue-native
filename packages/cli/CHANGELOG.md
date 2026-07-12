@@ -1,5 +1,17 @@
 # @thelacanians/vue-native-cli
 
+## 0.7.5
+
+### Patch Changes
+
+- edaa4d4: Correct public documentation and examples for platform-targeted development,
+  WebSocket and Android host lifecycle APIs, and native-block code generation.
+  Package guidance now uses executable commands, current native-module
+  signatures, canonical output paths, and collision-free example module names.
+- Updated dependencies [edaa4d4]
+  - @thelacanians/vue-native-codegen@0.6.6
+  - @thelacanians/vue-native-sfc-parser@0.6.6
+
 ## 0.7.4
 
 ### Patch Changes

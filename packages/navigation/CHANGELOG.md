@@ -1,5 +1,11 @@
 # @thelacanians/vue-native-navigation
 
+## 0.7.5
+
+### Patch Changes
+
+- @thelacanians/vue-native-runtime@0.7.5
+
 ## 0.7.4
 
 ### Patch Changes

@@ -1,5 +1,12 @@
 # @thelacanians/vue-native-example-native-blocks-demo
 
+## 0.0.10
+
+### Patch Changes
+
+- @thelacanians/vue-native-runtime@0.7.5
+- @thelacanians/vue-native-navigation@0.7.5
+
 ## 0.0.9
 
 ### Patch Changes

@@ -1,5 +1,11 @@
 # @thelacanians/vue-native-example-gestures
 
+## 0.1.8
+
+### Patch Changes
+
+- @thelacanians/vue-native-runtime@0.7.5
+
 ## 0.1.7
 
 ### Patch Changes

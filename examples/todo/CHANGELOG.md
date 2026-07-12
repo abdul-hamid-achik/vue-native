@@ -1,5 +1,11 @@
 # @thelacanians/vue-native-example-todo
 
+## 0.1.9
+
+### Patch Changes
+
+- @thelacanians/vue-native-runtime@0.7.5
+
 ## 0.1.8
 
 ### Patch Changes
