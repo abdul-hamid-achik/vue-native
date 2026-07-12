@@ -1,0 +1,6 @@
+// Vue Native landing page — SCSS palette forward-file.
+// Theme breakpoints ($MQNarrow: 959px, $MQMobile: 719px, $MQMobileNarrow: 419px)
+// already match the landing page's own breakpoints (960px / 719px), so no
+// overrides are required here. Kept intentionally minimal — this file is
+// `@forward`-ed before the theme's own styles load, so only SCSS-level
+// variables/mixins belong in it, never plain CSS rules.

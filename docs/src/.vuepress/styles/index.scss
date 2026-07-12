@@ -1,0 +1,92 @@
+// Vue Native landing page — global tokens.
+// Injected LAST (after all theme styles) by the `sass` palette preset, so
+// this is where the theme's CSS custom properties get retinted for the
+// whole site (navbar, sidebar, docs pages, and the Home layout all read
+// these vars — nothing here is scoped to the landing page).
+
+:root {
+  // ---- Vue Native palette (light) ----------------------------------
+  --vn-paper: #fbfbfd;
+  --vn-panel: #f3f4f8;
+  --vn-ink: #191a24;
+  --vn-keyword: #7c4ddb;
+  // Darkened from the spec's #2e9e6b: at that value, text set in this
+  // color read 3.07:1 on --vn-panel / 3.27:1 on --vn-paper (fails WCAG AA
+  // 4.5:1 for normal-size text — used as real text in the glossary source
+  // names and code tag/string tokens, not just decoration). Same hue
+  // (~152.7°), darkened lightness only. New: 4.61:1 / 4.90:1.
+  --vn-string: #257d55;
+  --vn-fn: #2563c9;
+  // Darkened from the spec's #b7690a: read 3.79:1 on --vn-panel / 4.03:1
+  // on --vn-paper as the <native> tag header / "codegen →" arrow text —
+  // fails 4.5:1. Same hue (~32.7°), darkened lightness only. New: 4.63:1 / 4.92:1.
+  --vn-native: #a35d09;
+  // Darkened from the spec's #7c8199: read 3.50:1 on --vn-panel / 3.72:1
+  // on --vn-paper — fails WCAG AA 4.5:1 for normal text (gutter numbers,
+  // annotations, muted prose all use this). Same hue (~230°), darkened
+  // lightness only. New: 4.64:1 / 4.93:1.
+  --vn-comment: #686d86;
+
+  // platform target tints (correspondence gloss only)
+  --vn-ios: #007aff;
+  --vn-android: #6750a4;
+  --vn-macos: #5b6673;
+
+  // ---- terminal-only text (quick-start panel is a fixed dark surface in
+  // both themes — --vn-ink in light mode, --vn-panel in dark mode — so its
+  // text needs colors picked for contrast against a dark bg specifically,
+  // not the panel/paper-tuned --vn-string / --vn-comment above) ----------
+  --vn-terminal-string: #2e9e6b; // original spec green — 5.12:1 on light-mode terminal bg
+  --vn-terminal-comment: #82869c; // 4.81:1 on light-mode terminal bg, 4.60:1 on dark-mode terminal bg
+
+  // ---- typography ----------------------------------------------------
+  --vn-font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  --vn-font-display: 'Space Grotesk', var(--font-family);
+
+  // ---- retint theme vars to match ------------------------------------
+  --vp-c-bg: var(--vn-paper);
+  --vp-c-bg-alt: var(--vn-panel);
+  --vp-c-accent: var(--vn-string);
+  --vp-c-accent-bg: var(--vn-string);
+  --vp-c-accent-hover: #278a5f;
+  --vp-c-accent-text: #fff;
+}
+
+[data-theme='dark'] {
+  // ---- Vue Native palette (dark) --------------------------------------
+  --vn-paper: #15161d;
+  --vn-panel: #1d1e28;
+  --vn-ink: #e5e7f0;
+  --vn-keyword: #c4a6ff;
+  --vn-string: #4ade9b;
+  --vn-fn: #74a9ff;
+  --vn-native: #e3a552;
+  // Lightened from the spec's #6c7189: read 3.44:1 on --vn-panel / 3.75:1
+  // on --vn-paper — fails WCAG AA 4.5:1. Same hue (~230°), lightened only.
+  // New: 4.60:1 / 5.01:1. (--vn-string/--vn-native pass in dark mode
+  // as-shipped — 9.63:1+ / 7.7:1+ — so left untouched there.)
+  --vn-comment: #82869c;
+
+  --vn-ios: #0a84ff;
+  --vn-android: #cfbcff;
+  --vn-macos: #9aa6b2;
+
+  // terminal bg becomes --vn-panel (dark) here — original spec green still
+  // reads 9.63:1 against it, no change needed. --vn-terminal-comment is
+  // intentionally NOT redeclared: its :root value (4.60:1 against the dark
+  // panel terminal bg here) already holds.
+  --vn-terminal-string: #4ade9b;
+
+  --vp-c-bg: var(--vn-paper);
+  --vp-c-bg-alt: var(--vn-panel);
+  --vp-c-accent: var(--vn-string);
+  --vp-c-accent-bg: var(--vn-string);
+  --vp-c-accent-hover: #63e6ac;
+  --vp-c-accent-text: #0b1410;
+}
+
+// Visible keyboard focus ring in both themes (WCAG-friendly, 2px accent).
+:focus-visible {
+  outline: 2px solid var(--vn-keyword);
+  outline-offset: 2px;
+}
