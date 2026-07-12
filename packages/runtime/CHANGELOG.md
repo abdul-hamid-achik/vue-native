@@ -1,5 +1,13 @@
 # @thelacanians/vue-native-runtime
 
+## 0.7.3
+
+### Patch Changes
+
+- 5d6dfdf: Keep dynamic `VText` children synchronized after edits, moves, and removals on
+  iOS, Android, and macOS, and preserve Apple certificate pinning across
+  cross-host redirects.
+
 ## 0.7.2
 
 ### Patch Changes

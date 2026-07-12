@@ -1,5 +1,13 @@
 # @thelacanians/vue-native-example-auth-flow
 
+## 0.1.7
+
+### Patch Changes
+
+- Updated dependencies [5d6dfdf]
+  - @thelacanians/vue-native-runtime@0.7.3
+  - @thelacanians/vue-native-navigation@0.7.3
+
 ## 0.1.6
 
 ### Patch Changes

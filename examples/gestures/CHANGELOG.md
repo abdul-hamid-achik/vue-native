@@ -1,5 +1,12 @@
 # @thelacanians/vue-native-example-gestures
 
+## 0.1.6
+
+### Patch Changes
+
+- Updated dependencies [5d6dfdf]
+  - @thelacanians/vue-native-runtime@0.7.3
+
 ## 0.1.5
 
 ### Patch Changes
