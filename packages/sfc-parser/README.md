@@ -51,7 +51,7 @@ console.log(result.allNativeBlocks) // All native blocks
 ### Filter by Platform
 
 ```ts
-import { getNativeBlocks } from '@thelacanians/vue-native-sfc-parser'
+import { getNativeBlocks, parseDirectory } from '@thelacanians/vue-native-sfc-parser'
 
 const result = parseDirectory('app/')
 
@@ -65,7 +65,7 @@ const androidBlocks = getNativeBlocks(result, 'android')
 ### Group by Component
 
 ```ts
-import { groupBlocksByComponent } from '@thelacanians/vue-native-sfc-parser'
+import { groupBlocksByComponent, parseDirectory } from '@thelacanians/vue-native-sfc-parser'
 
 const result = parseDirectory('app/')
 const grouped = groupBlocksByComponent(result.allNativeBlocks)
@@ -77,7 +77,7 @@ const componentABlocks = grouped.get('ComponentA')
 ### Group by Platform
 
 ```ts
-import { groupBlocksByPlatform } from '@thelacanians/vue-native-sfc-parser'
+import { groupBlocksByPlatform, parseDirectory } from '@thelacanians/vue-native-sfc-parser'
 
 const result = parseDirectory('app/')
 const grouped = groupBlocksByPlatform(result.allNativeBlocks)
@@ -114,7 +114,12 @@ class MyModule: NativeModule {
 class MyModule: NativeModule {
   override val moduleName: String = "MyModule"
   
-  override fun invoke(method: String, args: List<Any>, callback: (Any?, String?) -> Unit) {
+  override fun invoke(
+    method: String,
+    args: List<Any?>,
+    bridge: NativeBridge,
+    callback: (Any?, String?) -> Unit
+  ) {
     // Implementation
   }
 }
@@ -187,8 +192,8 @@ Parse all SFC files in a directory recursively.
 
 - **Parameters:**
   - `dirPath` (string) - Directory path
-  - `options.exclude` (string[]) - Directories to exclude (default: `['node_modules', 'dist', '.git']`)
-  - `options` (ParserOptions) - Parser options
+  - `options.exclude` (string[]) - Directories to exclude (default: `['node_modules', 'dist', '.git', '.turbo']`)
+  - Other `ParserOptions` fields are accepted in the same options object
 - **Returns:** `ParseResult`
 
 #### `getNativeBlocks(result, platform?)`

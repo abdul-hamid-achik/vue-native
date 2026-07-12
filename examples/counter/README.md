@@ -17,6 +17,11 @@ A simple counter app demonstrating the basics of Vue Native.
 ## How to Run
 
 ```bash
+cd examples/counter
 bun install
-bun run dev
+bun run dev:ios
 ```
+
+Open the included `ios/VueNativeCounter.xcodeproj` in Xcode. Android and macOS
+native hosts are not included; use `bun run dev:android` or `bun run dev:macos`
+only after copying the Vue source into a matching generated project.

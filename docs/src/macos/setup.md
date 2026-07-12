@@ -206,7 +206,7 @@ Hot reload lets you edit `.vue` files and see changes instantly without rebuildi
 **Terminal 1 — Start the dev server:**
 
 ```bash
-bun run dev
+vue-native dev --platform macos
 ```
 
 This starts:
@@ -232,7 +232,7 @@ Or build from Xcode. Once the app is running, you don't need to rebuild — chan
 
 ### Enabling hot reload in your app
 
-The scaffolded project already has hot reload configured via `devServerURL`:
+Configure hot reload in your macOS host through `devServerURL`:
 
 ```swift
 class MainWindowController: VueNativeWindowController {

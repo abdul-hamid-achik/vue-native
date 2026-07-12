@@ -31,12 +31,13 @@ A fully functional calculator demonstrating layout, state management, and comput
 ```bash
 cd examples/calculator
 bun install
-bun vue-native dev
+bun run dev:ios
 ```
 
-Then open:
-- **iOS:** `native/ios/Calculator.xcodeproj` in Xcode
-- **Android:** `native/android` in Android Studio
+Generate the included iOS project with `cd ios && xcodegen generate`, then open
+`ios/VueNativeCalculator.xcodeproj` in Xcode. To try the Vue source on Android,
+run `bun run dev:android` and copy the source into a scaffold that includes an
+Android host; this example does not contain one.
 
 ## Key Concepts
 
@@ -87,9 +88,9 @@ Button presses handled with `@press`:
 examples/calculator/
 ├── app/
 │   ├── main.ts          # Entry point
-│   ├── App.vue          # Root component
-│   └── Calculator.vue   # Main calculator component
-├── native/              # Native iOS/Android projects
+│   └── App.vue          # Calculator UI
+├── ios/                 # XcodeGen iOS app specification
+├── vite.config.ts
 └── package.json
 ```
 

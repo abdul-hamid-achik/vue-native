@@ -103,8 +103,8 @@ class MainActivity : VueNativeActivity() {
     override fun getBundleAssetPath(): String = "vue-native-bundle.js"
 
     // For hot reload during development (optional)
-    // ws://10.0.2.2:5173 connects from emulator to host machine
-    override fun getDevServerUrl(): String? = if (BuildConfig.DEBUG) "ws://10.0.2.2:5173" else null
+    // ws://10.0.2.2:8174 connects from emulator to host machine
+    override fun getDevServerUrl(): String? = if (BuildConfig.DEBUG) "ws://10.0.2.2:8174" else null
 }
 ```
 
@@ -125,10 +125,10 @@ Open the Android project in Android Studio and run on an emulator or device.
 
 1. Start the Vite dev server:
    ```bash
-   bun run dev
+   vue-native dev --android
    ```
 
-2. Set `getDevServerUrl()` to `"ws://10.0.2.2:5173"` (emulator) or your machine's IP for a real device.
+2. Set `getDevServerUrl()` to `"ws://10.0.2.2:8174"` (emulator) or your machine's IP for a real device.
 
 3. The app connects on start and automatically reloads when you save Vue files.
 

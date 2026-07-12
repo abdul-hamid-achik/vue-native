@@ -7,9 +7,8 @@ export default defineConfig({
     // @vitejs/plugin-vue compiles .vue SFCs (templates, <script setup>, etc.)
     vue(),
     // @thelacanians/vue-native-vite-plugin aliases 'vue' to '@thelacanians/vue-native-runtime' and
-    // configures IIFE build output for embedding in native iOS apps
+    // configures IIFE build output for embedding in native apps
     vueNative({
-      platform: 'ios',
       globalName: 'CounterApp',
     }),
   ],

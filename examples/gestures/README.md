@@ -19,9 +19,7 @@ This example demonstrates gesture handling in Vue Native apps using `useGesture`
 ```bash
 cd examples/gestures
 bun install
-bun run dev  # Terminal 1: Watch and rebuild JS bundle
-
-# Open ios/GesturesApp.xcworkspace in Xcode and run
+bun run dev:ios
 ```
 
 ### Android
@@ -29,9 +27,7 @@ bun run dev  # Terminal 1: Watch and rebuild JS bundle
 ```bash
 cd examples/gestures
 bun install
-bun run dev  # Terminal 1: Watch and rebuild JS bundle
-
-# Open android/ in Android Studio and run
+bun run dev:android
 ```
 
 ### macOS
@@ -39,7 +35,10 @@ bun run dev  # Terminal 1: Watch and rebuild JS bundle
 ```bash
 cd examples/gestures
 bun install
-bun run dev  # Terminal 1: Watch and rebuild JS bundle
-
-# Open macos/GesturesApp.xcworkspace in Xcode and run
+bun run dev:macos
 ```
+
+This directory intentionally contains the cross-platform Vue source only. It
+does not contain the `ios/`, `android/`, or `macos/` hosts referenced by older
+versions of this README. Copy the source into a generated project with the
+matching native host to run it.

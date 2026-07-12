@@ -128,7 +128,7 @@ existing platform-pinned configs still compile for the selected CLI platform.
 
 ```bash
 # Terminal 1: Start dev server
-vue-native dev
+vue-native dev --ios
 
 # Terminal 2: Build and run on iOS simulator
 vue-native run ios

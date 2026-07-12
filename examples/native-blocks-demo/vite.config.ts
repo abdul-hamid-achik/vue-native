@@ -6,7 +6,6 @@ export default defineConfig({
   plugins: [
     vue(),
     vueNative({
-      platform: 'ios',
       nativeCodegen: true,
       nativeOutputDirs: {
         ios: 'generated/ios',

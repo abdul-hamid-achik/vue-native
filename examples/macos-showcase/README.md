@@ -27,10 +27,12 @@ Demonstrates macOS-specific features and desktop patterns.
 ```bash
 cd examples/macos-showcase
 bun install
-bun vue-native dev
+bun run dev:macos
 ```
 
-**Note:** Requires macOS 12.0+
+This directory contains the macOS Vue source and build configuration, not an
+Xcode app shell. Copy it into a project with a `VueNativeWindowController`
+macOS host before launching it. Vue Native's macOS runtime requires macOS 15+.
 
 ## Key Concepts
 

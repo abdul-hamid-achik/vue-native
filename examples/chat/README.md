@@ -25,18 +25,27 @@ A chat interface demonstrating real-time messaging, lists, and input handling.
 ```bash
 cd examples/chat
 bun install
-bun vue-native dev
+bun run dev:ios
+# or: bun run dev:android
+# or: bun run dev:macos
 ```
+
+This directory contains Vue source only. Copy it into a generated project that
+has the corresponding native host before launching it.
 
 ## Key Concepts
 
 ### WebSocket Integration
 
 ```typescript
-const { send, onMessage } = useWebSocket('wss://chat.example.com')
+import { ref, watch } from 'vue'
+import { useWebSocket } from '@thelacanians/vue-native-runtime'
 
-onMessage((data) => {
-  messages.value.push(data)
+const messages = ref<string[]>([])
+const { lastMessage } = useWebSocket('wss://chat.example.com')
+
+watch(lastMessage, (data) => {
+  if (data !== null) messages.value.push(data)
 })
 ```
 

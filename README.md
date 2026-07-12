@@ -111,10 +111,17 @@ const styles = createStyleSheet({
 ### Start development
 
 ```bash
-bun run dev                  # Start Vite watch mode + dev server
-bunx vue-native run ios      # Generate/build and launch iOS
-bunx vue-native run android  # Build and launch Android
+# Terminal 1: choose the bundle target for the dev watcher
+bunx @thelacanians/vue-native-cli dev --ios
+# or: bunx @thelacanians/vue-native-cli dev --android
+
+# Terminal 2: build and launch the same target
+bunx @thelacanians/vue-native-cli run ios
+# or: bunx @thelacanians/vue-native-cli run android
 ```
+
+Each development watcher compiles for one platform. Use matching `dev` and
+`run` targets, and restart the watcher when you switch platforms.
 
 macOS runtime support is available through `VueNativeMacOS`; the CLI can run an existing macOS Xcode project, but `vue-native create` does not scaffold the macOS app shell yet.
 

@@ -24,7 +24,7 @@ Vue Native on macOS uses the same architecture as iOS:
 ```bash
 vue-native create my-mac-app
 cd my-mac-app
-vue-native dev
+vue-native dev --platform macos
 
 # after adding macos/
 vue-native run macos

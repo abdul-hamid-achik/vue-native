@@ -65,7 +65,7 @@ interface WebSocketOptions {
   autoReconnect?: boolean
   /** Maximum number of reconnection attempts. Default: 3 */
   maxReconnectAttempts?: number
-  /** Delay between reconnection attempts in milliseconds. Default: 1000 */
+  /** Base delay for exponential reconnect backoff in milliseconds. Default: 1000 */
   reconnectInterval?: number
 }
 
@@ -76,8 +76,9 @@ type WebSocketStatus = 'CLOSED' | 'CONNECTING' | 'OPEN' | 'CLOSING'
 
 | Platform | Support |
 |----------|---------|
-| iOS | Uses `URLSessionWebSocketTask` for native WebSocket connections with full TLS support. |
+| iOS | Uses the shared Apple `URLSessionWebSocketTask` transport with full TLS support. |
 | Android | Uses OkHttp `WebSocket` for native WebSocket connections with full TLS support. |
+| macOS | Uses the shared Apple `URLSessionWebSocketTask` transport with full TLS support. |
 
 ## Example
 
@@ -135,7 +136,11 @@ function sendMessage() {
 
 - Objects passed to `send()` are automatically JSON-stringified before being sent over the connection.
 - Auto-reconnect only triggers on abnormal close (i.e., close code is not `1000`). A clean close via `close()` or `close(1000)` will not trigger reconnection.
-- Reconnection uses a fixed delay (`reconnectInterval`) between attempts, up to `maxReconnectAttempts`.
+- Reconnection uses exponential backoff: attempt `n` waits `reconnectInterval * 2^(n - 1)` milliseconds, up to `maxReconnectAttempts`. A successful handshake resets the attempt counter.
 - If `autoConnect` is set to `false`, the connection will not open until `open()` is called manually.
 - The connection is automatically closed and event listeners are unsubscribed when the component unmounts.
-- The `status` ref transitions through `CONNECTING` -> `OPEN` -> `CLOSING` -> `CLOSED` following the standard WebSocket lifecycle.
+- `open()` sets `status` to `CONNECTING`. It changes to `OPEN` only after the native WebSocket handshake succeeds; creating the native socket is not treated as an open connection.
+- A transport or handshake failure publishes `error`, then an abnormal close (`1006`) that returns `status` to `CLOSED` and can trigger auto-reconnect. A connection can therefore move directly from `CONNECTING` to `CLOSED` without becoming `OPEN`.
+- `close()` sets `status` to `CLOSING`; the matching close event then sets it to `CLOSED`. Remote closes move an open connection directly to `CLOSED`.
+- Native implementations deliver at most one terminal close sequence for the active socket. Reopening with the same internal connection ID suppresses delayed open, message, error, and close callbacks from the replaced socket.
+- Calls to `send()` before `OPEN` are queued. The queue holds at most 100 messages and drops the oldest message when full.

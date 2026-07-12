@@ -25,8 +25,13 @@ A social feed demonstrating infinite scroll, image loading, and interactions.
 ```bash
 cd examples/social
 bun install
-bun vue-native dev
+bun run dev:ios
+# or: bun run dev:android
+# or: bun run dev:macos
 ```
+
+This directory contains Vue source only. Copy it into a generated project with
+the corresponding native host before launching it.
 
 ## Key Concepts
 

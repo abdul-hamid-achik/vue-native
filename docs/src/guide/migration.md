@@ -16,11 +16,72 @@ bun update @thelacanians/vue-native-runtime \
 
 2. **Rebuild native projects.** Native fixes ship in the Swift Package (iOS) and Gradle module (Android). You must rebuild to pick them up -- `vue-native run ios` and `vue-native run android`.
 
+   Projects created by the CLI link local runtime sources under `native/`.
+   Updating npm dependencies does not rewrite that directory. Merge the native
+   runtime from a fresh project created with the target CLI version before you
+   rebuild, while preserving application-owned host changes.
+
 3. **Run your test suite** and verify all screens manually.
 
 ::: tip
 Always read the version-specific notes below before upgrading. Some releases require additional native-side steps.
 :::
+
+## v0.7.3 to v0.7.4
+
+**Release date:** 2026-07-11 -- Platform targeting, WebSocket lifecycle, and Android hot-reload hardening.
+
+### Select one development target
+
+A development watcher compiles one platform-specific bundle. Start it with an
+explicit target and restart it when switching platforms:
+
+```bash
+vue-native dev --ios
+vue-native dev --android
+vue-native dev --platform macos
+```
+
+The CLI sets `VUE_NATIVE_PLATFORM` for targeted `dev`, `run`, and `build`
+commands. That value takes precedence over `vueNative({ platform: '...' })` in
+`vite.config.ts`. An untargeted `vue-native dev` preserves an existing shell
+value, then falls back to the plugin option, then to iOS. Do not use a Vite
+`.env` file for `VUE_NATIVE_PLATFORM`; Vite evaluates the config before loading
+mode-specific environment files.
+
+### Move Android application modules into the Activity factory
+
+If your Android host manually registered application modules once during
+Activity startup, return them from `createNativeModules()` instead:
+
+```kotlin
+class MainActivity : VueNativeActivity() {
+    override fun getBundleAssetPath() = "vue-native-bundle.js"
+
+    override fun createNativeModules(): List<NativeModule> = listOf(
+        MyModule(),
+        AnalyticsModule(),
+    )
+}
+```
+
+The Activity calls this factory at startup and for every accepted hot reload.
+Return new instances on every call. The runtime destroys the old native-module
+snapshot before registering built-in modules, generated modules, then these
+application modules. An application module with a duplicate `moduleName`
+intentionally overrides the earlier implementation.
+
+Android hot reload retains its V8 isolate but resets Vue, bridge registries,
+polyfills, and native modules before evaluating the replacement bundle. Apple
+targets recreate their JavaScriptCore context.
+
+### WebSocket behavior
+
+No API changes are required. `useWebSocket()` now reports `OPEN` only after the
+native handshake succeeds, ignores delayed callbacks from replaced sockets, and
+delivers one terminal close sequence for the active connection. Re-test error,
+reconnect, and component-unmount paths if your app depends on socket lifecycle
+state.
 
 ## v0.3.0 to v0.4.0
 
@@ -129,7 +190,7 @@ If you use a local copy of the Swift Package (in `native/ios/`), pull the latest
 
 1. If using a remote dependency, bump the version in `android/app/build.gradle`:
 ```groovy
-implementation 'com.thelacanians:vue-native-core:0.4.0'
+implementation 'com.vuenative:core:0.7.4'
 ```
 2. Sync Gradle: **File -> Sync Project with Gradle Files** in Android Studio.
 3. Clean and rebuild: `cd android && ./gradlew clean assembleDebug`.

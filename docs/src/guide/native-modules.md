@@ -127,7 +127,12 @@ class CustomHapticsModule: NativeModule {
 class CustomHapticsModule: NativeModule {
   override val moduleName: String = "CustomHaptics"
   
-  override fun invoke(method: String, args: List<Any?>, callback: (Any?, String?) -> Unit) {
+  override fun invoke(
+    method: String,
+    args: List<Any?>,
+    bridge: NativeBridge,
+    callback: (Any?, String?) -> Unit
+  ) {
     when (method) {
       "vibrate" -> {
         val style = args[0] as? String ?: "heavy"

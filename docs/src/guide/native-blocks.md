@@ -26,7 +26,7 @@ Native code blocks allow you to write platform-specific native code alongside yo
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import { useHaptics } from '@/generated/useHaptics'
+import { useHaptics } from './generated/useHaptics'
 
 const { vibrate } = useHaptics()
 const message = ref('Hello from native code!')
@@ -174,7 +174,10 @@ The code generator creates three types of files:
 
 ### 1. Swift Modules (iOS/macOS)
 
-**Location:** `native/ios/VueNativeCore/Sources/VueNativeCore/GeneratedModules/`
+**Locations:**
+
+- iOS: `native/ios/VueNativeCore/Sources/VueNativeCore/GeneratedModules/`
+- macOS: `native/macos/VueNativeMacOS/Sources/VueNativeMacOS/GeneratedModules/`
 
 ```swift
 // Auto-generated from Haptics.vue
@@ -193,7 +196,7 @@ final class HapticsModule: NativeModule {
 
 ### 2. Kotlin Modules (Android)
 
-**Location:** `native/android/VueNativeCore/src/main/kotlin/.../GeneratedModules/`
+**Location:** `native/android/VueNativeCore/src/main/kotlin/com/vuenative/core/GeneratedModules/`
 
 ```kotlin
 // Auto-generated from Haptics.vue
@@ -214,11 +217,13 @@ class HapticsModule: NativeModule {
 
 ### 3. TypeScript Composables
 
-**Location:** `packages/runtime/src/generated/` or `app/generated/`
+**Location:** `app/generated/` in a CLI scaffold. The standalone codegen package
+defaults to `packages/runtime/src/generated/` when no TypeScript output is
+configured.
 
 ```typescript
 // Auto-generated from Haptics.vue
-import { NativeBridge } from '../bridge'
+import { NativeBridge } from '@thelacanians/vue-native-runtime'
 
 export interface HapticsModule {
   vibrate(style: string): Promise<void>
@@ -245,19 +250,20 @@ export default {
   plugins: [
     vue(),
     vueNative({
-      platform: 'ios',
-      nativeCodegen: true, // Enable/disable codegen
+      nativeCodegen: true,
       nativeOutputDirs: {
-        ios: 'native/ios/GeneratedModules',
-        android: 'native/android/GeneratedModules',
-        macos: 'native/macos/GeneratedModules',
         typescript: 'app/generated',
       },
-      exclude: ['node_modules', 'dist', '.git', 'tests'],
+      exclude: ['node_modules', 'dist', '.git', '.turbo', 'tests'],
     }),
   ],
 }
 ```
+
+When omitted, the native output directories are the canonical source roots
+shown above. Generated registration files are written into each platform's
+`Modules/` directory. Keep these paths inside the native packages so Xcode and
+Gradle compile the generated sources.
 
 ## Manual Code Generation
 
@@ -265,13 +271,16 @@ You can also run code generation manually:
 
 ```bash
 # Using the parser and codegen packages directly
-bun run -e "
+bun -e "
   import { parseDirectory } from '@thelacanians/vue-native-sfc-parser'
   import { generateCode, writeGeneratedFiles } from '@thelacanians/vue-native-codegen'
-  
+
   const result = parseDirectory('app/')
+  if (result.errors.length) throw new Error(JSON.stringify(result.errors, null, 2))
   const codegen = generateCode(result.allNativeBlocks)
-  writeGeneratedFiles(codegen)
+  if (codegen.errors.length) throw new Error(JSON.stringify(codegen.errors, null, 2))
+  const written = writeGeneratedFiles(codegen)
+  if (written.errors.length) throw new Error(JSON.stringify(written.errors, null, 2))
 "
 ```
 
@@ -298,7 +307,7 @@ bun run -e "
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import { useAIChat } from '@/generated/useAIChat'
+import { useAIChat } from './generated/useAIChat'
 
 const { messages, send, streamResponse } = useAIChat()
 const input = ref('')
@@ -387,7 +396,7 @@ class AIChatModule: NativeModule {
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import { useCodeEditor } from '@/generated/useCodeEditor'
+import { useCodeEditor } from './generated/useCodeEditor'
 
 const { highlight, getCompletions } = useCodeEditor()
 const code = ref('')
@@ -526,17 +535,42 @@ class ImageProcessorModule: NativeModule {
 
 ### Method Signature Extraction
 
-The code generator automatically extracts method signatures from your Swift/Kotlin code to create type-safe TypeScript interfaces:
+The code generator reads method names dispatched by `invoke` and uses the
+called helper's signature to create the TypeScript API:
 
 ```swift
 <native platform="ios">
 class MyModule: NativeModule {
-  func fetch(url: String, timeout: Int) async throws -> Data {
-    // This method signature is extracted
+  var moduleName: String { "MyModule" }
+
+  func invoke(method: String, args: [Any], callback: @escaping (Any?, String?) -> Void) {
+    switch method {
+    case "fetch":
+      let url = args[0] as? String ?? ""
+      let timeout = args[1] as? Int ?? 30
+      Task {
+        do {
+          callback(try await fetch(url: url, timeout: timeout), nil)
+        } catch {
+          callback(nil, error.localizedDescription)
+        }
+      }
+    case "save":
+      let data = args[0] as? String ?? ""
+      let path = args[1] as? String ?? ""
+      callback(save(data: data, path: path), nil)
+    default:
+      callback(nil, "Unknown method: \(method)")
+    }
   }
-  
-  func save(data: Data, path: String) -> Bool {
-    // This too
+
+  func fetch(url: String, timeout: Int) async throws -> String {
+    // Return a bridge-serializable value.
+    return ""
+  }
+
+  func save(data: String, path: String) -> Bool {
+    return true
   }
 }
 </native>
@@ -546,19 +580,24 @@ Generates:
 
 ```typescript
 export interface MyModule {
-  fetch(url: string, timeout: number): Promise<Data>
-  save(data: Data, path: string): boolean
+  fetch(url: string, timeout: number): Promise<string>
+  save(data: string, path: string): Promise<boolean>
 }
 ```
 
-### Custom Registration
+All generated methods return promises because they call the asynchronous native
+bridge, even when the native helper itself is synchronous.
 
-For advanced use cases, you can manually register modules:
+### Generated Registration
 
-```swift
-// In your native app initialization code
-NativeModuleRegistry.shared.register(CustomModule())
-```
+The generator writes `GeneratedModuleRegistry.swift` or
+`GeneratedModuleRegistry.kt`, and each platform's native registry calls it at
+startup. Do not add a second manual registration for a `<native>` block. Rebuild
+the native target after generated sources change.
+
+For Android modules that live in the application host instead of an SFC, return
+new instances from
+[`VueNativeActivity.createNativeModules()`](/android/VueNativeActivity.md).
 
 ## Next Steps
 

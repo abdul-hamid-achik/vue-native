@@ -225,7 +225,7 @@ Hot reload lets you edit `.vue` files and see changes instantly without rebuildi
 **Terminal 1 — Start the dev server:**
 
 ```bash
-bun run dev
+vue-native dev --android
 ```
 
 This starts:
@@ -246,7 +246,7 @@ Or build from Android Studio. Once the app is running, you don't need to rebuild
 2. Vite detects the change, rebuilds `vue-native-bundle.js`
 3. The dev server sends the new bundle over WebSocket
 4. `HotReloadManager` in the app receives it
-5. `JSRuntime` tears down the old V8 context, creates a new one, evaluates the new bundle
+5. `JSRuntime` tears down Vue and resets bridge, polyfill, and native-module state, then evaluates the new bundle in the existing V8 isolate
 6. UI updates on screen
 
 ### Emulator networking
@@ -357,7 +357,7 @@ maven { url = uri("https://jitpack.io") }
 **"INSTALL_FAILED_NO_MATCHING_ABIS"** — CPU architecture mismatch. Use an **x86_64** system image on Intel/AMD, or **arm64** on Apple Silicon. Check your emulator image matches your machine.
 
 **Emulator can't connect to dev server** — The emulator uses `10.0.2.2` to reach the host. Verify:
-1. `bun run dev` is running on the host
+1. `vue-native dev --android` is running on the host
 2. Nothing else is using port 8174: `lsof -i :8174`
 3. `getDevServerUrl()` returns `"ws://10.0.2.2:8174"`
 

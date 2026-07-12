@@ -25,10 +25,13 @@ Demonstrates camera access, image picker, and QR code scanning.
 ```bash
 cd examples/camera-app
 bun install
-bun vue-native dev
+bun run dev:ios
+# or: bun run dev:android
 ```
 
-**Note:** Requires physical device or simulator with camera support.
+This directory contains Vue source only. Copy it into a generated project with
+the required iOS or Android host integration before running it. Camera capture
+requires a physical device or a simulator/emulator with camera support.
 
 ## Key Concepts
 
@@ -88,9 +91,8 @@ await scanQRCode()
 examples/camera-app/
 ├── app/
 │   ├── main.ts
-│   ├── App.vue
-│   └── CameraApp.vue
-├── native/
+│   └── App.vue
+├── vite.config.ts
 └── package.json
 ```
 

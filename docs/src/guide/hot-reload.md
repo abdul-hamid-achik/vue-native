@@ -60,7 +60,9 @@ class MainActivity : VueNativeActivity() {
 ## Start development
 
 ```bash
-bun run dev
+vue-native dev --ios
+# or: vue-native dev --android
+# or: vue-native dev --platform macos
 ```
 
 Then run the app from Xcode / Android Studio.
@@ -68,7 +70,7 @@ Then run the app from Xcode / Android Studio.
 The watcher compiles one platform-specific bundle at a time. Use `vue-native dev --ios`, `vue-native dev --android`, or `vue-native dev --platform macos` to select it. Start a new watcher when switching platforms; a single `--ios --android` command is rejected.
 
 ::: tip Physical Devices
-The dev server accepts connections from any device on your local network. When you run `vue-native dev`, it prints your LAN IP address:
+The dev server accepts connections from any device on your local network. When you run a targeted `vue-native dev` command, it prints your LAN IP address:
 
 ```
   Hot reload server: ws://localhost:8174

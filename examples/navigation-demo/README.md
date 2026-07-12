@@ -31,10 +31,13 @@ Comprehensive navigation example demonstrating stack navigation, params, and gua
 ```bash
 cd examples/navigation-demo
 bun install
-bun vue-native dev
+bun run dev:ios
+# or: bun run dev:android
+# or: bun run dev:macos
 ```
 
-Then open in Xcode or Android Studio.
+This directory contains Vue source only. Copy it into a generated project with
+the corresponding native host before opening Xcode or Android Studio.
 
 ## Key Concepts
 
@@ -109,12 +112,13 @@ examples/navigation-demo/
 ├── app/
 │   ├── main.ts
 │   ├── App.vue
-│   ├── router.ts
-│   └── views/
-│       ├── HomeView.vue
-│       ├── DetailView.vue
-│       └── SettingsView.vue
-├── native/
+│   └── screens/
+│       ├── HomeScreen.vue
+│       ├── DetailScreen.vue
+│       ├── ProfileScreen.vue
+│       ├── SearchScreen.vue
+│       └── SettingsScreen.vue
+├── vite.config.ts
 └── package.json
 ```
 

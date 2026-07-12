@@ -6,7 +6,6 @@ export default defineConfig({
   plugins: [
     vue(),
     vueNative({
-      platform: 'ios',
       globalName: 'NavigationDemoApp',
     }),
   ],

@@ -11,4 +11,4 @@ declare module '*.vue' {
 }
 
 declare const __DEV__: boolean
-declare const __PLATFORM__: string
+declare const __PLATFORM__: 'ios' | 'android' | 'macos'

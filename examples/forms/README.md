@@ -25,8 +25,12 @@ Complete form handling example with validation, error handling, and submission.
 ```bash
 cd examples/forms
 bun install
-bun vue-native dev
+bun run dev:ios
+# or: bun run dev:android
 ```
+
+This directory contains Vue source only. Copy it into a generated project with
+an iOS or Android native host before launching it.
 
 ## Key Concepts
 

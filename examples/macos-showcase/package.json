@@ -4,13 +4,17 @@
   "private": true,
   "scripts": {
     "build": "vite build",
-    "dev": "vite build --watch",
+    "dev": "vue-native dev --platform macos",
+    "dev:ios": "vue-native dev --platform ios",
+    "dev:android": "vue-native dev --platform android",
+    "dev:macos": "vue-native dev --platform macos",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@thelacanians/vue-native-runtime": "workspace:*"
   },
   "devDependencies": {
+    "@thelacanians/vue-native-cli": "workspace:*",
     "@thelacanians/vue-native-vite-plugin": "workspace:*",
     "@vitejs/plugin-vue": "^6.0.5",
     "vite": "^8.0.0",

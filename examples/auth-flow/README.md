@@ -27,8 +27,13 @@ Complete authentication flow with login, registration, and protected screens.
 ```bash
 cd examples/auth-flow
 bun install
-bun vue-native dev
+bun run dev:ios
+# or: bun run dev:android
 ```
+
+This directory contains the Vue source and build configuration, not a native app
+shell. Copy `app/`, `vite.config.ts`, and `env.d.ts` into a project created by
+the Vue Native CLI before launching it on a simulator or device.
 
 ## Key Concepts
 
@@ -103,14 +108,10 @@ examples/auth-flow/
 ├── app/
 │   ├── main.ts
 │   ├── App.vue
-│   ├── router.ts
-│   ├── stores/
-│   │   └── auth.ts
-│   └── views/
-│       ├── LoginView.vue
-│       ├── RegisterView.vue
-│       └── HomeView.vue
-├── native/
+│   └── screens/
+│       ├── LoginScreen.vue
+│       └── HomeScreen.vue
+├── vite.config.ts
 └── package.json
 ```
 

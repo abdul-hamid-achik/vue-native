@@ -25,8 +25,13 @@ Demonstrates theming, dark mode, and dynamic styles.
 ```bash
 cd examples/theming
 bun install
-bun vue-native dev
+bun run dev:ios
+# or: bun run dev:android
+# or: bun run dev:macos
 ```
+
+This directory contains Vue source only. Copy it into a generated project with
+the corresponding native host before launching it.
 
 ## Key Concepts
 
@@ -109,8 +114,9 @@ examples/theming/
 ├── app/
 │   ├── main.ts
 │   ├── App.vue
+│   ├── ThemeDemo.vue
 │   └── theme.ts
-├── native/
+├── vite.config.ts
 └── package.json
 ```
 

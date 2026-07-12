@@ -18,4 +18,4 @@ declare module '*.vue' {
  * Compile-time constants injected by @thelacanians/vue-native-vite-plugin.
  */
 declare const __DEV__: boolean
-declare const __PLATFORM__: string
+declare const __PLATFORM__: 'ios' | 'android' | 'macos'

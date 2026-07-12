@@ -21,9 +21,15 @@ const result = parseDirectory('app/', { exclude: ['node_modules', 'dist'] })
 
 // Generate code
 const codegen = generateCode(result.allNativeBlocks)
+if (codegen.errors.length > 0) {
+  throw new Error(JSON.stringify(codegen.errors, null, 2))
+}
 
 // Write to disk
-writeGeneratedFiles(codegen)
+const writeResult = writeGeneratedFiles(codegen)
+if (writeResult.errors.length > 0) {
+  throw new Error(JSON.stringify(writeResult.errors, null, 2))
+}
 
 console.log(`Generated ${codegen.stats.swiftFiles} Swift files`)
 console.log(`Generated ${codegen.stats.kotlinFiles} Kotlin files`)
@@ -34,10 +40,10 @@ console.log(`Generated ${codegen.stats.typescriptFiles} TypeScript files`)
 
 ```ts
 const codegen = generateCode(result.allNativeBlocks, {
-  root: '/path/to/project',
-  iosOutputDir: 'native/ios/GeneratedModules',
-  androidOutputDir: 'native/android/GeneratedModules',
-  typescriptOutputDir: 'src/generated',
+  iosOutputDir: 'native/ios/VueNativeCore/Sources/VueNativeCore/GeneratedModules',
+  androidOutputDir: 'native/android/VueNativeCore/src/main/kotlin/com/vuenative/core/GeneratedModules',
+  macosOutputDir: 'native/macos/VueNativeMacOS/Sources/VueNativeMacOS/GeneratedModules',
+  typescriptOutputDir: 'app/generated',
   generateSwift: true,
   generateKotlin: true,
   generateTypeScript: true,
@@ -69,9 +75,10 @@ const tsOnly = generateCode(blocks, {
 import { cleanGeneratedFiles } from '@thelacanians/vue-native-codegen'
 
 cleanGeneratedFiles({
-  iosOutputDir: 'native/ios/GeneratedModules',
-  androidOutputDir: 'native/android/GeneratedModules',
-  typescriptOutputDir: 'src/generated',
+  iosOutputDir: 'native/ios/VueNativeCore/Sources/VueNativeCore/GeneratedModules',
+  androidOutputDir: 'native/android/VueNativeCore/src/main/kotlin/com/vuenative/core/GeneratedModules',
+  macosOutputDir: 'native/macos/VueNativeMacOS/Sources/VueNativeMacOS/GeneratedModules',
+  typescriptOutputDir: 'app/generated',
 })
 ```
 
@@ -94,7 +101,7 @@ Write generated files to disk.
 
 - **Parameters:**
   - `result` (CodegenResult) - Code generation result
-  - `rootDir` (string) - Project root directory
+  - `rootDir` (string, optional) - Project root directory (default: current working directory)
 - **Returns:** `{ written: number, errors: ParseError[] }`
 
 #### `cleanGeneratedFiles(options, rootDir)`
@@ -103,7 +110,7 @@ Clean generated files from output directories.
 
 - **Parameters:**
   - `options` (CodegenOptions) - Generation options
-  - `rootDir` (string) - Project root directory
+  - `rootDir` (string, optional) - Project root directory (default: current working directory)
 
 #### `generateSwiftFile(block, options)`
 
@@ -155,6 +162,7 @@ Generate Kotlin module registration code.
 
 ```ts
 interface CodegenOptions {
+  /** Reserved integration metadata; pass rootDir to write/clean for path resolution. */
   root?: string
   iosOutputDir?: string
   androidOutputDir?: string
@@ -194,6 +202,10 @@ interface GeneratedFile {
   sourceBlock: NativeBlock
 }
 ```
+
+`outputPath` is relative to the project root unless you configure an absolute
+output directory. `writeGeneratedFiles()` resolves it against its `rootDir`
+argument.
 
 ## Example Output
 
@@ -280,7 +292,7 @@ final class HapticsModule: NativeModule {
 //
 // ────────────────────────────────────────────────────────────────────────────────
 
-import { NativeBridge } from '../bridge'
+import { NativeBridge } from '@thelacanians/vue-native-runtime'
 
 /**
  * Type-safe interface for the Haptics native module

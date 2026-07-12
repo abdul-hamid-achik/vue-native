@@ -25,8 +25,12 @@ A settings screen demonstrating form controls, pickers, and persistent storage.
 ```bash
 cd examples/settings
 bun install
-bun vue-native dev
+bun run dev:ios
 ```
+
+Generate the included iOS project with `cd ios && xcodegen generate`, then open
+`ios/VueNativeSettings.xcodeproj`. To use the Vue source on Android, run
+`bun run dev:android` after copying it into a scaffold with an Android host.
 
 ## Key Concepts
 

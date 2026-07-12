@@ -26,7 +26,6 @@ my-contacts/
 │   ├── main.ts          # Entry point
 │   └── App.vue          # Root component
 ├── ios/                  # Xcode project (iOS)
-├── macos/                # Xcode project (macOS)
 ├── android/              # Gradle project (Android)
 ├── vite.config.ts        # Build configuration
 └── package.json
@@ -105,16 +104,21 @@ createApp(App).start()
 ### Run it
 
 ```bash
-# Terminal 1: Start the dev server (Vite watch + hot reload WebSocket)
-bun run dev
+# Terminal 1: Start the watcher for the platform you are running
+vue-native dev --ios
+# or: vue-native dev --android
 
-# Terminal 2: Build and run on simulator (first time only)
+# Terminal 2: Build and run the matching native app (first time only)
 vue-native run ios
 # or: vue-native run android
-# or: vue-native run macos
 ```
 
 You should see a centered counter that increments on tap. Any edits to `.vue` files will hot-reload instantly.
+
+Each watcher creates one platform-specific bundle. Restart it with the other
+target flag when switching between iOS and Android. The CLI does not scaffold a
+macOS app shell yet; follow the [macOS setup guide](/macos/setup.md) before using
+`vue-native dev --platform macos` and `vue-native run macos`.
 
 ### Key concepts
 

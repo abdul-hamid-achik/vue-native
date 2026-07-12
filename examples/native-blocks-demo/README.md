@@ -1,150 +1,141 @@
-# Native Blocks Demo
+# Native Blocks Code-Generation Demo
 
-Advanced example demonstrating `<native>` blocks for custom native code.
+This source-only example shows how Vue Native parses `<native>` blocks and
+generates Swift, Kotlin, TypeScript composables, and native-module registries.
+It intentionally does not include an iOS, Android, or macOS app shell, so it is
+useful for inspecting code generation but is not an end-to-end native app by
+itself.
 
 ## What It Demonstrates
 
-- **Feature:** `<native>` blocks for Swift/Kotlin code
-- **Patterns:**
-  - Custom native modules
-  - Code generation
-  - TypeScript type generation
-  - Platform-specific implementations
+- Platform-specific iOS and Android `NativeModule` implementations in an SFC
+- Generated Swift and Kotlin source
+- Generated, typed TypeScript composables
+- Generated registration source for each native platform
+- Deterministic regeneration through both the CLI and Vite plugin
 
-## Key Features
+The demo prefixes its device-information module as `ExtendedDeviceInfo` so it
+does not collide with Vue Native's built-in `DeviceInfo` module when generated
+inside a scaffold.
 
-- Write Swift code inline
-- Write Kotlin code inline
-- Automatic TypeScript types
-- Automatic module registration
-- Cross-platform native functionality
+Generating a registry file does not make an arbitrary output directory part of
+an Xcode or Gradle target. A runnable app must generate these files into the
+native source roots supplied by a Vue Native scaffold.
 
-## How to Run
+## Generate and Inspect
 
 ```bash
 cd examples/native-blocks-demo
 bun install
-bun vue-native dev
+bun run generate
+bun run typecheck
+bun run build
 ```
 
-## Key Concepts
+The demo deliberately writes inspection artifacts outside a native package:
 
-### Native Block Syntax
-
-```vue
-<script setup>
-import { ref } from '@thelacanians/vue-native-runtime'
-
-const result = ref('')
-
-// Call the native module
-async function callNative() {
-  result.value = await NativeBridge.invokeNativeModule(
-    'CustomModule',
-    'greet',
-    ['World']
-  )
-}
-</script>
-
-<template>
-  <VView>
-    <VButton title="Call Native" @press="callNative" />
-    <VText>{{ result }}</VText>
-  </VView>
-</template>
-
-<native>
-// This code is compiled to Swift (iOS) and Kotlin (Android)
-
-module CustomModule {
-  func greet(name: String) -> String {
-    return "Hello, \(name)!"
-  }
-}
-</native>
+```text
+generated/ios/       Swift modules and registry
+generated/android/   Kotlin modules and registry
+generated/macos/     Empty macOS registry (there are no macOS blocks yet)
+app/generated/       TypeScript composables
 ```
 
-### Platform-Specific Code
+These directories are generated and ignored by Git. `bun run dev:ios`,
+`bun run dev:android`, and `bun run dev:macos` start platform-targeted bundle
+watchers, but a corresponding native host is still required to execute a
+generated module.
+
+## Run It in a Native App
+
+1. Create a fresh project with `bun run create:host NativeBlocksHost`.
+2. Copy the `<native>` blocks and UI from `app/App.vue` into the scaffold.
+3. Keep the scaffold's default native output paths. They point at the Swift and
+   Kotlin source roots compiled by its bundled native projects.
+4. Import the generated composables from `app/generated/` and replace the
+   source-only status handlers with real calls.
+5. Start the matching watcher with `bun run dev -- --ios`,
+   `bun run dev -- --android`, or `bun run dev -- --platform macos` from the
+   scaffold.
+
+The generated `GeneratedModuleRegistry` is then compiled with the native host
+and called automatically by Vue Native. Do not manually register the generated
+modules a second time.
+
+## Valid Platform-Specific Modules
+
+An iOS block implements the Swift `NativeModule` protocol:
 
 ```vue
 <native platform="ios">
-// Swift code only for iOS
-import UIKit
+class GreetingModule: NativeModule {
+    var moduleName: String { "Greeting" }
 
-module iOSModule {
-  func showNativeAlert(title: String, message: String) {
-    let alert = UIAlertController(
-      title: title,
-      message: message,
-      preferredStyle: .alert
-    )
-    // ...
-  }
-}
-</native>
-
-<native platform="android">
-// Kotlin code only for Android
-package com.example
-
-module AndroidModule {
-  fun showNativeAlert(title: String, message: String) {
-    // Android alert implementation
-  }
+    func invoke(
+        method: String,
+        args: [Any],
+        callback: @escaping (Any?, String?) -> Void
+    ) {
+        guard method == "greet" else {
+            callback(nil, "Unknown method: \(method)")
+            return
+        }
+        let name = args.first as? String ?? "World"
+        callback("Hello, \(name)!", nil)
+    }
 }
 </native>
 ```
 
-### Custom Native Module
+An Android block implements the Kotlin protocol, including the active bridge
+argument:
 
 ```vue
-<native>
-module BatteryModule {
-  func getBatteryLevel() -> Int {
-    // iOS implementation
-    return UIDevice.current.batteryLevel * 100
-  }
+<native platform="android">
+class GreetingModule : NativeModule {
+    override val moduleName: String = "Greeting"
+
+    override fun invoke(
+        method: String,
+        args: List<Any?>,
+        bridge: NativeBridge,
+        callback: (Any?, String?) -> Unit,
+    ) {
+        if (method != "greet") {
+            callback(null, "Unknown method: $method")
+            return
+        }
+        val name = args.firstOrNull() as? String ?: "World"
+        callback("Hello, $name!", null)
+    }
 }
 </native>
 ```
 
-## File Structure
+After generation, application code calls the typed composable rather than
+constructing registry entries manually:
 
+```ts
+import { useGreeting } from './generated/useGreeting'
+
+const { greet } = useGreeting()
+const message = await greet('Vue Native')
 ```
+
+## Repository Layout
+
+```text
 examples/native-blocks-demo/
 ├── app/
 │   ├── main.ts
-│   ├── App.vue
-│   └── NativeDemo.vue    # Contains <native> blocks
-├── native/
-│   ├── ios/
-│   └── android/
-├── generated/            # Auto-generated code
-│   ├── ios/
-│   └── android/
-└── package.json
+│   └── App.vue          Source blocks and source-only UI
+├── env.d.ts
+├── package.json
+├── tsconfig.json
+└── vite.config.ts       Inspection output directories
 ```
-
-## Build Process
-
-1. Vite plugin extracts `<native>` blocks
-2. Code generator creates Swift/Kotlin files
-3. TypeScript types are generated
-4. Native modules are registered
-5. App is built with native code
 
 ## Learn More
 
 - [Native Blocks Guide](../../docs/src/guide/native-blocks.md)
 - [Custom Native Modules](../../docs/src/guide/native-modules.md)
-- [Code Generation](../../docs/src/guide/codegen.md)
-
-## Try This
-
-Experiment with:
-1. Create a custom toast notification module
-2. Implement platform-specific haptics
-3. Add a native image filter
-4. Create a barcode scanner module
-5. Build a native payment integration

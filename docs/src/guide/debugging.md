@@ -82,7 +82,7 @@ width.value = 200  // Triggers re-render
 
 ### Hot reload not connecting
 
-- Check that the dev server is running (`bun run dev`)
+- Check that the matching targeted dev server is running (`vue-native dev --ios`, `--android`, or `--platform macos`)
 - iOS Simulator: connects to `ws://localhost:8174`
 - Android Emulator: connects to `ws://10.0.2.2:8174` (host loopback)
 - Physical device: connects to `ws://<your-lan-ip>:8174` (printed in dev server output)

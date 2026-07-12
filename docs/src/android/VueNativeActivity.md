@@ -5,6 +5,7 @@
 ## Usage
 
 ```kotlin
+import com.vuenative.core.NativeModule
 import com.vuenative.core.VueNativeActivity
 
 class MainActivity : VueNativeActivity() {
@@ -19,6 +20,9 @@ class MainActivity : VueNativeActivity() {
             "ws://10.0.2.2:8174"
         } else null
     }
+
+    // Optional: create app-owned modules for this JavaScript world
+    override fun createNativeModules(): List<NativeModule> = listOf(MyModule())
 }
 ```
 
@@ -32,6 +36,17 @@ Return the path to the JS bundle in your app's `assets/` folder.
 
 Return the WebSocket URL of the Vite dev server. Return `null` (default) to disable hot reload and load only from assets.
 
+### `createNativeModules(): List<NativeModule>` (protected open)
+
+Return application-specific native modules. The Activity calls this factory at
+startup and again for every accepted hot reload, so return **new module
+instances on every call**. The previous JavaScript world's modules are
+destroyed before their replacements are initialized.
+
+Application modules are registered after the built-in and generated modules.
+If an application module uses the same `moduleName` as an earlier module, the
+application module intentionally replaces that implementation.
+
 ## What it does
 
 `VueNativeActivity` handles:
@@ -40,7 +55,7 @@ Return the WebSocket URL of the Vite dev server. Return `null` (default) to disa
 2. Sets up edge-to-edge rendering (draws behind status and navigation bars)
 3. Initializes `JSRuntime` (V8 engine, polyfills on `VueNative-JS` thread)
 4. Initializes `NativeBridge` with the root container
-5. Registers all native modules
+5. Registers built-in modules, generated modules, then application modules from `createNativeModules()`
 6. Wires up `__VN_resolveCallback` and `__VN_handleEvent` routing
 7. Loads the JS bundle from assets (or connects hot reload)
 
@@ -61,12 +76,19 @@ override fun onRequestPermissionsResult(
 
 ## Back button
 
-By default, pressing the back button dispatches an `android:back` global event to JS. Handle it in your Vue app:
+Pressing the system back button dispatches the `hardware:backPress` global
+event. Use `useBackHandler()` to consume it from a component:
 
 ```ts
-import { onGlobalEvent } from '@thelacanians/vue-native-runtime'
+import { useBackHandler } from '@thelacanians/vue-native-runtime'
 
-onGlobalEvent('android:back', () => {
+useBackHandler(() => {
   router.pop()
+  return true
 })
 ```
+
+Return `true` after handling the action. Return `false` to run the default
+Android back action, which finishes the Activity. If JavaScript has no
+`hardware:backPress` listener, `VueNativeActivity` also performs that default
+action.

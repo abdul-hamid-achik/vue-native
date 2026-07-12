@@ -25,8 +25,13 @@ A media player demonstrating video and audio playback controls.
 ```bash
 cd examples/media-player
 bun install
-bun vue-native dev
+bun run dev:ios
+# or: bun run dev:android
+# or: bun run dev:macos
 ```
+
+This directory contains Vue source only. Copy it into a generated project with
+the matching native host before launching it.
 
 ## Key Concepts
 

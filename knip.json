@@ -10,8 +10,7 @@
     "examples/*": {},
     "examples/native-blocks-demo": {
       "ignore": ["app/**"],
-      "ignoreDependencies": ["@thelacanians/vue-native-runtime", "@thelacanians/vue-native-navigation"],
-      "ignoreBinaries": ["vue-native"]
+      "ignoreDependencies": ["@thelacanians/vue-native-runtime", "@thelacanians/vue-native-navigation"]
     }
   },
   "ignore": [

@@ -185,7 +185,7 @@ Hot reload lets you edit `.vue` files and see changes instantly without rebuildi
 **Terminal 1 — Start the dev server:**
 
 ```bash
-bun run dev
+vue-native dev --ios
 ```
 
 This starts:

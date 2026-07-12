@@ -25,12 +25,12 @@ A simple todo list demonstrating CRUD operations, local storage, and list render
 ```bash
 cd examples/todo
 bun install
-bun vue-native dev
+bun run dev:ios
 ```
 
-Then open:
-- **iOS:** `native/ios/Todo.xcodeproj` in Xcode
-- **Android:** `native/android` in Android Studio
+Generate the included iOS project with `cd ios && xcodegen generate`, then open
+`ios/VueNativeTodo.xcodeproj`. To use the Vue source on Android, run
+`bun run dev:android` after copying it into a scaffold with an Android host.
 
 ## Key Concepts
 
@@ -84,9 +84,9 @@ function toggle(todo: Todo) {
 examples/todo/
 ├── app/
 │   ├── main.ts
-│   ├── App.vue
-│   └── TodoApp.vue
-├── native/
+│   └── App.vue
+├── ios/                 # XcodeGen iOS app specification
+├── vite.config.ts
 └── package.json
 ```
 
