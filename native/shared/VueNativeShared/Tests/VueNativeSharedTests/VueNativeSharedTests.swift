@@ -49,6 +49,32 @@ final class VueNativeSharedTests: XCTestCase {
         XCTAssertFalse(pinning.hasPins(for: "test.com"))
     }
 
+    func testCertificatePinningRequestSessionUsesSharedSessionWithoutPins() {
+        let pinning = CertificatePinning.shared
+        pinning.clearPins()
+
+        XCTAssertTrue(pinning.requestSession === URLSession.shared)
+    }
+
+    func testCertificatePinningRequestSessionProtectsCrossHostRedirects() {
+        let pinning = CertificatePinning.shared
+        pinning.clearPins()
+        defer { pinning.clearPins() }
+
+        pinning.configurePins([
+            "pinned-destination.example": [
+                "sha256/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+            ]
+        ])
+
+        XCTAssertFalse(pinning.hasPins(for: "unpinned-origin.example"))
+        XCTAssertTrue(pinning.session.delegate === pinning)
+        XCTAssertTrue(
+            pinning.requestSession === pinning.session,
+            "The delegate session must own an unpinned origin so redirects to pinned hosts are validated"
+        )
+    }
+
     func testCertificatePinningHashesDERSubjectPublicKeyInfo() {
         // Self-signed RSA certificate generated solely for this deterministic
         // fixture. The expected pin was calculated with:

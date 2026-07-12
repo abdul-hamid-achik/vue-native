@@ -366,6 +366,10 @@ public final class NativeBridge {
             label.text = text
             label.flex.markDirty()
         }
+
+        if let parentId = nodeParent[nodeId] {
+            refreshTextHierarchy(startingAt: parentId)
+        }
     }
 
     /// setElementText: [nodeId: Int, text: String]
@@ -388,6 +392,10 @@ public final class NativeBridge {
                 existingLabel.text = text
                 existingLabel.flex.markDirty()
             }
+        }
+
+        if let parentId = nodeParent[nodeId] {
+            refreshTextHierarchy(startingAt: parentId)
         }
     }
 
@@ -505,6 +513,8 @@ public final class NativeBridge {
         } else {
             container.flex.addItem(childView)
         }
+
+        refreshTextHierarchy(startingAt: parentId)
     }
 
     /// Remove a child from its previous native container and reverse index
@@ -526,6 +536,8 @@ public final class NativeBridge {
         } else {
             childView.removeFromSuperview()
         }
+
+        refreshTextHierarchy(startingAt: oldParentId)
     }
 
     /// Returns the view that children should be inserted into.
@@ -564,6 +576,7 @@ public final class NativeBridge {
         // Remove child from parent's childrenOf list
         if let parentId = nodeParent[childId] {
             childrenOf[parentId]?.removeAll { $0 == childId }
+            refreshTextHierarchy(startingAt: parentId)
         }
 
         cleanupNodeRegistries(childId)
@@ -571,6 +584,25 @@ public final class NativeBridge {
         if removingRoot {
             clearRootConstraints()
             rootView = nil
+        }
+    }
+
+    /// VText owns logical text-node children without adding them as visual
+    /// subviews. When a text child changes, moves, or is removed, rebuild the
+    /// owning label from the bridge's ordered child index and continue upward
+    /// for nested VText elements.
+    private func refreshTextHierarchy(startingAt nodeId: Int) {
+        var currentId: Int? = nodeId
+
+        while let id = currentId,
+              typeRegistry[id] == "VText",
+              let label = viewRegistry[id] as? UILabel {
+            let text = childrenOf[id, default: []].compactMap { childId in
+                (viewRegistry[childId] as? UILabel)?.text
+            }.joined()
+            label.text = text.isEmpty ? nil : text
+            label.flex.markDirty()
+            currentId = nodeParent[id]
         }
     }
 

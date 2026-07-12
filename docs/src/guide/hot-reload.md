@@ -7,11 +7,11 @@ Vue Native supports hot reload — edit a `.vue` file and see the change on your
 1. `vue-native dev` starts Vite in watch mode and a WebSocket server on port 8174
 2. When a file changes, Vite rebuilds the bundle and writes `dist/vue-native-bundle.js`
 3. A file watcher detects the change and broadcasts the new bundle over WebSocket
-4. `HotReloadManager` on the native side receives the bundle, tears down the current JS context, and re-evaluates the new bundle
+4. `HotReloadManager` on the native side receives the bundle and resets the current application world. iOS and macOS recreate JavaScriptCore; Android tears down Vue and polyfill/native state before evaluating in its existing V8 isolate
 5. Vue re-renders from scratch — your app reflects the new code
 
 ::: warning State is reset on reload
-Hot reload performs a **full reload** — the entire JS context is torn down and re-created. This means:
+Hot reload performs a **full application reload**. Apple targets recreate the JS context; Android resets the rendered app, bridge registries, timers, animation frames, and Vue state inside the current V8 isolate. In every case:
 - All component state (`ref`, `reactive`) is lost
 - Navigation stack resets to the initial route
 - Pinia/store state is cleared

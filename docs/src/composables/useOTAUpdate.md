@@ -236,4 +236,4 @@ const styles = createStyleSheet({
 - The `rollback()` function keeps one previous applied OTA version. If that file is missing or invalid, rollback selects the embedded app-store bundle.
 - Download progress events fire via `ota:downloadProgress` global events, which the composable listens to automatically.
 - Automatic crash watchdogs and health-based rollout decisions are not built in. Add release telemetry and server-side rollout controls before relying on OTA in production.
-- The iOS evaluation fallback currently reuses its initialized JavaScriptCore context after clearing native/polyfill state. A bundle that mutates globals before throwing may still require an app relaunch; test rollback and failed-startup behavior on devices.
+- If an applied bundle fails during evaluation, iOS discards and recreates the JavaScriptCore context before loading the embedded bundle. Android invalidates the applied bundle and recreates the Activity so the embedded bundle starts in a clean V8 runtime. Physical-device failed-startup and process-relaunch behavior should still be included in release testing.

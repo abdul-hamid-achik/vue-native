@@ -29,6 +29,19 @@ public final class CertificatePinning: NSObject, URLSessionDelegate {
         return URLSession(configuration: config, delegate: self, delegateQueue: nil)
     }()
 
+    /// Session that fetch implementations should use for a new request.
+    ///
+    /// Once any host is pinned, every request must start on the delegate-backed
+    /// session so a redirect from an unpinned origin to a pinned destination
+    /// cannot bypass the destination's trust challenge. With no configured
+    /// pins, the shared session preserves the zero-overhead default path.
+    public var requestSession: URLSession {
+        pinsLock.lock()
+        let hasConfiguredPins = !pins.isEmpty
+        pinsLock.unlock()
+        return hasConfiguredPins ? session : URLSession.shared
+    }
+
     private override init() {
         super.init()
     }

@@ -475,12 +475,9 @@ enum JSPolyfills {
             let captureBlock = JSValue(object: captureExecutor as AnyObject, in: context)
             let promise = promiseCtor?.call(withArguments: [captureBlock as Any])
 
-            // Use the pinning session when pins are configured for this host,
-            // otherwise fall back to URLSession.shared for zero overhead.
-            let host = url.host ?? ""
-            let urlSession = CertificatePinning.shared.hasPins(for: host)
-                ? CertificatePinning.shared.session
-                : URLSession.shared
+            // When any host is pinned, the delegate-backed session must own the
+            // initial request so cross-host redirects cannot bypass pinning.
+            let urlSession = CertificatePinning.shared.requestSession
 
             let task = urlSession.dataTask(with: request) { [weak runtime] data, response, error in
                 guard let runtime = runtime else { return }

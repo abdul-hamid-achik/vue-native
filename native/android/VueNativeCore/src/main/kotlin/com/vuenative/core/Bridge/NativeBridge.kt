@@ -7,6 +7,7 @@ import android.util.Log
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import android.widget.TextView
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -207,6 +208,7 @@ class NativeBridge(private val context: Context) {
         val text = args.getString(1)
         val view = nodeViews[nodeId] ?: return
         (view as? VTextNodeView)?.setText(text)
+        refreshTextHierarchy(nodeParents[nodeId])
     }
 
     private fun handleSetElementText(args: JSONArray) {
@@ -216,6 +218,7 @@ class NativeBridge(private val context: Context) {
         // Delegate to the factory
         val factory = componentRegistry.factoryForType(nodeTypes[nodeId] ?: return) ?: return
         factory.updateProp(view, "text", text)
+        refreshTextHierarchy(nodeParents[nodeId])
     }
 
     private fun handleUpdateProp(args: JSONArray) {
@@ -247,6 +250,7 @@ class NativeBridge(private val context: Context) {
         val child = nodeViews[childId] ?: return
         val insertIndex = prepareChildForInsertion(parentId, childId)
         insertChild(parent, child, insertIndex)
+        refreshTextHierarchy(parentId)
     }
 
     private fun handleInsertBefore(args: JSONArray) {
@@ -265,6 +269,7 @@ class NativeBridge(private val context: Context) {
         // insertion coordinate from nodeChildren instead of ViewGroup children.
         val insertIndex = prepareChildForInsertion(parentId, childId, anchorId)
         insertChild(parent, child, insertIndex)
+        refreshTextHierarchy(parentId)
     }
 
     /**
@@ -307,6 +312,7 @@ class NativeBridge(private val context: Context) {
                     (previousParent as? ViewGroup)?.removeView(child)
                 }
             }
+            refreshTextHierarchy(previousParentId)
         }
 
         // RecyclerView items and factory-owned containers are not necessarily
@@ -351,6 +357,7 @@ class NativeBridge(private val context: Context) {
         // Remove child from parent's nodeChildren list
         if (parentId != null) {
             nodeChildren[parentId]?.removeAll { it == childId }
+            refreshTextHierarchy(parentId)
         }
 
         // Recursively clean up descendants
@@ -362,6 +369,23 @@ class NativeBridge(private val context: Context) {
             // full-screen view that blocks the next native screen.
             (modalContainer.parent as? ViewGroup)?.removeView(modalContainer)
             rootView = null
+        }
+    }
+
+    /**
+     * VText composes logical text-node children into a single TextView instead
+     * of adding them to the Android view hierarchy. Rebuild the composed text
+     * after child edits, moves, and removals, walking upward for nested VText.
+     */
+    private fun refreshTextHierarchy(startingNodeId: Int?) {
+        var currentId = startingNodeId
+        while (currentId != null && nodeTypes[currentId] == "VText") {
+            val label = nodeViews[currentId] as? TextView ?: break
+            label.text = nodeChildren[currentId]
+                .orEmpty()
+                .mapNotNull { childId -> (nodeViews[childId] as? TextView)?.text?.toString() }
+                .joinToString(separator = "")
+            currentId = nodeParents[currentId]
         }
     }
 

@@ -313,6 +313,37 @@ final class NativeBridgeOperationTests: XCTestCase {
         XCTAssertEqual(label?.text, "World", "setText should update the label text to 'World'")
     }
 
+    func testTextChildChangesReorderAndRemovalRefreshVTextParent() {
+        processOp("create", args: [1, "VText"])
+        processOp("createText", args: [2, "Hello"])
+        processOp("createText", args: [3, " World"])
+        processOp("appendChild", args: [1, 2])
+        processOp("appendChild", args: [1, 3])
+
+        let label = bridge.view(forNodeId: 1) as? UILabel
+        XCTAssertEqual(label?.text, "Hello World")
+
+        processOp("setText", args: [2, "Goodbye"])
+        XCTAssertEqual(label?.text, "Goodbye World")
+
+        processOp("insertBefore", args: [1, 3, 2])
+        XCTAssertEqual(label?.text, " WorldGoodbye")
+
+        processOp("removeChild", args: [2])
+        XCTAssertEqual(label?.text, " World")
+
+        processOp("create", args: [4, "VText"])
+        processOp("create", args: [5, "VText"])
+        processOp("appendChild", args: [4, 5])
+        processOp("setElementText", args: [5, "Nested"])
+
+        let outerLabel = bridge.view(forNodeId: 4) as? UILabel
+        XCTAssertEqual(outerLabel?.text, "Nested")
+
+        processOp("setElementText", args: [5, "Updated"])
+        XCTAssertEqual(outerLabel?.text, "Updated")
+    }
+
     // MARK: - addEventListener Tests
 
     func testAddEventListenerRegistersHandler() {

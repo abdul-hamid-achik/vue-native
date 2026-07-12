@@ -351,6 +351,55 @@ class NativeBridgeTest {
         assertEquals("World", textView.text.toString())
     }
 
+    @Test
+    fun testTextChildChangesReorderAndRemovalRefreshVTextParent() {
+        bridge.processOperations(
+            """[
+            {"op":"create","args":[1,"VText"]},
+            {"op":"createText","args":[2,"Hello"]},
+            {"op":"createText","args":[3," World"]},
+            {"op":"appendChild","args":[1,2]},
+            {"op":"appendChild","args":[1,3]}
+        ]"""
+        )
+        flush()
+
+        val label = bridge.nodeViews[1] as android.widget.TextView
+        assertEquals("Hello World", label.text.toString())
+
+        bridge.processOperations("""[{"op":"setText","args":[2,"Goodbye"]}]""")
+        flush()
+        assertEquals("Goodbye World", label.text.toString())
+
+        bridge.processOperations("""[{"op":"insertBefore","args":[1,3,2]}]""")
+        flush()
+        assertEquals(" WorldGoodbye", label.text.toString())
+
+        bridge.processOperations("""[{"op":"removeChild","args":[2]}]""")
+        flush()
+        assertEquals(" World", label.text.toString())
+    }
+
+    @Test
+    fun testNestedVTextElementTextUpdateRefreshesAncestor() {
+        bridge.processOperations(
+            """[
+            {"op":"create","args":[1,"VText"]},
+            {"op":"create","args":[2,"VText"]},
+            {"op":"setElementText","args":[2,"Hello"]},
+            {"op":"appendChild","args":[1,2]}
+        ]"""
+        )
+        flush()
+
+        val outerLabel = bridge.nodeViews[1] as android.widget.TextView
+        assertEquals("Hello", outerLabel.text.toString())
+
+        bridge.processOperations("""[{"op":"setElementText","args":[2,"Goodbye"]}]""")
+        flush()
+        assertEquals("Goodbye", outerLabel.text.toString())
+    }
+
     // -------------------------------------------------------------------------
     // addEventListener
     // -------------------------------------------------------------------------

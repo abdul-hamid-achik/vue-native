@@ -325,6 +325,10 @@ public final class NativeBridge: @preconcurrency NativeEventDispatcher {
             textField.stringValue = text
             textField.ensureLayoutNode().markDirty()
         }
+
+        if let parentId = nodeParent[nodeId] {
+            refreshTextHierarchy(startingAt: parentId)
+        }
     }
 
     /// setElementText: [nodeId: Int, text: String]
@@ -345,6 +349,10 @@ public final class NativeBridge: @preconcurrency NativeEventDispatcher {
                 existingTextField.stringValue = text
                 existingTextField.ensureLayoutNode().markDirty()
             }
+        }
+
+        if let parentId = nodeParent[nodeId] {
+            refreshTextHierarchy(startingAt: parentId)
         }
     }
 
@@ -452,6 +460,8 @@ public final class NativeBridge: @preconcurrency NativeEventDispatcher {
         } else {
             container.addSubview(childView)
         }
+
+        refreshTextHierarchy(startingAt: parentId)
     }
 
     /// Detach a node for a move without unregistering it or its descendants.
@@ -472,6 +482,8 @@ public final class NativeBridge: @preconcurrency NativeEventDispatcher {
         } else {
             childView.removeFromSuperview()
         }
+
+        refreshTextHierarchy(startingAt: oldParentId)
     }
 
     /// Returns the view that children should be inserted into.
@@ -507,6 +519,7 @@ public final class NativeBridge: @preconcurrency NativeEventDispatcher {
 
         if let parentId = nodeParent[childId] {
             childrenOf[parentId]?.removeAll { $0 == childId }
+            refreshTextHierarchy(startingAt: parentId)
         }
 
         cleanupNodeRegistries(childId)
@@ -514,6 +527,24 @@ public final class NativeBridge: @preconcurrency NativeEventDispatcher {
         if removingRoot {
             clearRootConstraints()
             rootView = nil
+        }
+    }
+
+    /// VText renders logical text-node children as one AppKit label. Keep that
+    /// composed value synchronized when a child changes, moves, or is removed,
+    /// including through nested VText elements.
+    private func refreshTextHierarchy(startingAt nodeId: Int) {
+        var currentId: Int? = nodeId
+
+        while let id = currentId,
+              typeRegistry[id] == "VText",
+              let label = viewRegistry[id] as? NSTextField {
+            let text = childrenOf[id, default: []].compactMap { childId in
+                (viewRegistry[childId] as? NSTextField)?.stringValue
+            }.joined()
+            label.stringValue = text
+            label.ensureLayoutNode().markDirty()
+            currentId = nodeParent[id]
         }
     }
 

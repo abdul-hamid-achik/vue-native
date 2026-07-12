@@ -67,6 +67,37 @@ final class NativeBridgeOperationTests: XCTestCase {
         }
     }
 
+    func testTextChildChangesReorderAndRemovalRefreshVTextParent() {
+        process("create", [1, "VText"])
+        process("createText", [2, "Hello"])
+        process("createText", [3, " World"])
+        process("appendChild", [1, 2])
+        process("appendChild", [1, 3])
+
+        let label = bridge.view(forNodeId: 1) as? NSTextField
+        XCTAssertEqual(label?.stringValue, "Hello World")
+
+        process("setText", [2, "Goodbye"])
+        XCTAssertEqual(label?.stringValue, "Goodbye World")
+
+        process("insertBefore", [1, 3, 2])
+        XCTAssertEqual(label?.stringValue, " WorldGoodbye")
+
+        process("removeChild", [2])
+        XCTAssertEqual(label?.stringValue, " World")
+
+        process("create", [4, "VText"])
+        process("create", [5, "VText"])
+        process("appendChild", [4, 5])
+        process("setElementText", [5, "Nested"])
+
+        let outerLabel = bridge.view(forNodeId: 4) as? NSTextField
+        XCTAssertEqual(outerLabel?.stringValue, "Nested")
+
+        process("setElementText", [5, "Updated"])
+        XCTAssertEqual(outerLabel?.stringValue, "Updated")
+    }
+
     func testHostReplacementIgnoresStaleNativeCallbackWhenIDIsReused() async {
         let resolved = expectation(description: "Only the current callback resolves")
         var resolvedCallbackIDs: [Int] = []

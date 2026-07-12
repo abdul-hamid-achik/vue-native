@@ -438,10 +438,9 @@ enum JSPolyfills {
             let captureBlock = JSValue(object: captureExecutor as AnyObject, in: context)
             let promise = promiseCtor?.call(withArguments: [captureBlock as Any])
 
-            let host = url.host ?? ""
-            let session = CertificatePinning.shared.hasPins(for: host)
-                ? CertificatePinning.shared.session
-                : URLSession.shared
+            // Keep the delegate attached across cross-host redirects whenever
+            // any destination has configured pins.
+            let session = CertificatePinning.shared.requestSession
 
             let task = session.dataTask(with: request) { [weak runtime] data, response, error in
                 guard let runtime = runtime else { return }
