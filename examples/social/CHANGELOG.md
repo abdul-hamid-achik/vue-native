@@ -1,5 +1,14 @@
 # @thelacanians/vue-native-example-social
 
+## 0.1.8
+
+### Patch Changes
+
+- Updated dependencies [adcb64c]
+- Updated dependencies [adcb64c]
+  - @thelacanians/vue-native-runtime@0.7.4
+  - @thelacanians/vue-native-navigation@0.7.4
+
 ## 0.1.7
 
 ### Patch Changes

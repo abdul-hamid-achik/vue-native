@@ -1,5 +1,11 @@
 # @thelacanians/vue-native-vite-plugin
 
+## 0.7.4
+
+### Patch Changes
+
+- adcb64c: Make the selected iOS, Android, or macOS CLI target authoritative in Vite, including for configs with an existing explicit platform. Validate platform environment values, expose the scaffolded platform constant type, and reject contradictory multi-platform development commands.
+
 ## 0.7.3
 
 ## 0.7.2

@@ -1,5 +1,13 @@
 # @thelacanians/vue-native-example-todo
 
+## 0.1.8
+
+### Patch Changes
+
+- Updated dependencies [adcb64c]
+- Updated dependencies [adcb64c]
+  - @thelacanians/vue-native-runtime@0.7.4
+
 ## 0.1.7
 
 ### Patch Changes

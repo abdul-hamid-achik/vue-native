@@ -1,5 +1,14 @@
 # @thelacanians/vue-native-example-native-blocks-demo
 
+## 0.0.9
+
+### Patch Changes
+
+- Updated dependencies [adcb64c]
+- Updated dependencies [adcb64c]
+  - @thelacanians/vue-native-runtime@0.7.4
+  - @thelacanians/vue-native-navigation@0.7.4
+
 ## 0.0.8
 
 ### Patch Changes

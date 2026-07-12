@@ -1,5 +1,19 @@
 # @thelacanians/vue-native-runtime
 
+## 0.7.4
+
+### Patch Changes
+
+- adcb64c: Prevent delayed Android native-module completions from resolving a callback ID reused by a replacement JavaScript bundle after hot reload.
+- adcb64c: Keep native WebSocket lifecycle events bound to the socket that created them,
+  suppress stale callbacks after same-ID reconnects, and emit terminal events
+  exactly once. Apple connections now share a serialized URLSession state
+  machine and report `open` only after the WebSocket handshake succeeds. Android
+  hot reload now destroys the previous native-module snapshot and registers fresh
+  host-owned modules so live sockets cannot survive a replaced JavaScript bundle.
+  Application modules returned by `VueNativeActivity.createNativeModules()` are also
+  recreated for the replacement JavaScript world.
+
 ## 0.7.3
 
 ### Patch Changes
