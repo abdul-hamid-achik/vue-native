@@ -77,7 +77,11 @@ export const buildCommand = new Command('build')
     console.log(pc.cyan(`\n  Vue Native — ${options.mode.charAt(0).toUpperCase() + options.mode.slice(1)} Build (${platformLabel})\n`))
     console.log(pc.white('  Building JS bundle for production...'))
     try {
-      execSync('bun run vite build --mode production', { cwd, stdio: 'inherit' })
+      execSync('bun run vite build --mode production', {
+        cwd,
+        stdio: 'inherit',
+        env: { ...process.env, VUE_NATIVE_PLATFORM: platform },
+      })
       console.log(pc.green('  ✓ Bundle built\n'))
     } catch {
       throw new ConfigError('Bundle build failed')

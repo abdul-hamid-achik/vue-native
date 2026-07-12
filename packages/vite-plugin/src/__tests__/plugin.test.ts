@@ -300,9 +300,16 @@ describe('Config — Vue alias', () => {
 // Platform option
 // ---------------------------------------------------------------------------
 describe('Config — platform option', () => {
-  it('defaults __PLATFORM__ to "ios"', () => {
-    const config = getPluginConfig()
-    expect(config.define['__PLATFORM__']).toBe(JSON.stringify('ios'))
+  it('defaults direct Vite usage to "ios" when no target environment is present', () => {
+    const previousPlatform = process.env.VUE_NATIVE_PLATFORM
+    delete process.env.VUE_NATIVE_PLATFORM
+    try {
+      const config = getPluginConfig()
+      expect(config.define['__PLATFORM__']).toBe(JSON.stringify('ios'))
+    } finally {
+      if (previousPlatform === undefined) delete process.env.VUE_NATIVE_PLATFORM
+      else process.env.VUE_NATIVE_PLATFORM = previousPlatform
+    }
   })
 
   it('sets __PLATFORM__ to "ios" when explicitly specified', () => {
@@ -318,6 +325,68 @@ describe('Config — platform option', () => {
   it('sets __PLATFORM__ to "macos" when specified', () => {
     const config = getPluginConfig({ platform: 'macos' })
     expect(config.define['__PLATFORM__']).toBe(JSON.stringify('macos'))
+  })
+
+  it.each(['ios', 'android', 'macos'] as const)(
+    'uses VUE_NATIVE_PLATFORM=%s when the option is omitted',
+    (platform) => {
+      const previousPlatform = process.env.VUE_NATIVE_PLATFORM
+      process.env.VUE_NATIVE_PLATFORM = platform
+      try {
+        const config = getPluginConfig()
+        expect(config.define['__PLATFORM__']).toBe(JSON.stringify(platform))
+      } finally {
+        if (previousPlatform === undefined) delete process.env.VUE_NATIVE_PLATFORM
+        else process.env.VUE_NATIVE_PLATFORM = previousPlatform
+      }
+    },
+  )
+
+  it('gives the environment target precedence over an explicit option', () => {
+    const previousPlatform = process.env.VUE_NATIVE_PLATFORM
+    process.env.VUE_NATIVE_PLATFORM = 'android'
+    try {
+      const config = getPluginConfig({ platform: 'macos' })
+      expect(config.define['__PLATFORM__']).toBe(JSON.stringify('android'))
+    } finally {
+      if (previousPlatform === undefined) delete process.env.VUE_NATIVE_PLATFORM
+      else process.env.VUE_NATIVE_PLATFORM = previousPlatform
+    }
+  })
+
+  it('rejects an invalid environment target even when an explicit option is present', () => {
+    const previousPlatform = process.env.VUE_NATIVE_PLATFORM
+    process.env.VUE_NATIVE_PLATFORM = 'windows'
+    try {
+      expect(() => getPluginConfig({ platform: 'ios' })).toThrow(
+        /Invalid VUE_NATIVE_PLATFORM.*ios.*android.*macos/,
+      )
+    } finally {
+      if (previousPlatform === undefined) delete process.env.VUE_NATIVE_PLATFORM
+      else process.env.VUE_NATIVE_PLATFORM = previousPlatform
+    }
+  })
+
+  it.each(['', 'windows', 'ANDROID'])(
+    'rejects invalid VUE_NATIVE_PLATFORM value %j',
+    (platform) => {
+      const previousPlatform = process.env.VUE_NATIVE_PLATFORM
+      process.env.VUE_NATIVE_PLATFORM = platform
+      try {
+        expect(() => getPluginConfig()).toThrow(
+          /Invalid VUE_NATIVE_PLATFORM.*ios.*android.*macos/,
+        )
+      } finally {
+        if (previousPlatform === undefined) delete process.env.VUE_NATIVE_PLATFORM
+        else process.env.VUE_NATIVE_PLATFORM = previousPlatform
+      }
+    },
+  )
+
+  it('rejects an invalid explicit option at runtime', () => {
+    expect(() => getPluginConfig({ platform: 'windows' as 'ios' })).toThrow(
+      /Invalid platform option.*ios.*android.*macos/,
+    )
   })
 })
 
@@ -536,6 +605,50 @@ describe('Vite integration', () => {
       expect(bundle).toContain('Hello from Vite 8')
       expect(bundle).not.toContain('process.env.NODE_ENV')
     } finally {
+      await rm(tempRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('compiles the authoritative environment target and falls back to the explicit option', async () => {
+    const packageRoot = fileURLToPath(new URL('../..', import.meta.url))
+    const tempRoot = await mkdtemp(join(packageRoot, 'tmp-vite-platform-'))
+    const previousPlatform = process.env.VUE_NATIVE_PLATFORM
+
+    try {
+      await mkdir(join(tempRoot, 'app'), { recursive: true })
+      await writeFile(
+        join(tempRoot, 'app', 'main.ts'),
+        'globalThis.__compiledPlatform = __PLATFORM__\n',
+      )
+
+      process.env.VUE_NATIVE_PLATFORM = 'android'
+      await build({
+        root: tempRoot,
+        logLevel: 'silent',
+        plugins: [vueNativePlugin({
+          platform: 'macos',
+          hotReload: false,
+          nativeCodegen: false,
+        })],
+      })
+      let bundle = await readFile(join(tempRoot, 'dist', 'vue-native-bundle.js'), 'utf8')
+      expect(bundle).toMatch(/__compiledPlatform\s*=\s*["']android["']/)
+
+      delete process.env.VUE_NATIVE_PLATFORM
+      await build({
+        root: tempRoot,
+        logLevel: 'silent',
+        plugins: [vueNativePlugin({
+          platform: 'macos',
+          hotReload: false,
+          nativeCodegen: false,
+        })],
+      })
+      bundle = await readFile(join(tempRoot, 'dist', 'vue-native-bundle.js'), 'utf8')
+      expect(bundle).toMatch(/__compiledPlatform\s*=\s*["']macos["']/)
+    } finally {
+      if (previousPlatform === undefined) delete process.env.VUE_NATIVE_PLATFORM
+      else process.env.VUE_NATIVE_PLATFORM = previousPlatform
       await rm(tempRoot, { recursive: true, force: true })
     }
   })

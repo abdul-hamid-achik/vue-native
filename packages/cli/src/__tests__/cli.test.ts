@@ -867,6 +867,7 @@ describe('create command', () => {
       expect(content).toContain('*.vue')
       expect(content).toContain('DefineComponent')
       expect(content).toContain('__DEV__')
+      expect(content).toContain('__PLATFORM__: \'ios\' | \'android\' | \'macos\'')
     })
   })
 
@@ -894,7 +895,11 @@ describe('create command', () => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe('dev command', () => {
+  let previousNativePlatform: string | undefined
+
   beforeEach(() => {
+    previousNativePlatform = process.env.VUE_NATIVE_PLATFORM
+    delete process.env.VUE_NATIVE_PLATFORM
     vi.resetModules()
     mockWssOn.mockReset()
     mockWssClose.mockReset()
@@ -911,6 +916,8 @@ describe('dev command', () => {
   })
 
   afterEach(() => {
+    if (previousNativePlatform === undefined) delete process.env.VUE_NATIVE_PLATFORM
+    else process.env.VUE_NATIVE_PLATFORM = previousNativePlatform
     vi.restoreAllMocks()
   })
 
@@ -990,6 +997,122 @@ describe('dev command', () => {
       ['run', 'vite', 'build', '--watch', '--mode', 'development'],
       expect.objectContaining({ stdio: 'pipe' }),
     )
+  })
+
+  it('leaves the target unset for direct Vite fallback when no selector is provided', async () => {
+    const devCommand = await importDevCommand()
+    await devCommand.parseAsync(['node', 'dev'])
+
+    const spawnOptions = mockSpawn.mock.calls[0][2] as { env: NodeJS.ProcessEnv }
+    expect(spawnOptions.env).not.toHaveProperty('VUE_NATIVE_PLATFORM')
+  })
+
+  it('preserves a validated VUE_NATIVE_PLATFORM target', async () => {
+    process.env.VUE_NATIVE_PLATFORM = 'macos'
+    const devCommand = await importDevCommand()
+    await devCommand.parseAsync(['node', 'dev'])
+
+    expect(mockSpawn).toHaveBeenCalledWith(
+      'bun',
+      expect.any(Array),
+      expect.objectContaining({
+        env: expect.objectContaining({ VUE_NATIVE_PLATFORM: 'macos' }),
+      }),
+    )
+  })
+
+  it('infers the Android bundle target from --android', async () => {
+    const devCommand = await importDevCommand()
+    await devCommand.parseAsync(['node', 'dev', '--android'])
+
+    expect(mockSpawn).toHaveBeenCalledWith(
+      'bun',
+      expect.any(Array),
+      expect.objectContaining({
+        env: expect.objectContaining({ VUE_NATIVE_PLATFORM: 'android' }),
+      }),
+    )
+  })
+
+  it('overwrites a stale inherited target when a selector is provided', async () => {
+    process.env.VUE_NATIVE_PLATFORM = 'windows'
+    const devCommand = await importDevCommand()
+    await devCommand.parseAsync(['node', 'dev', '--android'])
+
+    expect(mockSpawn).toHaveBeenCalledWith(
+      'bun',
+      expect.any(Array),
+      expect.objectContaining({
+        env: expect.objectContaining({ VUE_NATIVE_PLATFORM: 'android' }),
+      }),
+    )
+  })
+
+  it('supports an explicit macOS development bundle target', async () => {
+    const devCommand = await importDevCommand()
+    await devCommand.parseAsync(['node', 'dev', '--platform', 'macos'])
+
+    expect(mockSpawn).toHaveBeenCalledWith(
+      'bun',
+      expect.any(Array),
+      expect.objectContaining({
+        env: expect.objectContaining({ VUE_NATIVE_PLATFORM: 'macos' }),
+      }),
+    )
+  })
+
+  it('accepts matching launcher and explicit bundle targets', async () => {
+    const devCommand = await importDevCommand()
+    await devCommand.parseAsync(['node', 'dev', '--android', '--platform', 'android'])
+
+    expect(mockSpawn).toHaveBeenCalledWith(
+      'bun',
+      expect.any(Array),
+      expect.objectContaining({
+        env: expect.objectContaining({ VUE_NATIVE_PLATFORM: 'android' }),
+      }),
+    )
+  })
+
+  it('rejects impossible multi-target development before starting services', async () => {
+    const devCommand = await importDevCommand()
+
+    await expect(
+      devCommand.parseAsync(['node', 'dev', '--ios', '--android']),
+    ).rejects.toThrow(/one platform at a time/)
+    expect(capturedWssOptions).toEqual({})
+    expect(mockSpawn).not.toHaveBeenCalled()
+  })
+
+  it('rejects a launcher that conflicts with the explicit bundle target', async () => {
+    const devCommand = await importDevCommand()
+
+    await expect(
+      devCommand.parseAsync(['node', 'dev', '--ios', '--platform', 'android']),
+    ).rejects.toThrow(/cannot launch a bundle compiled for android/)
+    expect(capturedWssOptions).toEqual({})
+    expect(mockSpawn).not.toHaveBeenCalled()
+  })
+
+  it('rejects invalid development platform values', async () => {
+    const devCommand = await importDevCommand()
+
+    await expect(
+      devCommand.parseAsync(['node', 'dev', '--platform', 'windows']),
+    ).rejects.toThrow(/ios.*android.*macos/)
+    expect(capturedWssOptions).toEqual({})
+    expect(mockSpawn).not.toHaveBeenCalled()
+  })
+
+  it('rejects an invalid inherited platform before starting services', async () => {
+    process.env.VUE_NATIVE_PLATFORM = 'windows'
+    const devCommand = await importDevCommand()
+
+    await expect(
+      devCommand.parseAsync(['node', 'dev']),
+    ).rejects.toThrow(/ios.*android.*macos/)
+    expect(capturedWssOptions).toEqual({})
+    expect(mockSpawn).not.toHaveBeenCalled()
   })
 
   it('boots simulator identifiers as literal process arguments', async () => {
@@ -1086,6 +1209,28 @@ describe('run command', () => {
     const runCmd = await importRunCommand()
     await expect(runCmd.parseAsync(['node', 'run', 'windows'])).rejects.toThrow(/Platform must be/)
   })
+
+  it.each(['ios', 'android', 'macos'])(
+    'propagates the %s target into the Vite build environment',
+    async (platform) => {
+      const previousPlatform = process.env.VUE_NATIVE_PLATFORM
+      process.env.VUE_NATIVE_PLATFORM = platform === 'android' ? 'ios' : 'android'
+      try {
+        const runCmd = await importRunCommand()
+        await runCmd.parseAsync(['node', 'run', platform])
+
+        expect(mockExecSync).toHaveBeenCalledWith(
+          'bun run vite build',
+          expect.objectContaining({
+            env: expect.objectContaining({ VUE_NATIVE_PLATFORM: platform }),
+          }),
+        )
+      } finally {
+        if (previousPlatform === undefined) delete process.env.VUE_NATIVE_PLATFORM
+        else process.env.VUE_NATIVE_PLATFORM = previousPlatform
+      }
+    },
+  )
 
   describe('iOS platform', () => {
     it('builds the JS bundle first with vite', async () => {
@@ -1593,6 +1738,12 @@ describe('cli entry point', () => {
     expect(portOpt!.defaultValue).toBe('8174')
   })
 
+  it('dev command has an explicit platform option', async () => {
+    const { devCommand } = await import('../commands/dev')
+    const platformOpt = devCommand.options.find(o => o.long === '--platform')
+    expect(platformOpt).toBeDefined()
+  })
+
   it('exports build command via build.ts', async () => {
     const { buildCommand } = await import('../commands/build')
     expect(buildCommand.name()).toBe('build')
@@ -1664,6 +1815,28 @@ describe('build command', () => {
     const buildCmd = await importBuildCommand()
     await expect(buildCmd.parseAsync(['node', 'build', 'windows'])).rejects.toThrow(/Platform must be/)
   })
+
+  it.each(['ios', 'android', 'macos'])(
+    'propagates the %s target into the production Vite build environment',
+    async (platform) => {
+      const previousPlatform = process.env.VUE_NATIVE_PLATFORM
+      process.env.VUE_NATIVE_PLATFORM = platform === 'android' ? 'ios' : 'android'
+      try {
+        const buildCmd = await importBuildCommand()
+        await buildCmd.parseAsync(['node', 'build', platform])
+
+        expect(mockExecSync).toHaveBeenCalledWith(
+          'bun run vite build --mode production',
+          expect.objectContaining({
+            env: expect.objectContaining({ VUE_NATIVE_PLATFORM: platform }),
+          }),
+        )
+      } finally {
+        if (previousPlatform === undefined) delete process.env.VUE_NATIVE_PLATFORM
+        else process.env.VUE_NATIVE_PLATFORM = previousPlatform
+      }
+    },
+  )
 
   it('rejects unsupported build modes before invoking Vite', async () => {
     const buildCmd = await importBuildCommand()

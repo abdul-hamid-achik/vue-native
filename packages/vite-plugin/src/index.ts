@@ -27,15 +27,18 @@ import { cleanGeneratedFiles, generateCode, hasGeneratedArtifacts, writeGenerate
 import fg from 'fast-glob'
 import type { ConfigEnv, LibraryFormats, ResolvedConfig, UserConfig, ViteDevServer } from 'vite'
 
+export type NativePlatform = 'ios' | 'android' | 'macos'
+
 export interface VueNativePluginOptions {
   /**
    * Target platform.
    * - `'ios'` — JavaScriptCore (built into iOS)
    * - `'android'` — V8 via J2V8
    * - `'macos'` — JavaScriptCore (same as iOS)
-   * @default 'ios'
+   * Used when VUE_NATIVE_PLATFORM is not present.
+   * @default 'ios' when neither this option nor VUE_NATIVE_PLATFORM is set
    */
-  platform?: 'ios' | 'android' | 'macos'
+  platform?: NativePlatform
 
   /**
    * The global variable name for the IIFE bundle.
@@ -114,6 +117,37 @@ type AliasEntry = {
 
 type AliasConfig = Record<string, string> | AliasEntry[]
 
+const NATIVE_PLATFORMS = new Set<NativePlatform>(['ios', 'android', 'macos'])
+
+function isNativePlatform(value: string): value is NativePlatform {
+  return NATIVE_PLATFORMS.has(value as NativePlatform)
+}
+
+function resolvePlatform(explicitPlatform: NativePlatform | undefined): NativePlatform {
+  const environmentPlatform = process.env.VUE_NATIVE_PLATFORM
+  if (environmentPlatform !== undefined) {
+    if (!isNativePlatform(environmentPlatform)) {
+      throw new Error(
+        `[vue-native] Invalid VUE_NATIVE_PLATFORM "${environmentPlatform}". Expected "ios", "android", or "macos".`,
+      )
+    }
+    return environmentPlatform
+  }
+
+  if (explicitPlatform !== undefined) {
+    if (!isNativePlatform(explicitPlatform)) {
+      throw new Error(
+        `[vue-native] Invalid platform option "${explicitPlatform}". Expected "ios", "android", or "macos".`,
+      )
+    }
+    return explicitPlatform
+  }
+
+  // Preserve the original direct-Vite behavior. Platform-targeted CLI
+  // commands provide VUE_NATIVE_PLATFORM instead of reaching this fallback.
+  return 'ios'
+}
+
 function mergeAliases(existingAlias: AliasConfig | undefined): AliasConfig {
   const replacement = '@thelacanians/vue-native-runtime'
 
@@ -145,7 +179,7 @@ function resolveLibEntry(config: UserConfig): string {
 
 export default function vueNativePlugin(options: VueNativePluginOptions = {}) {
   const {
-    platform = 'ios',
+    platform: explicitPlatform,
     globalName = 'VueNativeApp',
     hotReload = true,
     hotReloadPort = 8174,
@@ -153,6 +187,7 @@ export default function vueNativePlugin(options: VueNativePluginOptions = {}) {
     nativeOutputDirs,
     exclude = ['node_modules', 'dist', '.git', '.turbo'],
   } = options
+  const platform = resolvePlatform(explicitPlatform)
 
   const state: CodegenState = {
     lastResult: null,

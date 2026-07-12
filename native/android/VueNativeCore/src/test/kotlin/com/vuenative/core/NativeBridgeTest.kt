@@ -8,6 +8,7 @@ import android.widget.FrameLayout
 import androidx.recyclerview.widget.RecyclerView
 import androidx.test.core.app.ApplicationProvider
 import com.google.android.flexbox.FlexboxLayout
+import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -607,6 +608,49 @@ class NativeBridgeTest {
         assertEquals("Hello", root?.get("title"))
         assertEquals(mapOf("enabled" to true, "count" to 2), root?.get("options"))
         assertEquals(listOf("one", mapOf("id" to 3), null), root?.get("items"))
+    }
+
+    @Test
+    fun testHotReloadIgnoresStaleNativeCallbackWhenIdIsReused() {
+        val pendingCallbacks = mutableListOf<(Any?, String?) -> Unit>()
+        val module = object : NativeModule {
+            override val moduleName = "DelayedCallback"
+
+            override fun invoke(
+                method: String,
+                args: List<Any?>,
+                bridge: NativeBridge,
+                callback: (result: Any?, error: String?) -> Unit,
+            ) {
+                pendingCallbacks.add(callback)
+            }
+        }
+        NativeModuleRegistry.getInstance(context).register(module)
+
+        val resolvedValues = mutableListOf<String>()
+        bridge.onFireEvent = { nodeId, eventName, payloadJson ->
+            if (nodeId == -1 && eventName == "__callback__") {
+                resolvedValues.add(JSONObject(payloadJson).getString("result"))
+            }
+        }
+
+        bridge.processOperations(
+            """[{"op":"invokeNativeModule","args":["DelayedCallback","wait",[],1]}]""",
+        )
+        flush()
+
+        bridge.clearAllRegistries()
+        bridge.processOperations(
+            """[{"op":"invokeNativeModule","args":["DelayedCallback","wait",[],1]}]""",
+        )
+        flush()
+
+        assertEquals(2, pendingCallbacks.size)
+        pendingCallbacks[0]("stale", null)
+        pendingCallbacks[1]("current", null)
+        flush()
+
+        assertEquals(listOf("current"), resolvedValues)
     }
 
     @Test

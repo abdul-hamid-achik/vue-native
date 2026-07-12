@@ -98,6 +98,7 @@ Starts the Vite build watcher and WebSocket hot reload server. The app on your s
 | Flag | Description |
 |------|-------------|
 | `-p, --port <port>` | WebSocket port (default: `8174`) |
+| `--platform <platform>` | Compile for `ios`, `android`, or `macos` |
 | `--ios` | Auto-detect and boot iOS Simulator |
 | `--android` | Auto-detect Android emulator |
 | `--simulator <name>` | Specify iOS Simulator name (e.g. `"iPhone 16"`) |
@@ -114,9 +115,11 @@ vue-native dev --ios --simulator "iPhone 16 Pro"
 # Detect Android emulator
 vue-native dev --android
 
-# Both platforms
-vue-native dev --ios --android
+# Build a macOS development bundle
+vue-native dev --platform macos
 ```
+
+Each development bundle has one compile-time platform target. Run separate dev commands when switching targets; `--ios --android` is rejected. A `--platform` value must also match any `--ios` or `--android` launch flag.
 
 When using `--ios`, the CLI will:
 1. Query available simulators via `xcrun simctl list`

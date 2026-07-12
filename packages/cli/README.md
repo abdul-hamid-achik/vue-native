@@ -1,6 +1,6 @@
 # @thelacanians/vue-native-cli
 
-CLI for creating and running Vue Native apps on iOS and Android.
+CLI for creating and running Vue Native apps on iOS, Android, and macOS.
 
 ## Install
 
@@ -63,9 +63,13 @@ Start the dev server with hot reload:
 ```bash
 vue-native dev
 vue-native dev --port 9000  # Custom port
+vue-native dev --android    # Android bundle and emulator detection
+vue-native dev --platform macos
 ```
 
-Runs Vite in watch mode and starts a WebSocket server on port 8174 (default). When you save a file, the updated bundle is pushed to all connected iOS/Android apps instantly.
+Runs Vite in watch mode and starts a WebSocket server on port 8174 (default). A development bundle has one compile-time platform target, so start a separate command when switching platforms. `--ios` and `--android` select the bundle target and launch helper; `--platform` also supports macOS without launching a simulator. Combining `--ios` and `--android`, or selecting a target that conflicts with a launch flag, is rejected.
+
+With no target selector, the command does not add `VUE_NATIVE_PLATFORM`; an existing shell value is preserved. This lets an explicit Vite plugin option apply when the variable is absent. If neither the environment nor the Vite plugin specifies a platform, direct Vite behavior defaults to iOS.
 
 ### `vue-native run <platform>`
 
@@ -99,6 +103,7 @@ vue-native run android
 
 Before an Android run or native build, the CLI copies
 `dist/vue-native-bundle.js` into the app's assets directory automatically.
+The command also supplies its platform to Vite as `VUE_NATIVE_PLATFORM`.
 
 ### `vue-native build <platform>`
 
@@ -114,6 +119,10 @@ vue-native build android --mode debug
 `--mode` accepts `debug` or `release` (the default). Use `--output` to choose
 the artifact directory, `--scheme` for an iOS or macOS Xcode scheme, and
 `--aab` to create an Android App Bundle instead of an APK.
+
+`run` and `build` propagate their platform to Vite automatically. Their target
+takes precedence over an explicit `vueNative({ platform: '...' })` option, so
+existing platform-pinned configs still compile for the selected CLI platform.
 
 ## Development workflow
 

@@ -1,6 +1,7 @@
 package com.vuenative.core
 
-import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import okhttp3.OkHttpClient
@@ -25,18 +26,20 @@ import okhttp3.WebSocketListener
  *   "websocket:close"   { connectionId, code, reason }
  *   "websocket:error"   { connectionId, message }
  */
-class WebSocketModule : NativeModule {
+class WebSocketModule internal constructor(
+    private val webSocketFactory: WebSocket.Factory,
+) : NativeModule {
+    constructor() : this(
+        OkHttpClient.Builder()
+            .readTimeout(0, TimeUnit.MILLISECONDS)
+            .build(),
+    )
+
     override val moduleName = "WebSocket"
 
-    private var bridge: NativeBridge? = null
-    private val client = OkHttpClient.Builder()
-        .readTimeout(0, TimeUnit.MILLISECONDS) // No read timeout for WebSocket
-        .build()
+    private val mainHandler = Handler(Looper.getMainLooper())
     private val connections = ConcurrentHashMap<String, WebSocket>()
-
-    override fun initialize(context: Context, bridge: NativeBridge) {
-        this.bridge = bridge
-    }
+    @Volatile private var destroyed = false
 
     override fun invoke(
         method: String,
@@ -86,6 +89,11 @@ class WebSocketModule : NativeModule {
     }
 
     private fun connect(url: String, connectionId: String, bridge: NativeBridge, callback: (Any?, String?) -> Unit) {
+        if (destroyed) {
+            callback(null, "WebSocketModule: module has been destroyed")
+            return
+        }
+
         // Close existing connection if any
         connections.remove(connectionId)?.cancel()
 
@@ -93,44 +101,59 @@ class WebSocketModule : NativeModule {
             .url(url)
             .build()
 
-        val ws = client.newWebSocket(request, object : WebSocketListener() {
+        val ws = webSocketFactory.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
-                bridge.dispatchGlobalEvent("websocket:open", mapOf(
-                    "connectionId" to connectionId
-                ))
+                mainHandler.post {
+                    if (!isCurrent(connectionId, webSocket)) return@post
+                    bridge.dispatchGlobalEvent("websocket:open", mapOf(
+                        "connectionId" to connectionId
+                    ))
+                }
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
-                bridge.dispatchGlobalEvent("websocket:message", mapOf(
-                    "connectionId" to connectionId,
-                    "data" to text
-                ))
+                mainHandler.post {
+                    if (!isCurrent(connectionId, webSocket)) return@post
+                    bridge.dispatchGlobalEvent("websocket:message", mapOf(
+                        "connectionId" to connectionId,
+                        "data" to text
+                    ))
+                }
             }
 
             override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
-                webSocket.close(code, reason)
+                mainHandler.post {
+                    if (isCurrent(connectionId, webSocket)) {
+                        webSocket.close(code, reason)
+                    }
+                }
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-                connections.remove(connectionId)
-                bridge.dispatchGlobalEvent("websocket:close", mapOf(
-                    "connectionId" to connectionId,
-                    "code" to code,
-                    "reason" to reason
-                ))
+                mainHandler.post {
+                    if (!removeCurrent(connectionId, webSocket)) return@post
+                    bridge.dispatchGlobalEvent("websocket:close", mapOf(
+                        "connectionId" to connectionId,
+                        "code" to code,
+                        "reason" to reason
+                    ))
+                }
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                connections.remove(connectionId)
-                bridge.dispatchGlobalEvent("websocket:error", mapOf(
-                    "connectionId" to connectionId,
-                    "message" to (t.message ?: "WebSocket error")
-                ))
-                bridge.dispatchGlobalEvent("websocket:close", mapOf(
-                    "connectionId" to connectionId,
-                    "code" to 1006,
-                    "reason" to (t.message ?: "WebSocket error")
-                ))
+                mainHandler.post {
+                    if (!removeCurrent(connectionId, webSocket)) return@post
+                    val message = t.message ?: "WebSocket error"
+                    bridge.dispatchGlobalEvent("websocket:error", mapOf(
+                        "connectionId" to connectionId,
+                        "message" to message
+                    ))
+                    bridge.dispatchGlobalEvent("websocket:close", mapOf(
+                        "connectionId" to connectionId,
+                        "code" to 1006,
+                        "reason" to message
+                    ))
+                }
             }
         })
 
@@ -139,7 +162,7 @@ class WebSocketModule : NativeModule {
     }
 
     private fun send(connectionId: String, data: String, callback: (Any?, String?) -> Unit) {
-        val ws = connections[connectionId]
+        val ws = connections[connectionId]?.takeUnless { destroyed }
             ?: run {
                 callback(null, "WebSocketModule: no connection '$connectionId'")
                 return
@@ -154,7 +177,7 @@ class WebSocketModule : NativeModule {
 
     private fun close(connectionId: String, code: Int, reason: String, bridge: NativeBridge, callback: (Any?, String?) -> Unit) {
         val ws = connections.remove(connectionId)
-        if (ws != null) {
+        if (ws != null && !destroyed) {
             ws.close(code, reason)
             bridge.dispatchGlobalEvent("websocket:close", mapOf(
                 "connectionId" to connectionId,
@@ -166,8 +189,18 @@ class WebSocketModule : NativeModule {
         callback(true, null)
     }
 
+    private fun isCurrent(connectionId: String, webSocket: WebSocket): Boolean =
+        !destroyed && connections[connectionId] === webSocket
+
+    private fun removeCurrent(connectionId: String, webSocket: WebSocket): Boolean =
+        !destroyed && connections.remove(connectionId, webSocket)
+
     override fun destroy() {
-        connections.values.forEach { it.cancel() }
+        if (destroyed) return
+        destroyed = true
+        mainHandler.removeCallbacksAndMessages(null)
+        val activeConnections = connections.values.toList()
         connections.clear()
+        activeConnections.forEach { it.cancel() }
     }
 }

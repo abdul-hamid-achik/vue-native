@@ -98,6 +98,17 @@ class NativeBridge(private val context: Context) {
     @Volatile
     private var isActive = true
 
+    /**
+     * Identifies the JavaScript world that owns asynchronous native-module
+     * callbacks. Hot reload reuses this bridge but resets JavaScript callback
+     * IDs, so a completion from the previous bundle must not resolve a Promise
+     * created by the replacement bundle with the same ID.
+     *
+     * Access is confined to the main thread. Module completions post back to
+     * [mainHandler] before comparing their captured generation.
+     */
+    private var nativeCallbackGeneration = 0L
+
     private val componentRegistry: ComponentRegistry by lazy { ComponentRegistry.getInstance(context) }
 
     // -------------------------------------------------------------------------
@@ -564,6 +575,7 @@ class NativeBridge(private val context: Context) {
         val methodName = args.getString(1)
         val moduleArgs = buildArgsList(args.optJSONArray(2))
         val callbackId = args.optInt(3, -1)
+        val originatingGeneration = nativeCallbackGeneration
 
         NativeModuleRegistry.getInstance(context).invoke(
             moduleName, methodName, moduleArgs, this
@@ -579,7 +591,12 @@ class NativeBridge(private val context: Context) {
                     else -> result.toString()
                 }
                 val errorJson = if (error != null) JSONObject.quote(error) else "null"
-                resolveCallbackInJs(callbackId, resultJson, errorJson)
+                mainHandler.post {
+                    if (!isActive || nativeCallbackGeneration != originatingGeneration) {
+                        return@post
+                    }
+                    resolveCallbackInJs(callbackId, resultJson, errorJson)
+                }
             }
         }
     }
@@ -633,6 +650,8 @@ class NativeBridge(private val context: Context) {
 
     /** Clear all registries. Called during hot reload after JS teardown. Must run on main thread. */
     fun clearAllRegistries() {
+        nativeCallbackGeneration += 1
+
         teleportContainers.values.forEach { container ->
             (container.parent as? ViewGroup)?.removeView(container)
         }

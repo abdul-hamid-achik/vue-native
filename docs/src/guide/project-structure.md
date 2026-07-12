@@ -44,9 +44,11 @@ import vue from '@vitejs/plugin-vue'
 import vueNative from '@thelacanians/vue-native-vite-plugin'
 
 export default defineConfig({
-  plugins: [vue(), vueNative({ platform: 'ios' })],
+  plugins: [vue(), vueNative()],
 })
 ```
+
+The CLI passes the selected `run`, `build`, or targeted `dev` platform through `VUE_NATIVE_PLATFORM`. That target overrides the plugin option. An explicit `platform` still acts as the target for direct Vite commands and untargeted `vue-native dev` when the environment variable is absent.
 
 ### iOS: `SceneDelegate.swift`
 

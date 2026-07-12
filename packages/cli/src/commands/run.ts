@@ -133,7 +133,11 @@ export const runCommand = new Command('run')
     console.log(pc.cyan(`\n📱 Vue Native — Run ${platformLabel}\n`))
     console.log(pc.white('  Building JS bundle...'))
     try {
-      execSync('bun run vite build', { cwd, stdio: 'inherit' })
+      execSync('bun run vite build', {
+        cwd,
+        stdio: 'inherit',
+        env: { ...process.env, VUE_NATIVE_PLATFORM: platform },
+      })
       console.log(pc.green('  ✓ Bundle built\n'))
     } catch {
       throw new ConfigError('Bundle build failed')

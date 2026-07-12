@@ -6,10 +6,49 @@ import { join } from 'node:path'
 import { watch } from 'chokidar'
 import { WebSocketServer, WebSocket } from 'ws'
 import pc from 'picocolors'
-import { loadConfig } from '../config.js'
+import { ConfigError, loadConfig } from '../config.js'
 
 const DEFAULT_PORT = 8174
 const BUNDLE_FILE = 'dist/vue-native-bundle.js'
+type NativePlatform = 'ios' | 'android' | 'macos'
+
+function isNativePlatform(value: string): value is NativePlatform {
+  return value === 'ios' || value === 'android' || value === 'macos'
+}
+
+function resolveDevPlatform(options: {
+  platform?: string
+  ios?: boolean
+  android?: boolean
+}): NativePlatform | undefined {
+  if (options.ios && options.android) {
+    throw new ConfigError(
+      'Development bundles target one platform at a time. Use either --ios or --android, not both.',
+    )
+  }
+
+  const launcherPlatform: NativePlatform | undefined = options.android
+    ? 'android'
+    : options.ios
+      ? 'ios'
+      : undefined
+  // Selectors intentionally replace an inherited value. Without a selector,
+  // validate and preserve the shell target before any server or watcher starts.
+  const platform = options.platform ?? launcherPlatform ?? process.env.VUE_NATIVE_PLATFORM
+
+  if (platform === undefined) return undefined
+
+  if (!isNativePlatform(platform)) {
+    throw new ConfigError('Dev platform must be "ios", "android", or "macos".')
+  }
+  if (launcherPlatform && launcherPlatform !== platform) {
+    throw new ConfigError(
+      `--${launcherPlatform} cannot launch a bundle compiled for ${platform}. Choose matching targets.`,
+    )
+  }
+
+  return platform
+}
 
 // ---------------------------------------------------------------------------
 // Simulator / emulator detection helpers
@@ -80,16 +119,27 @@ function detectAndroidEmulators(): string[] {
 export const devCommand = new Command('dev')
   .description('Start the Vue Native dev server with hot reload')
   .option('-p, --port <port>', 'WebSocket port for hot reload', String(DEFAULT_PORT))
+  .option('--platform <platform>', 'bundle target (ios, android, or macos)')
   .option('--ios', 'auto-detect and launch iOS Simulator')
   .option('--android', 'auto-detect Android emulator')
   .option('--simulator <name>', 'specify iOS Simulator name')
-  .action(async (options: { port: string, ios?: boolean, android?: boolean, simulator?: string }) => {
+  .action(async (options: {
+    port: string
+    platform?: string
+    ios?: boolean
+    android?: boolean
+    simulator?: string
+  }) => {
     const port = parseInt(options.port, 10)
+    const platform = resolveDevPlatform(options)
     const cwd = process.cwd()
     await loadConfig(cwd)
     const bundlePath = join(cwd, BUNDLE_FILE)
 
     console.log(pc.cyan('\n  Vue Native Dev Server\n'))
+    if (platform) {
+      console.log(pc.white(`  Requested target:   ${pc.bold(platform)}`))
+    }
 
     // ── iOS Simulator auto-detect ──────────────────────────────────────────
     if (options.ios) {
@@ -232,7 +282,14 @@ export const devCommand = new Command('dev')
     const vite = spawn(
       'bun',
       ['run', 'vite', 'build', '--watch', '--mode', 'development'],
-      { cwd, stdio: 'pipe' },
+      {
+        cwd,
+        stdio: 'pipe',
+        env: {
+          ...process.env,
+          ...(platform ? { VUE_NATIVE_PLATFORM: platform } : {}),
+        },
+      },
     )
 
     vite.stdout?.on('data', (data: Buffer) => {

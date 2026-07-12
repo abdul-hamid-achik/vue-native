@@ -107,6 +107,9 @@ const buttonStyle = {
 
 - Return values are **not reactive** — they are plain values determined at build time, not `Ref` wrappers.
 - Uses the `__PLATFORM__` compile-time constant injected by the Vite plugin during the build process.
+- The plugin resolves the target from a validated `VUE_NATIVE_PLATFORM` shell variable first, then an explicit `vueNative({ platform })` option. The CLI supplies the variable for platform-targeted commands.
+- The CLI target overrides an explicit plugin option. With no environment target, the explicit option still applies.
+- Direct Vite builds default to `'ios'` only when neither the option nor the environment variable is set.
 - Falls back to `'ios'` if the `__PLATFORM__` constant is not defined.
 - Since values are resolved at build time, dead code elimination can remove unused platform branches in production builds.
 - For conditional logic that does not need to be in a template, prefer using `usePlatform` over manual `typeof` checks or global variables.

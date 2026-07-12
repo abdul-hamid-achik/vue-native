@@ -327,6 +327,8 @@ Vue Component (SFC)
 | `@thelacanians/vue-native-navigation` | Stack and tab navigation |
 | `@thelacanians/vue-native-vite-plugin` | Vite build integration |
 | `@thelacanians/vue-native-cli` | Project scaffolding and dev tooling |
+| [`@thelacanians/vue-native-sfc-parser`](./packages/sfc-parser) | Parse Vue SFCs and their native blocks |
+| [`@thelacanians/vue-native-codegen`](./packages/codegen) | Generate native modules from SFC native blocks |
 
 ## Contributing
 
