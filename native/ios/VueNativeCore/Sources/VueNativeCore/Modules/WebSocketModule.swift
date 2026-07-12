@@ -37,7 +37,7 @@ final class WebSocketModule: NativeModule {
     }
 }
 
-private final class IOSWebSocketEventDispatcher: @preconcurrency NativeEventDispatcher {
+private final class IOSWebSocketEventDispatcher: NativeEventDispatcher {
     private weak var bridge: NativeBridge?
 
     init(bridge: NativeBridge) {

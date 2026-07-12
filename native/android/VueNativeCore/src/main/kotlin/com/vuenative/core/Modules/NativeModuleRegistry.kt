@@ -126,6 +126,50 @@ class NativeModuleRegistry private constructor(private val context: Context) {
         registerGeneratedModules(hostContext, bridge)
     }
 
+    /**
+     * Replace the complete module snapshot for a hot-reloaded JavaScript world.
+     * The bridge generation must advance before module destruction so any
+     * teardown callbacks from the old snapshot cannot resolve reused JS IDs.
+     *
+     * A stale Activity must not replace modules owned by a newer host.
+     */
+    @Synchronized
+    fun resetDefaultsForHotReload(
+        owner: NativeBridge,
+        hostContext: Context,
+    ): Boolean = resetDefaultsForHotReload(owner, hostContext) { emptyList() }
+
+    /**
+     * Replace the complete module snapshot and install application modules last.
+     * The provider is evaluated only for the active owner and before mutating the
+     * current snapshot, so a stale host or construction failure has no side effects.
+     */
+    @Synchronized
+    fun resetDefaultsForHotReload(
+        owner: NativeBridge,
+        hostContext: Context,
+        customModuleProvider: () -> List<NativeModule>,
+    ): Boolean {
+        if (activeBridge !== owner) return false
+
+        val customModules = try {
+            customModuleProvider()
+        } catch (error: Exception) {
+            Log.e(
+                "NativeModuleRegistry",
+                "Failed to create application modules for hot reload",
+                error,
+            )
+            return false
+        }
+        owner.clearAllRegistries()
+        registerDefaults(owner, hostContext)
+        customModules.forEach { module ->
+            registerAndInitialize(module, owner, hostContext)
+        }
+        return true
+    }
+
     fun getModule(name: String): NativeModule? = modules[name]
 
     fun invoke(

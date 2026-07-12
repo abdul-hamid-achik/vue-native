@@ -142,7 +142,7 @@ Open the Android project in Android Studio and run on an emulator or device.
 
 ## Adding Custom Native Modules
 
-Implement `NativeModule` and register in your subclass of `VueNativeActivity`:
+Implement `NativeModule` and return it from your `VueNativeActivity` factory:
 
 ```kotlin
 class MyModule : NativeModule {
@@ -169,12 +169,15 @@ class MyModule : NativeModule {
 class MainActivity : VueNativeActivity() {
     override fun getBundleAssetPath() = "bundle.js"
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        NativeModuleRegistry.getInstance(this).register(MyModule())
-    }
+    override fun createNativeModules(): List<NativeModule> = listOf(MyModule())
 }
 ```
+
+`createNativeModules()` is called at startup and for every accepted hot reload. Its
+returned modules are registered after the built-in and generated modules. Return new
+instances on every call so the old JavaScript world's modules can be destroyed before
+their replacements are initialized. An application module with the same `moduleName`
+intentionally replaces the default.
 
 From Vue/TypeScript:
 ```typescript

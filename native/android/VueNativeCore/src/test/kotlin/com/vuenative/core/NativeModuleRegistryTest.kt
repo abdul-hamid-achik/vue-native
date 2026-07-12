@@ -6,6 +6,7 @@ import androidx.test.core.app.ApplicationProvider
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
@@ -255,6 +256,65 @@ class NativeModuleRegistryTest {
         registry.destroyAll(bridge)
         assertNull(registry.getModule(custom.moduleName))
         assertEquals(1, custom.destroyCount)
+    }
+
+    @Test
+    fun testHotReloadDestroysOldSnapshotAndRegistersFreshHostOwnedDefaults() {
+        val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+        registry.registerDefaults(bridge, activity)
+
+        val oldWebSocket = registry.getModule("WebSocket") as WebSocketModule
+        val customModule = MockNativeModule("CustomHostModule")
+        registry.register(customModule)
+
+        val unrelatedBridge = NativeBridge(activity)
+        var staleProviderCalls = 0
+        assertFalse(
+            registry.resetDefaultsForHotReload(unrelatedBridge, activity) {
+                staleProviderCalls += 1
+                listOf(MockNativeModule("ShouldNotBeCreated"))
+            },
+        )
+        assertEquals(0, staleProviderCalls)
+        assertSame(oldWebSocket, registry.getModule("WebSocket"))
+        assertEquals(0, customModule.destroyCount)
+
+        assertTrue(registry.resetDefaultsForHotReload(bridge, activity))
+
+        val freshWebSocket = registry.getModule("WebSocket") as WebSocketModule
+        assertNotSame(oldWebSocket, freshWebSocket)
+        assertNull(registry.getModule(customModule.moduleName))
+        assertEquals(1, customModule.destroyCount)
+
+        var oldSocketError: String? = null
+        oldWebSocket.invoke(
+            "connect",
+            listOf("wss://example.test", "stale"),
+            bridge,
+        ) { _, error -> oldSocketError = error }
+        assertEquals("WebSocketModule: module has been destroyed", oldSocketError)
+
+        val keyboard = registry.getModule("Keyboard") as KeyboardModule
+        val activityField = KeyboardModule::class.java.getDeclaredField("activity")
+        activityField.isAccessible = true
+        assertSame(activity, activityField.get(keyboard))
+    }
+
+    @Test
+    fun testHotReloadProviderFailureLeavesCurrentSnapshotUntouched() {
+        registry.registerDefaults(bridge)
+        val currentWebSocket = registry.getModule("WebSocket") as WebSocketModule
+        val currentCustomModule = MockNativeModule("CurrentCustomModule")
+        registry.register(currentCustomModule)
+
+        val reset = registry.resetDefaultsForHotReload(bridge, context) {
+            throw IllegalStateException("factory failed")
+        }
+
+        assertFalse(reset)
+        assertSame(currentWebSocket, registry.getModule("WebSocket"))
+        assertSame(currentCustomModule, registry.getModule(currentCustomModule.moduleName))
+        assertEquals(0, currentCustomModule.destroyCount)
     }
 
     // -------------------------------------------------------------------------

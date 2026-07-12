@@ -36,6 +36,16 @@ abstract class VueNativeActivity : AppCompatActivity() {
     /** Return WebSocket URL of the Vite dev server for hot reload, or null to disable. */
     open fun getDevServerUrl(): String? = null
 
+    /**
+     * Create application-specific native modules for one JavaScript world.
+     *
+     * This factory runs at startup and for every accepted hot reload. Return new
+     * instances on every call. Modules are registered after built-in and generated
+     * modules, so an application module with the same name intentionally replaces
+     * the default implementation.
+     */
+    protected open fun createNativeModules(): List<NativeModule> = emptyList()
+
     protected lateinit var runtime: JSRuntime
     private lateinit var rootContainer: FrameLayout
     private var hotReloadManager: HotReloadManager? = null
@@ -68,8 +78,8 @@ abstract class VueNativeActivity : AppCompatActivity() {
         runtime = JSRuntime(this)
         runtime.bridge.hostContainer = rootContainer
 
-        // Register native modules
-        NativeModuleRegistry.getInstance(this).registerDefaults(runtime.bridge, this)
+        // Register built-in/generated modules first, then application modules.
+        registerNativeModules()
 
         // Provide Activity reference for modules that need it (e.g. PermissionsModule)
         PermissionsModule.setActivity(this)
@@ -108,9 +118,20 @@ abstract class VueNativeActivity : AppCompatActivity() {
                     // Reset polyfill state (timers, RAF) on JS thread where they are used
                     JSPolyfills.reset()
 
-                    // Step 2: Clear native registries on main thread, THEN load bundle
+                    // Step 2: Replace native state on main, THEN load the bundle.
+                    // JS teardown queues async module cleanup and immediately
+                    // resets its pending bridge batch, so the native module
+                    // registry must synchronously destroy the old snapshot.
                     runtime.runOnMainThread {
-                        runtime.bridge.clearAllRegistries()
+                        if (isFinishing || isDestroyed) {
+                            Log.w(TAG, "Ignoring hot reload for a finishing Activity host")
+                            return@runOnMainThread
+                        }
+                        val reset = resetNativeModulesForHotReload()
+                        if (!reset) {
+                            Log.w(TAG, "Ignoring hot reload because native modules could not be replaced")
+                            return@runOnMainThread
+                        }
                         rootContainer.removeAllViews()
 
                         // Step 3: Load new bundle on JS thread (after registries are cleared)
@@ -131,6 +152,22 @@ abstract class VueNativeActivity : AppCompatActivity() {
             loadAppliedBundleOrAssets()
         }
     }
+
+    private fun registerNativeModules() {
+        val registry = NativeModuleRegistry.getInstance(this)
+        registry.registerDefaults(runtime.bridge, this)
+        createNativeModules().forEach { module ->
+            registry.registerAndInitialize(module, runtime.bridge, this)
+        }
+    }
+
+    /** Visible to package tests so the production hot-reload replacement can be exercised. */
+    internal fun resetNativeModulesForHotReload(): Boolean =
+        NativeModuleRegistry.getInstance(this).resetDefaultsForHotReload(
+            runtime.bridge,
+            this,
+            ::createNativeModules,
+        )
 
     private fun loadAppliedBundleOrAssets() {
         val otaBundle = OTAModule.activeBundleFile(this)
