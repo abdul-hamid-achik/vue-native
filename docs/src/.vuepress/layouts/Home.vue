@@ -3,8 +3,10 @@ import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import ParentLayout from '@vuepress/theme-default/layouts/Layout.vue'
 
 // ---------------------------------------------------------------------
-// Section refs (used to place "▸" fold-markers in the decorative gutter)
+// Section refs (used to place one "▸" fold-marker per section in the
+// decorative gutter, aligned with that section's tag header)
 // ---------------------------------------------------------------------
+const gutterEl = ref<HTMLElement | null>(null)
 const contentEl = ref<HTMLElement | null>(null)
 const heroSection = ref<HTMLElement | null>(null)
 const wedgeSection = ref<HTMLElement | null>(null)
@@ -15,37 +17,34 @@ const statusSection = ref<HTMLElement | null>(null)
 const quickstartSection = ref<HTMLElement | null>(null)
 const footerSection = ref<HTMLElement | null>(null)
 
-interface GutterRow {
-  n: number
-  fold: boolean
+interface GutterMark {
+  id: string
+  top: number
 }
-const gutterRows = ref<GutterRow[]>([])
-const ROW_HEIGHT = 27 // px — decorative row pitch for the page gutter
+const gutterMarks = ref<GutterMark[]>([])
 
 function computeGutter(): void {
-  if (typeof window === 'undefined' || !contentEl.value) return
-  const height = contentEl.value.offsetHeight
-  const totalRows = Math.max(1, Math.ceil(height / ROW_HEIGHT))
-  const sections = [
-    heroSection.value,
-    wedgeSection.value,
-    templateSection.value,
-    nativeSection.value,
-    capabilitiesSection.value,
-    statusSection.value,
-    quickstartSection.value,
-    footerSection.value,
+  if (typeof window === 'undefined' || !gutterEl.value) return
+  const baseTop = gutterEl.value.offsetTop
+  const sections: [string, HTMLElement | null][] = [
+    ['hero', heroSection.value],
+    ['wedge', wedgeSection.value],
+    ['template', templateSection.value],
+    ['native', nativeSection.value],
+    ['capabilities', capabilitiesSection.value],
+    ['status', statusSection.value],
+    ['quickstart', quickstartSection.value],
+    ['footer', footerSection.value],
   ]
-  const foldRows = new Set<number>()
-  for (const el of sections) {
-    if (!el) continue
-    foldRows.add(Math.round(el.offsetTop / ROW_HEIGHT))
-  }
-  const rows: GutterRow[] = []
-  for (let i = 0; i < totalRows; i++) {
-    rows.push({ n: i + 1, fold: foldRows.has(i) })
-  }
-  gutterRows.value = rows
+  gutterMarks.value = sections
+    .filter((entry): entry is [string, HTMLElement] => entry[1] !== null)
+    .map(([id, el]) => {
+      // Anchor to the section's own tag header (`.vn-tag`, e.g. "// status")
+      // so the marker sits level with it rather than the section's padded
+      // box edge. Hero has no .vn-tag, so fall back to its title.
+      const header = el.querySelector<HTMLElement>('.vn-tag, .vn-hero__title') ?? el
+      return { id, top: header.offsetTop - baseTop }
+    })
 }
 
 // ---------------------------------------------------------------------
@@ -316,16 +315,16 @@ const correspondence: CorrespondenceRow[] = [
   <ParentLayout>
     <template #page>
       <main class="vn-home">
-        <div ref="contentEl" class="vn-gutter" aria-hidden="true">
+        <div ref="gutterEl" class="vn-gutter" aria-hidden="true">
           <span
-            v-for="row in gutterRows"
-            :key="row.n"
-            class="vn-gutter__row"
-            :class="{ 'is-fold': row.fold }"
-          >{{ row.fold ? '▸' : row.n }}</span>
+            v-for="mark in gutterMarks"
+            :key="mark.id"
+            class="vn-gutter__mark"
+            :style="{ top: `${mark.top}px` }"
+          >▸</span>
         </div>
 
-        <div class="vn-content">
+        <div ref="contentEl" class="vn-content">
           <!-- ============================================================ -->
           <!-- 1. HERO                                                      -->
           <!-- ============================================================ -->
@@ -676,20 +675,15 @@ await vibrate('medium')</code></pre>
   width: 3.5rem;
   height: calc(100vh - var(--navbar-height));
   overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  padding: 2.5rem 0.85rem 0 0;
-  font-family: var(--vn-font-mono);
-  font-size: 0.78rem;
-  line-height: #{27 / 16}rem;
-  color: var(--vn-comment);
+  // Faint boundary where the gutter column meets the content, so the left
+  // edge still reads as intentional even between markers.
+  border-right: 1px solid color-mix(in srgb, var(--vn-comment) 25%, transparent);
   user-select: none;
 
   @media (max-width: 959px) {
     flex-basis: 3px;
     width: 3px;
-    padding: 0;
+    border-right: none;
     background: linear-gradient(
       to bottom,
       var(--vn-keyword),
@@ -704,17 +698,19 @@ await vibrate('medium')</code></pre>
   }
 }
 
-.vn-gutter__row {
-  display: block;
+.vn-gutter__mark {
+  position: absolute;
+  right: 0.85rem;
+  font-family: var(--vn-font-mono);
+  font-size: 0.78rem;
+  line-height: 1;
+  // ~40% dimmer than a plain --vn-comment gutter glyph — quiet texture,
+  // not content.
+  color: color-mix(in srgb, var(--vn-comment) 60%, transparent);
 
   @media (max-width: 959px) {
     display: none;
   }
-}
-
-.vn-gutter__row.is-fold {
-  color: var(--vn-keyword);
-  font-weight: 700;
 }
 
 .vn-content {
