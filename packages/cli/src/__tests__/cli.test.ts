@@ -1,6 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { join } from 'node:path'
+import { join, sep } from 'node:path'
 import type { VueNativeConfig, ResolvedConfig } from '../config'
+
+function toPortablePath(value: unknown): unknown {
+  return typeof value === 'string' ? value.split(sep).join('/') : value
+}
 
 // Polyfill vi.resetModules for Bun's test runner (no-op — Bun re-evaluates dynamic imports)
 if (typeof vi.resetModules !== 'function') {
@@ -18,11 +22,13 @@ const mockCp = vi.fn().mockResolvedValue(undefined)
 const mockChmod = vi.fn().mockResolvedValue(undefined)
 
 vi.mock('node:fs/promises', () => ({
-  mkdir: (...args: unknown[]) => mockMkdir(...args),
-  writeFile: (...args: unknown[]) => mockWriteFile(...args),
+  mkdir: (path: unknown, ...args: unknown[]) => mockMkdir(toPortablePath(path), ...args),
+  writeFile: (path: unknown, ...args: unknown[]) => mockWriteFile(toPortablePath(path), ...args),
   readFile: (...args: unknown[]) => mockReadFile(...args),
-  cp: (...args: unknown[]) => mockCp(...args),
-  chmod: (...args: unknown[]) => mockChmod(...args),
+  cp: (source: unknown, destination: unknown, ...args: unknown[]) => mockCp(
+    toPortablePath(source), toPortablePath(destination), ...args,
+  ),
+  chmod: (path: unknown, ...args: unknown[]) => mockChmod(toPortablePath(path), ...args),
 }))
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -40,11 +46,13 @@ vi.mock('node:fs', async () => {
 
   return {
     ...actual,
-    existsSync: (...args: unknown[]) => mockExistsSync(...args),
-    readdirSync: (...args: unknown[]) => mockReaddirSync(...args),
-    readFileSync: (...args: unknown[]) => mockReadFileSync(...args),
-    mkdirSync: (...args: unknown[]) => mockMkdirSync(...args),
-    copyFileSync: (...args: unknown[]) => mockCopyFileSync(...args),
+    existsSync: (path: unknown, ...args: unknown[]) => mockExistsSync(toPortablePath(path), ...args),
+    readdirSync: (path: unknown, ...args: unknown[]) => mockReaddirSync(toPortablePath(path), ...args),
+    readFileSync: (path: unknown, ...args: unknown[]) => mockReadFileSync(toPortablePath(path), ...args),
+    mkdirSync: (path: unknown, ...args: unknown[]) => mockMkdirSync(toPortablePath(path), ...args),
+    copyFileSync: (source: unknown, destination: unknown, ...args: unknown[]) => mockCopyFileSync(
+      toPortablePath(source), toPortablePath(destination), ...args,
+    ),
   }
 })
 
@@ -202,9 +210,9 @@ describe('config', () => {
       await loadConfig('/fake/project')
 
       // Should have checked for all three config filenames
-      expect(mockExistsSync).toHaveBeenCalledWith(join('/fake/project', 'vue-native.config.ts'))
-      expect(mockExistsSync).toHaveBeenCalledWith(join('/fake/project', 'vue-native.config.js'))
-      expect(mockExistsSync).toHaveBeenCalledWith(join('/fake/project', 'vue-native.config.mjs'))
+      expect(mockExistsSync).toHaveBeenCalledWith(toPortablePath(join('/fake/project', 'vue-native.config.ts')))
+      expect(mockExistsSync).toHaveBeenCalledWith(toPortablePath(join('/fake/project', 'vue-native.config.js')))
+      expect(mockExistsSync).toHaveBeenCalledWith(toPortablePath(join('/fake/project', 'vue-native.config.mjs')))
     })
   })
 
@@ -399,9 +407,9 @@ describe('create command', () => {
       const mkdirCalls = mockMkdir.mock.calls.map(([path]: any[]) => path)
       const cwd = process.cwd()
 
-      expect(mkdirCalls).toContainEqual(join(cwd, 'test-app'))
-      expect(mkdirCalls).toContainEqual(join(cwd, 'test-app', 'app'))
-      expect(mkdirCalls).toContainEqual(join(cwd, 'test-app', 'app', 'pages'))
+      expect(mkdirCalls).toContainEqual(toPortablePath(join(cwd, 'test-app')))
+      expect(mkdirCalls).toContainEqual(toPortablePath(join(cwd, 'test-app', 'app')))
+      expect(mkdirCalls).toContainEqual(toPortablePath(join(cwd, 'test-app', 'app', 'pages')))
     })
 
     it('creates package.json with correct dependencies', async () => {
