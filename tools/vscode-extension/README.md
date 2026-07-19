@@ -109,8 +109,10 @@ Over 70 snippets covering all Vue Native components, composables, and patterns. 
 The extension provides real-time warnings for common Vue Native mistakes:
 
 - **`app.mount()` usage** -- Vue Native uses `app.start()`, not `app.mount()`.
-- **`@press` event** -- Vue Native buttons use `:onPress` (prop binding), not `@press`.
 - **Import hints** -- Suggests using `@thelacanians/vue-native-runtime` imports.
+
+Both `@press="handler"` event listeners and `:onPress="handler"` function bindings
+are supported. Snippets continue to use `:onPress`.
 
 ## Installation
 

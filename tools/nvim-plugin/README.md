@@ -118,9 +118,11 @@ Registers a custom `vue_native` source for nvim-cmp:
 Real-time warnings for common Vue Native mistakes via `vim.diagnostic`:
 
 - **`app.mount()` usage** — Vue Native uses `app.start()`, not `app.mount()`
-- **`@press` event** — Vue Native buttons use `:onPress` (prop binding), not `@press`
 - **`v-for` in VList** — VList uses `:data` and `#item` slot, not `v-for`
 - **Import hints** — suggests `@thelacanians/vue-native-runtime` over bare `vue`
+
+Both `@press="handler"` event listeners and `:onPress="handler"` function bindings
+are supported. Snippets continue to use `:onPress`.
 
 ## Installation
 

@@ -12,6 +12,9 @@
   "publishConfig": {
     "access": "public"
   },
+  "vueNative": {
+    "vueVersion": "3.5.40"
+  },
   "type": "module",
   "bin": {
     "vue-native": "./dist/cli.js"

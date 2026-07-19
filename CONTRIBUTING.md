@@ -45,6 +45,38 @@ bun run test         # Run unit tests
 bun run typecheck    # Type-check all packages
 ```
 
+### Vue dependency cohort
+
+Vue Native treats `vue` and its first-party compiler/runtime packages as one
+versioned cohort. The active stable version and the next compatibility target
+live in `package.json` under `vueNative.vueCohort`.
+
+To change the cohort, use the updater instead of editing workspace manifests by
+hand, then regenerate and verify the lockfile:
+
+```bash
+bun scripts/set-vue-cohort.mjs 3.5.40
+bun install
+bun run check:vue-cohort
+```
+
+The checker validates exact installed declarations, bounded public peer ranges,
+root overrides, every physical resolution in `bun.lock`, and optional native
+bundle paths (`--bundle <path>`). Use `--json` for machine-readable diagnostics.
+CI also exercises `vueNative.vueCohort.next` in a non-publishing, non-blocking
+compatibility job.
+
+Vue 3.6 Vapor SFCs are not yet compatible with the custom native renderer.
+The Vite plugin fails early with `VN_VAPOR_UNSUPPORTED` when it sees
+`<script setup vapor>`, `<script vapor>`, or `<template vapor>`.
+
+### Packaging policy before v1
+
+Keep the six current npm packages separate throughout the `0.x` line. Do not
+merge, delete, or deprecate them as part of routine maintenance. The planned v1
+migration will introduce the consolidated canonical package with an explicit
+compatibility and deprecation rollout.
+
 ### iOS native
 
 Open `native/ios/VueNativeCore/` as a Swift Package in Xcode, or build with:

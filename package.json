@@ -8,6 +8,24 @@
     "docs",
     "tools/*"
   ],
+  "vueNative": {
+    "vueCohort": {
+      "active": "3.5.40",
+      "next": "3.6.0-rc.1"
+    }
+  },
+  "overrides": {
+    "vue": "3.5.40",
+    "@vue/compiler-core": "3.5.40",
+    "@vue/compiler-dom": "3.5.40",
+    "@vue/compiler-sfc": "3.5.40",
+    "@vue/compiler-ssr": "3.5.40",
+    "@vue/reactivity": "3.5.40",
+    "@vue/runtime-core": "3.5.40",
+    "@vue/runtime-dom": "3.5.40",
+    "@vue/server-renderer": "3.5.40",
+    "@vue/shared": "3.5.40"
+  },
   "scripts": {
     "build": "turbo run build",
     "build:ios": "cd native/ios/VueNativeCore && xcodebuild build -scheme VueNativeCore -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' -quiet",
@@ -21,9 +39,11 @@
     "lint:staged": "eslint --no-warn-ignored",
     "knip": "knip --treat-config-hints-as-errors",
     "contracts:check": "bun scripts/check-native-contracts.mjs",
+    "check:vue-cohort": "node --test scripts/__tests__/*.test.mjs && bun scripts/check-vue-cohort.mjs",
+    "vue:cohort:set": "bun scripts/set-vue-cohort.mjs",
     "smoke:cli": "bun scripts/smoke-cli-scaffold.mjs",
     "hooks:validate": "lefthook validate",
-    "check:ts": "bun run lint && bun run typecheck && bun run contracts:check && bun run build && bun run smoke:cli && bun run test:ts && bun run knip && bun run hooks:validate",
+    "check:ts": "bun run lint && bun run typecheck && bun run contracts:check && bun run check:vue-cohort && bun run build && bun run smoke:cli && bun run test:ts && bun run knip && bun run hooks:validate",
     "prepare": "lefthook install",
     "version": "changeset version",
     "release": "changeset publish",

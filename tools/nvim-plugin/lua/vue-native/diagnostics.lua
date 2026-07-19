@@ -12,11 +12,6 @@ local rules = {
     severity = vim.diagnostic.severity.ERROR,
   },
   {
-    pattern = "@press[%s=]",
-    message = 'Vue Native buttons use :onPress (prop binding), not @press (event). Use :onPress="handler".',
-    severity = vim.diagnostic.severity.WARN,
-  },
-  {
     pattern = "v%-for%s+.-%s+in%s+",
     -- Only warn if inside a VList context (heuristic: same file has <VList)
     check_context = "VList",

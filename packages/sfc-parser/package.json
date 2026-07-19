@@ -36,7 +36,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@vue/compiler-sfc": "^3.5.12"
+    "@vue/compiler-sfc": "3.5.40"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

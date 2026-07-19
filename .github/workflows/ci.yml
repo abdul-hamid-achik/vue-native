@@ -47,6 +47,9 @@ jobs:
       - name: Native module contract check
         run: bun run contracts:check
 
+      - name: Vue dependency cohort check
+        run: bun run check:vue-cohort
+
       - name: Build
         run: bun run build
 
@@ -61,6 +64,101 @@ jobs:
 
       - name: Validate Git hooks
         run: bun run hooks:validate
+
+  # ── Vue next compatibility (experimental, non-publishing) ──
+  vue-next:
+    name: Vue 3.6 RC compatibility (experimental)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    permissions:
+      contents: read
+    outputs:
+      result: ${{ steps.compatibility-result.outputs.result }}
+      version: ${{ steps.vue-cohort.outputs.version }}
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.8
+
+      - name: Read configured Vue next cohort
+        id: vue-cohort
+        run: |
+          VUE_VERSION="$(
+            bun -e '
+              const version = require("./package.json").vueNative?.vueCohort?.next
+              if (!version) throw new Error("package.json is missing vueNative.vueCohort.next")
+              process.stdout.write(version)
+            '
+          )"
+          echo "version=$VUE_VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Patch ephemeral checkout to Vue next cohort
+        id: patch
+        continue-on-error: true
+        env:
+          VUE_VERSION: ${{ steps.vue-cohort.outputs.version }}
+        run: bun scripts/set-vue-cohort.mjs "$VUE_VERSION"
+
+      - name: Install patched dependencies
+        id: install
+        continue-on-error: true
+        run: bun install
+
+      - name: Check Vue cohort
+        id: cohort-check
+        continue-on-error: true
+        run: bun run check:vue-cohort
+
+      - name: Type check
+        id: typecheck
+        continue-on-error: true
+        run: bun run typecheck
+
+      - name: Build
+        id: build
+        continue-on-error: true
+        run: bun run build
+
+      - name: Test
+        id: test
+        continue-on-error: true
+        run: bun run test:ts
+
+      - name: Smoke-test packed CLI scaffold
+        id: packed-scaffold
+        continue-on-error: true
+        run: bun run smoke:cli
+
+      - name: Record experimental compatibility result
+        id: compatibility-result
+        if: always()
+        env:
+          PATCH_RESULT: ${{ steps.patch.outcome }}
+          INSTALL_RESULT: ${{ steps.install.outcome }}
+          COHORT_RESULT: ${{ steps.cohort-check.outcome }}
+          TYPECHECK_RESULT: ${{ steps.typecheck.outcome }}
+          BUILD_RESULT: ${{ steps.build.outcome }}
+          TEST_RESULT: ${{ steps.test.outcome }}
+          PACKED_SCAFFOLD_RESULT: ${{ steps.packed-scaffold.outcome }}
+        run: |
+          RESULT=success
+          for STEP_RESULT in \
+            "$PATCH_RESULT" \
+            "$INSTALL_RESULT" \
+            "$COHORT_RESULT" \
+            "$TYPECHECK_RESULT" \
+            "$BUILD_RESULT" \
+            "$TEST_RESULT" \
+            "$PACKED_SCAFFOLD_RESULT"; do
+            if [[ "$STEP_RESULT" != "success" ]]; then
+              RESULT=failure
+            fi
+          done
+          echo "result=$RESULT" >> "$GITHUB_OUTPUT"
 
   # ── Swift / iOS (build & test VueNativeCore) ───────────
   swift-ios:
@@ -203,7 +301,7 @@ jobs:
   summary:
     name: CI Summary
     runs-on: ubuntu-latest
-    needs: [typescript, swift-ios, swift-macos, kotlin]
+    needs: [typescript, vue-next, swift-ios, swift-macos, kotlin]
     if: always()
 
     steps:
@@ -215,6 +313,7 @@ jobs:
             echo "| Job | Status |"
             echo "|-----|--------|"
             echo "| TypeScript | ${{ needs.typescript.result }} |"
+            echo "| Vue 3.6 RC compatibility (experimental, non-blocking) | ${{ needs.vue-next.outputs.result || needs.vue-next.result }} |"
             echo "| Swift iOS | ${{ needs.swift-ios.result }} |"
             echo "| Swift macOS | ${{ needs.swift-macos.result }} |"
             echo "| Kotlin | ${{ needs.kotlin.result }} |"
