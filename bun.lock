@@ -12,6 +12,7 @@
         "globals": "^16.0.0",
         "knip": "^5.85.0",
         "lefthook": "^2.1.1",
+        "semver": "^7.7.4",
         "turbo": "^2.8.12",
         "typescript": "^5.7.0",
         "typescript-eslint": "^8.56.0",
@@ -292,13 +293,13 @@
     },
     "packages/cli": {
       "name": "@thelacanians/vue-native-cli",
-      "version": "0.7.5",
+      "version": "0.7.6",
       "bin": {
         "vue-native": "./dist/cli.js",
       },
       "dependencies": {
         "@thelacanians/vue-native-codegen": "^0.6.6",
-        "@thelacanians/vue-native-sfc-parser": "^0.6.6",
+        "@thelacanians/vue-native-sfc-parser": "^0.6.7",
         "chokidar": "^3.6.0",
         "commander": "^12.1.0",
         "jiti": "^2.6.1",
@@ -328,9 +329,9 @@
     },
     "packages/navigation": {
       "name": "@thelacanians/vue-native-navigation",
-      "version": "0.7.5",
+      "version": "0.7.6",
       "dependencies": {
-        "@thelacanians/vue-native-runtime": "^0.7.5",
+        "@thelacanians/vue-native-runtime": "^0.7.6",
         "@vue/runtime-core": "3.5.40",
       },
       "devDependencies": {
@@ -347,7 +348,7 @@
     },
     "packages/runtime": {
       "name": "@thelacanians/vue-native-runtime",
-      "version": "0.7.5",
+      "version": "0.7.6",
       "dependencies": {
         "@vue/reactivity": "3.5.40",
         "@vue/runtime-core": "3.5.40",
@@ -369,7 +370,7 @@
     },
     "packages/sfc-parser": {
       "name": "@thelacanians/vue-native-sfc-parser",
-      "version": "0.6.6",
+      "version": "0.6.7",
       "dependencies": {
         "@vue/compiler-sfc": "3.5.40",
       },
@@ -382,10 +383,10 @@
     },
     "packages/vite-plugin": {
       "name": "@thelacanians/vue-native-vite-plugin",
-      "version": "0.7.5",
+      "version": "0.7.6",
       "dependencies": {
         "@thelacanians/vue-native-codegen": "^0.6.6",
-        "@thelacanians/vue-native-sfc-parser": "^0.6.6",
+        "@thelacanians/vue-native-sfc-parser": "^0.6.7",
         "fast-glob": "^3.3.2",
       },
       "devDependencies": {

@@ -140,3 +140,10 @@ Pushing to `main` with a pending Changeset, or manually dispatching the workflow
 1. **npm** — publishes every versioned public workspace package selected by Changesets (runtime, navigation, Vite plugin, CLI, codegen, and SFC parser)
 2. **Swift Package** — validated via xcodebuild (SPM resolves directly from the git tag)
 3. **Android Maven** — publishes `com.vuenative:core` to GitHub Packages
+
+Runtime, navigation, the Vite plugin, and the CLI form the fixed framework
+version group. SFC parser and codegen are versioned independently, so a release
+can legitimately contain framework `0.7.x` packages and compiler `0.6.x`
+packages. The annotated `vX.Y.Z` tag identifies the framework/native release;
+each newly published npm artifact also receives its own annotated
+`<package-name>@<package-version>` tag.

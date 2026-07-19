@@ -77,6 +77,19 @@ merge, delete, or deprecate them as part of routine maintenance. The planned v1
 migration will introduce the consolidated canonical package with an explicit
 compatibility and deprecation rollout.
 
+The packages intentionally use two versioning lanes during `0.x`:
+
+- Runtime, navigation, the Vite plugin, and the CLI form one Changesets fixed
+  group and always share a version.
+- SFC parser and codegen are independently versioned because compiler-only
+  changes do not require a framework release.
+
+The aggregate `vX.Y.Z` Git tag follows the fixed framework group and is also the
+native-core version. New npm publications additionally receive an annotated
+`<package-name>@<package-version>` tag, so an independently released parser or
+codegen build remains traceable even when its number differs from the framework
+tag.
+
 ### iOS native
 
 Open `native/ios/VueNativeCore/` as a Swift Package in Xcode, or build with:
