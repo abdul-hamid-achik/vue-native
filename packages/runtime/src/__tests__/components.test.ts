@@ -205,6 +205,26 @@ describe('Components', () => {
       const ops = mockBridge.getOpsByType('addEventListener')
       expect(ops.some(o => o.args[1] === 'changetext')).toBe(true)
     })
+
+    it('extracts text from Android changetext payloads', async () => {
+      const updateModelValue = vi.fn()
+      renderComponent(createVNode(VInput, {
+        'onUpdate:modelValue': updateModelValue,
+      }))
+      await nextTick()
+
+      const changeListener = mockBridge.getOpsByType('addEventListener')
+        .find(op => op.args[1] === 'changetext')
+      expect(changeListener).toBeDefined()
+
+      NativeBridge.handleNativeEvent(
+        changeListener!.args[0],
+        'changetext',
+        { value: 'Alice' },
+      )
+
+      expect(updateModelValue).toHaveBeenCalledWith('Alice')
+    })
   })
 
   // ---------------------------------------------------------------------------

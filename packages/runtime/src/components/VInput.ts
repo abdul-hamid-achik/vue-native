@@ -3,6 +3,7 @@ import type { TextStyle } from '../types/styles'
 
 interface TextPayload {
   text?: string
+  value?: string
 }
 
 function extractText(payload: unknown): string {
@@ -10,9 +11,16 @@ function extractText(payload: unknown): string {
     return payload
   }
 
-  if (typeof payload === 'object' && payload !== null && 'text' in payload) {
-    const text = (payload as TextPayload).text
-    return typeof text === 'string' ? text : ''
+  if (typeof payload === 'object' && payload !== null) {
+    const payloadWithType = payload as TextPayload
+
+    if (typeof payloadWithType.text === 'string') {
+      return payloadWithType.text
+    }
+
+    if (typeof payloadWithType.value === 'string') {
+      return payloadWithType.value
+    }
   }
 
   return ''
