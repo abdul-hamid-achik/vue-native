@@ -9,7 +9,7 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join, relative, resolve } from 'node:path'
+import { basename, dirname, join, relative, resolve } from 'node:path'
 import {
   checkBundleSource,
   cohortPackagesForVersion,
@@ -86,7 +86,7 @@ try {
   run('bun', ['init', '-y'], tempRoot)
   const installerManifestPath = join(tempRoot, 'package.json')
   const installerManifest = JSON.parse(readFileSync(installerManifestPath, 'utf8'))
-  const packedArchive = packageName => `file:./${archives[packageName].split('/').pop()}`
+  const packedArchive = packageName => `file:./${basename(archives[packageName])}`
   const packedDependencies = Object.fromEntries(
     Object.keys(packageDirs).map(packageName => [packageName, packedArchive(packageName)]),
   )
@@ -106,7 +106,7 @@ try {
       `Fresh scaffold declared Vue ${appManifest.dependencies.vue}; expected ${expectedVueVersion}`,
     )
   }
-  const localArchive = packageName => `file:../${archives[packageName].split('/').pop()}`
+  const localArchive = packageName => `file:../${basename(archives[packageName])}`
   appManifest.dependencies['@thelacanians/vue-native-runtime'] = localArchive('@thelacanians/vue-native-runtime')
   appManifest.dependencies['@thelacanians/vue-native-navigation'] = localArchive('@thelacanians/vue-native-navigation')
   appManifest.devDependencies['@thelacanians/vue-native-cli'] = localArchive('@thelacanians/vue-native-cli')

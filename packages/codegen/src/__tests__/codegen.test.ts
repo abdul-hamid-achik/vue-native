@@ -79,7 +79,7 @@ class HapticsModule: NativeModule {
       expect(file.content).toContain('var moduleName: String { "Haptics" }')
       expect(file.content).toContain('Auto-Generated Code')
       expect(file.content.match(/class HapticsModule: NativeModule/g)).toHaveLength(1)
-      expect(file.outputPath).toContain('GeneratedModules/HapticsModule.swift')
+      expect(file.outputPath).toContain(join('GeneratedModules', 'HapticsModule.swift'))
     })
 
     it('should include custom output directory', () => {
@@ -87,7 +87,7 @@ class HapticsModule: NativeModule {
         iosOutputDir: 'custom/ios/output',
       })
 
-      expect(file.outputPath).toContain('custom/ios/output/HapticsModule.swift')
+      expect(file.outputPath).toContain(join('custom', 'ios', 'output', 'HapticsModule.swift'))
     })
 
     it('should exclude header when includeHeader is false', () => {
@@ -121,7 +121,7 @@ class HapticsModule: NativeModule {
       expect(file.content).toContain('package com.vuenative.core.GeneratedModules')
       expect(file.content).toContain('import com.vuenative.core.NativeModule')
       expect(file.content.match(/class HapticsModule: NativeModule/g)).toHaveLength(1)
-      expect(file.outputPath).toContain('GeneratedModules/HapticsModule.kt')
+      expect(file.outputPath).toContain(join('GeneratedModules', 'HapticsModule.kt'))
     })
 
     it('should include custom output directory', () => {
@@ -129,7 +129,7 @@ class HapticsModule: NativeModule {
         androidOutputDir: 'custom/android/output',
       })
 
-      expect(file.outputPath).toContain('custom/android/output/HapticsModule.kt')
+      expect(file.outputPath).toContain(join('custom', 'android', 'output', 'HapticsModule.kt'))
     })
   })
 
@@ -144,7 +144,7 @@ class HapticsModule: NativeModule {
       expect(file.content).toContain('NativeBridge.invokeNativeModule')
       expect(file.content).toContain('import { NativeBridge } from \'@thelacanians/vue-native-runtime\'')
       expect(file.content).not.toContain('from \'../bridge\'')
-      expect(file.outputPath).toContain('generated/useTestComponent.ts')
+      expect(file.outputPath).toContain(join('generated', 'useTestComponent.ts'))
     })
 
     it('should generate type-safe interface', () => {
@@ -329,7 +329,7 @@ class CameraModule: NativeModule {
       // macOS blocks generate Swift files (module + registration)
       expect(result.stats.swiftFiles).toBeGreaterThanOrEqual(1)
       expect(result.files.some(f => f.platform === 'macos' || f.sourceBlock.platform === 'macos')).toBe(true)
-      expect(result.files.some(f => f.outputPath.includes('native/macos/VueNativeMacOS'))).toBe(true)
+      expect(result.files.some(f => f.outputPath.includes(join('native', 'macos', 'VueNativeMacOS')))).toBe(true)
     })
 
     it('overwrites platform registries with empty registries when all blocks are removed', () => {
