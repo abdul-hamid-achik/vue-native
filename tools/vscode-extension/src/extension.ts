@@ -16,11 +16,6 @@ export function activate(context: vscode.ExtensionContext) {
       severity: vscode.DiagnosticSeverity.Error,
     },
     {
-      pattern: /@press\b/g,
-      message: 'Vue Native buttons use :onPress (prop binding), not @press (event). Use :onPress="handler".',
-      severity: vscode.DiagnosticSeverity.Warning,
-    },
-    {
       pattern: /import\s+.*from\s+['"]vue['"]/g,
       message: 'In Vue Native, import from "@thelacanians/vue-native-runtime" instead of "vue" for runtime APIs. The Vite plugin aliases "vue" automatically, but explicit imports are clearer.',
       severity: vscode.DiagnosticSeverity.Hint,

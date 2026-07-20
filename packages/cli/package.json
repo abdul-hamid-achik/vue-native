@@ -1,6 +1,6 @@
 {
   "name": "@thelacanians/vue-native-cli",
-  "version": "0.7.5",
+  "version": "0.7.6",
   "description": "CLI for creating and running Vue Native apps",
   "license": "MIT",
   "author": "Vue Native Contributors",
@@ -11,6 +11,9 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "vueNative": {
+    "vueVersion": "3.5.40"
   },
   "type": "module",
   "bin": {
@@ -37,7 +40,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@thelacanians/vue-native-sfc-parser": "^0.6.6",
+    "@thelacanians/vue-native-sfc-parser": "^0.6.7",
     "@thelacanians/vue-native-codegen": "^0.6.6",
     "commander": "^12.1.0",
     "jiti": "^2.6.1",

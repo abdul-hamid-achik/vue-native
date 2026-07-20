@@ -4,7 +4,25 @@ import { basename, join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { existsSync, readFileSync } from 'node:fs'
 import pc from 'picocolors'
+import cliPackage from '../../package.json'
 import { ConfigError } from '../config.js'
+
+const DEFAULT_VUE_VERSION = cliPackage.vueNative.vueVersion
+const VUE_COHORT_PACKAGES = [
+  'vue',
+  '@vue/compiler-core',
+  '@vue/compiler-dom',
+  '@vue/compiler-sfc',
+  '@vue/compiler-ssr',
+  '@vue/reactivity',
+  '@vue/runtime-core',
+  '@vue/runtime-dom',
+  '@vue/server-renderer',
+  '@vue/shared',
+  ...(Number(DEFAULT_VUE_VERSION.split('.')[1]) >= 6
+    ? ['@vue/compiler-vapor', '@vue/runtime-vapor']
+    : []),
+]
 
 function getCliPackageDir(): string {
   const moduleDir = dirname(fileURLToPath(import.meta.url))
@@ -28,21 +46,29 @@ function getTemplateVersions() {
     const pkg = JSON.parse(readFileSync(join(cliDir, 'package.json'), 'utf8'))
     const viteDevDep = pkg.devDependencies?.vite
     const viteVuePluginDevDep = pkg.devDependencies?.['@vitejs/plugin-vue']
+    const vueVersion = pkg.vueNative?.vueVersion
     return {
       JS_PACKAGE_VERSION: `^${pkg.version}`,
+      VUE_VERSION: vueVersion ?? DEFAULT_VUE_VERSION,
       VITE_PLUGIN_VUE_VERSION: viteVuePluginDevDep ?? '^6.0.5',
       VITE_VERSION: viteDevDep ?? '^8.0.0',
     }
   } catch {
     return {
       JS_PACKAGE_VERSION: '^0.0.0',
+      VUE_VERSION: DEFAULT_VUE_VERSION,
       VITE_PLUGIN_VUE_VERSION: '^6.0.5',
       VITE_VERSION: '^8.0.0',
     }
   }
 }
 
-const { JS_PACKAGE_VERSION, VITE_PLUGIN_VUE_VERSION, VITE_VERSION } = getTemplateVersions()
+const {
+  JS_PACKAGE_VERSION,
+  VITE_PLUGIN_VUE_VERSION,
+  VITE_VERSION,
+  VUE_VERSION,
+} = getTemplateVersions()
 
 const VALID_NAME = /^[a-zA-Z][a-zA-Z0-9_-]*$/
 
@@ -93,7 +119,7 @@ export const createCommand = new Command('create')
         dependencies: {
           '@thelacanians/vue-native-runtime': JS_PACKAGE_VERSION,
           '@thelacanians/vue-native-navigation': JS_PACKAGE_VERSION,
-          'vue': '^3.5.0',
+          'vue': VUE_VERSION,
         },
         devDependencies: {
           '@thelacanians/vue-native-cli': JS_PACKAGE_VERSION,
@@ -103,6 +129,9 @@ export const createCommand = new Command('create')
           'vite': VITE_VERSION,
           'typescript': '^5.7.0',
         },
+        overrides: Object.fromEntries(
+          VUE_COHORT_PACKAGES.map(packageName => [packageName, VUE_VERSION]),
+        ),
       }, null, 2))
 
       // vite.config.ts

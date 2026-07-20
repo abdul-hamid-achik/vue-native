@@ -1,5 +1,14 @@
 # @thelacanians/vue-native-sfc-parser
 
+## 0.6.7
+
+### Patch Changes
+
+- 8f8b777: Keep every workspace and generated app on one exact Vue dependency cohort,
+  validate physical runtime duplication, and exercise Vue 3.6 compatibility in a
+  non-publishing CI lane. Reject unsupported Vapor SFC modes early and keep the
+  native renderer isolated from DOM renderer aliases.
+
 ## 0.6.6
 
 ### Patch Changes

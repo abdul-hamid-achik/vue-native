@@ -22,9 +22,10 @@
  * ```
  */
 
-import { parseDirectory, type NativeBlock } from '@thelacanians/vue-native-sfc-parser'
+import { parseDirectory, parseSFC, type NativeBlock } from '@thelacanians/vue-native-sfc-parser'
 import { cleanGeneratedFiles, generateCode, hasGeneratedArtifacts, writeGeneratedFiles, type CodegenResult } from '@thelacanians/vue-native-codegen'
 import fg from 'fast-glob'
+import { realpathSync } from 'node:fs'
 import type { ConfigEnv, LibraryFormats, ResolvedConfig, UserConfig, ViteDevServer } from 'vite'
 
 export type NativePlatform = 'ios' | 'android' | 'macos'
@@ -118,6 +119,10 @@ type AliasEntry = {
 type AliasConfig = Record<string, string> | AliasEntry[]
 
 const NATIVE_PLATFORMS = new Set<NativePlatform>(['ios', 'android', 'macos'])
+const REQUIRED_NATIVE_VUE_RUNTIMES = [
+  '@vue/reactivity',
+  '@vue/runtime-core',
+] as const
 
 function isNativePlatform(value: string): value is NativePlatform {
   return NATIVE_PLATFORMS.has(value as NativePlatform)
@@ -175,6 +180,176 @@ function resolveLibEntry(config: UserConfig): string {
   }
 
   return 'app/main.ts'
+}
+
+type LocatedSfcBlock = {
+  type: string
+  content: string
+  attrs: Record<string, string | true>
+  loc: {
+    start: { offset: number }
+    end: { offset: number }
+  }
+}
+
+function hasVaporAttribute(block: LocatedSfcBlock | null | undefined): boolean {
+  return block !== null
+    && block !== undefined
+    && Object.prototype.hasOwnProperty.call(block.attrs, 'vapor')
+}
+
+function hasStaticVaporAttribute(rawAttributes: string): boolean {
+  let index = 0
+
+  while (index < rawAttributes.length) {
+    while (/\s/.test(rawAttributes[index] ?? '')) index++
+    if (index >= rawAttributes.length || rawAttributes[index] === '/') break
+
+    const nameStart = index
+    while (
+      index < rawAttributes.length
+      && !/[\s=/>]/.test(rawAttributes[index] ?? '')
+    ) {
+      index++
+    }
+
+    if (nameStart === index) {
+      index++
+      continue
+    }
+
+    const name = rawAttributes.slice(nameStart, index)
+    while (/\s/.test(rawAttributes[index] ?? '')) index++
+
+    if (rawAttributes[index] === '=') {
+      index++
+      while (/\s/.test(rawAttributes[index] ?? '')) index++
+
+      const quote = rawAttributes[index]
+      if (quote === '"' || quote === '\'') {
+        index++
+        while (index < rawAttributes.length && rawAttributes[index] !== quote) index++
+        if (rawAttributes[index] === quote) index++
+      } else {
+        while (
+          index < rawAttributes.length
+          && !/[\s>]/.test(rawAttributes[index] ?? '')
+        ) {
+          index++
+        }
+      }
+    }
+
+    if (name === 'vapor') return true
+  }
+
+  return false
+}
+
+/**
+ * Vue 3.5 drops whitespace-only script blocks from its descriptor. Vue 3.6
+ * still treats a `vapor` marker on such a block as an SFC-wide opt-in, so
+ * inspect only those ignored top-level blocks after masking parsed contents.
+ */
+function hasIgnoredEmptyScriptVaporMarker(
+  source: string,
+  blocks: LocatedSfcBlock[],
+): boolean {
+  const maskedSource = source.split('')
+  const mask = (start: number, end: number) => {
+    maskedSource.fill(' ', Math.max(0, start), Math.min(source.length, end))
+  }
+
+  for (const block of blocks) {
+    mask(block.loc.start.offset, block.loc.end.offset)
+  }
+
+  for (const comment of source.matchAll(/<!--[\s\S]*?(?:-->|$)/g)) {
+    const start = comment.index ?? 0
+    mask(start, start + comment[0].length)
+  }
+
+  const emptyScriptPattern
+    = /<script\b((?:[^"'<>]|"[^"]*"|'[^']*')*)(?:\/\s*>|>\s*<\/script\s*>)/g
+
+  for (const match of maskedSource.join('').matchAll(emptyScriptPattern)) {
+    if (hasStaticVaporAttribute(match[1] ?? '')) return true
+  }
+
+  return false
+}
+
+function hasVaporOptIn(source: string, filename: string): boolean {
+  if (!source.includes('vapor')) return false
+
+  const { descriptor } = parseSFC(source, { sourceFile: filename })
+  const vaporBlocks = [
+    descriptor.template,
+    descriptor.script,
+    descriptor.scriptSetup,
+  ]
+
+  if (vaporBlocks.some(hasVaporAttribute)) return true
+
+  const parsedBlocks = [
+    ...vaporBlocks,
+    ...descriptor.styles,
+    ...descriptor.customBlocks,
+  ]
+  const locatedBlocks: LocatedSfcBlock[] = []
+
+  for (const block of parsedBlocks) {
+    if (block === null) continue
+    locatedBlocks.push(block)
+  }
+
+  return hasIgnoredEmptyScriptVaporMarker(source, locatedBlocks)
+}
+
+function resolveRawVueSfcId(id: string): string | null {
+  if (id.includes('?')) return null
+  return id.toLowerCase().endsWith('.vue') ? id : null
+}
+
+function assertVaporIsNotForced(config: ResolvedConfig, platform: NativePlatform): void {
+  const vuePlugin = (config.plugins ?? []).find(plugin => plugin.name === 'vite:vue')
+  const vuePluginApi = (vuePlugin as {
+    api?: {
+      options?: {
+        script?: {
+          vapor?: boolean
+        }
+      }
+    }
+  } | undefined)?.api
+
+  if (vuePluginApi?.options?.script?.vapor !== true) return
+
+  throw new Error(
+    `[vue-native] VN_VAPOR_UNSUPPORTED: Vue 3.6 Vapor Mode is not supported for the "${platform}" native target. `
+    + 'Disable the global vue({ script: { vapor: true } }) option. '
+    + 'Vue Native currently requires Vue\'s VDOM custom-renderer compilation path.',
+  )
+}
+
+function packageResolutionRoots(moduleIds: string[], packageName: string): string[] {
+  const marker = `/node_modules/${packageName}/`
+  const roots = new Set<string>()
+
+  for (const moduleId of moduleIds) {
+    const markerIndex = moduleId.lastIndexOf(marker)
+    if (markerIndex === -1) continue
+    const packageRoot = moduleId.slice(0, markerIndex + marker.length - 1)
+    try {
+      roots.add(realpathSync(packageRoot).replace(/\\/g, '/'))
+    } catch {
+      // Synthetic module IDs used by tests and non-filesystem resolvers have
+      // no realpath. Their normalized resolver identity is still meaningful.
+      roots.add(packageRoot)
+    }
+  }
+
+  return [...roots].sort()
 }
 
 export default function vueNativePlugin(options: VueNativePluginOptions = {}) {
@@ -326,6 +501,9 @@ export default function vueNativePlugin(options: VueNativePluginOptions = {}) {
 
   return {
     name: 'vue-native',
+    // This plugin must see raw SFC source before @vitejs/plugin-vue compiles
+    // Vapor markers into DOM-specific output.
+    enforce: 'pre' as const,
 
     /**
      * Modify Vite's resolved config to set up aliases, defines, and build
@@ -398,6 +576,7 @@ export default function vueNativePlugin(options: VueNativePluginOptions = {}) {
      */
     async configResolved(config: ResolvedConfig) {
       projectRoot = config.root || process.cwd()
+      assertVaporIsNotForced(config, platform)
 
       if (nativeCodegen) {
         logInfo('[vue-native] Running initial code generation...')
@@ -455,17 +634,74 @@ export default function vueNativePlugin(options: VueNativePluginOptions = {}) {
     },
 
     /**
-     * Strip <native> custom blocks — they contain Swift/Kotlin code
-     * that should not be processed by Rollup/esbuild.
+     * Verify the resolved module graph, which is more reliable than scanning a
+     * minified bundle for implementation strings. Vue's runtime-core itself
+     * contains a hydration-only `document.createElement` fallback, so that
+     * string alone does not prove that runtime-dom was bundled.
      */
+    generateBundle(this: { getModuleIds(): IterableIterator<string> }) {
+      const moduleIds = [...this.getModuleIds()]
+        .map(moduleId => moduleId.replace(/\\/g, '/'))
+      const observedVueModuleIds = moduleIds
+        .filter(moduleId =>
+          moduleId.includes('/@vue/')
+          || moduleId.includes('/vue/'),
+        )
+      const forbiddenRendererModules = moduleIds
+        .filter(moduleId =>
+          moduleId.includes('/node_modules/@vue/runtime-dom/')
+          || moduleId.includes('/node_modules/@vue/runtime-vapor/')
+          || moduleId.includes('/node_modules/vue/dist/'),
+        )
+      const runtimeResolutionErrors = REQUIRED_NATIVE_VUE_RUNTIMES.flatMap(
+        (packageName) => {
+          const roots = packageResolutionRoots(moduleIds, packageName)
+          if (roots.length === 1) return []
+          return [
+            `${packageName} resolved through ${roots.length} physical copies: ${
+              roots.length === 0 ? '(missing)' : roots.join(', ')
+            }${
+              roots.length === 0 && observedVueModuleIds.length > 0
+                ? `; observed Vue modules: ${observedVueModuleIds.join(', ')}`
+                : ''
+            }`,
+          ]
+        },
+      )
+
+      if (
+        forbiddenRendererModules.length > 0
+        || runtimeResolutionErrors.length > 0
+      ) {
+        throw new Error(
+          '[vue-native] VN_RENDERER_ISOLATION: The native bundle must resolve exactly one copy of each core Vue runtime and no unsupported Vue renderer:\n'
+          + [
+            ...runtimeResolutionErrors,
+            ...forbiddenRendererModules.map(
+              moduleId => `unsupported Vue renderer: ${moduleId}`,
+            ),
+          ].map(message => `- ${message}`).join('\n'),
+        )
+      }
+    },
+
     /**
      * Strip <native> custom blocks — they contain Swift/Kotlin code
      * that should not be processed by Rollup/esbuild.
      * The vue plugin loads the raw content; we transform it to a no-op.
      */
-    transform(_code: string, id: string) {
+    transform(code: string, id: string) {
       if (id.includes('type=native')) {
         return { code: 'export default () => {}', map: null }
+      }
+
+      const filename = resolveRawVueSfcId(id)
+      if (filename && hasVaporOptIn(code, filename)) {
+        throw new Error(
+          `[vue-native] VN_VAPOR_UNSUPPORTED: Vue 3.6 Vapor Mode is not supported for the "${platform}" native target in ${filename}. `
+          + 'Remove the "vapor" attribute from the top-level <script>, <script setup>, or <template> block. '
+          + 'Vue Native currently requires Vue\'s VDOM custom-renderer compilation path.',
+        )
       }
     },
 

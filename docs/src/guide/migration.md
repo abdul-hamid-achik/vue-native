@@ -190,7 +190,7 @@ If you use a local copy of the Swift Package (in `native/ios/`), pull the latest
 
 1. If using a remote dependency, bump the version in `android/app/build.gradle`:
 ```groovy
-implementation 'com.vuenative:core:0.7.4'
+implementation 'com.vuenative:core:<target-version>'
 ```
 2. Sync Gradle: **File -> Sync Project with Gradle Files** in Android Studio.
 3. Clean and rebuild: `cd android && ./gradlew clean assembleDebug`.

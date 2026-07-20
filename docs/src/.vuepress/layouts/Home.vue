@@ -595,7 +595,7 @@ await vibrate('medium')</code></pre>
             </ul>
 
             <p class="vn-status__note">
-              v0.7.5, pre-1.0 and hardening fast — memory-leak and race-condition fixes shipped across the
+              Pre-1.0 and hardening fast — memory-leak and race-condition fixes shipped across the
               iOS/Android bridge in recent releases. Flexbox subset, no browser globals. The dev watcher targets one
               platform at a time. Bun-first toolchain (Bun 1.3+; Node 20.19+ on the npm path). Small, focused, built
               in the open.

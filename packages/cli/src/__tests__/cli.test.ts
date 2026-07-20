@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { join, sep } from 'node:path'
+import cliPackage from '../../package.json'
 import type { VueNativeConfig, ResolvedConfig } from '../config'
 
 function toPortablePath(value: unknown): unknown {
@@ -427,7 +428,7 @@ describe('create command', () => {
       expect(pkgJson.type).toBe('module')
       expect(pkgJson.dependencies).toHaveProperty('@thelacanians/vue-native-runtime')
       expect(pkgJson.dependencies).toHaveProperty('@thelacanians/vue-native-navigation')
-      expect(pkgJson.dependencies).toHaveProperty('vue')
+      expect(pkgJson.dependencies.vue).toBe(cliPackage.vueNative.vueVersion)
       expect(pkgJson.devDependencies).toHaveProperty('@thelacanians/vue-native-cli')
       expect(pkgJson.devDependencies).toHaveProperty('@thelacanians/vue-native-vite-plugin')
       expect(pkgJson.devDependencies['@vitejs/plugin-vue']).toBe('^6.0.5')
@@ -435,6 +436,15 @@ describe('create command', () => {
       expect(pkgJson.devDependencies['vite']).toBe('^8.0.0')
       expect(pkgJson.devDependencies).toHaveProperty('vite')
       expect(pkgJson.devDependencies).toHaveProperty('typescript')
+      expect(Object.values(pkgJson.overrides).every(
+        version => version === cliPackage.vueNative.vueVersion,
+      )).toBe(true)
+      expect(pkgJson.overrides['@vue/runtime-core']).toBe(
+        cliPackage.vueNative.vueVersion,
+      )
+      expect('@vue/runtime-vapor' in pkgJson.overrides).toBe(
+        Number(cliPackage.vueNative.vueVersion.split('.')[1]) >= 6,
+      )
     })
 
     it('creates package.json with dev and build scripts', async () => {

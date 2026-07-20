@@ -432,7 +432,9 @@ jobs:
           fi
 
       - name: Refresh versioned dependencies
-        run: bun install
+        run: |
+          bun install
+          bun run package-metadata:sync
 
       - name: Validate versioned packages
         run: bun run check:ts
@@ -580,6 +582,27 @@ jobs:
             fi
           fi
 
+      - name: Resolve and preflight npm package tags
+        env:
+          RELEASE_SHA: ${{ needs.release-context.outputs.release_sha }}
+        run: |
+          REPORT_FILE="$RUNNER_TEMP/npm-release-tags.json"
+          TARGETS_FILE="$RUNNER_TEMP/npm-release-targets.txt"
+          bun scripts/sync-release-tags.mjs \
+            --release-sha "$RELEASE_SHA" \
+            --dry-run \
+            --json > "$REPORT_FILE"
+          node -e '
+            const { readFileSync, writeFileSync } = require("node:fs")
+            const [reportPath, targetsPath] = process.argv.slice(1)
+            const report = JSON.parse(readFileSync(reportPath, "utf8"))
+            const targets = report.results.map(result => result.tag)
+            if (targets.length === 0) throw new Error("No npm release targets were resolved")
+            writeFileSync(targetsPath, `${targets.join("\n")}\n`)
+          ' "$REPORT_FILE" "$TARGETS_FILE"
+          echo "Resolved npm release targets:"
+          sed 's/^/  /' "$TARGETS_FILE"
+
       - name: Reverify prepared commit is still main
         env:
           RELEASE_SHA: ${{ needs.release-context.outputs.release_sha }}
@@ -608,14 +631,7 @@ jobs:
           VERIFY_DIR="$RUNNER_TEMP/npm-release-verification"
           rm -rf "$VERIFY_DIR"
           mkdir -p "$VERIFY_DIR"
-
-          git diff --name-only HEAD^ HEAD -- 'packages/*/package.json' |
-            while IFS= read -r manifest; do
-              node -e '
-                const pkg = require("./" + process.argv[1])
-                if (!pkg.private) process.stdout.write(`${pkg.name}@${pkg.version}\n`)
-              ' "$manifest"
-            done > "$VERIFY_DIR/targets.txt"
+          cp "$RUNNER_TEMP/npm-release-targets.txt" "$VERIFY_DIR/targets.txt"
 
           if [ ! -s "$VERIFY_DIR/targets.txt" ]; then
             echo "No public package versions were found in the prepared release."
@@ -720,6 +736,11 @@ jobs:
             exit 1
           fi
 
+      - name: Sync npm package tags
+        env:
+          RELEASE_SHA: ${{ needs.release-context.outputs.release_sha }}
+        run: bun scripts/sync-release-tags.mjs --release-sha "$RELEASE_SHA"
+
       - name: Setup Java for Android
         if: steps.release.outputs.framework_changed == 'true'
         uses: actions/setup-java@v5
@@ -793,10 +814,9 @@ jobs:
             NOTES="Release v$VERSION"
           fi
           PUBLISHED_PACKAGES="$(
-            git diff --name-only HEAD^ HEAD -- 'packages/*/package.json' |
-              while IFS= read -r manifest; do
-                node -e 'const pkg = require("./" + process.argv[1]); console.log(`- \`${pkg.name}@${pkg.version}\``)' "$manifest"
-              done
+            while IFS= read -r spec; do
+              printf -- '- `%s`\n' "$spec"
+            done < "$RUNNER_TEMP/npm-release-targets.txt"
           )"
           {
             echo "notes<<RELEASE_NOTES_EOF"

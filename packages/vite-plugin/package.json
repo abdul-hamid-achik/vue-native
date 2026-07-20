@@ -1,6 +1,6 @@
 {
   "name": "@thelacanians/vue-native-vite-plugin",
-  "version": "0.7.5",
+  "version": "0.7.6",
   "description": "Vite plugin for Vue Native — builds IIFE bundles for native runtimes",
   "license": "MIT",
   "author": "Vue Native Contributors",
@@ -36,7 +36,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@thelacanians/vue-native-sfc-parser": "^0.6.6",
+    "@thelacanians/vue-native-sfc-parser": "^0.6.7",
     "@thelacanians/vue-native-codegen": "^0.6.6",
     "fast-glob": "^3.3.2"
   },
@@ -46,6 +46,8 @@
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "@vue/reactivity": "3.5.40",
+    "@vue/runtime-core": "3.5.40",
     "@vitejs/plugin-vue": "^6.0.5",
     "tsup": "^8.4.0",
     "typescript": "^5.7.0",

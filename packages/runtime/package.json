@@ -1,6 +1,6 @@
 {
   "name": "@thelacanians/vue-native-runtime",
-  "version": "0.7.5",
+  "version": "0.7.6",
   "description": "Vue 3 custom renderer for native iOS and Android apps",
   "license": "MIT",
   "author": "Vue Native Contributors",
@@ -42,12 +42,12 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@vue/runtime-core": "3.5.12",
-    "@vue/reactivity": "3.5.12",
-    "@vue/shared": "3.5.12"
+    "@vue/runtime-core": "3.5.40",
+    "@vue/reactivity": "3.5.40",
+    "@vue/shared": "3.5.40"
   },
   "peerDependencies": {
-    "vue": "^3.5.0"
+    "vue": ">=3.5.40 <3.6.0"
   },
   "peerDependenciesMeta": {
     "vue": {

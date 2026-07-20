@@ -6,6 +6,8 @@
  * to validate the resolved configuration without needing a real Vite build.
  */
 import { describe, it, expect } from 'vitest'
+import { ref as createProbeRef } from '@vue/reactivity'
+import { nextTick as scheduleProbeTick } from '@vue/runtime-core'
 import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -71,10 +73,110 @@ describe('Plugin creation', () => {
     expect(plugin.name).toBe('vue-native')
   })
 
+  it('runs before the Vue SFC compiler', () => {
+    const plugin = vueNativePlugin()
+    expect(plugin.enforce).toBe('pre')
+  })
+
   it('has a config hook', () => {
     const plugin = vueNativePlugin()
     expect(plugin.config).toBeDefined()
     expect(typeof plugin.config).toBe('function')
+  })
+})
+
+describe('Vue 3.6 Vapor diagnostics', () => {
+  it.each([
+    ['script setup marker', '<script setup vapor>const count = 1</script><template><VText /></template>'],
+    ['script shorthand marker', '<script vapor>const count = 1</script><template><VText /></template>'],
+    ['template marker', '<template vapor><VText /></template>'],
+    ['empty script shorthand', '<script vapor></script><template><VText /></template>'],
+    ['empty script setup marker', '<script setup vapor />\n<template><VText /></template>'],
+    ['valued marker', '<template vapor="false"><VText /></template>'],
+  ])('rejects the Vue-supported %s', (_label, source) => {
+    const plugin = vueNativePlugin({ platform: 'android' })
+
+    expect(() => plugin.transform(source, '/project/app/App.vue')).toThrow(
+      /VN_VAPOR_UNSUPPORTED.*"android".*App\.vue.*<script>.*<script setup>.*<template>/,
+    )
+  })
+
+  it.each([
+    ['comment', '<!-- <script setup vapor>const count = 1</script> --><template><VText /></template>'],
+    ['identifier', '<script setup>const vapor = true</script><template><VText>{{ vapor }}</VText></template>'],
+    ['attribute value', '<script setup data-note="enable vapor later">const count = 1</script><template><VText /></template>'],
+    ['similarly named attribute', '<script setup vaporous data-vapor>const count = 1</script><template><VText /></template>'],
+    ['dynamic attribute', '<script setup :vapor="enabled">const enabled = true</script><template><VText /></template>'],
+    ['case-mismatched attribute', '<script setup VAPOR>const count = 1</script><template><VText /></template>'],
+    ['nested script element', '<template><VView><script vapor></script></VView></template>'],
+    ['style attribute', '<style vapor>.label { color: red; }</style><template><VText class="label" /></template>'],
+    ['custom-block attribute', '<native platform="ios" vapor>final class VaporModule {}</native><template><VText /></template>'],
+  ])('does not mistake a %s for an SFC Vapor opt-in', (_label, source) => {
+    const plugin = vueNativePlugin()
+    expect(plugin.transform(source, '/project/app/App.vue')).toBeUndefined()
+  })
+
+  it('ignores compiled Vue subrequests', () => {
+    const plugin = vueNativePlugin()
+    const compiledCode = 'const message = "<script setup vapor>"'
+
+    expect(
+      plugin.transform(compiledCode, '/project/app/App.vue?vue&type=script&setup=true&lang.ts'),
+    ).toBeUndefined()
+  })
+
+  it('continues to strip native custom-block subrequests', () => {
+    const plugin = vueNativePlugin()
+
+    expect(
+      plugin.transform('native source', '/project/app/App.vue?vue&type=native&index=0'),
+    ).toEqual({ code: 'export default () => {}', map: null })
+  })
+})
+
+describe('Renderer isolation', () => {
+  function runGenerateBundle(moduleIds: string[]) {
+    const plugin = vueNativePlugin()
+    if (typeof plugin.generateBundle !== 'function') {
+      throw new TypeError('Expected a generateBundle hook')
+    }
+    return plugin.generateBundle.call({
+      getModuleIds: () => moduleIds.values(),
+    } as any)
+  }
+
+  it('accepts the custom renderer and runtime-core module graph', () => {
+    expect(createProbeRef('native').value).toBe('native')
+    expect(typeof scheduleProbeTick).toBe('function')
+    expect(() => runGenerateBundle([
+      '/project/packages/runtime/dist/index.js',
+      '/project/node_modules/@vue/reactivity/dist/reactivity.esm-bundler.js',
+      '/project/node_modules/@vue/runtime-core/dist/runtime-core.esm-bundler.js',
+    ])).not.toThrow()
+  })
+
+  it.each([
+    '/project/node_modules/@vue/runtime-dom/dist/runtime-dom.esm-bundler.js',
+    '/project/node_modules/@vue/runtime-vapor/dist/runtime-vapor.esm-bundler.js',
+    'C:\\project\\node_modules\\vue\\dist\\vue.runtime.esm-bundler.js',
+  ])('rejects unsupported renderer module %s', (moduleId) => {
+    expect(() => runGenerateBundle([
+      '/project/node_modules/@vue/reactivity/dist/reactivity.esm-bundler.js',
+      '/project/node_modules/@vue/runtime-core/dist/runtime-core.esm-bundler.js',
+      moduleId,
+    ])).toThrow(
+      /VN_RENDERER_ISOLATION.*unsupported Vue renderer/s,
+    )
+  })
+
+  it('rejects two same-version physical runtime copies', () => {
+    expect(() => runGenerateBundle([
+      '/project/node_modules/@vue/reactivity/dist/reactivity.esm-bundler.js',
+      '/project/node_modules/.bun/@vue+runtime-core@3.5.40/node_modules/@vue/runtime-core/dist/runtime-core.esm-bundler.js',
+      '/project/node_modules/legacy/node_modules/@vue/runtime-core/dist/runtime-core.esm-bundler.js',
+    ])).toThrow(
+      /VN_RENDERER_ISOLATION.*runtime-core resolved through 2 physical copies/s,
+    )
   })
 })
 
@@ -544,6 +646,62 @@ describe('Plugin shape', () => {
 // Real Vite integration
 // ---------------------------------------------------------------------------
 describe('Vite integration', () => {
+  it('rejects globally forced Vapor compilation during Vite configuration', async () => {
+    const packageRoot = fileURLToPath(new URL('../..', import.meta.url))
+    const tempRoot = await mkdtemp(join(packageRoot, 'tmp-vite-global-vapor-'))
+
+    try {
+      await mkdir(join(tempRoot, 'app'), { recursive: true })
+      await writeFile(join(tempRoot, 'app', 'main.ts'), 'import \'./App.vue\'\n')
+      await writeFile(
+        join(tempRoot, 'app', 'App.vue'),
+        '<script setup>const message = "Vapor"</script><template><VText>{{ message }}</VText></template>',
+      )
+
+      await expect(build({
+        root: tempRoot,
+        logLevel: 'silent',
+        plugins: [
+          vue({ script: { vapor: true } } as any),
+          vueNativePlugin({
+            hotReload: false,
+            nativeCodegen: false,
+          }),
+        ],
+      })).rejects.toThrow(/VN_VAPOR_UNSUPPORTED.*script.*vapor/s)
+    } finally {
+      await rm(tempRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('rejects Vapor syntax before @vitejs/plugin-vue compiles the SFC', async () => {
+    const packageRoot = fileURLToPath(new URL('../..', import.meta.url))
+    const tempRoot = await mkdtemp(join(packageRoot, 'tmp-vite-vapor-'))
+
+    try {
+      await mkdir(join(tempRoot, 'app'), { recursive: true })
+      await writeFile(join(tempRoot, 'app', 'main.ts'), 'import \'./App.vue\'\n')
+      await writeFile(
+        join(tempRoot, 'app', 'App.vue'),
+        '<script setup vapor>const message = "Vapor"</script><template><VText>{{ message }}</VText></template>',
+      )
+
+      await expect(build({
+        root: tempRoot,
+        logLevel: 'silent',
+        plugins: [
+          vue(),
+          vueNativePlugin({
+            hotReload: false,
+            nativeCodegen: false,
+          }),
+        ],
+      })).rejects.toThrow(/VN_VAPOR_UNSUPPORTED/)
+    } finally {
+      await rm(tempRoot, { recursive: true, force: true })
+    }
+  })
+
   it('builds a Vue Native bundle with the current Vite major', async () => {
     const packageRoot = fileURLToPath(new URL('../..', import.meta.url))
     const runtimeEntry = fileURLToPath(new URL('../../../runtime/src/index.ts', import.meta.url))
@@ -618,7 +776,13 @@ describe('Vite integration', () => {
       await mkdir(join(tempRoot, 'app'), { recursive: true })
       await writeFile(
         join(tempRoot, 'app', 'main.ts'),
-        'globalThis.__compiledPlatform = __PLATFORM__\n',
+        [
+          'import { ref } from \'@vue/reactivity\'',
+          'import { nextTick } from \'@vue/runtime-core\'',
+          'globalThis.__vueRuntimeProbe = { ref, nextTick }',
+          'globalThis.__compiledPlatform = __PLATFORM__',
+          '',
+        ].join('\n'),
       )
 
       process.env.VUE_NATIVE_PLATFORM = 'android'
