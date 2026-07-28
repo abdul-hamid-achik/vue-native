@@ -258,89 +258,203 @@ final class ComponentFactoryTests: XCTestCase {
 
     // MARK: - VInputFactory Tests
 
+    /// The registered view is a stable container; the editing control lives inside it.
+    private func inputContainer(_ view: UIView) -> VInputContainerView? {
+        return view as? VInputContainerView
+    }
+
     func testVInputFactoryCreatesUITextField() {
         let factory = VInputFactory()
         let view = factory.createView()
-        XCTAssertTrue(view is UITextField, "VInputFactory should create a UITextField")
+        let container = inputContainer(view)
+        XCTAssertNotNil(container, "VInputFactory should register a VInputContainerView")
+        XCTAssertNotNil(container?.textField, "single-line VInput should contain a UITextField by default")
+        XCTAssertNil(container?.textView, "single-line VInput should not contain a UITextView")
+    }
+
+    func testVInputFactoryKeepsStableViewIdentityAcrossMultilineToggle() {
+        let factory = VInputFactory()
+        let view = factory.createView()
+        // The registered view's identity must not change when multiline toggles,
+        // otherwise the bridge's nodeId → view registry would break.
+        factory.updateProp(view: view, key: "multiline", value: true)
+        XCTAssertTrue(view === inputContainer(view), "registered container identity must survive a multiline toggle")
+        factory.updateProp(view: view, key: "multiline", value: false)
+        XCTAssertTrue(view === inputContainer(view), "registered container identity must survive toggling back")
     }
 
     func testVInputFactorySetsText() {
         let factory = VInputFactory()
-        let textField = factory.createView() as! UITextField
+        let view = factory.createView()
 
-        factory.updateProp(view: textField, key: "text", value: "Hello Input")
-        XCTAssertEqual(textField.text, "Hello Input", "text prop should set text field text")
+        factory.updateProp(view: view, key: "text", value: "Hello Input")
+        XCTAssertEqual(inputContainer(view)?.textField?.text, "Hello Input", "text prop should set text field text")
     }
 
     func testVInputFactorySetsPlaceholder() {
         let factory = VInputFactory()
-        let textField = factory.createView() as! UITextField
+        let view = factory.createView()
 
-        factory.updateProp(view: textField, key: "placeholder", value: "Enter text...")
-        XCTAssertEqual(textField.placeholder, "Enter text...", "placeholder prop should be set")
+        factory.updateProp(view: view, key: "placeholder", value: "Enter text...")
+        XCTAssertEqual(inputContainer(view)?.textField?.placeholder, "Enter text...", "placeholder prop should be set")
     }
 
     func testVInputFactorySetsSecureTextEntry() {
         let factory = VInputFactory()
-        let textField = factory.createView() as! UITextField
+        let view = factory.createView()
 
-        factory.updateProp(view: textField, key: "secureTextEntry", value: true)
-        XCTAssertTrue(textField.isSecureTextEntry, "secureTextEntry should be true")
+        factory.updateProp(view: view, key: "secureTextEntry", value: true)
+        XCTAssertEqual(inputContainer(view)?.textField?.isSecureTextEntry, true, "secureTextEntry should be true")
 
-        factory.updateProp(view: textField, key: "secureTextEntry", value: false)
-        XCTAssertFalse(textField.isSecureTextEntry, "secureTextEntry should be false")
+        factory.updateProp(view: view, key: "secureTextEntry", value: false)
+        XCTAssertEqual(inputContainer(view)?.textField?.isSecureTextEntry, false, "secureTextEntry should be false")
     }
 
     func testVInputFactorySetsKeyboardType() {
         let factory = VInputFactory()
-        let textField = factory.createView() as! UITextField
+        let view = factory.createView()
 
-        factory.updateProp(view: textField, key: "keyboardType", value: "numeric")
-        XCTAssertEqual(textField.keyboardType, .numberPad, "keyboardType 'numeric' should set .numberPad")
+        factory.updateProp(view: view, key: "keyboardType", value: "numeric")
+        XCTAssertEqual(inputContainer(view)?.textField?.keyboardType, .numberPad, "keyboardType 'numeric' should set .numberPad")
 
-        factory.updateProp(view: textField, key: "keyboardType", value: "email")
-        XCTAssertEqual(textField.keyboardType, .emailAddress, "keyboardType 'email' should set .emailAddress")
+        factory.updateProp(view: view, key: "keyboardType", value: "email")
+        XCTAssertEqual(inputContainer(view)?.textField?.keyboardType, .emailAddress, "keyboardType 'email' should set .emailAddress")
     }
 
     func testVInputFactoryEditable() {
         let factory = VInputFactory()
-        let textField = factory.createView() as! UITextField
+        let view = factory.createView()
 
-        factory.updateProp(view: textField, key: "editable", value: false)
-        XCTAssertFalse(textField.isEnabled, "editable=false should disable the text field")
+        factory.updateProp(view: view, key: "editable", value: false)
+        XCTAssertEqual(inputContainer(view)?.textField?.isEnabled, false, "editable=false should disable the text field")
 
-        factory.updateProp(view: textField, key: "editable", value: true)
-        XCTAssertTrue(textField.isEnabled, "editable=true should enable the text field")
+        factory.updateProp(view: view, key: "editable", value: true)
+        XCTAssertEqual(inputContainer(view)?.textField?.isEnabled, true, "editable=true should enable the text field")
     }
 
     func testVInputFactoryHandlesChangeTextEvent() {
         let factory = VInputFactory()
-        let textField = factory.createView() as! UITextField
+        let view = factory.createView()
 
-        factory.addEventListener(view: textField, event: "changetext") { _ in }
+        factory.addEventListener(view: view, event: "changetext") { _ in }
 
         // Verify delegate is set up
-        XCTAssertNotNil(textField.delegate, "UITextField delegate should be set after addEventListener")
+        XCTAssertNotNil(inputContainer(view)?.textField?.delegate, "UITextField delegate should be set after addEventListener")
     }
 
     func testVInputFactoryReturnKeyType() {
         let factory = VInputFactory()
-        let textField = factory.createView() as! UITextField
+        let view = factory.createView()
 
-        factory.updateProp(view: textField, key: "returnKeyType", value: "done")
-        XCTAssertEqual(textField.returnKeyType, .done, "returnKeyType 'done' should set .done")
+        factory.updateProp(view: view, key: "returnKeyType", value: "done")
+        XCTAssertEqual(inputContainer(view)?.textField?.returnKeyType, .done, "returnKeyType 'done' should set .done")
 
-        factory.updateProp(view: textField, key: "returnKeyType", value: "search")
-        XCTAssertEqual(textField.returnKeyType, .search, "returnKeyType 'search' should set .search")
+        factory.updateProp(view: view, key: "returnKeyType", value: "search")
+        XCTAssertEqual(inputContainer(view)?.textField?.returnKeyType, .search, "returnKeyType 'search' should set .search")
     }
 
-    func testVInputFactoryMultilineStaysSingleLineField() {
+    func testVInputFactoryMultilineCreatesUITextView() {
         let factory = VInputFactory()
         let view = factory.createView()
-        // multiline is not yet supported on iOS; applying it must not crash and
-        // the view must stay a UITextField (its identity cannot change at prop time).
+
         factory.updateProp(view: view, key: "multiline", value: true)
-        XCTAssertTrue(view is UITextField, "multiline is unsupported on iOS; view must remain a UITextField")
+
+        let container = inputContainer(view)
+        XCTAssertNotNil(container?.textView, "multiline=true should swap the inner control to a UITextView")
+        XCTAssertNil(container?.textField, "multiline=true should remove the inner UITextField")
+    }
+
+    func testVInputFactoryMultilineToggleBackCreatesUITextField() {
+        let factory = VInputFactory()
+        let view = factory.createView()
+
+        factory.updateProp(view: view, key: "multiline", value: true)
+        factory.updateProp(view: view, key: "multiline", value: false)
+
+        let container = inputContainer(view)
+        XCTAssertNotNil(container?.textField, "toggling multiline back off should restore a UITextField")
+        XCTAssertNil(container?.textView, "toggling multiline back off should remove the UITextView")
+    }
+
+    func testVInputFactoryPreservesTextAcrossMultilineToggle() {
+        let factory = VInputFactory()
+        let view = factory.createView()
+
+        factory.updateProp(view: view, key: "text", value: "preserved text")
+        factory.updateProp(view: view, key: "multiline", value: true)
+        XCTAssertEqual(inputContainer(view)?.textView?.text, "preserved text", "text should survive the swap to multiline")
+
+        factory.updateProp(view: view, key: "multiline", value: false)
+        XCTAssertEqual(inputContainer(view)?.textField?.text, "preserved text", "text should survive the swap back to single-line")
+    }
+
+    func testVInputFactoryMultilinePreservesKeyboardTraits() {
+        let factory = VInputFactory()
+        let view = factory.createView()
+
+        factory.updateProp(view: view, key: "keyboardType", value: "email")
+        factory.updateProp(view: view, key: "multiline", value: true)
+
+        XCTAssertEqual(inputContainer(view)?.textView?.keyboardType, .emailAddress, "keyboardType should survive the swap to multiline")
+    }
+
+    func testVInputFactorySecureMultilineFallsBackToSingleLine() {
+        let factory = VInputFactory()
+        let view = factory.createView()
+
+        factory.updateProp(view: view, key: "multiline", value: true)
+        factory.updateProp(view: view, key: "secureTextEntry", value: true)
+
+        let container = inputContainer(view)
+        XCTAssertNotNil(container?.textField, "secure multiline input falls back to a single-line field (UITextView has no secure mode)")
+        XCTAssertEqual(container?.textField?.isSecureTextEntry, true, "fallback field should be secure")
+        XCTAssertNil(container?.textView, "secure multiline input must not use a UITextView")
+    }
+
+    func testVInputFactoryMultilineChangeTextEvent() {
+        let factory = VInputFactory()
+        let view = factory.createView()
+        factory.updateProp(view: view, key: "multiline", value: true)
+
+        var received: String?
+        factory.addEventListener(view: view, event: "changetext") { payload in
+            received = payload as? String
+        }
+
+        guard let textView = inputContainer(view)?.textView else {
+            return XCTFail("multiline input should contain a UITextView")
+        }
+        guard let delegate = textView.delegate as? InputDelegateProxy else {
+            return XCTFail("UITextView delegate should be the InputDelegateProxy after addEventListener")
+        }
+
+        textView.text = "typed"
+        delegate.textViewDidChange(textView)
+        XCTAssertEqual(received, "typed", "changetext should fire for multiline edits")
+    }
+
+    func testVInputFactoryMultilineFocusBlurEvents() {
+        let factory = VInputFactory()
+        let view = factory.createView()
+        factory.updateProp(view: view, key: "multiline", value: true)
+
+        var focused = false
+        var blurred = false
+        factory.addEventListener(view: view, event: "focus") { _ in focused = true }
+        factory.addEventListener(view: view, event: "blur") { _ in blurred = true }
+
+        guard let textView = inputContainer(view)?.textView else {
+            return XCTFail("multiline input should contain a UITextView")
+        }
+        guard let delegate = textView.delegate as? InputDelegateProxy else {
+            return XCTFail("UITextView delegate should be the InputDelegateProxy after addEventListener")
+        }
+
+        delegate.textViewDidBeginEditing(textView)
+        XCTAssertTrue(focused, "focus should fire for multiline")
+
+        delegate.textViewDidEndEditing(textView)
+        XCTAssertTrue(blurred, "blur should fire for multiline")
     }
 
     // MARK: - VSwitchFactory Tests

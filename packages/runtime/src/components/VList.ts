@@ -22,7 +22,7 @@ import { usePlatform } from '../composables/usePlatform'
  *   </template>
  * </VList>
  */
-export const VList = defineComponent({
+const VListBase = defineComponent({
   name: 'VList',
 
   props: {
@@ -195,3 +195,28 @@ export const VList = defineComponent({
     }
   },
 })
+
+/**
+ * VList typed as a generic component so the `#item` slot scope infers the item
+ * type `T` from `data`. The runtime value is unchanged (still the defineComponent
+ * object); only the public type is generic.
+ */
+export const VList = VListBase as unknown as <T = unknown>(
+  props: {
+    data: T[]
+    keyExtractor?: (item: T, index: number) => string
+    estimatedItemHeight?: number
+    showsScrollIndicator?: boolean
+    bounces?: boolean
+    horizontal?: boolean
+    style?: ViewStyle
+    onScroll?: (e: unknown) => void
+    onEndReached?: () => void
+    slots?: {
+      item?: (info: { item: T, index: number }) => VNode[]
+      header?: () => VNode[]
+      empty?: () => VNode[]
+      footer?: () => VNode[]
+    }
+  } & Record<string, unknown>,
+) => VNode

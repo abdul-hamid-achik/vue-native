@@ -491,11 +491,11 @@ describe('Navigation — createRouter', () => {
         },
       })
 
-      const result = router.handleURL('myapp://profile/42')
-      // handleURL is async internally but returns boolean synchronously
-      // Wait for the navigate to complete
-      await nextTick()
+      // handleURL resolves once the navigation (and any guards) have settled
+      const result = await router.handleURL('myapp://profile/42')
       expect(result).toBe(true)
+      expect(router.currentRoute.value.config.name).toBe('profile')
+      expect(router.currentRoute.value.params.id).toBe('42')
     })
 
     it('handleURL returns false for unmatched path', async () => {
@@ -514,7 +514,7 @@ describe('Navigation — createRouter', () => {
         },
       })
 
-      const result = router.handleURL('myapp://unknown/path/here')
+      const result = await router.handleURL('myapp://unknown/path/here')
       expect(result).toBe(false)
     })
 
@@ -524,7 +524,7 @@ describe('Navigation — createRouter', () => {
         { name: 'home', component: HomeScreen },
       ])
 
-      const result = router.handleURL('myapp://anything')
+      const result = await router.handleURL('myapp://anything')
       expect(result).toBe(false)
     })
 
@@ -545,9 +545,9 @@ describe('Navigation — createRouter', () => {
         },
       })
 
-      const result = router.handleURL('https://example.com/about')
-      await nextTick()
+      const result = await router.handleURL('https://example.com/about')
       expect(result).toBe(true)
+      expect(router.currentRoute.value.config.name).toBe('about')
     })
   })
 
@@ -1014,8 +1014,7 @@ describe('Navigation — createRouter', () => {
         },
       })
 
-      const result = router.handleURL('myapp://profile/42?tab=posts&sort=recent')
-      await nextTick()
+      const result = await router.handleURL('myapp://profile/42?tab=posts&sort=recent')
       expect(result).toBe(true)
       // Path params should take precedence, query params merged in
       expect(router.currentRoute.value.params.id).toBe('42')
@@ -1040,8 +1039,7 @@ describe('Navigation — createRouter', () => {
         },
       })
 
-      const result = router.handleURL('myapp://about#section1')
-      await nextTick()
+      const result = await router.handleURL('myapp://about#section1')
       expect(result).toBe(true)
       expect(router.currentRoute.value.config.name).toBe('about')
     })
@@ -1069,8 +1067,7 @@ describe('Navigation — createRouter', () => {
       })
 
       // 'myapp://deep/' is longer and should match first, leaving 'about'
-      const result = router.handleURL('myapp://deep/about')
-      await nextTick()
+      const result = await router.handleURL('myapp://deep/about')
       expect(result).toBe(true)
       expect(router.currentRoute.value.config.name).toBe('about')
     })
@@ -1429,5 +1426,360 @@ describe('Navigation — hardware back button (opt-in)', () => {
     expect(handled).toBe(false)
     expect(router.currentRoute.value.config.name).toBe('about')
     expect(invokeSpy).not.toHaveBeenCalledWith('BackHandler', 'exitApp', [])
+  })
+})
+
+describe('Navigation — iOS swipe-back gesture (opt-in)', () => {
+  beforeEach(() => {
+    mockBridge.reset()
+    NativeBridge.reset()
+    vi.restoreAllMocks()
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+  })
+
+  async function getRouter() {
+    const { createRouter } = await import('../index')
+    return createRouter
+  }
+
+  it('pops the stack on swipe-back when it can go back', async () => {
+    const createRouter = await getRouter()
+    const router = createRouter({
+      routes: [
+        { name: 'home', component: HomeScreen },
+        { name: 'about', component: AboutScreen },
+      ],
+      swipeBack: true,
+    })
+
+    await router.push('about')
+    expect(router.currentRoute.value.config.name).toBe('about')
+
+    // Simulate the native iOS interactive swipe-back completing.
+    NativeBridge.handleGlobalEvent('gesture:swipeBack', '{}')
+    await nextTick()
+    await nextTick()
+
+    expect(router.currentRoute.value.config.name).toBe('home')
+    expect(router.stack.value).toHaveLength(1)
+  })
+
+  it('is a no-op at the root (does not exit the app)', async () => {
+    const createRouter = await getRouter()
+    const invokeSpy = vi.spyOn(NativeBridge, 'invokeNativeModule').mockResolvedValue(undefined)
+    const router = createRouter({
+      routes: [
+        { name: 'home', component: HomeScreen },
+        { name: 'about', component: AboutScreen },
+      ],
+      swipeBack: true,
+    })
+
+    NativeBridge.handleGlobalEvent('gesture:swipeBack', '{}')
+    await nextTick()
+
+    // Still on root, stack untouched, and no Android-style exitApp call.
+    expect(router.currentRoute.value.config.name).toBe('home')
+    expect(router.stack.value).toHaveLength(1)
+    expect(invokeSpy).not.toHaveBeenCalledWith('BackHandler', 'exitApp', [])
+  })
+
+  it('does not handle swipe-back when swipeBack is not set', async () => {
+    const createRouter = await getRouter()
+    const router = createRouter([
+      { name: 'home', component: HomeScreen },
+      { name: 'about', component: AboutScreen },
+    ])
+    await router.push('about')
+
+    const handled = NativeBridge.handleGlobalEvent('gesture:swipeBack', '{}')
+    await nextTick()
+
+    // No router handler registered -> event unhandled, stack unchanged.
+    expect(handled).toBe(false)
+    expect(router.currentRoute.value.config.name).toBe('about')
+    expect(router.stack.value).toHaveLength(2)
+  })
+})
+
+describe('Navigation — deep linking promise & reset strategy', () => {
+  beforeEach(() => {
+    mockBridge.reset()
+    NativeBridge.reset()
+    vi.restoreAllMocks()
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+  })
+
+  async function getRouter() {
+    const { createRouter } = await import('../index')
+    return createRouter
+  }
+
+  it('handleURL returns a promise that resolves to a boolean', async () => {
+    const createRouter = await getRouter()
+    const router = createRouter({
+      routes: [
+        { name: 'home', component: HomeScreen },
+        { name: 'about', component: AboutScreen },
+      ],
+      linking: {
+        prefixes: ['myapp://'],
+        config: { screens: { about: 'about' } },
+      },
+    })
+
+    const result = router.handleURL('myapp://about')
+    expect(typeof (result as Promise<boolean>).then).toBe('function')
+    expect(await result).toBe(true)
+    // State is settled once the promise resolves (no extra tick needed).
+    expect(router.currentRoute.value.config.name).toBe('about')
+  })
+
+  it('push strategy (default) keeps the existing stack', async () => {
+    const createRouter = await getRouter()
+    const router = createRouter({
+      routes: [
+        { name: 'home', component: HomeScreen },
+        { name: 'about', component: AboutScreen },
+      ],
+      linking: {
+        prefixes: ['myapp://'],
+        config: { screens: { about: 'about' } },
+      },
+    })
+
+    await router.handleURL('myapp://about')
+    expect(router.stack.value.map(e => e.config.name)).toEqual(['home', 'about'])
+  })
+
+  it('reset strategy via linking config resets the stack to the target', async () => {
+    const createRouter = await getRouter()
+    const router = createRouter({
+      routes: [
+        { name: 'home', component: HomeScreen },
+        { name: 'about', component: AboutScreen },
+        { name: 'profile', component: ProfileScreen },
+      ],
+      linking: {
+        prefixes: ['myapp://'],
+        config: { screens: { profile: 'profile/:id' } },
+        strategy: 'reset',
+      },
+    })
+
+    // Build up a stack first.
+    await router.push('about')
+    expect(router.stack.value).toHaveLength(2)
+
+    const result = await router.handleURL('myapp://profile/7')
+    expect(result).toBe(true)
+    expect(router.stack.value.map(e => e.config.name)).toEqual(['profile'])
+    expect(router.currentRoute.value.params.id).toBe('7')
+    expect(router.canGoBack.value).toBe(false)
+  })
+
+  it('per-call strategy override wins over the linking default', async () => {
+    const createRouter = await getRouter()
+    const router = createRouter({
+      routes: [
+        { name: 'home', component: HomeScreen },
+        { name: 'about', component: AboutScreen },
+      ],
+      linking: {
+        prefixes: ['myapp://'],
+        config: { screens: { about: 'about' } },
+        // Default would push; the per-call override resets.
+      },
+    })
+
+    await router.push('about')
+    await router.handleURL('myapp://about', { strategy: 'reset' })
+    expect(router.stack.value.map(e => e.config.name)).toEqual(['about'])
+  })
+
+  it('resolves true when matched even if a guard blocks the navigation', async () => {
+    const createRouter = await getRouter()
+    const router = createRouter({
+      routes: [
+        { name: 'home', component: HomeScreen },
+        { name: 'about', component: AboutScreen },
+      ],
+      linking: {
+        prefixes: ['myapp://'],
+        config: { screens: { about: 'about' } },
+      },
+    })
+
+    router.beforeEach((_to: any, _from: any, next: any) => next(false))
+
+    const result = await router.handleURL('myapp://about')
+    // The URL matched a configured screen...
+    expect(result).toBe(true)
+    // ...but the guard blocked the transition, so state is unchanged.
+    expect(router.currentRoute.value.config.name).toBe('home')
+    expect(router.stack.value).toHaveLength(1)
+  })
+})
+
+describe('Navigation — tab/drawer router integration (opt-in)', () => {
+  beforeEach(() => {
+    mockBridge.reset()
+    NativeBridge.reset()
+    vi.restoreAllMocks()
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+  })
+
+  it('registers tab screens in the router route map', async () => {
+    const { createRouter, createTabNavigator } = await import('../index')
+    const { createApp, createNativeNode } = await import('@thelacanians/vue-native-runtime')
+
+    const router = createRouter([{ name: 'root', component: HomeScreen }])
+    const { TabNavigator } = createTabNavigator(router)
+
+    const root = createNativeNode('__ROOT__')
+    const app = createApp({
+      render: () => h(TabNavigator, {
+        screens: [
+          { name: 'home', component: HomeScreen },
+          { name: 'settings', component: _SettingsScreen },
+        ],
+      }),
+    })
+    app.mount(root as any)
+    await nextTick()
+
+    expect(router._routeMap.has('root')).toBe(true)
+    expect(router._routeMap.has('home')).toBe(true)
+    expect(router._routeMap.has('settings')).toBe(true)
+  })
+
+  it('does not register screens when no router is passed', async () => {
+    const { createRouter, createTabNavigator } = await import('../index')
+    const { createApp, createNativeNode } = await import('@thelacanians/vue-native-runtime')
+
+    const router = createRouter([{ name: 'root', component: HomeScreen }])
+    const { TabNavigator } = createTabNavigator() // no router
+
+    const root = createNativeNode('__ROOT__')
+    const app = createApp({
+      render: () => h(TabNavigator, {
+        screens: [{ name: 'home', component: HomeScreen }],
+      }),
+    })
+    app.mount(root as any)
+    await nextTick()
+
+    expect(router._routeMap.has('home')).toBe(false)
+  })
+
+  it('runs beforeEach guards on tab switch and can block it', async () => {
+    const { createRouter, createTabNavigator } = await import('../index')
+    const { createApp, createNativeNode } = await import('@thelacanians/vue-native-runtime')
+
+    const router = createRouter([{ name: 'root', component: HomeScreen }])
+    const guard = vi.fn((to: any, _from: any, next: any) => {
+      if (to.config.name === 'settings') next(false)
+      else next()
+    })
+    router.beforeEach(guard)
+
+    const { TabNavigator, activeTab } = createTabNavigator(router)
+    const root = createNativeNode('__ROOT__')
+    const app = createApp({
+      render: () => h(TabNavigator, {
+        screens: [
+          { name: 'home', component: HomeScreen },
+          { name: 'settings', component: _SettingsScreen },
+        ],
+      }),
+    })
+    app.mount(root as any)
+    await nextTick()
+    expect(activeTab.value).toBe('home')
+
+    // Press the second tab bar button ("settings").
+    const tabPresses = mockBridge.getOpsByType('addEventListener')
+      .filter(op => op.args[1] === 'press')
+    NativeBridge.handleNativeEvent(tabPresses[1].args[0], 'press', null)
+    await nextTick()
+    await nextTick()
+
+    expect(guard).toHaveBeenCalled()
+    expect(guard.mock.calls[0][0].config.name).toBe('settings')
+    // Guard blocked the switch.
+    expect(activeTab.value).toBe('home')
+  })
+
+  it('fires afterEach after a successful tab switch', async () => {
+    const { createRouter, createTabNavigator } = await import('../index')
+    const { createApp, createNativeNode } = await import('@thelacanians/vue-native-runtime')
+
+    const router = createRouter([{ name: 'root', component: HomeScreen }])
+    const afterHook = vi.fn()
+    router.afterEach(afterHook)
+
+    const { TabNavigator, activeTab } = createTabNavigator(router)
+    const root = createNativeNode('__ROOT__')
+    const app = createApp({
+      render: () => h(TabNavigator, {
+        screens: [
+          { name: 'home', component: HomeScreen },
+          { name: 'settings', component: _SettingsScreen },
+        ],
+      }),
+    })
+    app.mount(root as any)
+    await nextTick()
+
+    const tabPresses = mockBridge.getOpsByType('addEventListener')
+      .filter(op => op.args[1] === 'press')
+    NativeBridge.handleNativeEvent(tabPresses[1].args[0], 'press', null)
+    await nextTick()
+    await nextTick()
+
+    expect(activeTab.value).toBe('settings')
+    expect(afterHook).toHaveBeenCalledTimes(1)
+    expect(afterHook.mock.calls[0][0].config.name).toBe('settings') // to
+    expect(afterHook.mock.calls[0][1].config.name).toBe('home') // from
+  })
+
+  it('registers drawer screens and runs guards on screen switch', async () => {
+    const { createRouter, createDrawerNavigator } = await import('../index')
+    const { createApp, createNativeNode } = await import('@thelacanians/vue-native-runtime')
+
+    const router = createRouter([{ name: 'root', component: HomeScreen }])
+    const guard = vi.fn((to: any, _from: any, next: any) => {
+      if (to.config.name === 'settings') next(false)
+      else next()
+    })
+    router.beforeEach(guard)
+
+    const { DrawerNavigator, activeScreen } = createDrawerNavigator(router)
+    const root = createNativeNode('__ROOT__')
+    const app = createApp({
+      render: () => h(DrawerNavigator, {
+        screens: [
+          { name: 'home', component: HomeScreen },
+          { name: 'settings', component: _SettingsScreen },
+        ],
+      }),
+    })
+    app.mount(root as any)
+    await nextTick()
+
+    expect(router._routeMap.has('home')).toBe(true)
+    expect(router._routeMap.has('settings')).toBe(true)
+    expect(activeScreen.value).toBe('home')
+
+    // Press the second drawer menu item ("settings").
+    const drawerPresses = mockBridge.getOpsByType('addEventListener')
+      .filter(op => op.args[1] === 'press')
+    NativeBridge.handleNativeEvent(drawerPresses[1].args[0], 'press', null)
+    await nextTick()
+    await nextTick()
+
+    expect(guard).toHaveBeenCalled()
+    // Guard blocked the switch.
+    expect(activeScreen.value).toBe('home')
   })
 })

@@ -239,6 +239,7 @@ export {
   builtInComponents,
 } from './components'
 export type { ImageSource } from './components'
+export type { VSectionListSection } from './components'
 export type { TabConfig } from './components/VTabBar'
 export type {
   AlertButton, StatusBarStyle, WebViewSource, ActionSheetAction,

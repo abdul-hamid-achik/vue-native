@@ -54,6 +54,16 @@ open class VueNativeViewController: UIViewController {
     private let hostID = UUID()
     private var lastDimensions: ViewDimensions?
     private var hasLoadedBundle = false
+    private var swipeBackGesture: UIScreenEdgePanGestureRecognizer?
+
+    // MARK: - Swipe-back gesture thresholds
+
+    /// Minimum horizontal translation (in points) that completes a swipe-back.
+    static let swipeBackTranslationThreshold: CGFloat = 80
+
+    /// Fraction of the view width whose horizontal translation also completes a
+    /// swipe-back, whichever threshold is reached first.
+    static let swipeBackWidthFractionThreshold: CGFloat = 0.5
 
     // MARK: - Lifecycle
 
@@ -63,6 +73,8 @@ open class VueNativeViewController: UIViewController {
         // native chrome and the Vue-rendered root view is not visible.
         // The Vue app sets its own background colour via VSafeArea / VView props.
         view.backgroundColor = .black
+
+        installSwipeBackGesture()
 
         // Initialize JS engine first (creates JSContext, registers polyfills).
         // Bridge init MUST happen inside this callback so the JSContext exists
@@ -108,6 +120,47 @@ open class VueNativeViewController: UIViewController {
                 "scale": dimensions.scale,
             ]
         )
+    }
+
+    // MARK: - Swipe-back gesture
+
+    /// Install a left-screen-edge pan gesture that dispatches a global
+    /// `gesture:swipeBack` event to JS so the navigation router can pop.
+    ///
+    /// Because it is a `UIScreenEdgePanGestureRecognizer`, it only recognizes
+    /// pans that begin at the extreme left edge of the screen, so it does not
+    /// compete with horizontal scrolls or text inputs in the content area.
+    private func installSwipeBackGesture() {
+        guard swipeBackGesture == nil else { return }
+        let gesture = makeSwipeBackGesture()
+        view.addGestureRecognizer(gesture)
+        swipeBackGesture = gesture
+    }
+
+    /// Create and configure the swipe-back recognizer. Exposed internally so it
+    /// can be unit-tested without driving the full view-controller lifecycle.
+    func makeSwipeBackGesture() -> UIScreenEdgePanGestureRecognizer {
+        let gesture = UIScreenEdgePanGestureRecognizer(
+            target: self,
+            action: #selector(handleSwipeBack(_:))
+        )
+        gesture.edges = .left
+        return gesture
+    }
+
+    /// Decide whether a completed edge pan should trigger a swipe-back.
+    /// Exposed internally for unit testing.
+    static func shouldTriggerSwipeBack(translationX: CGFloat, viewWidth: CGFloat) -> Bool {
+        return translationX > swipeBackTranslationThreshold
+            || translationX > viewWidth * swipeBackWidthFractionThreshold
+    }
+
+    @objc private func handleSwipeBack(_ gesture: UIScreenEdgePanGestureRecognizer) {
+        guard gesture.state == .ended else { return }
+        let translation = gesture.translation(in: gesture.view)
+        let viewWidth = gesture.view?.bounds.width ?? 0
+        guard Self.shouldTriggerSwipeBack(translationX: translation.x, viewWidth: viewWidth) else { return }
+        bridge.dispatchGlobalEvent("gesture:swipeBack", payload: [:])
     }
 
     // MARK: - Bundle loading

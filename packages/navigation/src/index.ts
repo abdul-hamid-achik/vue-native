@@ -99,8 +99,24 @@ export interface RouterInstance {
   beforeResolve(guard: NavigationGuard): () => void
   /** Register a global after hook. Returns unsubscribe function. */
   afterEach(guard: AfterGuard): () => void
-  /** Handle an incoming deep link URL. Returns true if matched. */
-  handleURL(url: string): boolean
+  /**
+   * Handle an incoming deep link URL. Resolves to true if the URL matched a
+   * configured screen (and the resulting navigation was awaited), false otherwise.
+   */
+  handleURL(url: string, options?: HandleURLOptions): Promise<boolean>
+  /**
+   * @internal Run beforeEach + beforeResolve guards for a transition managed
+   * outside the stack (e.g. a tab or drawer screen switch). Resolves true when
+   * the transition is allowed, false when a guard blocked it. Guard redirects
+   * (string results) are not supported for external transitions and are treated
+   * as blocked. Not part of the stable public API.
+   */
+  _guardTransition?(to: RouteEntry, from: RouteEntry): Promise<boolean>
+  /**
+   * @internal Fire afterEach hooks for an externally-managed transition.
+   * Not part of the stable public API.
+   */
+  _notifyAfter?(to: RouteEntry, from: RouteEntry): void
   /** Serialize the current navigation state. */
   getState(): NavigationState
   /** Restore navigation state from a serialized snapshot. */
@@ -121,9 +137,29 @@ export type NavigationGuard = (
 
 export type AfterGuard = (to: RouteEntry, from: RouteEntry) => void
 
+/** Strategy used to apply a matched deep link to the navigation stack. */
+export type DeepLinkStrategy = 'push' | 'reset'
+
 export interface LinkingConfig {
   prefixes: string[]
   config: { screens: Record<string, string> }
+  /**
+   * Default strategy applied when a deep link matches a screen.
+   * - 'push' (default): push the matched route onto the current stack.
+   * - 'reset': reset the stack to the matched route.
+   * Can be overridden per call via `handleURL(url, { strategy })`.
+   */
+  strategy?: DeepLinkStrategy
+}
+
+export interface HandleURLOptions {
+  /**
+   * How the matched route is applied to the stack for this call.
+   * - 'push' (default): push the route on top of the current stack.
+   * - 'reset': reset the stack to the matched route.
+   * Overrides `LinkingConfig.strategy`.
+   */
+  strategy?: DeepLinkStrategy
 }
 
 export interface RouterOptions {
@@ -156,6 +192,14 @@ export interface RouterOptions {
    * same screen — both would react to the same back press.
    */
   handleBackButton?: boolean
+  /**
+   * When true, the router handles the iOS interactive swipe-back gesture:
+   * when the native side reports a completed swipe-back (via the
+   * `gesture:swipeBack` global event) the router pops the stack. At the root
+   * there is nothing to pop, so the gesture is a no-op. Defaults to false.
+   * Analogous to `handleBackButton` for Android.
+   */
+  swipeBack?: boolean
 }
 
 export interface NavigationState {
@@ -222,6 +266,7 @@ export function createRouter(optionsOrRoutes: RouterOptions | RouteConfig[]): Ro
     persistKey = '__vue_native_nav_state__',
     parent: parentRouter,
     handleBackButton = false,
+    swipeBack = false,
   } = options
 
   if (routes.length === 0) {
@@ -465,7 +510,7 @@ export function createRouter(optionsOrRoutes: RouterOptions | RouteConfig[]): Ro
     return params
   }
 
-  function handleURL(url: string): boolean {
+  async function handleURL(url: string, urlOptions?: HandleURLOptions): Promise<boolean> {
     if (!linkingConfig) return false
 
     if (url.length > 2048) {
@@ -511,7 +556,15 @@ export function createRouter(optionsOrRoutes: RouterOptions | RouteConfig[]): Ro
     for (const [screenName, pattern] of Object.entries(linkingConfig.config.screens)) {
       const params = matchPattern(pattern, path)
       if (params !== null) {
-        navigate(screenName, { ...queryParams, ...params })
+        const strategy = urlOptions?.strategy ?? linkingConfig.strategy ?? 'push'
+        const mergedParams = { ...queryParams, ...params }
+        // Await the navigation so callers know when the transition (and any
+        // guard resolution) has settled before inspecting router state.
+        if (strategy === 'reset') {
+          await reset(screenName, mergedParams)
+        } else {
+          await navigate(screenName, mergedParams)
+        }
         return true
       }
     }
@@ -639,6 +692,30 @@ export function createRouter(optionsOrRoutes: RouterOptions | RouteConfig[]): Ro
     restoreState,
     parent: parentRouter,
     _routeMap: routeMap,
+    async _guardTransition(to: RouteEntry, from: RouteEntry): Promise<boolean> {
+      const beforeResult = await runGuards(beforeGuards, to, from)
+      if (beforeResult !== undefined) {
+        if (typeof beforeResult === 'string') {
+          console.warn(
+            '[vue-native/navigation] Guard redirects are not supported for tab/drawer transitions; blocking the transition.',
+          )
+        }
+        return false
+      }
+      const resolveResult = await runGuards(resolveGuards, to, from)
+      if (resolveResult !== undefined) {
+        if (typeof resolveResult === 'string') {
+          console.warn(
+            '[vue-native/navigation] Guard redirects are not supported for tab/drawer transitions; blocking the transition.',
+          )
+        }
+        return false
+      }
+      return true
+    },
+    _notifyAfter(to: RouteEntry, from: RouteEntry): void {
+      afterGuards.forEach(guard => guard(to, from))
+    },
     install(app: App) {
       app.provide(ROUTER_KEY, router)
     },
@@ -651,7 +728,7 @@ export function createRouter(optionsOrRoutes: RouterOptions | RouteConfig[]): Ro
     NativeBridge.invokeNativeModule('Linking', 'getInitialURL', [])
       .then((url) => {
         if (typeof url === 'string' && url.length > 0) {
-          handleURL(url)
+          void handleURL(url)
         }
       })
       .catch((err) => {
@@ -661,7 +738,7 @@ export function createRouter(optionsOrRoutes: RouterOptions | RouteConfig[]): Ro
     // Listen for incoming URLs while app is running
     NativeBridge.onGlobalEvent('url', (payload) => {
       const url = getStringProp(payload, 'url')
-      if (url) handleURL(url)
+      if (url) void handleURL(url)
     })
   }
 
@@ -681,30 +758,27 @@ export function createRouter(optionsOrRoutes: RouterOptions | RouteConfig[]): Ro
     })
   }
 
+  // ── iOS swipe-back gesture ─────────────────────────────────────────────────
+  // Opt-in: pop the stack when the native side reports a completed interactive
+  // swipe-back. At the root there is nothing to pop, so the gesture is a no-op
+  // (we deliberately do NOT exit the app here — that is Android-back semantics).
+  if (swipeBack) {
+    NativeBridge.onGlobalEvent('gesture:swipeBack', () => {
+      if (canGoBack.value) {
+        void goBack()
+      }
+    })
+  }
+
   return router
 }
-
-// ─── Nested Router Provider ───────────────────────────────────────────────────
-
-/**
- * Internal component that provides a nested router context.
- * Used by TabScreen/DrawerScreen to scope a child RouterView to a nested router.
- */
-const _NestedRouterProvider = defineComponent({
-  name: 'NestedRouterProvider',
-  props: {
-    router: { type: Object as () => RouterInstance, required: true },
-  },
-  setup(props, { slots }) {
-    provide(NESTED_ROUTER_KEY, props.router)
-    return () => slots.default?.()
-  },
-})
 
 // ─── useRouter / useRoute ─────────────────────────────────────────────────────
 
 export function useRouter(): RouterInstance {
-  // Prefer the nearest nested router if available
+  // Prefer the nearest nested router if one has been provided. `NESTED_ROUTER_KEY`
+  // is an extension point for future nested-navigator provisioning; nothing
+  // provides it today, so this falls through to the root router in practice.
   const nested = inject(NESTED_ROUTER_KEY, null)
   if (nested) return nested
 
@@ -1092,6 +1166,23 @@ export interface TabScreenConfig {
  * Screens can be passed through the `screens` prop or declared as
  * `TabScreen` children.
  *
+ * Optionally accepts a `router`. When provided, the tab screens are registered
+ * in the router's route map (so their names are known to `restoreState`) and
+ * the router's `beforeEach`/`beforeResolve` guards run on every user-initiated
+ * tab switch (a guard returning `false` blocks the switch; `afterEach` fires
+ * after a successful switch). Guard *redirects* are not supported for tab
+ * switches and are treated as blocked. When no router is passed the navigator
+ * behaves exactly as before (no guards, no registration).
+ *
+ * Limitations (full router-driven tabs are future work):
+ * - Tab screens are registered in the route map for `restoreState` validation,
+ *   but they are NOT part of the router stack and are not serialized by
+ *   `getState()` (the active tab is tracked by the returned `activeTab` ref).
+ * - Deep linking does not auto-select a tab. If you configure a linking screen
+ *   whose name matches a registered tab, `handleURL` will push/reset it as a
+ *   stack route rather than switching the tab. Coordinate tab selection
+ *   manually (e.g. set `activeTab.value`) until router-driven tabs land.
+ *
  * @example
  * const { TabNavigator } = createTabNavigator()
  *
@@ -1103,10 +1194,54 @@ export interface TabScreenConfig {
  *   ]"
  * />
  */
-export function createTabNavigator() {
+export function createTabNavigator(router?: RouterInstance) {
   const activeTab = ref<string>('')
   /** Tracks which tabs have been visited (for lazy mounting). */
   const visitedTabs = new Set<string>()
+
+  // ── Optional router integration helpers ───────────────────────────────────
+  // Build a synthetic RouteEntry for a tab screen so guards receive the same
+  // shape they get from stack navigation (`to.config.name` is what guards read).
+  function buildEntry(screen: TabScreenConfig): RouteEntry {
+    return {
+      config: { name: screen.name, component: screen.component },
+      params: {},
+      key: keyCounter++,
+    }
+  }
+
+  // Register tab screens in the router's route map (idempotent, never
+  // clobbers an existing stack route with the same name).
+  function registerScreens(screens: TabScreenConfig[]): void {
+    if (!router) return
+    for (const screen of screens) {
+      if (!router._routeMap.has(screen.name)) {
+        router._routeMap.set(screen.name, { name: screen.name, component: screen.component })
+      }
+    }
+  }
+
+  // Switch tabs, running router guards first when a router is attached.
+  async function requestTabChange(name: string, screens: TabScreenConfig[]): Promise<void> {
+    if (name === activeTab.value) return
+    if (!router || !router._guardTransition) {
+      activeTab.value = name
+      return
+    }
+    const toScreen = screens.find(s => s.name === name)
+    if (!toScreen) {
+      activeTab.value = name
+      return
+    }
+    const fromScreen = screens.find(s => s.name === activeTab.value)
+    const to = buildEntry(toScreen)
+    const from = fromScreen ? buildEntry(fromScreen) : to
+    const allowed = await router._guardTransition(to, from)
+    if (allowed) {
+      activeTab.value = name
+      router._notifyAfter?.(to, from)
+    }
+  }
 
   // ── TabScreen is a declarative config component ───────────────────────────
   // It renders nothing itself; TabNavigator reads its VNode props before mount.
@@ -1164,6 +1299,9 @@ export function createTabNavigator() {
         const screens = props.screens.length > 0 ? props.screens : declarativeScreens
         if (screens.length === 0) return null
 
+        // Make the tab screens known to the attached router (idempotent).
+        registerScreens(screens)
+
         // Lazy initialisation of the active tab.
         if (activeTab.value === '' || !screens.some(screen => screen.name === activeTab.value)) {
           activeTab.value = screens.some(screen => screen.name === props.initialTab)
@@ -1210,7 +1348,7 @@ export function createTabNavigator() {
             'inactiveColor': props.inactiveColor,
             'backgroundColor': props.tabBarBackgroundColor,
             'onUpdate:modelValue': (name: string) => {
-              activeTab.value = name
+              void requestTabChange(name, screens)
             },
           }),
         ])
@@ -1229,6 +1367,11 @@ export function createTabNavigator() {
  * Returns `DrawerNavigator`, `DrawerScreen`, and `useDrawer` composable.
  * The drawer slides in from the left (or right) as a JS-animated panel.
  *
+ * Optionally accepts a `router`. When provided, the drawer screens are
+ * registered in the router's route map and the router's guards run on every
+ * user-initiated screen switch (same contract and limitations as
+ * `createTabNavigator(router)`). With no router it behaves exactly as before.
+ *
  * @example
  * const { DrawerNavigator, useDrawer } = createDrawerNavigator()
  *
@@ -1241,7 +1384,7 @@ export function createTabNavigator() {
  *   :drawerContent="SideMenu"
  * />
  */
-export function createDrawerNavigator() {
+export function createDrawerNavigator(router?: RouterInstance) {
   const isOpen = ref(false)
   const activeScreen = ref<string>('')
 
@@ -1256,6 +1399,55 @@ export function createDrawerNavigator() {
   }
 
   const drawerState: DrawerState = { isOpen, openDrawer, closeDrawer, toggleDrawer }
+
+  // ── Optional router integration helpers ───────────────────────────────────
+  // Same contract as the tab navigator: synthetic RouteEntry for guards,
+  // idempotent route-map registration, and guard-gated screen switches.
+  function buildEntry(screen: DrawerScreenConfig): RouteEntry {
+    return {
+      config: { name: screen.name, component: screen.component },
+      params: {},
+      key: keyCounter++,
+    }
+  }
+
+  function registerScreens(screens: DrawerScreenConfig[]): void {
+    if (!router) return
+    for (const screen of screens) {
+      if (!router._routeMap.has(screen.name)) {
+        router._routeMap.set(screen.name, { name: screen.name, component: screen.component })
+      }
+    }
+  }
+
+  async function requestScreenChange(name: string, screens: DrawerScreenConfig[]): Promise<void> {
+    if (name === activeScreen.value) {
+      closeDrawer()
+      return
+    }
+    if (!router || !router._guardTransition) {
+      activeScreen.value = name
+      closeDrawer()
+      return
+    }
+    const toScreen = screens.find(s => s.name === name)
+    if (!toScreen) {
+      activeScreen.value = name
+      closeDrawer()
+      return
+    }
+    const fromScreen = screens.find(s => s.name === activeScreen.value)
+    const to = buildEntry(toScreen)
+    const from = fromScreen ? buildEntry(fromScreen) : to
+    const allowed = await router._guardTransition(to, from)
+    if (allowed) {
+      activeScreen.value = name
+      router._notifyAfter?.(to, from)
+    }
+    // Always close the drawer, even when the transition was blocked, so the
+    // UI does not get stuck open over an unchanged screen.
+    closeDrawer()
+  }
 
   // ── DrawerScreen is a declarative config component ────────────────────────
   // It renders nothing itself; DrawerNavigator reads its VNode props before mount.
@@ -1313,6 +1505,9 @@ export function createDrawerNavigator() {
         const screens = props.screens.length > 0 ? props.screens : declarativeScreens
         if (screens.length === 0) return null
 
+        // Make the drawer screens known to the attached router (idempotent).
+        registerScreens(screens)
+
         // Lazy initialise
         if (activeScreen.value === '' || !screens.some(screen => screen.name === activeScreen.value)) {
           activeScreen.value = screens.some(screen => screen.name === props.initialScreen)
@@ -1333,8 +1528,7 @@ export function createDrawerNavigator() {
             marginBottom: 4,
           },
           onPress: () => {
-            activeScreen.value = s.name
-            closeDrawer()
+            void requestScreenChange(s.name, screens)
           },
         }, h('VView', { style: { flexDirection: 'row', alignItems: 'center' } }, [
           s.icon != null
@@ -1354,8 +1548,7 @@ export function createDrawerNavigator() {
               screens,
               activeScreen: activeScreen.value,
               onSelect: (name: string) => {
-                activeScreen.value = name
-                closeDrawer()
+                void requestScreenChange(name, screens)
               },
             })
           : h(

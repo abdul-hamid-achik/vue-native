@@ -480,6 +480,23 @@ describe('Components', () => {
         ;(globalThis as any).__PLATFORM__ = previousPlatform
       }
     })
+
+    it('infers the item type from data (type-level)', () => {
+      interface Item { id: number, title: string }
+      // Type-level only; never invoked at runtime. If VList were not generic,
+      // `item` would be `unknown` and `item.title` would not type-check.
+      function typeCheck() {
+        const data: Item[] = [{ id: 1, title: 'hi' }]
+        return VList({
+          data,
+          keyExtractor: item => String(item.id),
+          slots: {
+            item: ({ item }) => [createVNode(VText, null, { default: () => item.title })],
+          },
+        })
+      }
+      expect(typeof typeCheck).toBe('function')
+    })
   })
 
   // ---------------------------------------------------------------------------
@@ -502,6 +519,26 @@ describe('Components', () => {
       const ops = mockBridge.getOpsByType('create')
       const textOps = ops.filter(o => o.args[1] === 'VText')
       expect(textOps.length).toBeGreaterThanOrEqual(2)
+    })
+
+    it('infers the item type from sections (type-level)', () => {
+      interface Item { id: number, label: string }
+      // Type-level only; never invoked at runtime. If VSectionList were not
+      // generic, `item` would be `unknown` and `item.label` would not type-check.
+      function typeCheck() {
+        const sections = [{ title: 'Group', data: [{ id: 1, label: 'x' }] as Item[] }]
+        return VSectionList({
+          sections,
+          slots: {
+            item: ({ item, section }) => {
+              const label: string = item.label
+              const title: string = section.title
+              return [createVNode(VText, null, { default: () => label + title })]
+            },
+          },
+        })
+      }
+      expect(typeof typeCheck).toBe('function')
     })
   })
 

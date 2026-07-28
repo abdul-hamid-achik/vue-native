@@ -29,7 +29,7 @@ interface Section {
   data: unknown[]
 }
 
-export const VSectionList = defineComponent({
+const VSectionListBase = defineComponent({
   name: 'VSectionList',
 
   props: {
@@ -165,3 +165,36 @@ export const VSectionList = defineComponent({
     }
   },
 })
+
+/** A section with a typed `data` array, used by the generic {@link VSectionList} type. */
+export interface VSectionListSection<T = unknown> {
+  title: string
+  data: T[]
+}
+
+/**
+ * VSectionList typed as a generic component so the `#item`/`#sectionHeader` slot
+ * scopes infer the item type `T` from `sections`. The runtime value is unchanged
+ * (still the defineComponent object); only the public type is generic.
+ */
+export const VSectionList = VSectionListBase as unknown as <T = unknown>(
+  props: {
+    sections: VSectionListSection<T>[]
+    keyExtractor?: (item: T, index: number) => string
+    estimatedItemHeight?: number
+    stickySectionHeaders?: boolean
+    showsScrollIndicator?: boolean
+    bounces?: boolean
+    style?: Record<string, unknown>
+    onScroll?: (e: unknown) => void
+    onEndReached?: () => void
+    slots?: {
+      item?: (info: { item: T, index: number, section: VSectionListSection<T> }) => VNode[]
+      sectionHeader?: (info: { section: VSectionListSection<T>, index: number }) => VNode[]
+      sectionFooter?: (info: { section: VSectionListSection<T>, index: number }) => VNode[]
+      header?: () => VNode[]
+      empty?: () => VNode[]
+      footer?: () => VNode[]
+    }
+  } & Record<string, unknown>,
+) => VNode
