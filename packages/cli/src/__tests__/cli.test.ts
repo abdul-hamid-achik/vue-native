@@ -969,6 +969,16 @@ describe('dev command', () => {
     expect(capturedWssOptions.port).toBe(9999)
   })
 
+  it('rejects a non-numeric --port', async () => {
+    const devCommand = await importDevCommand()
+    await expect(devCommand.parseAsync(['node', 'dev', '-p', 'not-a-port'])).rejects.toThrow(/Invalid --port/)
+  })
+
+  it('rejects an out-of-range --port', async () => {
+    const devCommand = await importDevCommand()
+    await expect(devCommand.parseAsync(['node', 'dev', '-p', '99999'])).rejects.toThrow(/Invalid --port/)
+  })
+
   it('binds to localhost only by default and rejects private network IPs', async () => {
     const devCommand = await importDevCommand()
     await devCommand.parseAsync(['node', 'dev'])

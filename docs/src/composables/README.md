@@ -45,6 +45,7 @@ All composables are exported from `@thelacanians/vue-native-runtime`.
 ## UI
 - [useKeyboard](./useKeyboard.md) -- Keyboard visibility and height
 - [useClipboard](./useClipboard.md) -- Copy and paste
+- [useAccessibility](./useAccessibility.md) -- Screen-reader announcements and focus
 - [useShare](./useShare.md) -- Native share sheet
 - [useLinking](./useLinking.md) -- Open URLs
 - [useAnimation](./useAnimation.md) -- Timing and spring animations

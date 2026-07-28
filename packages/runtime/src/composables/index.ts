@@ -1,6 +1,7 @@
 export { useHaptics } from './useHaptics'
 export { useAsyncStorage } from './useAsyncStorage'
 export { useClipboard } from './useClipboard'
+export { useAccessibility } from './useAccessibility'
 export { useDeviceInfo } from './useDeviceInfo'
 export { useKeyboard } from './useKeyboard'
 export { useAnimation, Easing } from './useAnimation'

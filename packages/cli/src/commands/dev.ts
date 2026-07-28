@@ -134,6 +134,11 @@ export const devCommand = new Command('dev')
     lan?: boolean
   }) => {
     const port = parseInt(options.port, 10)
+    if (!Number.isInteger(port) || port < 1 || port > 65535) {
+      throw new ConfigError(
+        `Invalid --port "${options.port}". Expected an integer between 1 and 65535.`,
+      )
+    }
     const platform = resolveDevPlatform(options)
     const cwd = process.cwd()
     await loadConfig(cwd)

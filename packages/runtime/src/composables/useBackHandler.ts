@@ -1,6 +1,8 @@
 import { onMounted, onUnmounted } from '@vue/runtime-core'
 import { NativeBridge } from '../bridge'
 
+declare const __PLATFORM__: string
+
 /**
  * useBackHandler — intercept the hardware back button press (Android).
  *
@@ -28,10 +30,15 @@ export function useBackHandler(handler: () => boolean): void {
     unsubscribe = NativeBridge.onGlobalEvent('hardware:backPress', () => {
       const handled = handler()
       if (!handled) {
-        // Handler did not consume the back press — invoke default native back behavior
-        NativeBridge.invokeNativeModule('BackHandler', 'exitApp', []).catch((err: unknown) => {
-          if (__DEV__) console.warn('[vue-native] BackHandler.exitApp failed:', err)
-        })
+        // BackHandler.exitApp only exists on Android. Skip it on iOS/macOS to
+        // avoid a guaranteed failure (and a spurious dev warning) when the back
+        // event is dispatched programmatically there.
+        const platform = typeof __PLATFORM__ !== 'undefined' ? __PLATFORM__ : undefined
+        if (platform !== 'ios' && platform !== 'macos') {
+          NativeBridge.invokeNativeModule('BackHandler', 'exitApp', []).catch((err: unknown) => {
+            if (__DEV__) console.warn('[vue-native] BackHandler.exitApp failed:', err)
+          })
+        }
       }
     })
   })

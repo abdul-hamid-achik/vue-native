@@ -50,10 +50,11 @@
  */
 
 import {
-  inject, provide, computed, defineComponent, ref,
+  inject, provide, computed, defineComponent, ref, watch,
   type InjectionKey, type Ref, type ComputedRef,
 } from '@vue/runtime-core'
 import { createStyleSheet, type AnyStyle, type StyleSheet } from './stylesheet'
+import { useColorScheme } from './composables/useColorScheme'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -97,9 +98,28 @@ export function createTheme<T extends Record<string, unknown>>(definition: Theme
         type: String as () => ColorScheme,
         default: 'light',
       },
+      /**
+       * When true, the color scheme follows the system appearance (via
+       * `useColorScheme`) and updates automatically when the OS switches between
+       * light and dark mode. `initialColorScheme` is used until the system
+       * scheme is known. Default: false.
+       */
+      followSystem: {
+        type: Boolean,
+        default: false,
+      },
     },
     setup(props, { slots }) {
       const colorScheme = ref(props.initialColorScheme as ColorScheme)
+
+      // Sync with the system appearance when followSystem is enabled.
+      if (props.followSystem) {
+        const system = useColorScheme()
+        colorScheme.value = system.colorScheme.value
+        watch(system.colorScheme, (scheme) => {
+          colorScheme.value = scheme
+        })
+      }
 
       const theme = computed<T>(() => {
         return colorScheme.value === 'dark' ? definition.dark : definition.light

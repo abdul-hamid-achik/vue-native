@@ -207,6 +207,71 @@ describe('Theme System', () => {
   })
 
   // ─────────────────────────────────────────────────────────────────────────
+  // followSystem
+  // ─────────────────────────────────────────────────────────────────────────
+  describe('followSystem', () => {
+    it('syncs the color scheme with system colorScheme:change events', async () => {
+      const { ThemeProvider, useTheme } = createTheme({ light: lightTheme, dark: darkTheme })
+
+      let captured: any
+      const Child = defineComponent({
+        setup() {
+          captured = useTheme()
+          return () => h('VView')
+        },
+      })
+
+      const App = defineComponent({
+        setup() {
+          return () => h(ThemeProvider, { followSystem: true }, { default: () => h(Child) })
+        },
+      })
+
+      const root = createNativeNode('__ROOT__')
+      const app = baseCreateApp(App)
+      app.mount(root as any)
+
+      // Light until the system scheme is known.
+      expect(captured.colorScheme.value).toBe('light')
+
+      // Simulate the OS switching to dark mode.
+      NativeBridge.handleGlobalEvent('colorScheme:change', JSON.stringify({ colorScheme: 'dark' }))
+      await new Promise(resolve => setTimeout(resolve, 0))
+
+      expect(captured.colorScheme.value).toBe('dark')
+      expect(captured.theme.value).toEqual(darkTheme)
+    })
+
+    it('does not follow the system when followSystem is false', async () => {
+      const { ThemeProvider, useTheme } = createTheme({ light: lightTheme, dark: darkTheme })
+
+      let captured: any
+      const Child = defineComponent({
+        setup() {
+          captured = useTheme()
+          return () => h('VView')
+        },
+      })
+
+      const App = defineComponent({
+        setup() {
+          return () => h(ThemeProvider, null, { default: () => h(Child) })
+        },
+      })
+
+      const root = createNativeNode('__ROOT__')
+      const app = baseCreateApp(App)
+      app.mount(root as any)
+
+      NativeBridge.handleGlobalEvent('colorScheme:change', JSON.stringify({ colorScheme: 'dark' }))
+      await new Promise(resolve => setTimeout(resolve, 0))
+
+      // Unchanged — not following the system.
+      expect(captured.colorScheme.value).toBe('light')
+    })
+  })
+
+  // ─────────────────────────────────────────────────────────────────────────
   // ThemeProvider renders children
   // ─────────────────────────────────────────────────────────────────────────
   describe('ThemeProvider rendering', () => {

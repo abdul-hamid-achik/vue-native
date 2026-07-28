@@ -40,6 +40,7 @@ final class NativeModuleRegistry {
         register(ClipboardModule())
         register(DeviceInfoModule())
         register(AnimationModule(viewLookup: viewLookup))
+        register(AccessibilityModule(viewLookup: viewLookup))
         register(AppStateModule(dispatcher: dispatcher))
         register(KeyboardModule())
         register(LinkingModule())

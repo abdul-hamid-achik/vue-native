@@ -161,6 +161,38 @@ describe('Composables', () => {
   })
 
   // ---------------------------------------------------------------------------
+  // useAccessibility
+  // ---------------------------------------------------------------------------
+  describe('useAccessibility', () => {
+    it('announce calls Accessibility.announce with the message', async () => {
+      const { useAccessibility } = await import('../composables/useAccessibility')
+      const { announce } = useAccessibility()
+      announce('3 items added')
+      expect(invokeModuleSpy).toHaveBeenCalledWith('Accessibility', 'announce', ['3 items added'])
+    })
+
+    it('setFocus calls Accessibility.setFocus with a numeric node id', async () => {
+      const { useAccessibility } = await import('../composables/useAccessibility')
+      const { setFocus } = useAccessibility()
+      setFocus(42)
+      expect(invokeModuleSpy).toHaveBeenCalledWith('Accessibility', 'setFocus', [42])
+    })
+
+    it('setFocus resolves a node-like object to its id', async () => {
+      const { useAccessibility } = await import('../composables/useAccessibility')
+      const { setFocus } = useAccessibility()
+      setFocus({ id: 7 })
+      expect(invokeModuleSpy).toHaveBeenCalledWith('Accessibility', 'setFocus', [7])
+    })
+
+    it('setFocus throws for an invalid target', async () => {
+      const { useAccessibility } = await import('../composables/useAccessibility')
+      const { setFocus } = useAccessibility()
+      expect(() => setFocus({} as never)).toThrow(/Invalid focus target/)
+    })
+  })
+
+  // ---------------------------------------------------------------------------
   // useAnimation
   // ---------------------------------------------------------------------------
   describe('useAnimation', () => {

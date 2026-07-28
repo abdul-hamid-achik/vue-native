@@ -290,6 +290,7 @@ export default defineUserConfig({
           children: [
             '/composables/useKeyboard.md',
             '/composables/useClipboard.md',
+            '/composables/useAccessibility.md',
             '/composables/useShare.md',
             '/composables/useLinking.md',
             '/composables/useAnimation.md',

@@ -257,7 +257,7 @@ export { vModel } from './directives/vModel'
 
 // Composables (native module wrappers)
 export {
-  useHaptics, useAsyncStorage, useClipboard, useDeviceInfo, useKeyboard,
+  useHaptics, useAsyncStorage, useClipboard, useAccessibility, useDeviceInfo, useKeyboard,
   useAnimation, Easing, useNetwork, useAppState, useLinking, useShare, usePermissions,
   useGeolocation, useCamera, useNotifications, useBiometry, useHttp,
   useColorScheme, useBackHandler, useSecureStorage, useI18n,

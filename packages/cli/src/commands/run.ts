@@ -1,6 +1,6 @@
 import { Command } from 'commander'
 import { execFileSync, execSync } from 'node:child_process'
-import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import pc from 'picocolors'
 import { ConfigError, loadConfig } from '../config.js'
@@ -45,9 +45,20 @@ function findAppPath(_buildDir: string): string | null {
 
   if (existsSync(derivedDataBase)) {
     try {
+      // Sort DerivedData projects by modification time (most recent first) so we
+      // pick the app that was just built — readdirSync returns filesystem order
+      // (roughly alphabetical), which could select an unrelated project's .app.
       const projects = readdirSync(derivedDataBase)
-      // Sort by modification time (most recent first)
-      for (const project of projects.reverse()) {
+        .map((name) => {
+          try {
+            return { name, mtime: statSync(join(derivedDataBase, name)).mtimeMs }
+          } catch {
+            return { name, mtime: 0 }
+          }
+        })
+        .sort((a, b) => b.mtime - a.mtime)
+
+      for (const { name: project } of projects) {
         const productsDir = join(
           derivedDataBase,
           project,

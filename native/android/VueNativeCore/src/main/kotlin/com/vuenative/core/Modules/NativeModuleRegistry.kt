@@ -90,6 +90,7 @@ class NativeModuleRegistry private constructor(private val context: Context) {
         activeBridge = bridge
         listOf(
             HapticsModule(),
+            AccessibilityModule(),
             AsyncStorageModule(),
             ClipboardModule(),
             DeviceInfoModule(),

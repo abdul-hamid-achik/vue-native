@@ -41,6 +41,7 @@ final class NativeModuleRegistry {
         register(DeviceInfoModule())
         register(KeyboardModule())
         register(AnimationModule())
+        register(AccessibilityModule())
         let bridge = NativeBridge.shared
         register(NetworkModule(bridge: bridge))
         register(AppStateModule(bridge: bridge))
