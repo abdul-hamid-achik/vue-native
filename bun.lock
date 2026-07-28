@@ -294,7 +294,7 @@
     },
     "packages/cli": {
       "name": "@thelacanians/vue-native-cli",
-      "version": "0.13.0",
+      "version": "0.14.0",
       "bin": {
         "vue-native": "./dist/cli.js",
       },
@@ -330,9 +330,9 @@
     },
     "packages/navigation": {
       "name": "@thelacanians/vue-native-navigation",
-      "version": "0.13.0",
+      "version": "0.14.0",
       "dependencies": {
-        "@thelacanians/vue-native-runtime": "^0.13.0",
+        "@thelacanians/vue-native-runtime": "^0.14.0",
         "@vue/runtime-core": "3.5.40",
       },
       "devDependencies": {
@@ -349,7 +349,7 @@
     },
     "packages/runtime": {
       "name": "@thelacanians/vue-native-runtime",
-      "version": "0.13.0",
+      "version": "0.14.0",
       "dependencies": {
         "@vue/reactivity": "3.5.40",
         "@vue/runtime-core": "3.5.40",
@@ -384,7 +384,7 @@
     },
     "packages/vite-plugin": {
       "name": "@thelacanians/vue-native-vite-plugin",
-      "version": "0.13.0",
+      "version": "0.14.0",
       "dependencies": {
         "@thelacanians/vue-native-codegen": "^0.6.6",
         "@thelacanians/vue-native-sfc-parser": "^0.6.7",
