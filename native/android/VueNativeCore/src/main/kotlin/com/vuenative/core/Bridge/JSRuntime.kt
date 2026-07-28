@@ -132,6 +132,28 @@ class JSRuntime(private val context: Context) {
     }
 
     /**
+     * Read the hot-reload auth token that the Vite plugin embeds in the loaded
+     * bundle as the `__HOT_RELOAD_TOKEN__` global. Best-effort: yields an empty
+     * string when the runtime is uninitialized or the global is absent/unreadable
+     * (e.g. production bundles), so callers can always connect safely.
+     *
+     * The script runs on the JS thread and the primitive String is extracted there
+     * before being delivered on the main thread, honoring the V8 threading contract
+     * (no V8Object crosses threads).
+     */
+    fun readHotReloadToken(onResult: (String) -> Unit) {
+        jsHandler.post {
+            val token = try {
+                v8?.executeStringScript("String(globalThis.__HOT_RELOAD_TOKEN__ || '')") ?: ""
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to read hot reload token: ${e.message}")
+                ""
+            }
+            mainHandler.post { onResult(token) }
+        }
+    }
+
+    /**
      * Build a developer-facing error string. For V8 script exceptions this
      * includes the JS message, source location, offending source line, and the
      * JavaScript stack trace (mirroring the iOS error overlay), rather than only

@@ -28,5 +28,11 @@ declare function cancelAnimationFrame(id: number): void
 // __DEV__ is a compile-time constant replaced by the Vite plugin
 declare const __DEV__: boolean
 
+// __HOT_RELOAD_TOKEN__ is a compile-time constant replaced by the Vite plugin
+// (empty string in production / when hot reload is off). The runtime exposes it
+// as a global so the native hot-reload client can authenticate to a
+// network-exposed dev server (`vue-native dev --lan`).
+declare const __HOT_RELOAD_TOKEN__: string
+
 // process.env is used only for the __DEV__ fallback; not present in JSC
 declare var process: { env: { NODE_ENV?: string } } | undefined

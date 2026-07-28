@@ -263,15 +263,20 @@ All params extracted from the URL are strings. If you need a number, convert it 
 
 ### Handling URLs with `handleURL()`
 
-The router also exposes `handleURL()` directly if you need to programmatically trigger deep link navigation:
+The router also exposes `handleURL()` directly if you need to programmatically trigger deep link navigation. It returns a `Promise<boolean>` that settles after guard resolution:
 
 ```ts
 import { useRouter } from '@thelacanians/vue-native-navigation'
 
 const router = useRouter()
 
-// Returns true if the URL matched a screen, false otherwise
-const handled = router.handleURL('myapp://profile/42')
+// Resolves to true if the URL matched a screen, false otherwise.
+// The promise settles after any navigation guards have run.
+const handled = await router.handleURL('myapp://profile/42')
+
+// By default the matched screen is pushed onto the stack. Pass a strategy
+// to reset the stack to the matched route instead:
+await router.handleURL('myapp://home', { strategy: 'reset' })
 ```
 
 ### Automatic URL Handling

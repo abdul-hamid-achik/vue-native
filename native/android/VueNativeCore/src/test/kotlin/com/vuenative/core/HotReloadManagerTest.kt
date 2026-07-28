@@ -158,4 +158,32 @@ class HotReloadManagerTest {
         shadowOf(Looper.getMainLooper()).idle()
         assertNull(lastReloadCode)
     }
+
+    // -------------------------------------------------------------------------
+    // hotReloadUrl() — auth token query construction
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun testHotReloadUrlAppendsToken() {
+        assertEquals(
+            "ws://192.168.1.5:8174?token=abc123",
+            HotReloadManager.hotReloadUrl("ws://192.168.1.5:8174", "abc123"),
+        )
+    }
+
+    @Test
+    fun testHotReloadUrlEmptyTokenLeavesUrlUnchanged() {
+        assertEquals(
+            "ws://localhost:8174",
+            HotReloadManager.hotReloadUrl("ws://localhost:8174", ""),
+        )
+    }
+
+    @Test
+    fun testHotReloadUrlUsesAmpersandWhenQueryExists() {
+        assertEquals(
+            "ws://localhost:8174?foo=bar&token=abc123",
+            HotReloadManager.hotReloadUrl("ws://localhost:8174?foo=bar", "abc123"),
+        )
+    }
 }

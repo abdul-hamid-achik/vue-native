@@ -126,25 +126,45 @@ open class VueNativeWindowController: NSWindowController {
         )
     }
 
+    // MARK: - Hot Reload URL
+
+    /// Build a hot-reload WebSocket URL, appending `?token=<token>` when the token is non-empty.
+    /// Best-effort: returns `base` unmodified if the token is empty or URL construction fails.
+    static func hotReloadURL(base: URL, token: String) -> URL {
+        guard !token.isEmpty else { return base }
+        guard var components = URLComponents(url: base, resolvingAgainstBaseURL: false) else {
+            return base
+        }
+        components.queryItems = (components.queryItems ?? []) + [URLQueryItem(name: "token", value: token)]
+        return components.url ?? base
+    }
+
     // MARK: - Bundle loading
 
     private func loadBundle() {
-        #if DEBUG
-        if let wsURL = devServerURL {
-            HotReloadManager.shared.connect(to: wsURL)
-        }
-        #endif
         loadEmbeddedBundle()
     }
 
     private func loadEmbeddedBundle() {
         runtime.loadBundle(source: .embedded(name: bundleName)) { [weak self] success in
+            // This closure runs on jsQueue — read the hot-reload token here (best-effort)
+            // before hopping to the main thread.
+            #if DEBUG
+            let hotReloadToken: String = success
+                ? (JSRuntime.shared.evaluateScriptSync("String(globalThis.__HOT_RELOAD_TOKEN__ || '')")?.toString() ?? "")
+                : ""
+            #endif
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.hasLoadedBundle = success
                 if success {
                     self.window?.contentView?.layoutSubtreeIfNeeded()
                     self.emitDimensionsIfNeeded()
+                    #if DEBUG
+                    if let wsURL = self.devServerURL {
+                        HotReloadManager.shared.connect(to: Self.hotReloadURL(base: wsURL, token: hotReloadToken))
+                    }
+                    #endif
                 }
             }
             if !success {

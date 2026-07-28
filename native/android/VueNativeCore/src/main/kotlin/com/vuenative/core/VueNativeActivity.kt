@@ -140,13 +140,23 @@ abstract class VueNativeActivity : AppCompatActivity() {
                     }
                 }
             }
-            // The dev server pushes the full bundle inline over the WebSocket, so
-            // only the ws:// URL is needed (no derived HTTP bundle URL).
-            hotReloadManager?.connect(devUrl)
-
             // Development uses the embedded bundle as its deterministic
             // fallback. An applied OTA must not race the live-reload source.
-            loadFromAssets()
+            // Load it first so the hot-reload auth token embedded in the bundle
+            // can be read and attached to the dev server WebSocket URL. The dev
+            // server pushes full bundles inline over the WebSocket, so only the
+            // ws:// URL is needed (no derived HTTP bundle URL).
+            loadFromAssets { _, _ ->
+                if (isFinishing || isDestroyed) return@loadFromAssets
+                // Best-effort: an empty token (production / unreadable global)
+                // leaves the URL unchanged; a non-empty token is appended so a
+                // network-exposed (`--lan`) dev server can authenticate this app.
+                // The manager reconnects using this same URL, so the token is
+                // presented on every reconnection too.
+                runtime.readHotReloadToken { token ->
+                    hotReloadManager?.connect(HotReloadManager.hotReloadUrl(devUrl, token))
+                }
+            }
         } else {
             loadAppliedBundleOrAssets()
         }
@@ -202,13 +212,14 @@ abstract class VueNativeActivity : AppCompatActivity() {
         }
     }
 
-    private fun loadFromAssets() {
+    private fun loadFromAssets(onComplete: ((Boolean, String?) -> Unit)? = null) {
         try {
             val bundleCode = assets.open(getBundleAssetPath()).bufferedReader().readText()
-            runtime.loadBundle(bundleCode)
+            runtime.loadBundle(bundleCode, onComplete)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to load bundle from assets: ${e.message}")
             ErrorOverlayView.show(this, "Failed to load bundle: ${e.message}")
+            onComplete?.invoke(false, e.message)
         }
     }
 

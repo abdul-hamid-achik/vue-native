@@ -413,6 +413,61 @@ final class JSRuntimeTests: XCTestCase {
         waitForExpectations(timeout: 5.0)
     }
 
+    // MARK: - Test: Hot Reload Token
+
+    func testReadHotReloadTokenReturnsInjectedToken() {
+        let expectation = expectation(description: "readHotReloadToken returns the injected token")
+        let runtime = JSRuntime.shared
+
+        runtime.initialize {
+            runtime.evaluateScript("globalThis.__HOT_RELOAD_TOKEN__ = 'deadbeef01';") { _ in
+                runtime.readHotReloadToken { token in
+                    XCTAssertEqual(token, "deadbeef01")
+                    expectation.fulfill()
+                }
+            }
+        }
+
+        waitForExpectations(timeout: 5.0)
+    }
+
+    func testReadHotReloadTokenReturnsEmptyWhenMissing() {
+        let expectation = expectation(description: "readHotReloadToken returns empty when the global is absent")
+        let runtime = JSRuntime.shared
+
+        runtime.initialize {
+            // The singleton context may carry the token from another test; delete
+            // it so this case deterministically exercises the missing-global path.
+            runtime.evaluateScript("delete globalThis.__HOT_RELOAD_TOKEN__;") { _ in
+                runtime.readHotReloadToken { token in
+                    XCTAssertEqual(token, "")
+                    expectation.fulfill()
+                }
+            }
+        }
+
+        waitForExpectations(timeout: 5.0)
+    }
+
+    func testReadHotReloadTokenReturnsEmptyBeforeInitialization() {
+        let expectation = expectation(description: "readHotReloadToken is safe with no context")
+        // A fresh, never-initialized runtime has no context; the read must be
+        // best-effort and yield an empty string rather than crash.
+        let runtime = JSRuntime.shared
+
+        runtime.invalidate()
+        runtime.readHotReloadToken { token in
+            XCTAssertEqual(token, "")
+            // Restore the shared singleton so later tests start from a clean,
+            // initialized runtime.
+            runtime.initialize {
+                expectation.fulfill()
+            }
+        }
+
+        waitForExpectations(timeout: 5.0)
+    }
+
     // MARK: - Test: JSON Operation Parsing
 
     func testOperationJSONParsing() {

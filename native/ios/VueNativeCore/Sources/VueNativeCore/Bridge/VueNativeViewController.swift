@@ -163,16 +163,53 @@ open class VueNativeViewController: UIViewController {
         bridge.dispatchGlobalEvent("gesture:swipeBack", payload: [:])
     }
 
+    // MARK: - Hot reload URL
+
+    /// Build the hot reload WebSocket URL, appending `?token=<token>` when a
+    /// non-empty token is present.
+    ///
+    /// The token is injected into the bundle by the vite-plugin and validated
+    /// by the dev server only in `--lan` mode. When the token is empty the
+    /// base URL is returned unchanged, preserving the existing token-less
+    /// behaviour. The token is hex, but the URL is still assembled via
+    /// `URLComponents` so any existing query items are preserved and the
+    /// result is always a valid URL. Exposed internally for unit testing.
+    ///
+    /// - Parameters:
+    ///   - base: The dev server WebSocket URL (e.g. `ws://localhost:8174`).
+    ///   - token: The hot reload token read from the loaded bundle.
+    /// - Returns: `base` with a `token` query item appended, or `base` itself
+    ///   when the token is empty or the URL cannot be decomposed.
+    nonisolated static func hotReloadURL(base: URL, token: String) -> URL {
+        guard !token.isEmpty else { return base }
+        guard var components = URLComponents(url: base, resolvingAgainstBaseURL: false) else {
+            return base
+        }
+        var queryItems = components.queryItems ?? []
+        queryItems.append(URLQueryItem(name: "token", value: token))
+        components.queryItems = queryItems
+        return components.url ?? base
+    }
+
     // MARK: - Bundle loading
 
     private func loadBundle() {
         #if DEBUG
         if let wsURL = devServerURL {
-            // Connect hot reload manager; it will also do the initial HTTP fetch
-            HotReloadManager.shared.connect(to: wsURL)
-            // Development builds keep their deterministic embedded fallback;
-            // an applied OTA bundle must never race the live-reload source.
-            loadEmbeddedBundle()
+            // Load the embedded bundle first so the vite-plugin-injected
+            // __HOT_RELOAD_TOKEN__ global exists, then read it best-effort and
+            // attach it to the hot reload WebSocket URL before connecting. The
+            // HotReloadManager reconnects with the same URL, so the token
+            // persists across reconnections.
+            loadEmbeddedBundle { [weak self] in
+                guard let self else { return }
+                self.runtime.readHotReloadToken { token in
+                    let url = VueNativeViewController.hotReloadURL(base: wsURL, token: token)
+                    DispatchQueue.main.async {
+                        HotReloadManager.shared.connect(to: url)
+                    }
+                }
+            }
             return
         }
         #endif
@@ -214,7 +251,7 @@ open class VueNativeViewController: UIViewController {
         }
     }
 
-    private func loadEmbeddedBundle() {
+    private func loadEmbeddedBundle(onComplete: (() -> Void)? = nil) {
         runtime.loadBundle(source: .embedded(name: bundleName)) { [weak self] success in
             DispatchQueue.main.async {
                 guard let self else { return }
@@ -224,6 +261,7 @@ open class VueNativeViewController: UIViewController {
                     self.view.layoutIfNeeded()
                     self.emitDimensionsIfNeeded()
                 }
+                onComplete?()
             }
             if !success {
                 NSLog("[VueNative] ERROR: Failed to load bundle '%@'", self?.bundleName ?? "unknown")

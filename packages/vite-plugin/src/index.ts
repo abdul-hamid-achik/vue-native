@@ -27,6 +27,7 @@ import { cleanGeneratedFiles, generateCode, hasGeneratedArtifacts, writeGenerate
 import fg from 'fast-glob'
 import { realpathSync } from 'node:fs'
 import type { ConfigEnv, LibraryFormats, ResolvedConfig, UserConfig, ViteDevServer } from 'vite'
+import { getHotReloadToken } from './hot-reload-token'
 
 export type NativePlatform = 'ios' | 'android' | 'macos'
 
@@ -511,6 +512,11 @@ export default function vueNativePlugin(options: VueNativePluginOptions = {}) {
      */
     config(config: UserConfig, env: ConfigEnv): UserConfig {
       const isDev = env.mode !== 'production'
+      // Shared secret embedded in the bundle so `vue-native dev --lan` can
+      // authenticate the app. Empty in production / when hot reload is off.
+      const hotReloadToken = hotReload && isDev
+        ? getHotReloadToken(config.root ?? process.cwd())
+        : ''
 
       return {
         resolve: {
@@ -527,6 +533,9 @@ export default function vueNativePlugin(options: VueNativePluginOptions = {}) {
           // Hot reload configuration available at compile time
           '__HOT_RELOAD__': JSON.stringify(hotReload && isDev),
           '__HOT_RELOAD_PORT__': JSON.stringify(hotReloadPort),
+          // Hot reload auth token (read by the native runtime to authenticate
+          // to a network-exposed dev server). Empty when not in dev hot reload.
+          '__HOT_RELOAD_TOKEN__': JSON.stringify(hotReloadToken),
           // Replace process.env.NODE_ENV references from @vue/shared and
           // @vue/runtime-core. JavaScriptCore has no `process` global, so
           // leaving these unresolved would crash the bundle on load.

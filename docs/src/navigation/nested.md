@@ -3,7 +3,9 @@
 Tab and drawer navigators can render other navigator components as screens. This supports layouts such as a drawer whose main screen contains tabs, or a tab that hosts the application's one stack router.
 
 ::: warning Independent nested stacks
-The current public API does **not** provide a separate stack-router context for every tab or drawer screen. `createTabNavigator()` and `createDrawerNavigator()` take no arguments and do not accept `{ tabs }`, `{ items }`, or `{ router }` options. Configure the returned navigator through its `screens` prop or declarative `TabScreen`/`DrawerScreen` children.
+The current public API does **not** provide a separate stack-router context for every tab or drawer screen. `createTabNavigator()` and `createDrawerNavigator()` do not accept `{ tabs }` or `{ items }` options; configure the returned navigator through its `screens` prop or declarative `TabScreen`/`DrawerScreen` children.
+
+They **do** accept an optional `router` argument — `createTabNavigator(router)` / `createDrawerNavigator(router)` — which registers their screens in the router's route map and runs your `beforeEach`/`beforeResolve`/`afterEach` guards on tab/screen changes. This is opt-in; without a router the navigators behave exactly as before. (Guard redirects are not supported for tab/drawer transitions and block the change instead. Full stack-managed tabs — serializable in `getState` and deep-linkable to a specific tab — remain future work.)
 :::
 
 ## Drawer containing tabs

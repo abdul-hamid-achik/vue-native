@@ -258,6 +258,26 @@ final class VueNativeMacOSTests: XCTestCase {
     func testColorFromHexInvalid() {
         XCTAssertNil(NSColor.fromHex("notacolor"))
     }
+
+    // MARK: - Hot Reload URL
+
+    func testHotReloadURLWithToken() {
+        let base = URL(string: "ws://192.168.1.10:8174")!
+        let result = VueNativeWindowController.hotReloadURL(base: base, token: "abc123")
+        XCTAssertEqual(result.absoluteString, "ws://192.168.1.10:8174?token=abc123")
+    }
+
+    func testHotReloadURLWithEmptyToken() {
+        let base = URL(string: "ws://localhost:8174")!
+        let result = VueNativeWindowController.hotReloadURL(base: base, token: "")
+        XCTAssertEqual(result.absoluteString, "ws://localhost:8174")
+    }
+
+    func testHotReloadURLPreservesExistingQuery() {
+        let base = URL(string: "ws://localhost:8174?foo=bar")!
+        let result = VueNativeWindowController.hotReloadURL(base: base, token: "deadbeef")
+        XCTAssertEqual(result.absoluteString, "ws://localhost:8174?foo=bar&token=deadbeef")
+    }
 }
 
 private final class MacLifecycleTestModule: NativeModule {

@@ -29,6 +29,20 @@ class HotReloadManager(
         private const val TAG = "VueNative-HotReload"
         private const val RECONNECT_DELAY_MS = 2000L
         private const val MAX_RECONNECT_ATTEMPTS = 10
+
+        /**
+         * Append the hot-reload auth token as a `token` query parameter when it is
+         * non-empty. The token is a hex string emitted by the Vite plugin, so it
+         * needs no percent-encoding. A base URL that already carries a query string
+         * gets the token joined with `&` instead of `?`. An empty token returns the
+         * base URL unchanged — the dev server only enforces the token when it is
+         * exposed to the network via `--lan`, so the tokenless URL stays valid.
+         */
+        fun hotReloadUrl(base: String, token: String): String {
+            if (token.isEmpty()) return base
+            val separator = if (base.contains('?')) "&" else "?"
+            return "$base${separator}token=$token"
+        }
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())

@@ -12,3 +12,5 @@ declare module '*.vue' {
 
 declare const __DEV__: boolean
 declare const __PLATFORM__: 'ios' | 'android' | 'macos'
+
+declare const __HOT_RELOAD_TOKEN__: string

@@ -122,6 +122,12 @@ vi.mock('ws', () => {
   }
 })
 
+// Deterministic hot-reload token so the --lan verifyClient tests can present it.
+const TEST_HOT_RELOAD_TOKEN = '0123456789abcdef'.repeat(4)
+vi.mock('../hot-reload-token.js', () => ({
+  getHotReloadToken: () => '0123456789abcdef'.repeat(4),
+}))
+
 // ───────────────────────────────────────────────────────────────────────────
 // Mock chokidar (used by dev command)
 // ───────────────────────────────────────────────────────────────────────────
@@ -995,7 +1001,7 @@ describe('dev command', () => {
     expect(verifyClient({ req: { socket: { remoteAddress: '203.0.113.1' } } })).toBe(false)
   })
 
-  it('allows private network IPs when --lan is passed', async () => {
+  it('allows private network IPs when --lan is passed with a valid token', async () => {
     const devCommand = await importDevCommand()
     await devCommand.parseAsync(['node', 'dev', '--lan'])
     await new Promise(resolve => setTimeout(resolve, 10))
@@ -1003,21 +1009,40 @@ describe('dev command', () => {
     expect(capturedWssOptions.host).toBe('0.0.0.0')
 
     const verifyClient = capturedWssOptions.verifyClient as (info: {
-      req: { socket: { remoteAddress?: string } }
+      req: { socket: { remoteAddress?: string }, url?: string }
     }) => boolean
 
-    // Localhost still allowed
+    const withToken = (ip: string, token = TEST_HOT_RELOAD_TOKEN) => ({
+      req: { socket: { remoteAddress: ip }, url: `/?token=${token}` },
+    })
+
+    // Localhost still allowed (no token required for loopback)
     expect(verifyClient({ req: { socket: { remoteAddress: '127.0.0.1' } } })).toBe(true)
 
-    // Private network IPs allowed for physical device testing
-    expect(verifyClient({ req: { socket: { remoteAddress: '192.168.1.100' } } })).toBe(true)
-    expect(verifyClient({ req: { socket: { remoteAddress: '10.0.0.1' } } })).toBe(true)
-    expect(verifyClient({ req: { socket: { remoteAddress: '172.16.5.10' } } })).toBe(true)
-    expect(verifyClient({ req: { socket: { remoteAddress: '::ffff:192.168.1.50' } } })).toBe(true)
+    // Private network IPs allowed when they present the shared token
+    expect(verifyClient(withToken('192.168.1.100'))).toBe(true)
+    expect(verifyClient(withToken('10.0.0.1'))).toBe(true)
+    expect(verifyClient(withToken('172.16.5.10'))).toBe(true)
+    expect(verifyClient(withToken('::ffff:192.168.1.50'))).toBe(true)
 
-    // Public IPs still rejected
-    expect(verifyClient({ req: { socket: { remoteAddress: '8.8.8.8' } } })).toBe(false)
-    expect(verifyClient({ req: { socket: { remoteAddress: '203.0.113.1' } } })).toBe(false)
+    // Public IPs still rejected even with a valid token
+    expect(verifyClient(withToken('8.8.8.8'))).toBe(false)
+    expect(verifyClient(withToken('203.0.113.1'))).toBe(false)
+  })
+
+  it('rejects LAN clients with a missing or wrong hot-reload token', async () => {
+    const devCommand = await importDevCommand()
+    await devCommand.parseAsync(['node', 'dev', '--lan'])
+    await new Promise(resolve => setTimeout(resolve, 10))
+
+    const verifyClient = capturedWssOptions.verifyClient as (info: {
+      req: { socket: { remoteAddress?: string }, url?: string }
+    }) => boolean
+
+    // A rogue LAN client without the token (or with a wrong one) is rejected.
+    expect(verifyClient({ req: { socket: { remoteAddress: '192.168.1.100' } } })).toBe(false)
+    expect(verifyClient({ req: { socket: { remoteAddress: '192.168.1.100' }, url: '/' } })).toBe(false)
+    expect(verifyClient({ req: { socket: { remoteAddress: '192.168.1.100' }, url: '/?token=wrong' } })).toBe(false)
   })
 
   it('registers connection and error handlers on WebSocket server', async () => {

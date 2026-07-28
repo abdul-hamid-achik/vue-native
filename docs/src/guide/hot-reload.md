@@ -70,12 +70,31 @@ Then run the app from Xcode / Android Studio.
 The watcher compiles one platform-specific bundle at a time. Use `vue-native dev --ios`, `vue-native dev --android`, or `vue-native dev --platform macos` to select it. Start a new watcher when switching platforms; a single `--ios --android` command is rejected.
 
 ::: tip Physical Devices
-The dev server accepts connections from any device on your local network. When you run a targeted `vue-native dev` command, it prints your LAN IP address:
+By default the dev server binds to **localhost only**, so simulators and emulators
+(which share the host loopback) connect directly but other devices on your network
+cannot. This is the safe default — the dev server can replace your app's JS bundle,
+which runs with full native-module privileges.
+
+To develop on a physical device over Wi-Fi, opt in with `--lan`:
+
+```bash
+vue-native dev --ios --lan
+```
+
+This exposes the server to your local network and prints the LAN address:
 
 ```
   Hot reload server: ws://localhost:8174
   LAN address:       ws://192.168.1.5:8174
 ```
 
-Use the LAN address in your device's dev server URL configuration. Both the device and your computer must be on the same Wi-Fi network.
+Use the LAN address in your device's dev server URL configuration. Both the device
+and your computer must be on the same Wi-Fi network.
+
+**Authentication:** when `--lan` is used, the dev server requires a shared hot-reload
+token so a rogue client on your network cannot inject a bundle. The Vite plugin embeds
+this token in your bundle (`__HOT_RELOAD_TOKEN__`, persisted under
+`node_modules/.vue-native/hot-reload-token`) and the native runtime presents it
+automatically when connecting — no manual setup is needed. Connections without a valid
+token are rejected.
 :::

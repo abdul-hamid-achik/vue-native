@@ -438,6 +438,32 @@ public final class JSRuntime: @unchecked Sendable {
 
     // MARK: - Hot Reload
 
+    /// Read the hot reload authentication token that the vite-plugin injects
+    /// into the loaded bundle as `globalThis.__HOT_RELOAD_TOKEN__`.
+    ///
+    /// Best-effort: returns an empty string when the global is missing,
+    /// undefined, or unreadable, so callers can treat an empty token as
+    /// "no token" and keep the existing token-less behaviour. Runs on the JS
+    /// queue and extracts the primitive there — no `JSValue` crosses threads.
+    ///
+    /// - Parameter completion: Invoked on the JS queue with the token string.
+    public func readHotReloadToken(completion: @escaping (String) -> Void) {
+        jsQueue.async { [weak self] in
+            guard let self = self, let context = self.context else {
+                completion("")
+                return
+            }
+            let value = context.evaluateScript("String(globalThis.__HOT_RELOAD_TOKEN__ || '')")
+            if let exception = context.exception {
+                NSLog("[VueNative] Failed to read hot reload token: %@", exception.toString() ?? "unknown")
+                context.exception = nil
+                completion("")
+                return
+            }
+            completion(value?.toString() ?? "")
+        }
+    }
+
     /// Reload the runtime with a new JavaScript bundle string.
     /// Creates a fresh JSContext, re-registers polyfills, and evaluates the bundle.
     /// Calls completion on the JS queue with success/failure.

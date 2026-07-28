@@ -5,7 +5,7 @@
  * These tests call plugin hooks directly (the same way Vite itself does)
  * to validate the resolved configuration without needing a real Vite build.
  */
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { ref as createProbeRef } from '@vue/reactivity'
 import { nextTick as scheduleProbeTick } from '@vue/runtime-core'
 import { existsSync } from 'node:fs'
@@ -17,6 +17,11 @@ import vue from '@vitejs/plugin-vue'
 import vueNativePlugin from '../index'
 import type { ConfigEnv, UserConfig } from 'vite'
 import type { VueNativePluginOptions } from '../index'
+
+// Deterministic token so the dev-mode define test does not touch the filesystem.
+vi.mock('../hot-reload-token', () => ({
+  getHotReloadToken: () => 'test-hot-reload-token',
+}))
 
 interface TestPluginConfig {
   resolve: {
@@ -308,6 +313,10 @@ describe('Config — production mode', () => {
     expect(config.define['process.env.NODE_ENV']).toBe(JSON.stringify('production'))
   })
 
+  it('does not embed a hot-reload token in production', () => {
+    expect(config.define['__HOT_RELOAD_TOKEN__']).toBe(JSON.stringify(''))
+  })
+
   it('does not empty the output directory', () => {
     expect(config.build.emptyOutDir).toBe(false)
   })
@@ -333,6 +342,10 @@ describe('Config — development mode', () => {
 
   it('defines process.env.NODE_ENV as "development"', () => {
     expect(config.define['process.env.NODE_ENV']).toBe(JSON.stringify('development'))
+  })
+
+  it('embeds the hot-reload token in development', () => {
+    expect(config.define['__HOT_RELOAD_TOKEN__']).toBe(JSON.stringify('test-hot-reload-token'))
   })
 
   it('still uses IIFE format', () => {

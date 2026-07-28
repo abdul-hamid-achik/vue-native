@@ -7,6 +7,7 @@ import { watch } from 'chokidar'
 import { WebSocketServer, WebSocket } from 'ws'
 import pc from 'picocolors'
 import { ConfigError, loadConfig } from '../config.js'
+import { getHotReloadToken } from '../hot-reload-token.js'
 
 const DEFAULT_PORT = 8174
 const BUNDLE_FILE = 'dist/vue-native-bundle.js'
@@ -208,6 +209,18 @@ export const devCommand = new Command('dev')
     const exposeLan = options.lan === true
     const host = exposeLan ? '0.0.0.0' : '127.0.0.1'
 
+    // When exposed to the network, require the shared hot-reload token (embedded
+    // in the app's bundle by the vite plugin) so a rogue LAN client cannot inject
+    // a bundle. Loopback connections are already safe, so the token is only
+    // enforced for --lan.
+    const expectedToken = exposeLan ? getHotReloadToken(cwd) : ''
+    const tokenFromUrl = (url?: string): string => {
+      if (!url) return ''
+      const queryIndex = url.indexOf('?')
+      if (queryIndex === -1) return ''
+      return new URLSearchParams(url.slice(queryIndex + 1)).get('token') ?? ''
+    }
+
     const isLoopback = (ip: string): boolean =>
       ip === '127.0.0.1' || ip === '::1' || ip === '10.0.2.2'
 
@@ -227,8 +240,13 @@ export const devCommand = new Command('dev')
     const wss = new WebSocketServer({
       port,
       host,
-      verifyClient: (info: { req: { socket: { remoteAddress?: string } } }) => {
-        return isPrivateOrLocal(info.req.socket.remoteAddress)
+      verifyClient: (info: { req: { socket: { remoteAddress?: string }, url?: string } }) => {
+        if (!isPrivateOrLocal(info.req.socket.remoteAddress)) return false
+        // Loopback is trusted on its own; LAN clients must also present the token.
+        if (exposeLan && !isLoopback((info.req.socket.remoteAddress ?? '').replace(/^::ffff:/, ''))) {
+          return tokenFromUrl(info.req.url) === expectedToken && expectedToken !== ''
+        }
+        return true
       },
     })
     const clients = new Set<WebSocket>()

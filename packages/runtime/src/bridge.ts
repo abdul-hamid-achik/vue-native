@@ -22,6 +22,15 @@ interface PendingCallback {
 
 const bridgeGlobals = globalThis as typeof globalThis & NativeBridgeGlobals
 
+// Expose the compile-time hot-reload token (injected by the Vite plugin's
+// `define`) as a global so the native hot-reload client can authenticate to a
+// network-exposed dev server (`vue-native dev --lan`). The `typeof` guard keeps
+// this safe when the define is absent (e.g. unit tests). Vite replaces the
+// standalone identifier on the right but not the property key on the left.
+if (typeof __HOT_RELOAD_TOKEN__ !== 'undefined') {
+  ;(globalThis as typeof globalThis & { __HOT_RELOAD_TOKEN__?: string }).__HOT_RELOAD_TOKEN__ = __HOT_RELOAD_TOKEN__
+}
+
 /**
  * Vue apps mounted through createApp().start() register their unmount callback
  * here so the native hot-reload hook can dispose Vue effects before the bridge
