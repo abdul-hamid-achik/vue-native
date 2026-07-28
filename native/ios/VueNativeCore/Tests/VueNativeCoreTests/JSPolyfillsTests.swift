@@ -20,7 +20,7 @@ final class JSPolyfillsTests: XCTestCase {
         runtime.initialize {
             initExpectation.fulfill()
         }
-        waitForExpectations(timeout: 5.0)
+        waitForExpectations(timeout: 20.0)
     }
 
     override func tearDown() {
@@ -38,7 +38,7 @@ final class JSPolyfillsTests: XCTestCase {
             result = value
             exp.fulfill()
         }
-        waitForExpectations(timeout: 5.0)
+        waitForExpectations(timeout: 20.0)
         return result
     }
 

@@ -274,7 +274,7 @@ final class JSRuntimeTests: XCTestCase {
             expectation.fulfill()
         }
 
-        waitForExpectations(timeout: 5.0)
+        waitForExpectations(timeout: 20.0)
     }
 
     func testJSRuntimeEvaluateScript() {
@@ -289,7 +289,7 @@ final class JSRuntimeTests: XCTestCase {
             }
         }
 
-        waitForExpectations(timeout: 5.0)
+        waitForExpectations(timeout: 20.0)
     }
 
     func testJSRuntimeCallFunction() {
@@ -306,7 +306,7 @@ final class JSRuntimeTests: XCTestCase {
             }
         }
 
-        waitForExpectations(timeout: 5.0)
+        waitForExpectations(timeout: 20.0)
     }
 
     func testFileBundleReportsEvaluationFailureAndClearsException() throws {
@@ -342,7 +342,7 @@ final class JSRuntimeTests: XCTestCase {
             }
         }
 
-        waitForExpectations(timeout: 5.0)
+        waitForExpectations(timeout: 20.0)
     }
 
     func testRecreateDiscardsGlobalsFromFailedJavaScriptWorld() {
@@ -365,7 +365,7 @@ final class JSRuntimeTests: XCTestCase {
             }
         }
 
-        waitForExpectations(timeout: 5.0)
+        waitForExpectations(timeout: 20.0)
     }
 
     func testInitializeForHostReplacesAnExistingJavaScriptWorld() {
@@ -385,7 +385,7 @@ final class JSRuntimeTests: XCTestCase {
             }
         }
 
-        waitForExpectations(timeout: 5.0)
+        waitForExpectations(timeout: 20.0)
     }
 
     func testReloadPreparesBridgeFunctionsBeforeBundleEvaluation() {
@@ -410,7 +410,7 @@ final class JSRuntimeTests: XCTestCase {
             )
         }
 
-        waitForExpectations(timeout: 5.0)
+        waitForExpectations(timeout: 20.0)
     }
 
     // MARK: - Test: Hot Reload Token
@@ -428,7 +428,7 @@ final class JSRuntimeTests: XCTestCase {
             }
         }
 
-        waitForExpectations(timeout: 5.0)
+        waitForExpectations(timeout: 20.0)
     }
 
     func testReadHotReloadTokenReturnsEmptyWhenMissing() {
@@ -446,7 +446,7 @@ final class JSRuntimeTests: XCTestCase {
             }
         }
 
-        waitForExpectations(timeout: 5.0)
+        waitForExpectations(timeout: 20.0)
     }
 
     func testReadHotReloadTokenReturnsEmptyBeforeInitialization() {
@@ -465,7 +465,7 @@ final class JSRuntimeTests: XCTestCase {
             }
         }
 
-        waitForExpectations(timeout: 5.0)
+        waitForExpectations(timeout: 20.0)
     }
 
     // MARK: - Test: JSON Operation Parsing

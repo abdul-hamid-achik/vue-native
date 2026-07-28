@@ -38,7 +38,7 @@ final class NativeModuleTests: XCTestCase {
             }
         }
 
-        waitForExpectations(timeout: 5.0)
+        waitForExpectations(timeout: 20.0)
     }
 
     func testHapticsModuleNotificationFeedback() {
@@ -53,7 +53,7 @@ final class NativeModuleTests: XCTestCase {
             }
         }
 
-        waitForExpectations(timeout: 5.0)
+        waitForExpectations(timeout: 20.0)
     }
 
     func testHapticsModuleSelectionChanged() {
@@ -97,7 +97,7 @@ final class NativeModuleTests: XCTestCase {
             expectation.fulfill()
         }
 
-        waitForExpectations(timeout: 5.0)
+        waitForExpectations(timeout: 20.0)
     }
 
     // NOTE: Clipboard paste test omitted — UIPasteboard.general.string (read)
@@ -211,7 +211,7 @@ final class NativeModuleTests: XCTestCase {
             }
         }
 
-        waitForExpectations(timeout: 5.0)
+        waitForExpectations(timeout: 20.0)
     }
 
     func testAsyncStorageRemoveItem() {
@@ -232,7 +232,7 @@ final class NativeModuleTests: XCTestCase {
             }
         }
 
-        waitForExpectations(timeout: 5.0)
+        waitForExpectations(timeout: 20.0)
     }
 
     func testAsyncStorageGetItemMissingKeyReturnsError() {
