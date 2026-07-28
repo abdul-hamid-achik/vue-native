@@ -1,6 +1,6 @@
 {
   "name": "@thelacanians/vue-native-cli",
-  "version": "0.12.0",
+  "version": "0.13.0",
   "description": "CLI for creating and running Vue Native apps",
   "license": "MIT",
   "author": "Vue Native Contributors",
