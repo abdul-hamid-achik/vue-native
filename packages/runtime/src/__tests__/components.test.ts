@@ -15,7 +15,7 @@ const { createNativeNode } = await import('../node')
 
 // Import components
 const {
-  VView, VText, VButton, VInput, VSwitch, VSlider, VImage,
+  VView, VText, VButton, VInput, VSwitch, VSlider, VImage, VSVG,
   VScrollView, VList, VModal, VActivityIndicator,
   VKeyboardAvoiding, VSafeArea, VProgressBar, VPicker: _VPicker,
   VSegmentedControl, VActionSheet: _VActionSheet, VStatusBar, VWebView,
@@ -405,6 +405,26 @@ describe('Components', () => {
       await nextTick()
       const ops = mockBridge.getOpsByType('updateProp')
       expect(ops.find(o => o.args[1] === 'resizeMode')?.args[2]).toBe('contain')
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // VSVG
+  // ---------------------------------------------------------------------------
+  describe('VSVG', () => {
+    it('renders intrinsic VSVG element', async () => {
+      renderComponent(createVNode(VSVG, { source: { svg: '<svg></svg>' } }))
+      await nextTick()
+      const ops = mockBridge.getOpsByType('create')
+      expect(ops.some(o => o.args[1] === 'VSVG')).toBe(true)
+    })
+
+    it('forwards source and tintColor props', async () => {
+      renderComponent(createVNode(VSVG, { source: { asset: 'logo' }, tintColor: '#FF0000' }))
+      await nextTick()
+      const ops = mockBridge.getOpsByType('updateProp')
+      expect(ops.find(o => o.args[1] === 'tintColor')?.args[2]).toBe('#FF0000')
+      expect(ops.find(o => o.args[1] === 'source')?.args[2]).toEqual({ asset: 'logo' })
     })
   })
 

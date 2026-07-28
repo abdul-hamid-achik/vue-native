@@ -227,7 +227,7 @@ export type {
 // Built-in components (for direct import in render functions)
 export {
   VView, VText, VButton, VInput, VSwitch, VActivityIndicator,
-  VScrollView, VImage, VKeyboardAvoiding, VSafeArea, VSlider,
+  VScrollView, VImage, VSVG, VKeyboardAvoiding, VSafeArea, VSlider,
   VList, VModal, VAlertDialog, VStatusBar, VWebView,
   VProgressBar, VPicker, VSegmentedControl, VActionSheet,
   VRefreshControl, VPressable, VSectionList,
@@ -239,6 +239,7 @@ export {
   builtInComponents,
 } from './components'
 export type { ImageSource } from './components'
+export type { SVGSource } from './components'
 export type { VSectionListSection } from './components'
 export type { TabConfig } from './components/VTabBar'
 export type {

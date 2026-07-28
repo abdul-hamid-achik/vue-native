@@ -11,6 +11,8 @@ let package = Package(
         // Yoga layout engine — layoutBox/FlexLayout v2.x wraps Yoga 3.0.4
         // 2.1k stars, actively maintained (last release Dec 2025), full SPM support
         .package(url: "https://github.com/layoutBox/FlexLayout.git", from: "2.0.0"),
+        // SVG rendering for the VSVG component (iOS + macOS compatible)
+        .package(url: "https://github.com/SVGKit/SVGKit.git", from: "3.0.0"),
         // Shared cross-platform Swift code used by both iOS and macOS
         .package(path: "../../shared/VueNativeShared")
     ],
@@ -19,6 +21,7 @@ let package = Package(
             name: "VueNativeCore",
             dependencies: [
                 .product(name: "FlexLayout", package: "FlexLayout"),
+                .product(name: "SVGKit", package: "SVGKit"),
                 "VueNativeShared"
             ],
             path: "Sources/VueNativeCore",

@@ -54,6 +54,7 @@ final class ComponentRegistry {
         register("VList", factory: VListFactory())
         register("VSectionList", factory: VSectionListFactory())
         register("VImage", factory: VImageFactory())
+        register("VSVG", factory: VSVGFactory())
         register("VPressable", factory: VPressableFactory())
 
         // Dialogs and media (Phase 2)

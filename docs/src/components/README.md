@@ -27,6 +27,7 @@ See the [Components guide](../guide/components.md) for a full comparison table.
 
 ## Media
 - [VImage](./VImage.md) -- Async image
+- [VSVG](./VSVG.md) -- Scalable vector graphics
 - [VWebView](./VWebView.md) -- Embedded web view
 - [VVideo](./VVideo.md) -- Video player
 

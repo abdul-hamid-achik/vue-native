@@ -37,7 +37,7 @@ class ComponentRegistryTest {
     }
 
     // -------------------------------------------------------------------------
-    // All 28 default component types should be registered
+    // All 29 default component types should be registered
     // -------------------------------------------------------------------------
 
     @Test
@@ -49,7 +49,7 @@ class ComponentRegistryTest {
             "VModal", "VAlertDialog", "VStatusBar", "VWebView",
             "VProgressBar", "VPicker", "VSegmentedControl", "VActionSheet",
             "VRefreshControl", "VPressable", "VSectionList", "VCheckbox",
-            "VRadio", "VDropdown", "VVideo", "__ROOT__"
+            "VRadio", "VDropdown", "VVideo", "VSVG", "__ROOT__"
         )
 
         for (type in expectedTypes) {

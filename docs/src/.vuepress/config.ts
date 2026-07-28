@@ -169,6 +169,7 @@ export default defineUserConfig({
           text: 'Media',
           children: [
             '/components/VImage.md',
+            '/components/VSVG.md',
             '/components/VWebView.md',
             '/components/VVideo.md',
           ],

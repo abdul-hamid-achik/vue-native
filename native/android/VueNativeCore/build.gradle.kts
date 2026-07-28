@@ -84,6 +84,9 @@ dependencies {
     // Coil — Image loading
     implementation("io.coil-kt:coil:2.7.0")
 
+    // AndroidSVG — SVG rendering (VSVG component)
+    implementation("com.caverock:androidsvg:1.4")
+
     // OkHttp — HTTP for fetch polyfill
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
 

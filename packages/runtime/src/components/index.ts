@@ -17,6 +17,8 @@ import { VActivityIndicator } from './VActivityIndicator'
 import { VScrollView } from './VScrollView'
 import { VImage } from './VImage'
 export type { ImageSource } from './VImage'
+import { VSVG } from './VSVG'
+export type { SVGSource } from './VSVG'
 import { VKeyboardAvoiding } from './VKeyboardAvoiding'
 import { VSafeArea } from './VSafeArea'
 import { VSlider } from './VSlider'
@@ -56,6 +58,7 @@ export {
   VActivityIndicator,
   VScrollView,
   VImage,
+  VSVG,
   VKeyboardAvoiding,
   VSafeArea,
   VSlider,
@@ -112,6 +115,7 @@ export const builtInComponents: Record<string, Component> = {
   VActivityIndicator,
   VScrollView,
   VImage,
+  VSVG,
   VKeyboardAvoiding,
   VSafeArea,
   VSlider,

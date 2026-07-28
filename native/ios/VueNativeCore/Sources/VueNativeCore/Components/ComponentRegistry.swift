@@ -60,6 +60,7 @@ final class ComponentRegistry {
         register("VRadio", factory: VRadioFactory())
         register("VDropdown", factory: VDropdownFactory())
         register("VVideo", factory: VVideoFactory())
+        register("VSVG", factory: VSVGFactory())
         register("__ROOT__", factory: VRootFactory())
     }
 

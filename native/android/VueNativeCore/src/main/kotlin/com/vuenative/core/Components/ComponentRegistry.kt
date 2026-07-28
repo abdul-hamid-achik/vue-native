@@ -52,6 +52,7 @@ class ComponentRegistry private constructor(private val applicationContext: Cont
         register("VRadio", VRadioFactory())
         register("VDropdown", VDropdownFactory())
         register("VVideo", VVideoFactory())
+        register("VSVG", VSVGFactory())
         register("__ROOT__", VRootFactory())
     }
 
