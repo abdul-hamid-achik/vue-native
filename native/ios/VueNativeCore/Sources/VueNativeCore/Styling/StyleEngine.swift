@@ -645,7 +645,11 @@ enum StyleEngine {
 
         case "backgroundColor":
             if let colorStr = value as? String {
-                view.backgroundColor = UIColor.fromHex(colorStr)
+                if let color = UIColor.fromHex(colorStr) {
+                    view.backgroundColor = color
+                } else {
+                    logInvalidColor(colorStr)
+                }
             } else {
                 view.backgroundColor = nil
             }
@@ -705,7 +709,11 @@ enum StyleEngine {
 
         case "borderColor":
             if let colorStr = value as? String {
-                view.layer.borderColor = UIColor.fromHex(colorStr).cgColor
+                if let color = UIColor.fromHex(colorStr) {
+                    view.layer.borderColor = color.cgColor
+                } else {
+                    logInvalidColor(colorStr)
+                }
             } else {
                 view.layer.borderColor = nil
             }
@@ -713,7 +721,11 @@ enum StyleEngine {
 
         case "shadowColor":
             if let colorStr = value as? String {
-                view.layer.shadowColor = UIColor.fromHex(colorStr).cgColor
+                if let color = UIColor.fromHex(colorStr) {
+                    view.layer.shadowColor = color.cgColor
+                } else {
+                    logInvalidColor(colorStr)
+                }
             }
             return true
 
@@ -757,31 +769,9 @@ enum StyleEngine {
 
         case "transform":
             if let transforms = value as? [[String: Any]] {
-                var result = CGAffineTransform.identity
-                for dict in transforms {
-                    if let rotateStr = dict["rotate"] as? String {
-                        let angle = parseAngle(rotateStr)
-                        result = result.rotated(by: angle)
-                    }
-                    if let scale = dict["scale"] as? Double {
-                        result = result.scaledBy(x: CGFloat(scale), y: CGFloat(scale))
-                    }
-                    if let scaleX = dict["scaleX"] as? Double {
-                        result = result.scaledBy(x: CGFloat(scaleX), y: 1)
-                    }
-                    if let scaleY = dict["scaleY"] as? Double {
-                        result = result.scaledBy(x: 1, y: CGFloat(scaleY))
-                    }
-                    if let tx = dict["translateX"] as? Double {
-                        result = result.translatedBy(x: CGFloat(tx), y: 0)
-                    }
-                    if let ty = dict["translateY"] as? Double {
-                        result = result.translatedBy(x: 0, y: CGFloat(ty))
-                    }
-                }
-                view.transform = result
+                view.layer.transform = composeTransform3D(transforms)
             } else {
-                view.transform = .identity
+                view.layer.transform = CATransform3DIdentity
             }
             return true
 
@@ -820,19 +810,15 @@ enum StyleEngine {
 
         case "accessibilityRole":
             if let role = value as? String {
-                switch role {
-                case "button":    view.accessibilityTraits = .button
-                case "link":      view.accessibilityTraits = .link
-                case "header":    view.accessibilityTraits = .header
-                case "image":     view.accessibilityTraits = .image
-                case "selected":  view.accessibilityTraits = .selected
-                case "text":      view.accessibilityTraits = .staticText
-                case "adjustable": view.accessibilityTraits = .adjustable
-                case "search":    view.accessibilityTraits = .searchField
-                case "tab":       view.accessibilityTraits = .tabBar
-                case "none":      view.accessibilityTraits = .none
-                default:          break
+                // Replace only the trait owned by the previous role, preserving
+                // reactive state traits (.notEnabled / .selected) applied via
+                // accessibilityState so the two props no longer clobber each other.
+                var traits = view.accessibilityTraits
+                traits.remove(allRoleTraits)
+                if let roleTrait = roleTraits[role] {
+                    traits.insert(roleTrait)
                 }
+                view.accessibilityTraits = traits
                 view.isAccessibilityElement = true
             }
             return true
@@ -879,7 +865,10 @@ enum StyleEngine {
         switch key {
         case "fontSize":
             if let num = yogaValue(value) {
-                label.font = label.font.withSize(num)
+                // Scale the developer-supplied size for Dynamic Type so text
+                // respects the user's preferred content size category.
+                let scaled = UIFontMetrics.default.scaledValue(for: num)
+                label.font = label.font.withSize(scaled)
                 label.flex.markDirty()
             }
             return true
@@ -894,7 +883,11 @@ enum StyleEngine {
 
         case "color":
             if let colorStr = value as? String {
-                label.textColor = UIColor.fromHex(colorStr)
+                if let color = UIColor.fromHex(colorStr) {
+                    label.textColor = color
+                } else {
+                    logInvalidColor(colorStr)
+                }
             }
             return true
 
@@ -995,6 +988,106 @@ enum StyleEngine {
     }
 
     // MARK: - Helpers
+
+    /// Maps `accessibilityRole` string values to the trait they own. `"selected"`
+    /// is intentionally absent — it is a reactive state, not a role, and is owned
+    /// by `accessibilityState`.
+    private static let roleTraits: [String: UIAccessibilityTraits] = [
+        "button": .button,
+        "link": .link,
+        "header": .header,
+        "image": .image,
+        "text": .staticText,
+        "adjustable": .adjustable,
+        "search": .searchField,
+        "tab": .tabBar,
+    ]
+
+    /// Union of every trait `accessibilityRole` may assign. Removing this set
+    /// before inserting a new role clears any previously applied role trait
+    /// while leaving reactive state traits (.notEnabled / .selected) untouched.
+    private static let allRoleTraits: UIAccessibilityTraits = [
+        .button, .link, .header, .image, .staticText, .adjustable, .searchField, .tabBar,
+    ]
+
+    /// Log an invalid color value in DEBUG builds. The style is intentionally
+    /// not applied so the view keeps its previous value rather than going clear.
+    private static func logInvalidColor(_ colorStr: String) {
+        #if DEBUG
+        NSLog("[VueNative StyleEngine] Warning: invalid color '\(colorStr)' ignored — keeping previous value")
+        #endif
+    }
+
+    /// Compose a transform list (an array of single-key dictionaries, matching the
+    /// TypeScript `transform` style contract) into a single `CATransform3D`.
+    ///
+    /// Supports the 2D operations (`translateX/Y`, `scale`, `scaleX/Y`, `rotate`)
+    /// plus the 3D operations (`perspective`, `rotateX/Y/Z`, `skewX/Y`). Each
+    /// operation is pre-concatenated so the first entry in the array ends up as
+    /// the outermost transform — the same convention CSS transform lists use and
+    /// the same order the previous `CGAffineTransform`-based implementation used.
+    ///
+    /// The result is applied to `view.layer.transform`; pure-2D lists still
+    /// project back to the equivalent `CGAffineTransform` via `view.transform`.
+    private static func composeTransform3D(_ transforms: [[String: Any]]) -> CATransform3D {
+        var result = CATransform3DIdentity
+
+        // Pre-concatenate `op` so it is applied before the accumulated result,
+        // mirroring `CGAffineTransformRotate(t, a) == Concat(rotation, t)`.
+        func apply(_ op: CATransform3D) {
+            result = CATransform3DConcat(op, result)
+        }
+
+        for dict in transforms {
+            // Original 2D keys (relative order preserved from the prior impl).
+            if let rotateStr = dict["rotate"] as? String {
+                apply(CATransform3DMakeRotation(parseAngle(rotateStr), 0, 0, 1))
+            }
+            if let scale = yogaValue(dict["scale"]) {
+                apply(CATransform3DMakeScale(scale, scale, 1))
+            }
+            if let scaleX = yogaValue(dict["scaleX"]) {
+                apply(CATransform3DMakeScale(scaleX, 1, 1))
+            }
+            if let scaleY = yogaValue(dict["scaleY"]) {
+                apply(CATransform3DMakeScale(1, scaleY, 1))
+            }
+            if let tx = yogaValue(dict["translateX"]) {
+                apply(CATransform3DMakeTranslation(tx, 0, 0))
+            }
+            if let ty = yogaValue(dict["translateY"]) {
+                apply(CATransform3DMakeTranslation(0, ty, 0))
+            }
+
+            // 3D keys.
+            if let perspective = yogaValue(dict["perspective"]), perspective != 0 {
+                var p = CATransform3DIdentity
+                p.m34 = -1.0 / perspective
+                apply(p)
+            }
+            if let rotateXStr = dict["rotateX"] as? String {
+                apply(CATransform3DMakeRotation(parseAngle(rotateXStr), 1, 0, 0))
+            }
+            if let rotateYStr = dict["rotateY"] as? String {
+                apply(CATransform3DMakeRotation(parseAngle(rotateYStr), 0, 1, 0))
+            }
+            if let rotateZStr = dict["rotateZ"] as? String {
+                apply(CATransform3DMakeRotation(parseAngle(rotateZStr), 0, 0, 1))
+            }
+            if let skewXStr = dict["skewX"] as? String {
+                var s = CATransform3DIdentity
+                s.m21 = tan(skewXStr.isEmpty ? 0 : parseAngle(skewXStr))
+                apply(s)
+            }
+            if let skewYStr = dict["skewY"] as? String {
+                var s = CATransform3DIdentity
+                s.m12 = tan(skewYStr.isEmpty ? 0 : parseAngle(skewYStr))
+                apply(s)
+            }
+        }
+
+        return result
+    }
 
     /// Parse an angle string into radians.
     /// Supports "45deg" (degrees) and "1.5rad" (radians).

@@ -1,7 +1,6 @@
 package com.vuenative.core
 
 import android.content.Context
-import android.graphics.Color
 import android.text.Editable
 import android.text.InputFilter
 import android.text.InputType
@@ -12,6 +11,12 @@ import android.view.inputmethod.EditorInfo
 import android.widget.EditText
 
 class VInputFactory : NativeComponentFactory {
+
+    private companion object {
+        /** Default (unfocused) underline color — a neutral gray. */
+        const val BASE_UNDERLINE_COLOR = 0xFF9E9E9E.toInt()
+    }
+
     private val changeHandlers = mutableMapOf<EditText, (Any?) -> Unit>()
     private val submitHandlers = mutableMapOf<EditText, (Any?) -> Unit>()
     private val focusHandlers = mutableMapOf<EditText, (Any?) -> Unit>()
@@ -19,11 +24,24 @@ class VInputFactory : NativeComponentFactory {
     private val textWatchers = mutableMapOf<EditText, TextWatcher>()
 
     override fun createView(context: Context): View {
+        val density = context.resources.displayMetrics.density
+        val baseUnderline = (1 * density).toInt().coerceAtLeast(1)
+        val focusedUnderline = (2 * density).toInt().coerceAtLeast(2)
+        val verticalPadding = (8 * density).toInt()
         return EditText(context).apply {
-            setBackgroundColor(Color.TRANSPARENT)
-            setPadding(0, 0, 0, 0)
+            // Material-style underline that thickens/recolors on focus instead of
+            // a bare transparent box (visible focus affordance).
+            background = UnderlineDrawable(
+                baseColor = BASE_UNDERLINE_COLOR,
+                focusedColor = ThemeColors.accentColor(context),
+                baseHeightPx = baseUnderline,
+                focusedHeightPx = focusedUnderline,
+            )
+            setPadding(0, verticalPadding, 0, verticalPadding)
             textSize = 16f
-            setTextColor(Color.BLACK)
+            setTextColor(ThemeColors.defaultTextColor(context))
+            // Material minimum touch target.
+            minimumHeight = (48 * density).toInt()
             layoutParams = ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT

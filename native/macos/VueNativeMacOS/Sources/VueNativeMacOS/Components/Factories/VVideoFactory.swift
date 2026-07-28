@@ -302,8 +302,12 @@ final class VVideoFactory: NativeComponentFactory {
             break
         case .play:
             container.player?.play()
+            // Notify JS listeners of the play transition (covers autoplay too).
+            fireEvent(for: container, key: &onPlayKey, payload: nil)
         case .pause:
             container.player?.pause()
+            // Notify JS listeners of the pause transition.
+            fireEvent(for: container, key: &onPauseKey, payload: nil)
         }
     }
 

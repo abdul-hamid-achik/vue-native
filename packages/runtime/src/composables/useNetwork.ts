@@ -32,7 +32,7 @@ export function useNetwork() {
 
   // Fetch initial state, but skip if a more recent event already arrived.
   const initTime = Date.now()
-  NativeBridge.invokeNativeModule('Network', 'getStatus').then((status: NetworkState) => {
+  NativeBridge.invokeNativeModule<NetworkState>('Network', 'getStatus').then((status) => {
     if (lastEventTime <= initTime) {
       isConnected.value = status.isConnected
       connectionType.value = status.connectionType

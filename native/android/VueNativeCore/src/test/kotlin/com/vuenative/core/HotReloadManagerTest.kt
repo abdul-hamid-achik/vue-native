@@ -1,41 +1,31 @@
 package com.vuenative.core
 
-import android.content.Context
-import androidx.test.core.app.ApplicationProvider
-import org.junit.Assert.assertFalse
+import android.os.Looper
+import io.mockk.mockk
+import io.mockk.verify
+import okhttp3.WebSocket
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 class HotReloadManagerTest {
 
-    private lateinit var context: Context
     private var lastReloadCode: String? = null
     private lateinit var manager: HotReloadManager
 
     @Before
     fun setUp() {
-        // Reset ComponentRegistry singleton via reflection
-        val crField = ComponentRegistry::class.java.getDeclaredField("instance")
-        crField.isAccessible = true
-        crField.set(null, null)
-
-        // Reset NativeModuleRegistry singleton via reflection
-        val nmrField = NativeModuleRegistry::class.java.getDeclaredField("instance")
-        nmrField.isAccessible = true
-        nmrField.set(null, null)
-
-        context = ApplicationProvider.getApplicationContext()
         lastReloadCode = null
-
-        val runtime = JSRuntime(context)
-        manager = HotReloadManager(runtime) { code ->
+        manager = HotReloadManager { code ->
             lastReloadCode = code
         }
     }
@@ -50,48 +40,26 @@ class HotReloadManagerTest {
     }
 
     // -------------------------------------------------------------------------
-    // Initial connection state is disconnected
+    // disconnect() clears state and is idempotent
     // -------------------------------------------------------------------------
 
     @Test
-    fun testInitialConnectionState() {
-        val field = HotReloadManager::class.java.getDeclaredField("isConnected")
-        field.isAccessible = true
-        val connected = field.getBoolean(manager)
-        assertFalse("Should not be connected initially", connected)
-    }
-
-    // -------------------------------------------------------------------------
-    // disconnect() clears state
-    // -------------------------------------------------------------------------
-
-    @Test
-    fun testDisconnect() {
+    fun testDisconnectClearsState() {
+        manager.connect("ws://localhost:3000")
         manager.disconnect()
 
-        val connField = HotReloadManager::class.java.getDeclaredField("isConnected")
-        connField.isAccessible = true
-        assertFalse("isConnected should be false after disconnect", connField.getBoolean(manager))
+        val serverField = HotReloadManager::class.java.getDeclaredField("serverUrl")
+        serverField.isAccessible = true
+        assertNull("serverUrl should be null after disconnect", serverField.get(manager))
 
-        val devField = HotReloadManager::class.java.getDeclaredField("devServerUrl")
-        devField.isAccessible = true
-        val devUrl = devField.get(manager)
-        assertTrue("devServerUrl should be null after disconnect", devUrl == null)
-
-        val bundleField = HotReloadManager::class.java.getDeclaredField("bundleUrl")
-        bundleField.isAccessible = true
-        val bundleUrl = bundleField.get(manager)
-        assertTrue("bundleUrl should be null after disconnect", bundleUrl == null)
-
-        val wsField = HotReloadManager::class.java.getDeclaredField("wsSession")
+        val wsField = HotReloadManager::class.java.getDeclaredField("webSocket")
         wsField.isAccessible = true
-        val ws = wsField.get(manager)
-        assertTrue("wsSession should be null after disconnect", ws == null)
-    }
+        assertNull("webSocket should be null after disconnect", wsField.get(manager))
 
-    // -------------------------------------------------------------------------
-    // disconnect() is idempotent
-    // -------------------------------------------------------------------------
+        val disconnectedField = HotReloadManager::class.java.getDeclaredField("disconnected")
+        disconnectedField.isAccessible = true
+        assertTrue("disconnected should be true after disconnect", disconnectedField.getBoolean(manager))
+    }
 
     @Test
     fun testDisconnectIdempotent() {
@@ -103,47 +71,16 @@ class HotReloadManagerTest {
     }
 
     // -------------------------------------------------------------------------
-    // connect() stores URLs
+    // connect() stores the server URL
     // -------------------------------------------------------------------------
 
     @Test
-    fun testConnectStoresUrls() {
-        manager.connect("ws://localhost:3000", "http://localhost:3000/bundle.js")
+    fun testConnectStoresUrl() {
+        manager.connect("ws://localhost:3000")
 
-        val devField = HotReloadManager::class.java.getDeclaredField("devServerUrl")
-        devField.isAccessible = true
-        val devUrl = devField.get(manager) as? String
-        assertTrue("devServerUrl should be set", devUrl == "ws://localhost:3000")
-
-        val bundleField = HotReloadManager::class.java.getDeclaredField("bundleUrl")
-        bundleField.isAccessible = true
-        val bundleUrl = bundleField.get(manager) as? String
-        assertTrue("bundleUrl should be set", bundleUrl == "http://localhost:3000/bundle.js")
-
-        manager.disconnect()
-    }
-
-    // -------------------------------------------------------------------------
-    // After disconnect, can reconnect
-    // -------------------------------------------------------------------------
-
-    @Test
-    fun testReconnectAfterDisconnect() {
-        manager.connect("ws://localhost:3000", "http://localhost:3000/bundle.js")
-        manager.disconnect()
-
-        // Scope and job should be fresh after disconnect
-        val scopeJobField = HotReloadManager::class.java.getDeclaredField("scopeJob")
-        scopeJobField.isAccessible = true
-        val scopeJob = scopeJobField.get(manager) as kotlinx.coroutines.Job
-        assertFalse("scopeJob should not be cancelled after disconnect+reinit", scopeJob.isCancelled)
-
-        manager.connect("ws://localhost:4000", "http://localhost:4000/bundle.js")
-
-        val devField = HotReloadManager::class.java.getDeclaredField("devServerUrl")
-        devField.isAccessible = true
-        val devUrl = devField.get(manager) as? String
-        assertTrue("devServerUrl should be updated", devUrl == "ws://localhost:4000")
+        val serverField = HotReloadManager::class.java.getDeclaredField("serverUrl")
+        serverField.isAccessible = true
+        assertEquals("ws://localhost:3000", serverField.get(manager))
 
         manager.disconnect()
     }
@@ -156,7 +93,69 @@ class HotReloadManagerTest {
     fun testHttpClientExists() {
         val field = HotReloadManager::class.java.getDeclaredField("httpClient")
         field.isAccessible = true
-        val client = field.get(manager)
-        assertNotNull("httpClient should not be null", client)
+        assertNotNull("httpClient should not be null", field.get(manager))
+    }
+
+    // -------------------------------------------------------------------------
+    // Message handling (protocol parity with the dev server / shared Swift impl)
+    // -------------------------------------------------------------------------
+
+    private fun invokeHandleMessage(webSocket: WebSocket, text: String) {
+        val method = HotReloadManager::class.java.getDeclaredMethod(
+            "handleMessage",
+            WebSocket::class.java,
+            String::class.java,
+        )
+        method.isAccessible = true
+        method.invoke(manager, webSocket, text)
+    }
+
+    @Test
+    fun testPingRepliesWithPong() {
+        val socket = mockk<WebSocket>(relaxed = true)
+        invokeHandleMessage(socket, "{\"type\":\"ping\"}")
+        verify { socket.send("{\"type\":\"pong\"}") }
+    }
+
+    @Test
+    fun testBundleMessageTriggersReloadInline() {
+        val socket = mockk<WebSocket>(relaxed = true)
+        invokeHandleMessage(socket, "{\"type\":\"bundle\",\"bundle\":\"console.log('hi')\"}")
+
+        // onReload is posted to the main handler — flush the main looper.
+        shadowOf(Looper.getMainLooper()).idle()
+
+        assertEquals("console.log('hi')", lastReloadCode)
+        // The bundle is used inline: no HTTP fetch, so nothing else is sent on the socket.
+        verify(exactly = 0) { socket.send(any<String>()) }
+    }
+
+    @Test
+    fun testEmptyBundleIsIgnored() {
+        val socket = mockk<WebSocket>(relaxed = true)
+        invokeHandleMessage(socket, "{\"type\":\"bundle\",\"bundle\":\"\"}")
+        shadowOf(Looper.getMainLooper()).idle()
+        assertNull("Empty bundle must not trigger a reload", lastReloadCode)
+    }
+
+    @Test
+    fun testConnectedMessageResetsReconnectCounter() {
+        val socket = mockk<WebSocket>(relaxed = true)
+        val field = HotReloadManager::class.java.getDeclaredField("reconnectAttempts")
+        field.isAccessible = true
+        field.setInt(manager, 5)
+
+        invokeHandleMessage(socket, "{\"type\":\"connected\"}")
+
+        assertEquals(0, field.getInt(manager))
+    }
+
+    @Test
+    fun testNonJsonMessageIsIgnored() {
+        val socket = mockk<WebSocket>(relaxed = true)
+        // Should not throw and should not reload.
+        invokeHandleMessage(socket, "full-reload")
+        shadowOf(Looper.getMainLooper()).idle()
+        assertNull(lastReloadCode)
     }
 }

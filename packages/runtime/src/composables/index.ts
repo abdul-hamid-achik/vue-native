@@ -49,8 +49,8 @@ export { useSecureStorage } from './useSecureStorage'
 
 export { useI18n } from './useI18n'
 
-export { usePlatform } from './usePlatform'
-export type { Platform } from './usePlatform'
+export { usePlatform, selectPlatform } from './usePlatform'
+export type { Platform, PlatformSelectSpec } from './usePlatform'
 
 export { useDimensions } from './useDimensions'
 export type { Dimensions } from './useDimensions'

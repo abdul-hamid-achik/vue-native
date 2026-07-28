@@ -1,7 +1,9 @@
 #if canImport(UIKit)
 import CommonCrypto
+import CryptoKit
 import Foundation
 import UIKit
+import VueNativeShared
 
 /// Native module for verified Over-The-Air JavaScript bundle updates.
 ///
@@ -24,10 +26,20 @@ final class OTAModule: NativeModule {
     private let defaults: UserDefaults
     private let fileManager: FileManager
     private let bundleDirectory: URL
-    private let requestSession: URLSession
     private let sessionLock = NSLock()
     private var downloadSession: URLSession?
     private var destroyed = false
+
+    /// Optional ECDSA P-256 public key used to authenticate the publisher of a
+    /// downloaded bundle. Accessed from both the invoke thread and the download
+    /// session's delegate queue, so it is guarded by `keyLock`.
+    private let keyLock = NSLock()
+    private var storedVerifyKey: P256.Signing.PublicKey?
+
+    private var verifyKey: P256.Signing.PublicKey? {
+        get { keyLock.withLock { storedVerifyKey } }
+        set { keyLock.withLock { storedVerifyKey = newValue } }
+    }
 
     init(
         bridge: NativeBridge,
@@ -39,7 +51,6 @@ final class OTAModule: NativeModule {
         self.defaults = defaults
         self.fileManager = fileManager
         self.bundleDirectory = bundleDirectory ?? Self.defaultBundleDirectory(fileManager: fileManager)
-        self.requestSession = URLSession(configuration: .ephemeral)
     }
 
     func invoke(method: String, args: [Any], callback: @escaping (Any?, String?) -> Void) {
@@ -59,7 +70,23 @@ final class OTAModule: NativeModule {
                 callback(nil, "downloadUpdate requires url, SHA-256 hash, and version")
                 return
             }
-            downloadUpdate(url: url, expectedHash: expectedHash, version: version, callback: callback)
+            // The 4th argument carries the optional base64(DER ECDSA-P256-SHA256)
+            // signature over the bundle bytes, used when a verify key is configured.
+            let signature = args.count > 3 ? args[3] as? String : nil
+            downloadUpdate(
+                url: url,
+                expectedHash: expectedHash,
+                version: version,
+                signature: signature,
+                callback: callback
+            )
+
+        case "setVerifyKey":
+            guard let keyBase64 = args.first as? String else {
+                callback(nil, "setVerifyKey: missing base64 SPKI public key")
+                return
+            }
+            setVerifyKey(keyBase64, callback: callback)
 
         case "verifyBundle":
             verifyBundle(callback: callback)
@@ -86,7 +113,7 @@ final class OTAModule: NativeModule {
 
     private func checkForUpdate(serverURL: String, callback: @escaping (Any?, String?) -> Void) {
         guard let url = Self.remoteURL(from: serverURL) else {
-            callback(nil, "Invalid update server URL; expected HTTP or HTTPS")
+            callback(nil, "Invalid update server URL; expected HTTPS")
             return
         }
 
@@ -102,7 +129,9 @@ final class OTAModule: NativeModule {
         request.setValue("ios", forHTTPHeaderField: "X-Platform")
         request.setValue(Bundle.main.bundleIdentifier ?? "unknown", forHTTPHeaderField: "X-App-Id")
 
-        requestSession.dataTask(with: request) { [weak self] data, response, error in
+        // Route the manifest request through the pinning-aware session so any
+        // configured certificate pins apply to the OTA channel.
+        CertificatePinning.shared.requestSession.dataTask(with: request) { [weak self] data, response, error in
             guard let self, !self.isDestroyed else { return }
             if let error {
                 callback(nil, "Network error: \(error.localizedDescription)")
@@ -137,10 +166,11 @@ final class OTAModule: NativeModule {
         url: String,
         expectedHash: String,
         version: String,
+        signature: String?,
         callback: @escaping (Any?, String?) -> Void
     ) {
         guard let downloadURL = Self.remoteURL(from: url) else {
-            callback(nil, "Invalid bundle URL; expected HTTP or HTTPS")
+            callback(nil, "Invalid bundle URL; expected HTTPS")
             return
         }
         let normalizedHash = expectedHash.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -185,13 +215,14 @@ final class OTAModule: NativeModule {
 
             do {
                 let data = try Data(contentsOf: temporaryURL, options: .mappedIfSafe)
-                guard !data.isEmpty, Self.isReadableJavaScript(data) else {
-                    callback(nil, "Downloaded bundle is empty or is not valid UTF-8 text")
-                    return
-                }
-                let actualHash = Self.sha256(data: data)
-                guard actualHash == normalizedHash else {
-                    callback(nil, "Bundle integrity check failed. Expected: \(normalizedHash), got: \(actualHash)")
+                // Integrity (SHA-256) plus, when a verify key is configured,
+                // publisher authentication (ECDSA P-256 signature).
+                if let verificationError = self.verificationError(
+                    for: data,
+                    expectedHash: normalizedHash,
+                    signature: signature
+                ) {
+                    callback(nil, verificationError)
                     return
                 }
 
@@ -214,6 +245,58 @@ final class OTAModule: NativeModule {
             }
         }
         task.resume()
+    }
+
+    // MARK: - Publisher verification (ECDSA P-256)
+
+    /// Configure the ECDSA P-256 public key used to authenticate bundle publishers.
+    /// - Parameter base64SPKI: base64-encoded DER (X.509 SubjectPublicKeyInfo) key.
+    private func setVerifyKey(_ base64SPKI: String, callback: @escaping (Any?, String?) -> Void) {
+        guard let der = Data(base64Encoded: base64SPKI) else {
+            callback(nil, "setVerifyKey: invalid base64 encoding")
+            return
+        }
+        do {
+            verifyKey = try P256.Signing.PublicKey(derRepresentation: der)
+            callback(["configured": true], nil)
+        } catch {
+            callback(nil, "setVerifyKey: invalid P-256 SPKI public key: \(error.localizedDescription)")
+        }
+    }
+
+    /// Verify downloaded bundle bytes: SHA-256 integrity, then — when a verify
+    /// key is configured — the ECDSA P-256 (SHA-256, DER) publisher signature.
+    ///
+    /// CryptoKit's `isValidSignature(_:for:)` hashes the supplied data internally
+    /// (SHA-256 for P-256), so the signature is verified against the raw bundle
+    /// bytes, not a pre-computed digest. The signing side must likewise sign the
+    /// raw bytes (`signature(for: data)`).
+    ///
+    /// - Returns: `nil` when the bundle passes every check, or a rejection message.
+    func verificationError(for data: Data, expectedHash: String, signature: String?) -> String? {
+        guard !data.isEmpty, Self.isReadableJavaScript(data) else {
+            return "Downloaded bundle is empty or is not valid UTF-8 text"
+        }
+        let actualHash = Self.sha256(data: data)
+        guard actualHash == expectedHash.lowercased() else {
+            return "Bundle integrity check failed. Expected: \(expectedHash.lowercased()), got: \(actualHash)"
+        }
+
+        if let verifyKey = self.verifyKey {
+            guard let signature, !signature.isEmpty else {
+                return "OTA update rejected: signature required when a verify key is configured"
+            }
+            guard let signatureData = Data(base64Encoded: signature),
+                  let ecdsaSignature = try? P256.Signing.ECDSASignature(derRepresentation: signatureData),
+                  verifyKey.isValidSignature(ecdsaSignature, for: data) else {
+                return "OTA update rejected: signature verification failed"
+            }
+        } else {
+            #if DEBUG
+            NSLog("[VueNative OTA] Warning: no verify key configured; publisher authentication is disabled (hash-only integrity check)")
+            #endif
+        }
+        return nil
     }
 
     private func verifyBundle(callback: @escaping (Any?, String?) -> Void) {
@@ -431,7 +514,7 @@ final class OTAModule: NativeModule {
     private static func remoteURL(from value: String) -> URL? {
         guard let url = URL(string: value),
               let scheme = url.scheme?.lowercased(),
-              scheme == "https" || scheme == "http",
+              scheme == "https",
               url.host != nil else {
             return nil
         }
@@ -525,7 +608,6 @@ final class OTAModule: NativeModule {
             return session
         }
         activeDownload?.invalidateAndCancel()
-        requestSession.invalidateAndCancel()
         bridge = nil
     }
 }
@@ -535,6 +617,18 @@ private final class DownloadDelegate: NSObject, URLSessionDownloadDelegate {
 
     init(bridge: NativeBridge?) {
         self.bridge = bridge
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        didReceive challenge: URLAuthenticationChallenge,
+        completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
+    ) {
+        // The download session owns its own delegate for progress reporting, so
+        // it cannot reuse the pinning session directly. Forward TLS trust
+        // evaluation to the shared pinning delegate instead, ensuring configured
+        // certificate pins apply to the channel whose payload is executed as code.
+        CertificatePinning.shared.urlSession(session, didReceive: challenge, completionHandler: completionHandler)
     }
 
     func urlSession(

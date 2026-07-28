@@ -7,7 +7,8 @@ import { installMockBridge } from './helpers'
 
 installMockBridge()
 
-const { createStyleSheet, validStyleProperties } = await import('../stylesheet')
+const { createStyleSheet, validStyleProperties, hairlineWidth } = await import('../stylesheet')
+const { selectPlatform } = await import('../composables/usePlatform')
 
 describe('createStyleSheet', () => {
   beforeEach(() => {
@@ -142,7 +143,7 @@ describe('validStyleProperties', () => {
 
   it('contains border properties', () => {
     const borderProps = [
-      'borderWidth', 'borderColor', 'borderRadius', 'borderStyle',
+      'borderWidth', 'borderColor', 'borderRadius',
       'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth',
     ]
     for (const prop of borderProps) {
@@ -191,5 +192,46 @@ describe('validStyleProperties', () => {
     expect(validStyleProperties.has('banana')).toBe(false)
     expect(validStyleProperties.has('webkitTransform')).toBe(false)
     expect(validStyleProperties.has('className')).toBe(false)
+  })
+
+  it('contains RTL-aware and Android elevation props', () => {
+    expect(validStyleProperties.has('paddingStart')).toBe(true)
+    expect(validStyleProperties.has('paddingEnd')).toBe(true)
+    expect(validStyleProperties.has('marginStart')).toBe(true)
+    expect(validStyleProperties.has('marginEnd')).toBe(true)
+    expect(validStyleProperties.has('elevation')).toBe(true)
+  })
+
+  it('does not advertise props the native renderer does not implement', () => {
+    // These were removed from the public API because they silently no-op'd.
+    expect(validStyleProperties.has('borderStyle')).toBe(false)
+    expect(validStyleProperties.has('textDecorationStyle')).toBe(false)
+    expect(validStyleProperties.has('textDecorationColor')).toBe(false)
+  })
+})
+
+describe('hairlineWidth', () => {
+  it('is a positive sub-pixel value', () => {
+    expect(hairlineWidth).toBeGreaterThan(0)
+    expect(hairlineWidth).toBeLessThan(1)
+  })
+})
+
+describe('selectPlatform', () => {
+  // The test runtime does not define __PLATFORM__, which falls back to 'ios'.
+  it('returns the exact match for the current platform', () => {
+    expect(selectPlatform({ ios: 'a', android: 'b', default: 'c' })).toBe('a')
+  })
+
+  it('falls back to the apple key on Apple platforms', () => {
+    expect(selectPlatform({ android: 'b', apple: 'apple', default: 'c' })).toBe('apple')
+  })
+
+  it('falls back to default when nothing matches', () => {
+    expect(selectPlatform({ android: 'b', default: 'c' })).toBe('c')
+  })
+
+  it('returns undefined when nothing matches and no default', () => {
+    expect(selectPlatform({ android: 'b' })).toBeUndefined()
   })
 })

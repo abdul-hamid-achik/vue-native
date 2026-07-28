@@ -112,6 +112,9 @@ final class VListContainerView: UIView {
     var scrollThrottle: EventThrottle?
     var onEndReached: ((Any?) -> Void)?
     fileprivate var firedEndReached = false
+    /// Container width at which visible row heights were last invalidated. Used
+    /// to detect width changes (e.g. rotation) without an O(n) item scan.
+    private var lastMeasuredWidth: CGFloat = 0
     private lazy var internalDelegate = VListInternalDelegate(container: self)
 
     init() {
@@ -137,22 +140,36 @@ final class VListContainerView: UIView {
         super.layoutSubviews()
         tableView.frame = bounds
 
-        // Run Yoga layout on each item view to compute its height
         let width = bounds.width
         guard width > 0 else { return }
 
-        var changedIndexPaths: [IndexPath] = []
-        // Only recompute if width changed (avoids re-entrant layout loops)
-        for (idx, itemView) in itemViews.enumerated()
-            where abs(itemView.frame.size.width - width) > 0.5 {
+        // Row heights are computed lazily in heightForRowAt for the rows the
+        // table actually displays. When the available width changes, previously
+        // measured heights go stale, so invalidate only the visible rows;
+        // off-screen rows re-measure on demand when they scroll into view. This
+        // avoids an O(n) Yoga pass over every item on the first layout pass.
+        if abs(width - lastMeasuredWidth) > 0.5 {
+            lastMeasuredWidth = width
+            let visible = tableView.indexPathsForVisibleRows ?? []
+            if !visible.isEmpty {
+                tableView.reloadRows(at: visible, with: .none)
+            }
+        }
+    }
+
+    /// Lazily measure a row's height at the current container width. Runs Yoga
+    /// only when the row's width differs from the container (first measure or a
+    /// width change), so off-screen rows never pay for layout until displayed.
+    func measuredHeight(forRow row: Int) -> CGFloat {
+        guard row < itemViews.count else { return estimatedItemHeight }
+        let itemView = itemViews[row]
+        let width = bounds.width
+        if width > 0, abs(itemView.frame.size.width - width) > 0.5 {
             itemView.frame.size.width = width
             itemView.flex.layout(mode: .adjustHeight)
-            changedIndexPaths.append(IndexPath(row: idx, section: 0))
         }
-        if !changedIndexPaths.isEmpty {
-            // Reload only the rows whose heights changed, not the entire table
-            tableView.reloadRows(at: changedIndexPaths, with: .none)
-        }
+        let height = itemView.frame.size.height
+        return height > 1 ? height : estimatedItemHeight
     }
 }
 
@@ -189,12 +206,8 @@ private final class VListInternalDelegate: NSObject,
 
     func tableView(_ tableView: UITableView,
                    heightForRowAt indexPath: IndexPath) -> CGFloat {
-        guard let container = container,
-              indexPath.row < container.itemViews.count else {
-            return container?.estimatedItemHeight ?? 44
-        }
-        let h = container.itemViews[indexPath.row].frame.size.height
-        return h > 1 ? h : (container.estimatedItemHeight)
+        guard let container = container else { return 44 }
+        return container.measuredHeight(forRow: indexPath.row)
     }
 
     func scrollViewDidScroll(_ scrollView: UIScrollView) {

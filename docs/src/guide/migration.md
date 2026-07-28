@@ -1,4 +1,4 @@
-# Migration & Upgrade Guide
+# Upgrade Guide
 
 This guide covers how to upgrade between Vue Native releases, including version-specific changes, breaking changes, and recommended post-upgrade steps.
 

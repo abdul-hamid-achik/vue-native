@@ -123,12 +123,14 @@ export const devCommand = new Command('dev')
   .option('--ios', 'auto-detect and launch iOS Simulator')
   .option('--android', 'auto-detect Android emulator')
   .option('--simulator <name>', 'specify iOS Simulator name')
+  .option('--lan', 'expose the dev server to the local network (needed for physical devices). Defaults to localhost-only, which is safer.')
   .action(async (options: {
     port: string
     platform?: string
     ios?: boolean
     android?: boolean
     simulator?: string
+    lan?: boolean
   }) => {
     const port = parseInt(options.port, 10)
     const platform = resolveDevPlatform(options)
@@ -197,16 +199,25 @@ export const devCommand = new Command('dev')
     } catch {}
 
     // ── WebSocket server for hot reload ────────────────────────────────────
-    // Allow connections from localhost (simulators/emulators) and LAN devices.
-    // Private network ranges: 10.x.x.x, 172.16-31.x.x, 192.168.x.x
+    // The dev server can replace the app's JS bundle, which runs with full
+    // native-module privileges — effectively remote code execution. By default
+    // we bind to localhost only, so simulators/emulators (which share the host
+    // loopback, incl. the Android emulator's 10.0.2.2) work but other devices
+    // on the network cannot connect. Pass --lan to expose it to the LAN for
+    // physical-device development; even then we only accept private-range IPs.
+    const exposeLan = options.lan === true
+    const host = exposeLan ? '0.0.0.0' : '127.0.0.1'
+
+    const isLoopback = (ip: string): boolean =>
+      ip === '127.0.0.1' || ip === '::1' || ip === '10.0.2.2'
+
     const isPrivateOrLocal = (addr?: string): boolean => {
       if (!addr) return false
       // Normalize IPv4-mapped IPv6 (::ffff:x.x.x.x -> x.x.x.x)
       const ip = addr.replace(/^::ffff:/, '')
-      if (ip === '127.0.0.1' || ip === '::1') return true
-      // Android emulator host loopback
-      if (ip === '10.0.2.2') return true
-      // Private networks
+      if (isLoopback(ip)) return true
+      if (!exposeLan) return false
+      // Private networks (only reachable when --lan is set)
       if (ip.startsWith('10.')) return true
       if (ip.startsWith('192.168.')) return true
       if (/^172\.(1[6-9]|2\d|3[01])\./.test(ip)) return true
@@ -215,6 +226,7 @@ export const devCommand = new Command('dev')
 
     const wss = new WebSocketServer({
       port,
+      host,
       verifyClient: (info: { req: { socket: { remoteAddress?: string } } }) => {
         return isPrivateOrLocal(info.req.socket.remoteAddress)
       },
@@ -255,9 +267,11 @@ export const devCommand = new Command('dev')
       console.error(pc.red(`WebSocket server error: ${err.message}`))
     })
 
-    console.log(pc.white(`  Hot reload server: ${pc.bold(`ws://localhost:${port}`)}`))
-    if (lanIP) {
+    console.log(pc.white(`  Hot reload server: ${pc.bold(`ws://localhost:${port}`)}${exposeLan ? '' : '  (localhost-only)'}`))
+    if (exposeLan && lanIP) {
       console.log(pc.white(`  LAN address:       ${pc.bold(`ws://${lanIP}:${port}`)}`))
+    } else if (!exposeLan) {
+      console.log(pc.dim(`  Network access disabled (safer). Use --lan to develop on physical devices.`))
     }
 
     // Show connection info for both platforms
@@ -265,13 +279,13 @@ export const devCommand = new Command('dev')
     const androidDir = join(cwd, 'android')
     if (existsSync(iosDir)) {
       console.log(pc.dim(`  iOS Simulator:     ws://localhost:${port}`))
-      if (lanIP) {
+      if (exposeLan && lanIP) {
         console.log(pc.dim(`  iOS Device (WiFi): ws://${lanIP}:${port}`))
       }
     }
     if (existsSync(androidDir)) {
       console.log(pc.dim(`  Android emulator:  ws://10.0.2.2:${port}`))
-      if (lanIP) {
+      if (exposeLan && lanIP) {
         console.log(pc.dim(`  Android Device:    ws://${lanIP}:${port}`))
       }
     }

@@ -81,7 +81,9 @@ final class VTextFactory: NativeComponentFactory {
 
         case "color":
             if let colorStr = value as? String {
-                label.textColor = NSColor.fromHex(colorStr)
+                if let color = NSColor.fromHex(colorStr) {
+                    label.textColor = color
+                }
             } else {
                 label.textColor = .labelColor
             }
@@ -271,7 +273,7 @@ final class VTextFactory: NativeComponentFactory {
 
     /// Rebuild the NSFont from stored fontSize, fontWeight, and fontFamily.
     private func rebuildFont(for label: NSTextField) {
-        let size = storedFontSize(on: label) ?? 13.0
+        let size = StyleEngine.scaledFontSize(storedFontSize(on: label) ?? 13.0)
         let weightStr = storedFontWeight(on: label)
         let family = storedFontFamily(on: label)
 

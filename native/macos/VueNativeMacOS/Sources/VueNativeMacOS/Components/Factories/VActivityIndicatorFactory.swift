@@ -40,9 +40,8 @@ final class VActivityIndicatorFactory: NativeComponentFactory {
             }
 
         case "color":
-            if let colorStr = value as? String {
+            if let colorStr = value as? String, let color = NSColor.fromHex(colorStr) {
                 indicator.appearance = nil // Reset to allow tinting
-                let color = NSColor.fromHex(colorStr)
                 if let ciColor = CIColor(color: color),
                    let filter = CIFilter(name: "CIFalseColor",
                     parameters: [
@@ -53,7 +52,7 @@ final class VActivityIndicatorFactory: NativeComponentFactory {
                 } else {
                     indicator.contentFilters = []
                 }
-            } else {
+            } else if value == nil {
                 indicator.contentFilters = []
             }
 

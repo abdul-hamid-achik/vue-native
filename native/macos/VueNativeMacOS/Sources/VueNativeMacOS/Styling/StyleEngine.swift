@@ -178,8 +178,14 @@ enum StyleEngine {
                 case "flex-end", "flexEnd", "end": node.alignContent = .flexEnd
                 case "center": node.alignContent = .center
                 case "stretch": node.alignContent = .stretch
-                case "space-between", "spaceBetween": node.alignContent = .flexStart // Simplified
-                case "space-around", "spaceAround": node.alignContent = .flexStart   // Simplified
+                case "space-between", "spaceBetween":
+                    // The single-line LayoutNode algorithm does not distribute
+                    // wrapped lines; degrade to flexStart but warn (not silent).
+                    node.alignContent = .flexStart
+                    warnUnsupportedAlignContent(str)
+                case "space-around", "spaceAround":
+                    node.alignContent = .flexStart
+                    warnUnsupportedAlignContent(str)
                 default: node.alignContent = .stretch
                 }
             }
@@ -661,7 +667,10 @@ enum StyleEngine {
 
         case "backgroundColor":
             if let colorStr = value as? String {
-                view.layer?.backgroundColor = NSColor.fromHex(colorStr).cgColor
+                // Ignore invalid colors rather than applying transparent.
+                if let color = NSColor.fromHex(colorStr) {
+                    view.layer?.backgroundColor = color.cgColor
+                }
             } else {
                 view.layer?.backgroundColor = nil
             }
@@ -720,7 +729,9 @@ enum StyleEngine {
 
         case "borderColor":
             if let colorStr = value as? String {
-                view.layer?.borderColor = NSColor.fromHex(colorStr).cgColor
+                if let color = NSColor.fromHex(colorStr) {
+                    view.layer?.borderColor = color.cgColor
+                }
             } else {
                 view.layer?.borderColor = nil
             }
@@ -728,7 +739,9 @@ enum StyleEngine {
 
         case "shadowColor":
             if let colorStr = value as? String {
-                view.layer?.shadowColor = NSColor.fromHex(colorStr).cgColor
+                if let color = NSColor.fromHex(colorStr) {
+                    view.layer?.shadowColor = color.cgColor
+                }
             }
             return true
 
@@ -771,32 +784,11 @@ enum StyleEngine {
             return true
 
         case "transform":
+            view.wantsLayer = true
             if let transforms = value as? [[String: Any]] {
-                var result = CGAffineTransform.identity
-                for dict in transforms {
-                    if let rotateStr = dict["rotate"] as? String {
-                        let angle = parseAngle(rotateStr)
-                        result = result.rotated(by: angle)
-                    }
-                    if let scale = dict["scale"] as? Double {
-                        result = result.scaledBy(x: CGFloat(scale), y: CGFloat(scale))
-                    }
-                    if let scaleX = dict["scaleX"] as? Double {
-                        result = result.scaledBy(x: CGFloat(scaleX), y: 1)
-                    }
-                    if let scaleY = dict["scaleY"] as? Double {
-                        result = result.scaledBy(x: 1, y: CGFloat(scaleY))
-                    }
-                    if let tx = dict["translateX"] as? Double {
-                        result = result.translatedBy(x: CGFloat(tx), y: 0)
-                    }
-                    if let ty = dict["translateY"] as? Double {
-                        result = result.translatedBy(x: 0, y: CGFloat(ty))
-                    }
-                }
-                view.layer?.setAffineTransform(result)
+                view.layer?.transform = composeTransform3D(transforms)
             } else {
-                view.layer?.setAffineTransform(.identity)
+                view.layer?.transform = CATransform3DIdentity
             }
             return true
 
@@ -863,6 +855,25 @@ enum StyleEngine {
             view.setAccessibilityElement(acc)
             return true
 
+        case "importantForAccessibility":
+            // Mirror the iOS/Android prop. AppKit has no single "important"
+            // flag, so map the RN-style values onto NSAccessibility:
+            //   "no"                  -> hide the element itself
+            //   "no-hide-descendants" -> hide the element AND its descendants
+            //   "auto" / "yes" / other -> expose the element
+            if let val = value as? String {
+                switch val {
+                case "no":
+                    view.setAccessibilityElement(false)
+                case "no-hide-descendants":
+                    view.setAccessibilityElement(true)
+                    view.setAccessibilityChildren([])
+                default:
+                    view.setAccessibilityElement(true)
+                }
+            }
+            return true
+
         default:
             return false
         }
@@ -880,7 +891,7 @@ enum StyleEngine {
         case "fontSize":
             if let num = yogaValue(value) {
                 let currentFont = label.font ?? NSFont.systemFont(ofSize: 13)
-                label.font = NSFont(descriptor: currentFont.fontDescriptor, size: num)
+                label.font = NSFont(descriptor: currentFont.fontDescriptor, size: scaledFontSize(num))
                 label.layoutNode?.markDirty()
             }
             return true
@@ -896,7 +907,9 @@ enum StyleEngine {
 
         case "color":
             if let colorStr = value as? String {
-                label.textColor = NSColor.fromHex(colorStr)
+                if let color = NSColor.fromHex(colorStr) {
+                    label.textColor = color
+                }
             }
             return true
 
@@ -1000,6 +1013,30 @@ enum StyleEngine {
 
     // MARK: - Helpers
 
+    /// Warn (DEBUG only) when an `alignContent` distribution value cannot be
+    /// honored by the single-line LayoutNode algorithm.
+    private static func warnUnsupportedAlignContent(_ value: String) {
+        #if DEBUG
+        NSLog("[VueNative macOS] StyleEngine: alignContent '\(value)' is not supported by the single-line LayoutNode engine; falling back to flex-start")
+        #endif
+    }
+
+    /// Scale a font point size by the system's preferred body-text size.
+    ///
+    /// macOS has no iOS-style global Dynamic Type slider, but it does expose a
+    /// preferred font for each text style. We derive a scale factor from the
+    /// user's preferred `.body` size relative to the default system font size so
+    /// that any system-level text-size preference is respected. Returns the input
+    /// unchanged when no meaningful preference is available (factor ≈ 1.0).
+    static func scaledFontSize(_ size: CGFloat) -> CGFloat {
+        let defaultSize = NSFont.systemFontSize
+        guard defaultSize > 0 else { return size }
+        let preferredBody = NSFont.preferredFont(forTextStyle: .body).pointSize
+        let factor = preferredBody / defaultSize
+        guard factor.isFinite, factor > 0 else { return size }
+        return size * factor
+    }
+
     /// Parse an angle string into radians.
     /// Supports "45deg" (degrees) and "1.5rad" (radians).
     private static func parseAngle(_ str: String) -> CGFloat {
@@ -1015,5 +1052,70 @@ enum StyleEngine {
             return CGFloat(num)
         }
         return 0
+    }
+
+    /// Coerce a transform angle into radians. Accepts "45deg"/"1.5rad" strings
+    /// or a raw number (interpreted as radians).
+    private static func angleRadians(_ value: Any?) -> CGFloat? {
+        if let str = value as? String {
+            return parseAngle(str)
+        }
+        return yogaValue(value)
+    }
+
+    /// Compose a `CATransform3D` from a React-Native-style transform array.
+    ///
+    /// Each dictionary may carry one or more of: `translateX`/`translateY`,
+    /// `scale`, `scaleX`/`scaleY`, `rotate` (Z axis), `rotateX`/`rotateY`/
+    /// `rotateZ`, `perspective`, and `skewX`/`skewY`. Entries are applied in
+    /// array order; within a dictionary the keys are applied in a fixed order so
+    /// the result is deterministic. `perspective` sets the `m34` projection
+    /// term; `skewX`/`skewY` use `tan(angle)` on `m21`/`m12` respectively.
+    static func composeTransform3D(_ transforms: [[String: Any]]) -> CATransform3D {
+        var result = CATransform3DIdentity
+        for dict in transforms {
+            // Perspective modifies the projection term of the accumulated matrix.
+            if let perspective = yogaValue(dict["perspective"]), perspective != 0 {
+                result.m34 = -1.0 / perspective
+            }
+            if let tx = yogaValue(dict["translateX"]) {
+                result = CATransform3DTranslate(result, tx, 0, 0)
+            }
+            if let ty = yogaValue(dict["translateY"]) {
+                result = CATransform3DTranslate(result, 0, ty, 0)
+            }
+            if let scale = yogaValue(dict["scale"]) {
+                result = CATransform3DScale(result, scale, scale, 1)
+            }
+            if let scaleX = yogaValue(dict["scaleX"]) {
+                result = CATransform3DScale(result, scaleX, 1, 1)
+            }
+            if let scaleY = yogaValue(dict["scaleY"]) {
+                result = CATransform3DScale(result, 1, scaleY, 1)
+            }
+            if let angle = angleRadians(dict["rotate"]) {
+                result = CATransform3DRotate(result, angle, 0, 0, 1)
+            }
+            if let angle = angleRadians(dict["rotateX"]) {
+                result = CATransform3DRotate(result, angle, 1, 0, 0)
+            }
+            if let angle = angleRadians(dict["rotateY"]) {
+                result = CATransform3DRotate(result, angle, 0, 1, 0)
+            }
+            if let angle = angleRadians(dict["rotateZ"]) {
+                result = CATransform3DRotate(result, angle, 0, 0, 1)
+            }
+            if let angle = angleRadians(dict["skewX"]) {
+                var skew = CATransform3DIdentity
+                skew.m21 = CGFloat(tan(Double(angle)))
+                result = CATransform3DConcat(result, skew)
+            }
+            if let angle = angleRadians(dict["skewY"]) {
+                var skew = CATransform3DIdentity
+                skew.m12 = CGFloat(tan(Double(angle)))
+                result = CATransform3DConcat(result, skew)
+            }
+        }
+        return result
     }
 }

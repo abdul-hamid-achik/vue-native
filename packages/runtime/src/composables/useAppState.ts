@@ -15,7 +15,7 @@ export function useAppState() {
   const state = ref<AppStateStatus>('active')
 
   // Fetch initial state
-  NativeBridge.invokeNativeModule('AppState', 'getState').then((s: string) => {
+  NativeBridge.invokeNativeModule<string>('AppState', 'getState').then((s) => {
     state.value = s as AppStateStatus
   }).catch((err: unknown) => {
     if (__DEV__) console.warn('[vue-native] AppState.getState failed:', err)

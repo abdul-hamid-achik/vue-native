@@ -68,8 +68,7 @@ final class VSplitViewFactory: NativeComponentFactory {
             }
 
         case "dividerColor":
-            if let hex = value as? String {
-                let color = NSColor.fromHex(hex)
+            if let hex = value as? String, let color = NSColor.fromHex(hex) {
                 objc_setAssociatedObject(
                     view, &VSplitViewFactory.dividerColorKey,
                     color, .OBJC_ASSOCIATION_RETAIN_NONATOMIC

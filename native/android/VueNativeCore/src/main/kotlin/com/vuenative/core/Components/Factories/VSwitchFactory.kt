@@ -26,8 +26,10 @@ class VSwitchFactory : NativeComponentFactory {
             }
             "disabled" -> sw.isEnabled = value != true && value != "true"
             "onTintColor" -> {
+                // iOS semantics: onTintColor colors the TRACK in the on state
+                // (not the thumb). Mirror that by tinting the track here.
                 val color = StyleEngine.parseColor(value) ?: return
-                sw.thumbTintList = android.content.res.ColorStateList.valueOf(color)
+                sw.trackTintList = android.content.res.ColorStateList.valueOf(color)
             }
             "thumbColor" -> {
                 val color = StyleEngine.parseColor(value) ?: return

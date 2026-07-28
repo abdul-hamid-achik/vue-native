@@ -35,6 +35,15 @@ On iOS this maps to a custom `TouchableView` (UIView subclass) with opacity anim
 | `accessibilityHint` | `string` | -- | Additional accessibility context |
 | `accessibilityState` | `object` | -- | Accessibility state |
 
+## Events
+
+| Event | Payload | Description |
+|-------|---------|-------------|
+| `@press` | -- | Emitted on tap. Equivalent to the `onPress` prop. |
+| `@press-in` | -- | Emitted when the touch starts. Equivalent to the `onPressIn` prop. |
+| `@press-out` | -- | Emitted when the touch ends. Equivalent to the `onPressOut` prop. |
+| `@long-press` | -- | Emitted on a long press (~500ms). Equivalent to the `onLongPress` prop. |
+
 ## VPressable vs VButton
 
 | Feature | VButton | VPressable |
@@ -79,4 +88,4 @@ const isPressed = ref(false)
 ## Notes
 
 - All press callbacks (`onPress`, `onPressIn`, `onPressOut`, `onLongPress`) are disabled when `disabled` is `true`.
-- Like `VButton`, `VPressable` uses **props** for press handlers (`:onPress`), not Vue events (`@press`).
+- In templates, `@press="handler"` and `:onPress="handler"` both bind the native press handler (and likewise `@press-in`/`@press-out`/`@long-press` map to `onPressIn`/`onPressOut`/`onLongPress`). Render functions should pass the `onPress`, `onPressIn`, `onPressOut`, and `onLongPress` props.

@@ -16,7 +16,8 @@ interface NativeBridgeGlobals {
 interface PendingCallback {
   resolve: (result: unknown) => void
   reject: (error: unknown) => void
-  timeoutId: ReturnType<typeof setTimeout>
+  /** Undefined when the caller opted out of the timeout (timeoutMs <= 0). */
+  timeoutId: ReturnType<typeof setTimeout> | undefined
 }
 
 const bridgeGlobals = globalThis as typeof globalThis & NativeBridgeGlobals
@@ -146,11 +147,40 @@ class NativeBridgeImpl {
         console.error('[VueNative] Error in __VN_flushOperations:', err)
       }
     } else {
-      // Log in both dev and production — silent bridge failures are dangerous
-      console.warn(
-        '[VueNative] __VN_flushOperations is not registered. '
+      // The native runtime is not connected: every queued operation is dropped
+      // and the UI will not update. Surface this loudly (throttled) and emit a
+      // 'bridge:error' global event so apps can react instead of showing a
+      // blank screen with a single buried console.warn.
+      this.emitBridgeError(
+        '[VueNative] __VN_flushOperations is not registered — '
+        + `${ops.length} operation(s) dropped. `
         + 'Make sure the native runtime has been initialized.',
       )
+    }
+  }
+
+  /** Timestamp of the last bridge-error log, used to throttle repeated warnings. */
+  private lastBridgeErrorAt = 0
+
+  /**
+   * Emit a bridge-level error: throttled console output plus a 'bridge:error'
+   * global event that application code can subscribe to via onGlobalEvent().
+   */
+  private emitBridgeError(message: string): void {
+    const now = Date.now()
+    if (now - this.lastBridgeErrorAt >= 5000) {
+      this.lastBridgeErrorAt = now
+      console.error(message)
+    }
+    const handlers = this.globalEventHandlers.get('bridge:error')
+    if (handlers) {
+      handlers.forEach((h) => {
+        try {
+          h({ message })
+        } catch (err) {
+          console.error('[VueNative] Error in bridge:error handler:', err)
+        }
+      })
     }
   }
 
@@ -336,21 +366,23 @@ class NativeBridgeImpl {
    * Invoke a native module method asynchronously. Returns a Promise that
    * resolves when Swift/Kotlin calls __VN_resolveCallback with the matching callbackId.
    *
-   * A 30-second timeout is applied. If the native side never responds (e.g. due to
-   * a crash or unregistered module), the Promise rejects with a clear error instead
-   * of hanging forever.
+   * The result is typed as `T` (default `unknown`) so callers assert the module
+   * contract once at the call site — e.g. `invokeNativeModule<GeoCoordinates>(...)`
+   * — and the compiler verifies the rest of the usage. The bridge cannot validate
+   * the native payload at runtime, so `T` is an assertion, not a runtime check.
+   *
+   * A 30-second timeout is applied by default. If the native side never responds
+   * (e.g. due to a crash or unregistered module), the Promise rejects with a clear
+   * error instead of hanging forever. Pass `timeoutMs <= 0` to disable the timeout
+   * for legitimately long-running operations (large downloads, video capture, IAP).
    */
-  // Native module results are intentionally dynamic; callers often narrow them
-  // ad hoc based on the module contract rather than a shared generated type.
-  invokeNativeModule(
+  invokeNativeModule<T = unknown>(
     moduleName: string,
     methodName: string,
     args: unknown[] = [],
     timeoutMs = 30_000,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ): Promise<any> {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return new Promise<any>((resolve, reject) => {
+  ): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
       // Wraparound safety: if the id is already in use, reject the orphaned
       // callback before overwriting to prevent ID collision and leaked promises.
       if (this.pendingCallbacks.has(this.nextCallbackId)) {
@@ -372,14 +404,21 @@ class NativeBridgeImpl {
         this.nextCallbackId++
       }
 
-      const timeoutId = setTimeout(() => {
-        if (this.pendingCallbacks.has(callbackId)) {
-          this.pendingCallbacks.delete(callbackId)
-          reject(new Error(
-            `[VueNative] Native module ${moduleName}.${methodName} timed out after ${timeoutMs}ms`,
-          ))
-        }
-      }, timeoutMs)
+      // timeoutMs <= 0 disables the timeout for long-running native operations.
+      const timeoutId = timeoutMs > 0
+        ? setTimeout(() => {
+            if (this.pendingCallbacks.has(callbackId)) {
+              this.pendingCallbacks.delete(callbackId)
+              reject(new Error(
+                `[VueNative] Native module ${moduleName}.${methodName} timed out after ${timeoutMs}ms. `
+                + 'Common causes: (1) the module is not registered in NativeModuleRegistry, '
+                + `(2) method '${methodName}' does not exist, or (3) the native handler crashed `
+                + 'silently. Check the native logs for "[VueNative]" warnings, or pass a larger '
+                + 'timeoutMs (or 0 to disable) for long-running operations.',
+              ))
+            }
+          }, timeoutMs)
+        : undefined
 
       // Evict oldest callback if queue is at capacity to prevent unbounded growth
       if (this.pendingCallbacks.size >= NativeBridgeImpl.MAX_PENDING_CALLBACKS) {
@@ -395,7 +434,7 @@ class NativeBridgeImpl {
       }
 
       this.pendingCallbacks.set(callbackId, {
-        resolve: result => resolve(result),
+        resolve: result => resolve(result as T),
         reject: error => reject(error),
         timeoutId,
       })
@@ -408,13 +447,12 @@ class NativeBridgeImpl {
    * the batched JSON bridge. This compatibility alias now uses the reliable
    * asynchronous callback path; migrate callers to invokeNativeModule().
    */
-  invokeNativeModuleSync(
+  invokeNativeModuleSync<T = unknown>(
     moduleName: string,
     methodName: string,
     args: unknown[] = [],
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ): Promise<any> {
-    return this.invokeNativeModule(moduleName, methodName, args)
+  ): Promise<T> {
+    return this.invokeNativeModule<T>(moduleName, methodName, args)
   }
 
   /**
@@ -527,6 +565,7 @@ class NativeBridgeImpl {
     this.pendingCallbacks.clear()
     this.nextCallbackId = 1
     this.globalEventHandlers.clear()
+    this.lastBridgeErrorAt = 0
   }
 }
 

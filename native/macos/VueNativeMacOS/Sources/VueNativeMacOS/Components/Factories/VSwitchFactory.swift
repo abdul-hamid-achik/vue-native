@@ -46,6 +46,32 @@ final class VSwitchFactory: NativeComponentFactory {
                 sw.isEnabled = true
             }
 
+        case "onTintColor":
+            // NSSwitch is not an NSButton and exposes no public API to tint the
+            // on-state track (NSButton.contentTintColor does not apply here). We
+            // accept and store the value for cross-platform parity and inspection
+            // rather than silently dropping it, and warn in DEBUG.
+            if let colorStr = value as? String, NSColor.fromHex(colorStr) != nil {
+                StyleEngine.setInternalPropDirect("__onTintColor", value: colorStr, on: view)
+                #if DEBUG
+                NSLog("[VueNative macOS] VSwitch: 'onTintColor' (\(colorStr)) is stored but NSSwitch has no public track-tint API")
+                #endif
+            } else {
+                StyleEngine.setInternalPropDirect("__onTintColor", value: nil, on: view)
+            }
+
+        case "thumbColor", "thumbTintColor":
+            // NSSwitch has no public API to color the thumb independently of the
+            // track. Store the value for parity/inspection and warn in DEBUG.
+            if let colorStr = value as? String, NSColor.fromHex(colorStr) != nil {
+                StyleEngine.setInternalPropDirect("__thumbColor", value: colorStr, on: view)
+                #if DEBUG
+                NSLog("[VueNative macOS] VSwitch: 'thumbColor' (\(colorStr)) is not independently customizable on NSSwitch; AppKit tints the whole control via contentTintColor")
+                #endif
+            } else {
+                StyleEngine.setInternalPropDirect("__thumbColor", value: nil, on: view)
+            }
+
         default:
             StyleEngine.apply(key: key, value: value, to: view)
         }

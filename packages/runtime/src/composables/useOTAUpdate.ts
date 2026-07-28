@@ -14,6 +14,11 @@ export interface UpdateInfo {
   size: number
   /** Release notes for the update. */
   releaseNotes: string
+  /**
+   * Optional base64 ECDSA (P-256, SHA-256, DER) signature over the bundle bytes.
+   * Verified against the configured `verifyKey` when one is set.
+   */
+  signature?: string
 }
 
 export interface VersionInfo {
@@ -42,11 +47,13 @@ function getErrorMessage(error: unknown): string {
  * Composable for managing Over-The-Air (OTA) JS bundle updates.
  *
  * Downloads versioned JS bundles from a server, verifies integrity via
- * SHA-256, and applies them on the next production app launch. SHA-256
- * protects integrity but does not authenticate the publisher like a
- * public-key signature would.
+ * SHA-256, and applies them on the next production app launch. When a
+ * `verifyKey` is configured, the bundle's ECDSA (P-256) signature is also
+ * verified, authenticating the publisher (not just integrity).
  *
  * @param serverUrl - URL of the update server endpoint
+ * @param options.verifyKey - Optional base64 DER (SPKI) ECDSA P-256 public key.
+ *   When set, updates must carry a valid `signature` or they are rejected.
  *
  * @example
  * ```ts
@@ -54,7 +61,9 @@ function getErrorMessage(error: unknown): string {
  *   checkForUpdate, downloadUpdate, applyUpdate, rollback,
  *   currentVersion, availableVersion, downloadProgress,
  *   isChecking, isDownloading, error,
- * } = useOTAUpdate('https://updates.myapp.com/check')
+ * } = useOTAUpdate('https://updates.myapp.com/check', {
+ *   verifyKey: 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE...',
+ * })
  *
  * await checkForUpdate()
  * if (availableVersion.value) {
@@ -64,7 +73,7 @@ function getErrorMessage(error: unknown): string {
  * }
  * ```
  */
-export function useOTAUpdate(serverUrl: string) {
+export function useOTAUpdate(serverUrl: string, options: { verifyKey?: string } = {}) {
   const currentVersion = ref<string>('embedded')
   const availableVersion = ref<string | null>(null)
   const downloadProgress = ref(0)
@@ -75,6 +84,14 @@ export function useOTAUpdate(serverUrl: string) {
 
   // Cached update info from last check
   let lastUpdateInfo: UpdateInfo | null = null
+
+  // Configure publisher verification on the native side when a key is provided.
+  // Best-effort: failure here is surfaced lazily when a download is verified.
+  if (options.verifyKey) {
+    NativeBridge.invokeNativeModule('OTA', 'setVerifyKey', [options.verifyKey]).catch((err: unknown) => {
+      if (__DEV__) console.warn('[vue-native] OTA.setVerifyKey failed:', err)
+    })
+  }
 
   // Listen for download progress events
   const unsubscribe = NativeBridge.onGlobalEvent('ota:downloadProgress', (payload: {
@@ -88,7 +105,7 @@ export function useOTAUpdate(serverUrl: string) {
   onUnmounted(unsubscribe)
 
   // Fetch current version on init
-  NativeBridge.invokeNativeModule('OTA', 'getCurrentVersion', []).then((info: VersionInfo) => {
+  NativeBridge.invokeNativeModule<VersionInfo>('OTA', 'getCurrentVersion', []).then((info) => {
     currentVersion.value = info.version
   }).catch((err: unknown) => {
     if (__DEV__) console.warn('[vue-native] OTA.getCurrentVersion failed:', err)
@@ -124,10 +141,11 @@ export function useOTAUpdate(serverUrl: string) {
     }
   }
 
-  async function downloadUpdate(url?: string, hash?: string, version?: string): Promise<void> {
+  async function downloadUpdate(url?: string, hash?: string, version?: string, signature?: string): Promise<void> {
     const downloadUrl = url || lastUpdateInfo?.downloadUrl
     const expectedHash = hash || lastUpdateInfo?.hash
     const offeredVersion = version || lastUpdateInfo?.version
+    const bundleSignature = signature ?? lastUpdateInfo?.signature ?? null
 
     if (!downloadUrl) {
       const msg = 'No download URL. Call checkForUpdate() first or provide a URL.'
@@ -156,7 +174,12 @@ export function useOTAUpdate(serverUrl: string) {
     error.value = null
 
     try {
-      await NativeBridge.invokeNativeModule('OTA', 'downloadUpdate', [downloadUrl, expectedHash, offeredVersion])
+      // timeoutMs=0 disables the bridge timeout: downloads are long-running and
+      // report liveness via 'ota:downloadProgress' events. A fixed 30s timeout
+      // would reject the promise while native is still writing, and the cleanup
+      // below would then delete an in-flight download. The 4th arg carries the
+      // optional publisher signature for verification when a verifyKey is set.
+      await NativeBridge.invokeNativeModule('OTA', 'downloadUpdate', [downloadUrl, expectedHash, offeredVersion, bundleSignature], 0)
       status.value = 'ready'
     } catch (err: unknown) {
       // Clean up partial download to prevent corrupted bundles from being applied later

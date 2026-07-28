@@ -17,8 +17,16 @@ final class VButtonFactory: NativeComponentFactory {
 
     func createView() -> UIView {
         let touchable = TouchableView()
-        // Accessing .flex automatically enables Yoga layout
-        _ = touchable.flex
+        // Lay children out as a centered row (horizontal icon + label), matching
+        // Android's TouchableView defaults. Yoga's own default is column, which
+        // would stack icon and label vertically and diverge from Android.
+        touchable.flex
+            .direction(.row)
+            .alignItems(.center)
+            .justifyContent(.center)
+        // Announce the control as a button to VoiceOver even when the developer
+        // does not set accessibilityRole explicitly.
+        touchable.accessibilityTraits = .button
         return touchable
     }
 

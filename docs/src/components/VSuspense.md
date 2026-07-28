@@ -217,11 +217,13 @@ import { VView, VText, VImage } from '@thelacanians/vue-native-runtime'
 
 const props = defineProps(['userId'])
 
+const http = useHttp()
+
 // This will be awaited by Suspense
 const user = ref(null)
 
 async function loadUser() {
-  const { data } = await useHttp(`https://api.example.com/users/${props.userId}`)
+  const { data } = await http.get(`https://api.example.com/users/${props.userId}`)
   user.value = data
 }
 

@@ -41,7 +41,9 @@ final class VActivityIndicatorFactory: NativeComponentFactory {
 
         case "color":
             if let colorStr = value as? String {
-                indicator.color = UIColor.fromHex(colorStr)
+                if let color = UIColor.fromHex(colorStr) {
+                    indicator.color = color
+                }
             } else {
                 indicator.color = .systemGray
             }

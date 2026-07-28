@@ -7,6 +7,7 @@ import android.os.Looper
 import android.util.Log
 import com.eclipsesource.v8.JavaVoidCallback
 import com.eclipsesource.v8.V8
+import com.eclipsesource.v8.V8ScriptException
 
 /**
  * Core JavaScript runtime. Wraps J2V8's V8 engine on a dedicated HandlerThread.
@@ -121,13 +122,49 @@ class JSRuntime(private val context: Context) {
                 mainHandler.post { onComplete?.invoke(true, null) }
             } catch (e: Exception) {
                 Log.e(TAG, "Error loading bundle", e)
-                val msg = e.message ?: "Unknown error"
+                val msg = describeJsError(e)
                 mainHandler.post {
                     ErrorOverlayView.show(context, msg)
                     onComplete?.invoke(false, msg)
                 }
             }
         }
+    }
+
+    /**
+     * Build a developer-facing error string. For V8 script exceptions this
+     * includes the JS message, source location, offending source line, and the
+     * JavaScript stack trace (mirroring the iOS error overlay), rather than only
+     * the bare exception message.
+     */
+    private fun describeJsError(e: Throwable): String {
+        if (e !is V8ScriptException) {
+            return e.message ?: "Unknown error"
+        }
+        val sb = StringBuilder()
+        sb.append(e.getJSMessage() ?: e.message ?: "JavaScript error")
+
+        val fileName = e.getFileName()
+        val line = e.getLineNumber()
+        if (!fileName.isNullOrBlank() || line > 0) {
+            sb.append("\n  at ").append(if (fileName.isNullOrBlank()) "<anonymous>" else fileName)
+            if (line > 0) {
+                sb.append(":").append(line)
+                val col = e.getStartColumn()
+                if (col >= 0) sb.append(":").append(col)
+            }
+        }
+
+        val sourceLine = e.getSourceLine()
+        if (!sourceLine.isNullOrBlank()) {
+            sb.append("\n").append(sourceLine)
+        }
+
+        val stack = e.getJSStackTrace()
+        if (!stack.isNullOrBlank()) {
+            sb.append("\n\nStack trace:\n").append(stack)
+        }
+        return sb.toString()
     }
 
     /** Post work to the JS thread. */

@@ -59,8 +59,7 @@ final class VRadioFactory: NativeComponentFactory {
             stack.alpha = disabled ? 0.4 : 1.0
 
         case "tintColor":
-            if let colorStr = value as? String {
-                let color = UIColor.fromHex(colorStr)
+            if let colorStr = value as? String, let color = UIColor.fromHex(colorStr) {
                 for subview in stack.arrangedSubviews {
                     if let circle = subview.viewWithTag(2001) as? UIImageView {
                         circle.tintColor = color

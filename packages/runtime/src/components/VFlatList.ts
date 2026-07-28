@@ -83,7 +83,7 @@ interface ScrollEvent {
  * </VFlatList>
  * ```
  */
-export const VFlatList = defineComponent({
+const VFlatListBase = defineComponent({
   name: 'VFlatList',
 
   props: {
@@ -283,3 +283,24 @@ export const VFlatList = defineComponent({
     }
   },
 })
+
+/**
+ * VFlatList typed as a generic component so `renderItem`/`keyExtractor` infer
+ * the item type `T` from `data` in templates. The runtime value is unchanged
+ * (still the defineComponent object); only the public type is generic.
+ */
+export const VFlatList = VFlatListBase as unknown as <T = unknown>(
+  props: {
+    data: T[]
+    renderItem?: (info: FlatListRenderItemInfo<T>) => VNode
+    keyExtractor?: (item: T, index: number) => string | number
+    /** Fixed height for each item in points. Required for virtualization math. */
+    itemHeight: number
+    windowSize?: number
+    style?: ViewStyle
+    showsScrollIndicator?: boolean
+    bounces?: boolean
+    headerHeight?: number
+    endReachedThreshold?: number
+  } & Record<string, unknown>,
+) => VNode

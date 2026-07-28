@@ -51,7 +51,9 @@ final class VSegmentedControlFactory: NativeComponentFactory {
         case "tintColor":
             if let colorStr = value as? String {
                 if #available(macOS 10.14, *) {
-                    control.selectedSegmentBezelColor = NSColor.fromHex(colorStr)
+                    if let color = NSColor.fromHex(colorStr) {
+                        control.selectedSegmentBezelColor = color
+                    }
                 }
             }
 

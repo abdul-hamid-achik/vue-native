@@ -29,9 +29,9 @@ final class VSliderFactory: NativeComponentFactory {
         case "maximumValue", "max":
             slider.maximumValue = Float(value as? Double ?? 1)
         case "minimumTrackTintColor":
-            slider.minimumTrackTintColor = UIColor.fromHex(value as? String ?? "")
+            if let str = value as? String, let color = UIColor.fromHex(str) { slider.minimumTrackTintColor = color }
         case "maximumTrackTintColor":
-            slider.maximumTrackTintColor = UIColor.fromHex(value as? String ?? "")
+            if let str = value as? String, let color = UIColor.fromHex(str) { slider.maximumTrackTintColor = color }
         default:
             StyleEngine.apply(key: key, value: value, to: view)
         }

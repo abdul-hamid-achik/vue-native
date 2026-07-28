@@ -4,6 +4,7 @@ import android.content.Context
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
+import androidx.core.content.ContextCompat
 import coil.load
 import coil.request.CachePolicy
 import org.json.JSONObject
@@ -26,10 +27,27 @@ class VImageFactory : NativeComponentFactory {
         val iv = view as? ImageView ?: return
         when (key) {
             "source" -> {
-                val uri = when (value) {
-                    is Map<*, *> -> value["uri"]?.toString()
-                    is JSONObject -> value.optString("uri")
-                    else -> null
+                val uri: String?
+                val asset: String?
+                when (value) {
+                    is Map<*, *> -> {
+                        uri = value["uri"]?.toString()
+                        asset = value["asset"]?.toString()
+                    }
+                    is JSONObject -> {
+                        uri = value.optString("uri").takeIf { it.isNotEmpty() }
+                        asset = value.optString("asset").takeIf { it.isNotEmpty() }
+                    }
+                    else -> {
+                        uri = null
+                        asset = null
+                    }
+                }
+
+                // A bundled drawable asset takes precedence over a remote URI.
+                if (!asset.isNullOrEmpty()) {
+                    loadAsset(iv, asset)
+                    return
                 }
                 if (uri.isNullOrEmpty()) {
                     iv.setImageDrawable(null)
@@ -55,6 +73,28 @@ class VImageFactory : NativeComponentFactory {
             }
             else -> StyleEngine.apply(key, value, view)
         }
+    }
+
+    /**
+     * Load a bundled `res/drawable` resource by name. Fires `load` on success
+     * and `error` when the resource is missing or cannot be resolved.
+     */
+    private fun loadAsset(iv: ImageView, asset: String) {
+        val context = iv.context
+        val resId = context.resources.getIdentifier(asset, "drawable", context.packageName)
+        if (resId == 0) {
+            iv.setImageDrawable(null)
+            errorHandlers[iv]?.invoke(mapOf("message" to "Asset not found: $asset"))
+            return
+        }
+        val drawable = ContextCompat.getDrawable(context, resId)
+        if (drawable == null) {
+            iv.setImageDrawable(null)
+            errorHandlers[iv]?.invoke(mapOf("message" to "Failed to load asset: $asset"))
+            return
+        }
+        iv.setImageDrawable(drawable)
+        loadHandlers[iv]?.invoke(null)
     }
 
     override fun addEventListener(view: View, event: String, handler: (Any?) -> Unit) {

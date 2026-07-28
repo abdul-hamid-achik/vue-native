@@ -66,9 +66,19 @@ final class VImageFactory: NativeComponentFactory {
         case "source":
             invalidateImageLoad(for: imageView)
 
-            guard let sourceDict = value as? [String: Any],
-                  let uriString = sourceDict["uri"] as? String,
-                  !uriString.isEmpty else {
+            guard let sourceDict = value as? [String: Any] else {
+                imageView.image = nil
+                return
+            }
+
+            // A bundled asset (Asset Catalog / main bundle) takes precedence when
+            // provided. It loads synchronously, so no network task is started.
+            if let assetName = sourceDict["asset"] as? String, !assetName.isEmpty {
+                loadAsset(assetName, into: imageView)
+                return
+            }
+
+            guard let uriString = sourceDict["uri"] as? String, !uriString.isEmpty else {
                 imageView.image = nil
                 return
             }
@@ -118,6 +128,20 @@ final class VImageFactory: NativeComponentFactory {
     }
 
     // MARK: - Image loading
+
+    /// Load a bundled image by name from the Asset Catalog / main bundle.
+    /// Fires `load` (with pixel dimensions) on success or `error` when the
+    /// asset cannot be found.
+    @MainActor
+    private func loadAsset(_ name: String, into imageView: UIImageView) {
+        guard let image = UIImage(named: name) else {
+            VImageFactory.fireErrorHandler(for: imageView, message: "Asset not found: \(name)")
+            return
+        }
+        imageView.image = image
+        imageView.flex.markDirty()
+        VImageFactory.fireLoadHandler(for: imageView)
+    }
 
     @MainActor
     private func loadImage(_ urlString: String, into imageView: UIImageView) {
@@ -216,7 +240,14 @@ final class VImageFactory: NativeComponentFactory {
     }
 
     private static func fireLoadHandler(for view: UIView) {
-        if let handler = objc_getAssociatedObject(view, &VImageFactory.onLoadKey) as? ((Any?) -> Void) {
+        guard let handler = objc_getAssociatedObject(view, &VImageFactory.onLoadKey) as? ((Any?) -> Void) else {
+            return
+        }
+        // Include the decoded dimensions when available so consumers can size
+        // layouts before the image is laid out. Falls back to nil otherwise.
+        if let imageView = view as? UIImageView, let image = imageView.image {
+            handler(["width": image.size.width, "height": image.size.height])
+        } else {
             handler(nil)
         }
     }

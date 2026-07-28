@@ -1,6 +1,6 @@
 #if canImport(UIKit)
+import CryptoKit
 import Foundation
-import Network
 import XCTest
 @testable import VueNativeCore
 
@@ -132,85 +132,141 @@ final class OTAModuleTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: outsideURL.path))
     }
 
-    func testLocalHTTPManifestDownloadIntegrityApplyAndRollback() throws {
-        let server = try OTALocalHTTPServer()
-        defer { server.stop() }
+    func testCheckForUpdateRejectsNonHTTPSSchemes() {
+        let http = invokeAsync("checkForUpdate", args: ["http://example.com/manifest"])
+        XCTAssertNotNil(http.error)
+        XCTAssertTrue(http.error?.contains("HTTPS") == true)
 
-        let firstSource = Data("globalThis.__otaVersion = 1;".utf8)
-        let firstHash = OTAModule.sha256(data: firstSource)
-        server.setResponse(path: "/bundle-1.js", body: firstSource)
-        server.setJSONResponse(path: "/manifest", object: [
-            "updateAvailable": true,
-            "version": "1.0.0",
-            "downloadUrl": "\(server.baseURL)/bundle-1.js",
-            "hash": firstHash,
-            "size": firstSource.count,
-            "releaseNotes": "Local fixture",
-        ])
+        let ftp = invokeAsync("checkForUpdate", args: ["ftp://example.com/manifest"])
+        XCTAssertNotNil(ftp.error)
+    }
 
-        let firstCheck = invokeAsync("checkForUpdate", args: ["\(server.baseURL)/manifest"])
-        XCTAssertNil(firstCheck.error)
-        let firstManifest = try XCTUnwrap(firstCheck.result as? [String: Any])
-        XCTAssertEqual(firstManifest["version"] as? String, "1.0.0")
-        XCTAssertEqual(firstManifest["hash"] as? String, firstHash)
-        let initialRequest = try XCTUnwrap(server.lastRequest(path: "/manifest"))
-        XCTAssertEqual(initialRequest.headers["x-current-version"], "embedded")
-        XCTAssertEqual(initialRequest.headers["x-platform"], "ios")
-
-        let firstDownload = invokeAsync(
+    func testDownloadUpdateRejectsNonHTTPSSchemes() {
+        let hash = String(repeating: "a", count: 64)
+        let http = invokeAsync(
             "downloadUpdate",
-            args: ["\(server.baseURL)/bundle-1.js", firstHash, "1.0.0"]
+            args: ["http://example.com/bundle.js", hash, "1.0.0"]
         )
-        XCTAssertNil(firstDownload.error)
-        XCTAssertNil(invoke("verifyBundle").error)
-        XCTAssertNil(invoke("applyUpdate").error)
-        XCTAssertEqual(defaults.string(forKey: OTAModule.currentVersionKey), "1.0.0")
-        XCTAssertEqual(
-            try Data(contentsOf: XCTUnwrap(OTAModule.activeBundleURL(
-                defaults: defaults,
-                bundleDirectory: bundleDirectory
-            ))),
-            firstSource
-        )
-
-        let secondSource = Data("globalThis.__otaVersion = 2;".utf8)
-        let secondHash = OTAModule.sha256(data: secondSource)
-        server.setResponse(path: "/bundle-2.js", body: secondSource)
-        server.setJSONResponse(path: "/manifest", object: [
-            "updateAvailable": true,
-            "version": "2.0.0",
-            "downloadUrl": "\(server.baseURL)/bundle-2.js",
-            "hash": secondHash,
-            "size": secondSource.count,
-        ])
-
-        XCTAssertNil(invokeAsync("checkForUpdate", args: ["\(server.baseURL)/manifest"]).error)
-        let updateRequest = try XCTUnwrap(server.lastRequest(path: "/manifest"))
-        XCTAssertEqual(updateRequest.headers["x-current-version"], "1.0.0")
-        XCTAssertNil(invokeAsync(
-            "downloadUpdate",
-            args: ["\(server.baseURL)/bundle-2.js", secondHash, "2.0.0"]
-        ).error)
-        XCTAssertNil(invoke("applyUpdate").error)
-        XCTAssertEqual(defaults.string(forKey: OTAModule.currentVersionKey), "2.0.0")
-
-        let rollback = invoke("rollback")
-        XCTAssertNil(rollback.error)
-        XCTAssertEqual((rollback.result as? [String: Any])?["toEmbedded"] as? Bool, false)
-        XCTAssertEqual(defaults.string(forKey: OTAModule.currentVersionKey), "1.0.0")
-
-        let rejectedHash = String(repeating: "0", count: 64)
-        server.setResponse(path: "/tampered.js", body: Data("globalThis.__tampered = true;".utf8))
-        let rejected = invokeAsync(
-            "downloadUpdate",
-            args: ["\(server.baseURL)/tampered.js", rejectedHash, "3.0.0"]
-        )
-        XCTAssertTrue(rejected.error?.contains("integrity check failed") == true)
+        XCTAssertNotNil(http.error)
+        XCTAssertTrue(http.error?.contains("HTTPS") == true)
         XCTAssertNil(defaults.string(forKey: OTAModule.pendingBundlePathKey))
-        XCTAssertFalse(FileManager.default.fileExists(
-            atPath: bundleDirectory.appendingPathComponent("bundle-\(rejectedHash).js").path
-        ))
-        XCTAssertEqual(defaults.string(forKey: OTAModule.currentVersionKey), "1.0.0")
+    }
+
+    func testDownloadUpdateValidatesHashAndVersionBeforeNetwork() {
+        // A malformed hash is rejected before any network request is attempted.
+        let badHash = invokeAsync(
+            "downloadUpdate",
+            args: ["https://example.com/bundle.js", "not-a-hash", "1.0.0"]
+        )
+        XCTAssertNotNil(badHash.error)
+        XCTAssertTrue(badHash.error?.contains("SHA-256") == true)
+
+        // An empty version is rejected before any network request is attempted.
+        let emptyVersion = invokeAsync(
+            "downloadUpdate",
+            args: ["https://example.com/bundle.js", String(repeating: "a", count: 64), "  "]
+        )
+        XCTAssertNotNil(emptyVersion.error)
+        XCTAssertTrue(emptyVersion.error?.contains("version") == true)
+    }
+
+    // MARK: - ECDSA P-256 publisher signature verification
+
+    func testSetVerifyKeyRejectsInvalidKeyMaterial() {
+        let badBase64 = invoke("setVerifyKey", args: ["!!!not-base64!!!"])
+        XCTAssertNotNil(badBase64.error)
+
+        // Valid base64 but not a P-256 SPKI structure.
+        let garbage = Data("definitely not a key".utf8).base64EncodedString()
+        let badKey = invoke("setVerifyKey", args: [garbage])
+        XCTAssertNotNil(badKey.error)
+        XCTAssertTrue(badKey.error?.contains("P-256") == true)
+    }
+
+    func testSignatureVerificationEndToEndWithRealKeyVector() throws {
+        // Real cryptographic vector: generate a P-256 key pair, sign the raw
+        // bundle bytes, and drive the production verification path through it.
+        let privateKey = P256.Signing.PrivateKey()
+        let spkiBase64 = privateKey.publicKey.derRepresentation.base64EncodedString()
+
+        let configured = invoke("setVerifyKey", args: [spkiBase64])
+        XCTAssertNil(configured.error, "a valid SPKI key must be accepted")
+
+        let bundleData = Data("globalThis.__signed = true;".utf8)
+        let hash = OTAModule.sha256(data: bundleData)
+        let signatureBase64 = try privateKey.signature(for: bundleData).derRepresentation.base64EncodedString()
+
+        // (a) A valid signature over the exact bytes passes. This also proves the
+        // convention empirically: production verifies `for: data` (raw bytes) and
+        // the test signs `for: data` (raw bytes) — a digest-based convention would
+        // fail here.
+        XCTAssertNil(
+            module.verificationError(for: bundleData, expectedHash: hash, signature: signatureBase64),
+            "a valid signature over the bundle bytes must pass"
+        )
+
+        // (b) A tampered bundle (re-hashed so integrity passes) signed with the
+        // ORIGINAL signature is rejected as a signature failure.
+        let tamperedData = Data("globalThis.__signed = false;".utf8)
+        let tamperedHash = OTAModule.sha256(data: tamperedData)
+        let tamperedError = module.verificationError(
+            for: tamperedData,
+            expectedHash: tamperedHash,
+            signature: signatureBase64
+        )
+        XCTAssertEqual(tamperedError, "OTA update rejected: signature verification failed")
+
+        // (c) With a verify key configured, a missing signature is rejected.
+        let missingError = module.verificationError(for: bundleData, expectedHash: hash, signature: nil)
+        XCTAssertEqual(missingError, "OTA update rejected: signature required when a verify key is configured")
+
+        // An empty signature is treated the same as a missing one.
+        let emptyError = module.verificationError(for: bundleData, expectedHash: hash, signature: "")
+        XCTAssertEqual(emptyError, "OTA update rejected: signature required when a verify key is configured")
+
+        // Malformed signature bytes are rejected as a verification failure.
+        let malformedError = module.verificationError(
+            for: bundleData,
+            expectedHash: hash,
+            signature: Data("garbage".utf8).base64EncodedString()
+        )
+        XCTAssertEqual(malformedError, "OTA update rejected: signature verification failed")
+    }
+
+    func testSignatureFromWrongKeyIsRejected() throws {
+        let publisherKey = P256.Signing.PrivateKey()
+        let attackerKey = P256.Signing.PrivateKey()
+        let configured = invoke("setVerifyKey", args: [publisherKey.publicKey.derRepresentation.base64EncodedString()])
+        XCTAssertNil(configured.error)
+
+        let bundleData = Data("globalThis.__bundle = 1;".utf8)
+        let hash = OTAModule.sha256(data: bundleData)
+        // Attacker signs the same bytes with a different key.
+        let attackerSignature = try attackerKey.signature(for: bundleData).derRepresentation.base64EncodedString()
+
+        XCTAssertEqual(
+            module.verificationError(for: bundleData, expectedHash: hash, signature: attackerSignature),
+            "OTA update rejected: signature verification failed",
+            "a signature from a non-publisher key must be rejected"
+        )
+    }
+
+    func testHashOnlyPathWhenNoVerifyKeyConfigured() {
+        // No verify key configured: integrity (SHA-256) is enforced, signature is
+        // ignored, and publisher authentication is skipped.
+        let bundleData = Data("globalThis.__unsigned = true;".utf8)
+        let hash = OTAModule.sha256(data: bundleData)
+
+        XCTAssertNil(
+            module.verificationError(for: bundleData, expectedHash: hash, signature: nil),
+            "without a verify key, a matching hash alone must pass"
+        )
+
+        let badHash = String(repeating: "0", count: 64)
+        XCTAssertEqual(
+            module.verificationError(for: bundleData, expectedHash: badHash, signature: nil),
+            "Bundle integrity check failed. Expected: \(badHash), got: \(hash)"
+        )
     }
 
     private func stageBundle(source: String, version: String) throws -> (url: URL, hash: String) {
@@ -249,139 +305,6 @@ final class OTAModuleTests: XCTestCase {
         }
         wait(for: [completed], timeout: timeout)
         return (result, error)
-    }
-}
-
-private final class OTALocalHTTPServer {
-    struct Request {
-        let path: String
-        let headers: [String: String]
-    }
-
-    private struct Response {
-        let contentType: String
-        let body: Data
-    }
-
-    private let listener: NWListener
-    private let queue = DispatchQueue(label: "VueNativeCoreTests.OTALocalHTTPServer")
-    private let lock = NSLock()
-    private var responses: [String: Response] = [:]
-    private var requests: [Request] = []
-    private(set) var baseURL = ""
-
-    init() throws {
-        let listener = try NWListener(using: .tcp, on: .any)
-        self.listener = listener
-
-        let ready = DispatchSemaphore(value: 0)
-        var startupError: NWError?
-        listener.stateUpdateHandler = { state in
-            switch state {
-            case .ready:
-                ready.signal()
-            case .failed(let error):
-                startupError = error
-                ready.signal()
-            default:
-                break
-            }
-        }
-        listener.newConnectionHandler = { [weak self] connection in
-            self?.accept(connection)
-        }
-        listener.start(queue: queue)
-
-        guard ready.wait(timeout: .now() + 5) == .success,
-              startupError == nil,
-              let port = listener.port else {
-            listener.cancel()
-            throw startupError ?? URLError(.cannotConnectToHost)
-        }
-        baseURL = "http://localhost:\(port.rawValue)"
-    }
-
-    func setResponse(
-        path: String,
-        body: Data,
-        contentType: String = "application/javascript; charset=utf-8"
-    ) {
-        lock.lock()
-        responses[path] = Response(contentType: contentType, body: body)
-        lock.unlock()
-    }
-
-    func setJSONResponse(path: String, object: [String: Any]) {
-        let body = (try? JSONSerialization.data(withJSONObject: object)) ?? Data()
-        setResponse(path: path, body: body, contentType: "application/json")
-    }
-
-    func lastRequest(path: String) -> Request? {
-        lock.lock()
-        defer { lock.unlock() }
-        return requests.last { $0.path == path }
-    }
-
-    func stop() {
-        listener.cancel()
-    }
-
-    private func accept(_ connection: NWConnection) {
-        connection.start(queue: queue)
-        receive(connection, data: Data())
-    }
-
-    private func receive(_ connection: NWConnection, data: Data) {
-        connection.receive(minimumIncompleteLength: 1, maximumLength: 16 * 1024) { [weak self] chunk, _, complete, error in
-            guard let self else {
-                connection.cancel()
-                return
-            }
-            var received = data
-            if let chunk {
-                received.append(chunk)
-            }
-            if received.range(of: Data("\r\n\r\n".utf8)) != nil {
-                self.respond(to: connection, requestData: received)
-            } else if complete || error != nil || received.count >= 64 * 1024 {
-                connection.cancel()
-            } else {
-                self.receive(connection, data: received)
-            }
-        }
-    }
-
-    private func respond(to connection: NWConnection, requestData: Data) {
-        guard let rawRequest = String(data: requestData, encoding: .utf8) else {
-            connection.cancel()
-            return
-        }
-        let lines = rawRequest.components(separatedBy: "\r\n")
-        let target = lines.first?.split(separator: " ").dropFirst().first.map(String.init) ?? "/"
-        let path = URL(string: "http://localhost\(target)")?.path ?? target
-        var headers: [String: String] = [:]
-        for line in lines.dropFirst() {
-            guard let separator = line.firstIndex(of: ":") else { continue }
-            let name = line[..<separator].lowercased()
-            let value = line[line.index(after: separator)...].trimmingCharacters(in: .whitespaces)
-            headers[name] = value
-        }
-
-        lock.lock()
-        requests.append(Request(path: path, headers: headers))
-        let response = responses[path]
-        lock.unlock()
-
-        let status = response == nil ? "404 Not Found" : "200 OK"
-        let body = response?.body ?? Data("Not found".utf8)
-        let contentType = response?.contentType ?? "text/plain; charset=utf-8"
-        var payload = Data(
-            "HTTP/1.1 \(status)\r\nContent-Type: \(contentType)\r\nContent-Length: \(body.count)\r\nConnection: close\r\n\r\n".utf8
-        )
-        payload.append(body)
-        connection.send(content: payload, completion: .contentProcessed { _ in
-            connection.cancel()
-        })
     }
 }
 #endif

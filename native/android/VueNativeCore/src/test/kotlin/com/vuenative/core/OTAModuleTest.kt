@@ -2,6 +2,7 @@ package com.vuenative.core
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.util.Base64
 import androidx.test.core.app.ApplicationProvider
 import java.io.Closeable
 import java.io.File
@@ -9,6 +10,10 @@ import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.Socket
 import java.net.URI
+import java.security.KeyPair
+import java.security.KeyPairGenerator
+import java.security.Signature
+import java.security.spec.ECGenParameterSpec
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
@@ -144,6 +149,24 @@ class OTAModuleTest {
     }
 
     @Test
+    fun rejectsInsecureNonLoopbackHttpEndpoints() {
+        val check = invokeAsync("checkForUpdate", listOf("http://example.com/manifest"))
+        assertTrue(
+            "checkForUpdate must refuse plain HTTP for a public host",
+            check.error?.contains("HTTPS", ignoreCase = true) == true,
+        )
+
+        val download = invokeAsync(
+            "downloadUpdate",
+            listOf("http://example.com/bundle.js", "0".repeat(64), "1.0.0"),
+        )
+        assertTrue(
+            "downloadUpdate must refuse plain HTTP for a public host",
+            download.error?.contains("HTTPS", ignoreCase = true) == true,
+        )
+    }
+
+    @Test
     fun localHttpManifestDownloadIntegrityApplyAndRollback() {
         LocalHttpServer().use { server ->
             val firstSource = "globalThis.__otaVersion = 1;".toByteArray()
@@ -212,6 +235,131 @@ class OTAModuleTest {
             assertFalse(File(OTAModule.bundleDirectory(context), "bundle-$rejectedHash.js").exists())
             assertEquals("1.0.0", prefs.getString(OTAModule.KEY_CURRENT_VERSION, null))
         }
+    }
+
+    // -------------------------------------------------------------------------
+    // ECDSA P-256 publisher signature verification (real crypto vectors)
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun setVerifyKeyRejectsMalformedKey() {
+        val result = invoke("setVerifyKey", listOf("!!!not-base64-der!!!"))
+        assertTrue(result.error?.contains("Invalid ECDSA verify key") == true)
+    }
+
+    @Test
+    fun setVerifyKeyAcceptsValidEcPublicKey() {
+        val keyPair = generateEcKeyPair()
+        val publicKeyBase64 = Base64.encodeToString(keyPair.public.encoded, Base64.DEFAULT)
+
+        val result = invoke("setVerifyKey", listOf(publicKeyBase64))
+
+        assertNull(result.error)
+        @Suppress("UNCHECKED_CAST")
+        assertEquals(true, (result.result as Map<String, Any>)["configured"])
+    }
+
+    @Test
+    fun downloadUpdateAcceptsValidEcdsaSignature() {
+        val keyPair = generateEcKeyPair()
+        assertNull(invoke("setVerifyKey", listOf(exportPublicKey(keyPair))).error)
+
+        LocalHttpServer().use { server ->
+            val source = "globalThis.__signed = true;".toByteArray()
+            val hash = OTAModule.sha256(source)
+            val signature = sign(source, keyPair)
+            server.respond("/signed.js", source)
+
+            val result = invokeAsync(
+                "downloadUpdate",
+                listOf("${server.baseUrl}/signed.js", hash, "1.0.0", signature),
+            )
+
+            assertNull(result.error)
+            assertEquals("1.0.0", prefs.getString(OTAModule.KEY_PENDING_VERSION, null))
+            assertTrue(File(OTAModule.bundleDirectory(context), "bundle-$hash.js").exists())
+        }
+    }
+
+    @Test
+    fun downloadUpdateRejectsForgedSignature() {
+        val keyPair = generateEcKeyPair()
+        assertNull(invoke("setVerifyKey", listOf(exportPublicKey(keyPair))).error)
+
+        LocalHttpServer().use { server ->
+            val source = "globalThis.__real = true;".toByteArray()
+            val hash = OTAModule.sha256(source)
+            // Signature is computed over different bytes than the served bundle,
+            // so the hash passes but the publisher signature must fail.
+            val forgedSignature = sign("globalThis.__attacker = true;".toByteArray(), keyPair)
+            server.respond("/forged.js", source)
+
+            val result = invokeAsync(
+                "downloadUpdate",
+                listOf("${server.baseUrl}/forged.js", hash, "1.0.0", forgedSignature),
+            )
+
+            assertTrue(result.error?.contains("signature verification failed") == true)
+            assertNull(prefs.getString(OTAModule.KEY_PENDING_BUNDLE_PATH, null))
+            assertFalse(File(OTAModule.bundleDirectory(context), "bundle-$hash.js").exists())
+        }
+    }
+
+    @Test
+    fun downloadUpdateRejectsMissingSignatureWhenKeyConfigured() {
+        val keyPair = generateEcKeyPair()
+        assertNull(invoke("setVerifyKey", listOf(exportPublicKey(keyPair))).error)
+
+        LocalHttpServer().use { server ->
+            val source = "globalThis.__unsigned = true;".toByteArray()
+            val hash = OTAModule.sha256(source)
+            server.respond("/unsigned.js", source)
+
+            val result = invokeAsync(
+                "downloadUpdate",
+                listOf("${server.baseUrl}/unsigned.js", hash, "1.0.0"),
+            )
+
+            assertTrue(result.error?.contains("signature required") == true)
+            assertNull(prefs.getString(OTAModule.KEY_PENDING_BUNDLE_PATH, null))
+        }
+    }
+
+    @Test
+    fun downloadUpdateWithoutKeySkipsPublisherAuthentication() {
+        // No verify key configured: a download with no signature must still
+        // succeed on hash integrity alone (publisher auth is opt-in).
+        LocalHttpServer().use { server ->
+            val source = "globalThis.__noKey = true;".toByteArray()
+            val hash = OTAModule.sha256(source)
+            server.respond("/nokey.js", source)
+
+            val result = invokeAsync(
+                "downloadUpdate",
+                listOf("${server.baseUrl}/nokey.js", hash, "1.0.0"),
+            )
+
+            assertNull(result.error)
+            assertEquals("1.0.0", prefs.getString(OTAModule.KEY_PENDING_VERSION, null))
+        }
+    }
+
+    private fun generateEcKeyPair(): KeyPair {
+        val generator = KeyPairGenerator.getInstance("EC")
+        generator.initialize(ECGenParameterSpec("secp256r1"))
+        return generator.generateKeyPair()
+    }
+
+    /** Export the public key as base64 DER (X.509/SPKI), matching setVerifyKey. */
+    private fun exportPublicKey(keyPair: KeyPair): String =
+        Base64.encodeToString(keyPair.public.encoded, Base64.DEFAULT)
+
+    /** Produce a base64 DER SHA256withECDSA signature over [data]. */
+    private fun sign(data: ByteArray, keyPair: KeyPair): String {
+        val signer = Signature.getInstance("SHA256withECDSA")
+        signer.initSign(keyPair.private)
+        signer.update(data)
+        return Base64.encodeToString(signer.sign(), Base64.DEFAULT)
     }
 
     private fun stageBundle(source: String, version: String): StagedBundle {

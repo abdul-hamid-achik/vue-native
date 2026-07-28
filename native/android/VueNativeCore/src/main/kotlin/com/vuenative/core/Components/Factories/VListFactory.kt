@@ -13,6 +13,7 @@ class VListFactory : NativeComponentFactory {
     private val scrollHandlers = mutableMapOf<RecyclerView, (Any?) -> Unit>()
     private val endReachedHandlers = mutableMapOf<RecyclerView, (Any?) -> Unit>()
     private val scrollListeners = mutableMapOf<RecyclerView, RecyclerView.OnScrollListener>()
+    private val scrollThrottles = mutableMapOf<RecyclerView, EventThrottle>()
     private val firedEndReached = mutableMapOf<RecyclerView, Boolean>()
     private val estimatedItemHeights = mutableMapOf<RecyclerView, Int>()
 
@@ -86,6 +87,7 @@ class VListFactory : NativeComponentFactory {
         // Remove listener if neither handler is registered
         if (!scrollHandlers.containsKey(rv) && !endReachedHandlers.containsKey(rv)) {
             scrollListeners.remove(rv)?.let { rv.removeOnScrollListener(it) }
+            scrollThrottles.remove(rv)?.cancel()
         }
     }
 
@@ -94,13 +96,20 @@ class VListFactory : NativeComponentFactory {
         // Track cumulative scroll position
         var cumulativeX = 0
         var cumulativeY = 0
+        // Throttle the high-frequency scroll event (~60fps) to avoid flooding the
+        // JS bridge, matching the iOS/macOS factories. The handler is looked up
+        // dynamically so a replaced handler still receives throttled events.
+        val throttle = EventThrottle(intervalMs = 16L) { payload ->
+            scrollHandlers[rv]?.invoke(payload)
+        }
+        scrollThrottles[rv] = throttle
         val listener = object : RecyclerView.OnScrollListener() {
             override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
                 cumulativeX += dx
                 cumulativeY += dy
 
                 // Dispatch scroll event with cumulative position and dimensions
-                scrollHandlers[recyclerView]?.invoke(
+                throttle.fire(
                     mapOf(
                         "x" to cumulativeX,
                         "y" to cumulativeY,
@@ -165,6 +174,7 @@ class VListFactory : NativeComponentFactory {
      */
     fun cleanupRecyclerView(rv: RecyclerView) {
         scrollListeners.remove(rv)?.let { rv.removeOnScrollListener(it) }
+        scrollThrottles.remove(rv)?.cancel()
         scrollHandlers.remove(rv)
         endReachedHandlers.remove(rv)
         firedEndReached.remove(rv)

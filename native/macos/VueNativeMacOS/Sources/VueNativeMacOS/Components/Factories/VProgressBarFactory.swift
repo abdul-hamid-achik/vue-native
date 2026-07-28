@@ -35,9 +35,9 @@ final class VProgressBarFactory: NativeComponentFactory {
             }
 
         case "progressTintColor":
-            if let colorStr = value as? String {
+            if let colorStr = value as? String, let color = NSColor.fromHex(colorStr) {
                 indicator.wantsLayer = true
-                indicator.layer?.backgroundColor = NSColor.fromHex(colorStr).cgColor
+                indicator.layer?.backgroundColor = color.cgColor
             }
 
         case "trackTintColor":

@@ -4,7 +4,9 @@ import ObjectiveC
 /// Factory for VInput — the text input component.
 /// Maps to an NSTextField (editable) with a LayoutNode.
 /// Supports v-model via text prop and changetext event.
-/// For secure text entry, swaps to an NSSecureTextField.
+/// For secure text entry, swaps the field's cell to an NSSecureTextFieldCell so
+/// input is masked without replacing the view instance the bridge references.
+/// For multiline, configures the field for word-wrapping, vertical growth.
 final class VInputFactory: NativeComponentFactory {
 
     // MARK: - Associated object keys
@@ -55,17 +57,16 @@ final class VInputFactory: NativeComponentFactory {
             }
 
         case "placeholderColor", "placeholderTextColor":
-            if let colorStr = value as? String, let placeholder = textField.placeholderString {
+            if let colorStr = value as? String,
+               let color = NSColor.fromHex(colorStr),
+               let placeholder = textField.placeholderString {
                 textField.placeholderAttributedString = NSAttributedString(
                     string: placeholder,
-                    attributes: [.foregroundColor: NSColor.fromHex(colorStr)]
+                    attributes: [.foregroundColor: color]
                 )
             }
 
         case "secureTextEntry":
-            // Note: NSSecureTextField is a subclass, not a property toggle.
-            // Full secure text entry requires view replacement at the bridge level.
-            // Here we just store the prop for reference.
             let secure: Bool
             if let val = value as? Bool {
                 secure = val
@@ -74,7 +75,20 @@ final class VInputFactory: NativeComponentFactory {
             } else {
                 secure = false
             }
+            applySecureTextEntry(secure, to: textField)
             StyleEngine.setInternalPropDirect("__secureTextEntry", value: secure, on: view)
+
+        case "multiline":
+            let multiline: Bool
+            if let val = value as? Bool {
+                multiline = val
+            } else if let val = value as? Int {
+                multiline = val != 0
+            } else {
+                multiline = false
+            }
+            applyMultiline(multiline, to: textField)
+            StyleEngine.setInternalPropDirect("__multiline", value: multiline, on: view)
 
         case "editable":
             if let editable = value as? Bool {
@@ -92,16 +106,18 @@ final class VInputFactory: NativeComponentFactory {
 
         case "color":
             if let colorStr = value as? String {
-                textField.textColor = NSColor.fromHex(colorStr)
+                if let color = NSColor.fromHex(colorStr) {
+                    textField.textColor = color
+                }
             } else {
                 textField.textColor = .labelColor
             }
 
         case "fontSize":
             if let size = value as? Double {
-                textField.font = NSFont.systemFont(ofSize: CGFloat(size))
+                textField.font = NSFont.systemFont(ofSize: StyleEngine.scaledFontSize(CGFloat(size)))
             } else if let size = value as? Int {
-                textField.font = NSFont.systemFont(ofSize: CGFloat(size))
+                textField.font = NSFont.systemFont(ofSize: StyleEngine.scaledFontSize(CGFloat(size)))
             }
 
         case "textAlign":
@@ -183,6 +199,78 @@ final class VInputFactory: NativeComponentFactory {
         default:
             break
         }
+    }
+
+    // MARK: - Secure text entry
+
+    /// Toggle secure (password) entry by swapping the field's cell.
+    ///
+    /// `NSSecureTextField` is a subclass of `NSTextField`, so secure entry cannot
+    /// be toggled with a plain property. The bridge keeps a stable reference to
+    /// this view instance (keyed by node id), so the view cannot be replaced
+    /// either. Instead we swap the underlying cell: `NSSecureTextFieldCell` is
+    /// exactly what `NSSecureTextField` uses internally to mask input, and it can
+    /// be installed on an existing `NSTextField` without changing its identity.
+    /// Text, placeholder, delegate, and editing configuration are preserved.
+    private func applySecureTextEntry(_ secure: Bool, to textField: NSTextField) {
+        let isSecure = textField.cell is NSSecureTextFieldCell
+        guard isSecure != secure else { return }
+
+        // Capture state that lives on the cell and would otherwise be lost.
+        let currentCell = textField.cell as? NSTextFieldCell
+        let text = textField.stringValue
+        let placeholder = textField.placeholderString
+        let isEditable = textField.isEditable
+        let isSelectable = textField.isSelectable
+        let isBordered = textField.isBordered
+        let drawsBackground = textField.drawsBackground
+        let font = textField.font
+        let textColor = textField.textColor
+        let alignment = textField.alignment
+        let wraps = currentCell?.wraps ?? false
+        let isScrollable = currentCell?.isScrollable ?? true
+        let usesSingleLineMode = currentCell?.usesSingleLineMode ?? true
+
+        textField.cell = secure ? NSSecureTextFieldCell() : NSTextFieldCell()
+
+        let newCell = textField.cell as? NSTextFieldCell
+        textField.stringValue = text
+        textField.placeholderString = placeholder
+        textField.isEditable = isEditable
+        textField.isSelectable = isSelectable
+        textField.isBordered = isBordered
+        textField.drawsBackground = drawsBackground
+        textField.font = font
+        textField.textColor = textColor
+        textField.alignment = alignment
+        newCell?.wraps = wraps
+        newCell?.isScrollable = isScrollable
+        newCell?.usesSingleLineMode = usesSingleLineMode
+    }
+
+    // MARK: - Multiline
+
+    /// Toggle multiline wrapping on the existing text field.
+    ///
+    /// A wrapping, non-scrolling `NSTextField` provides multiline editing without
+    /// replacing the view (which the bridge references by node id). When multiline
+    /// is enabled the field wraps words and grows vertically; otherwise it behaves
+    /// as a single-line, horizontally-scrolling field.
+    private func applyMultiline(_ multiline: Bool, to textField: NSTextField) {
+        let cell = textField.cell as? NSTextFieldCell
+        if multiline {
+            cell?.wraps = true
+            cell?.isScrollable = false
+            cell?.usesSingleLineMode = false
+            textField.maximumNumberOfLines = 0 // unlimited
+            textField.lineBreakMode = .byWordWrapping
+        } else {
+            cell?.wraps = false
+            cell?.isScrollable = true
+            cell?.usesSingleLineMode = true
+            textField.maximumNumberOfLines = 1
+        }
+        textField.layoutNode?.markDirty()
     }
 
     // MARK: - Private helpers

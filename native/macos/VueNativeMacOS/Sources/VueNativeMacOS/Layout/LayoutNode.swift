@@ -204,6 +204,7 @@ public final class LayoutNode {
             let node: LayoutNode
             var mainHypothetical: CGFloat
             var crossHypothetical: CGFloat
+            var crossIsAuto: Bool
             var flexBasis: CGFloat
             var mainFinal: CGFloat = 0
             var crossFinal: CGFloat = 0
@@ -227,12 +228,17 @@ public final class LayoutNode {
                 basis = 0
             }
 
-            let crossHyp: CGFloat
+            let crossResolved: CGFloat?
             if isRow {
-                crossHyp = child.height.resolve(relativeTo: contentHeight) ?? crossSize
+                crossResolved = child.height.resolve(relativeTo: contentHeight)
             } else {
-                crossHyp = child.width.resolve(relativeTo: contentWidth) ?? crossSize
+                crossResolved = child.width.resolve(relativeTo: contentWidth)
             }
+            // `align-items: stretch` must only apply when the cross-axis size is
+            // auto/undefined. A definite cross size (e.g. width: 50%) wins over
+            // stretch, matching CSS/Yoga behaviour on iOS and Android.
+            let crossIsAuto = crossResolved == nil
+            let crossHyp = crossResolved ?? crossSize
 
             let mainMarginBefore: CGFloat
             let mainMarginAfter: CGFloat
@@ -254,6 +260,7 @@ public final class LayoutNode {
                 node: child,
                 mainHypothetical: basis,
                 crossHypothetical: crossHyp,
+                crossIsAuto: crossIsAuto,
                 flexBasis: basis,
                 mainMarginBefore: mainMarginBefore,
                 mainMarginAfter: mainMarginAfter,
@@ -298,7 +305,7 @@ public final class LayoutNode {
             let child = measures[i].node
             let resolvedAlign = child.alignSelf == .auto ? alignItems : alignSelfToAlignItems(child.alignSelf)
 
-            if resolvedAlign == .stretch {
+            if resolvedAlign == .stretch && measures[i].crossIsAuto {
                 measures[i].crossFinal = crossSize - measures[i].crossMarginBefore - measures[i].crossMarginAfter
             } else {
                 measures[i].crossFinal = measures[i].crossHypothetical

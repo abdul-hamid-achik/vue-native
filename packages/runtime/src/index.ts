@@ -202,15 +202,16 @@ export * from '@vue/runtime-core'
 export { render } from './renderer'
 
 // StyleSheet utility
-export { createStyleSheet, validStyleProperties, type StyleProp, type StyleSheet, type AnyStyle } from './stylesheet'
+export { createStyleSheet, validStyleProperties, hairlineWidth, type StyleProp, type StyleSheet, type AnyStyle } from './stylesheet'
 
 // Style and component prop types
 export type {
   ViewStyle, TextStyle, ImageStyle,
   FlexDirection, FlexWrap, JustifyContent, AlignItems, AlignSelf, AlignContent,
-  Position, Display, Overflow, Direction, BorderStyle, TextAlign,
-  TextDecorationLine, TextDecorationStyle, TextTransform, FontStyle, FontWeight,
+  Position, Display, Overflow, Direction, TextAlign,
+  TextDecorationLine, TextTransform, FontStyle, FontWeight,
   ResizeMode, ImportantForAccessibility, ShadowOffset, TransformValue,
+  AccessibilityState,
   AccessibilityProps,
   VViewProps, VTextProps, VButtonProps, VInputProps, VSwitchProps, VImageProps,
   VScrollViewProps, VActivityIndicatorProps, VSliderProps, VListProps,
@@ -237,6 +238,7 @@ export {
   VTransition, VTransitionGroup, KeepAlive, VSuspense, defineAsyncComponent,
   builtInComponents,
 } from './components'
+export type { ImageSource } from './components'
 export type { TabConfig } from './components/VTabBar'
 export type {
   AlertButton, StatusBarStyle, WebViewSource, ActionSheetAction,
@@ -257,7 +259,7 @@ export {
   useAnimation, Easing, useNetwork, useAppState, useLinking, useShare, usePermissions,
   useGeolocation, useCamera, useNotifications, useBiometry, useHttp,
   useColorScheme, useBackHandler, useSecureStorage, useI18n,
-  usePlatform, useDimensions, useWebSocket, useFileSystem,
+  usePlatform, selectPlatform, useDimensions, useWebSocket, useFileSystem,
   useAccelerometer, useGyroscope,
   useAudio,
   useDatabase,
@@ -287,7 +289,7 @@ export type {
   CameraOptions, CameraResult, VideoCaptureOptions, VideoCaptureResult, QRCodeResult,
   LocalNotification, NotificationPayload, PushNotificationPayload, PushRegistrationError,
   BiometryType, BiometryResult, HttpRequestConfig, HttpResponse,
-  ColorScheme, Platform, Dimensions, WebSocketStatus, WebSocketOptions,
+  ColorScheme, Platform, PlatformSelectSpec, Dimensions, WebSocketStatus, WebSocketOptions,
   FileStat, SensorOptions, SensorData,
   AudioPlayOptions, AudioRecordOptions, AudioRecordResult,
   ExecuteResult, Row, TransactionContext,

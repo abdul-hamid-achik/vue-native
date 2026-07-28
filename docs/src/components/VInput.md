@@ -75,7 +75,7 @@ const bio = ref('')
       v-model="username"
       placeholder="Username"
       autoCapitalize="none"
-      autoCorrect="false"
+      :autoCorrect="false"
       :style="styles.input"
       @submit="() => {}"
     />

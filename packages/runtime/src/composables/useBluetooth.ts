@@ -61,8 +61,8 @@ export function useBluetooth() {
   const cleanups: Array<() => void> = []
 
   // Check BLE state on creation
-  NativeBridge.invokeNativeModule('Bluetooth', 'getState')
-    .then((state: BLEState) => {
+  NativeBridge.invokeNativeModule<BLEState>('Bluetooth', 'getState')
+    .then((state) => {
       isAvailable.value = state === 'poweredOn'
     })
     .catch(() => {

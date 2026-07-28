@@ -61,7 +61,12 @@ export interface HttpRequestConfig {
 }
 
 export interface HttpResponse<T = unknown> {
-  data: T
+  /**
+   * The parsed response body. Typed as `T | undefined` because empty-response
+   * statuses (204/205) legitimately have no body. `T` itself is a caller
+   * assertion — the native fetch polyfill does not validate the payload shape.
+   */
+  data: T | undefined
   status: number
   ok: boolean
   headers: Record<string, string>
@@ -91,10 +96,10 @@ function getHeader(headers: Record<string, string>, name: string): string | unde
 async function parseResponseBody<T>(
   response: FetchResponse,
   headers: Record<string, string>,
-): Promise<T> {
+): Promise<T | undefined> {
   // RFC-compatible empty-response statuses do not have a JSON body. Returning
   // undefined keeps GET/POST typing flexible without making 204 a rejection.
-  if (response.status === 204 || response.status === 205) return undefined as T
+  if (response.status === 204 || response.status === 205) return undefined
 
   const contentType = getHeader(headers, 'content-type')?.toLowerCase() ?? ''
   // Preserve the existing JSON-first behavior when a lightweight/native

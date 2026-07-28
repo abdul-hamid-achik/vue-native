@@ -101,10 +101,7 @@ abstract class VueNativeActivity : AppCompatActivity() {
     private fun loadBundle() {
         val devUrl = getDevServerUrl()
         if (devUrl != null) {
-            val bundleHttpUrl = devUrl.replace("ws://", "http://").replace("wss://", "https://")
-                .trimEnd('/') + "/${getBundleAssetPath()}"
-
-            hotReloadManager = HotReloadManager(runtime) { bundleCode ->
+            hotReloadManager = HotReloadManager { bundleCode ->
                 // Properly sequence reload steps to avoid races between threads.
                 // Step 1: Teardown old app and reset polyfills on JS thread
                 runtime.runOnJsThread {
@@ -143,7 +140,9 @@ abstract class VueNativeActivity : AppCompatActivity() {
                     }
                 }
             }
-            hotReloadManager?.connect(devUrl, bundleHttpUrl)
+            // The dev server pushes the full bundle inline over the WebSocket, so
+            // only the ws:// URL is needed (no derived HTTP bundle URL).
+            hotReloadManager?.connect(devUrl)
 
             // Development uses the embedded bundle as its deterministic
             // fallback. An applied OTA must not race the live-reload source.

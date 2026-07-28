@@ -22,9 +22,9 @@ final class VProgressBarFactory: NativeComponentFactory {
             let p = (value as? Double) ?? (value as? NSNumber)?.doubleValue ?? 0
             bar.setProgress(Float(max(0, min(1, p))), animated: false)
         case "progressTintColor":
-            if let str = value as? String { bar.progressTintColor = UIColor.fromHex(str) }
+            if let str = value as? String, let color = UIColor.fromHex(str) { bar.progressTintColor = color }
         case "trackTintColor":
-            if let str = value as? String { bar.trackTintColor = UIColor.fromHex(str) }
+            if let str = value as? String, let color = UIColor.fromHex(str) { bar.trackTintColor = color }
         case "animated":
             // stored for use in future progress updates — no-op here
             break

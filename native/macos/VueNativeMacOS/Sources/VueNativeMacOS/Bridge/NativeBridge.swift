@@ -846,10 +846,14 @@ public final class NativeBridge: @preconcurrency NativeEventDispatcher {
         rootView.layoutSubtreeIfNeeded()
 
         let bounds = rootView.bounds
+        #if DEBUG
         NSLog("[VueNative macOS Bridge] triggerLayout() rootView bounds: %.1f x %.1f", bounds.width, bounds.height)
+        #endif
 
         guard bounds.width > 0 && bounds.height > 0 else {
+            #if DEBUG
             NSLog("[VueNative macOS Bridge] triggerLayout() skipped: bounds not yet resolved")
+            #endif
             ExternalLayoutRootRegistry.layoutAll()
             return
         }

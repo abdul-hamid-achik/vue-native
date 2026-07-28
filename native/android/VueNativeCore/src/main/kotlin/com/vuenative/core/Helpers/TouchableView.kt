@@ -16,7 +16,7 @@ import com.google.android.flexbox.JustifyContent
 open class TouchableView(context: Context) : VueNativeFlexboxLayout(context) {
 
     /** The opacity to apply when the user is pressing the view. */
-    var activeOpacity: Float = 1.0f
+    var activeOpacity: Float = 0.7f
 
     /** Called when a tap completes within the view bounds. */
     var onPress: (() -> Unit)? = null

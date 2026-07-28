@@ -49,6 +49,11 @@ public final class NativeBridge {
     /// Provides O(1) children lookup instead of O(n) scan of nodeParent.
     private var childrenOf: [Int: [Int]] = [:]
 
+    /// Node IDs whose registered view is a UIScrollView. Lets the post-layout
+    /// content-size pass iterate only scroll views instead of scanning the whole
+    /// viewRegistry on every batch.
+    private var scrollViewNodeIDs: Set<Int> = []
+
     /// The root UIView that contains all rendered native views.
     private weak var rootView: UIView?
     private var rootConstraints: [NSLayoutConstraint] = []
@@ -329,6 +334,9 @@ public final class NativeBridge {
 
         viewRegistry[nodeId] = view
         typeRegistry[nodeId] = type
+        if view is UIScrollView {
+            scrollViewNodeIDs.insert(nodeId)
+        }
     }
 
     /// createText: [nodeId: Int, text: String]
@@ -360,7 +368,10 @@ public final class NativeBridge {
             return
         }
 
-        guard let view = viewRegistry[nodeId] else { return }
+        guard let view = viewRegistry[nodeId] else {
+            logMissingNode("setText", nodeId)
+            return
+        }
 
         if let label = view as? UILabel {
             label.text = text
@@ -380,7 +391,10 @@ public final class NativeBridge {
             return
         }
 
-        guard let view = viewRegistry[nodeId] else { return }
+        guard let view = viewRegistry[nodeId] else {
+            logMissingNode("setElementText", nodeId)
+            return
+        }
 
         if let label = view as? UILabel {
             label.text = text
@@ -407,7 +421,10 @@ public final class NativeBridge {
             return
         }
 
-        guard let view = viewRegistry[nodeId] else { return }
+        guard let view = viewRegistry[nodeId] else {
+            logMissingNode("updateProp", nodeId)
+            return
+        }
 
         // The value might be NSNull for nil
         let value: Any? = (args[2] is NSNull) ? nil : args[2]
@@ -423,7 +440,10 @@ public final class NativeBridge {
             return
         }
 
-        guard let view = viewRegistry[nodeId] else { return }
+        guard let view = viewRegistry[nodeId] else {
+            logMissingNode("updateStyle", nodeId)
+            return
+        }
 
         for (key, value) in styles {
             let resolvedValue: Any? = (value is NSNull) ? nil : value
@@ -444,8 +464,12 @@ public final class NativeBridge {
             return
         }
 
-        guard let parentView = viewRegistry[parentId],
-              let childView = viewRegistry[childId] else {
+        guard let parentView = viewRegistry[parentId] else {
+            logMissingNode("appendChild", parentId)
+            return
+        }
+        guard let childView = viewRegistry[childId] else {
+            logMissingNode("appendChild", childId)
             return
         }
 
@@ -461,9 +485,16 @@ public final class NativeBridge {
             return
         }
 
-        guard let parentView = viewRegistry[parentId],
-              let childView = viewRegistry[childId],
-              let beforeView = viewRegistry[beforeId] else {
+        guard let parentView = viewRegistry[parentId] else {
+            logMissingNode("insertBefore", parentId)
+            return
+        }
+        guard let childView = viewRegistry[childId] else {
+            logMissingNode("insertBefore", childId)
+            return
+        }
+        guard let beforeView = viewRegistry[beforeId] else {
+            logMissingNode("insertBefore", beforeId)
             return
         }
 
@@ -557,7 +588,10 @@ public final class NativeBridge {
             return
         }
 
-        guard let childView = viewRegistry[childId] else { return }
+        guard let childView = viewRegistry[childId] else {
+            logMissingNode("removeChild", childId)
+            return
+        }
         let removingRoot = childView === rootView
 
         // Recursively clean up all descendant nodes using the childrenOf index
@@ -626,6 +660,7 @@ public final class NativeBridge {
         viewRegistry.removeValue(forKey: nodeId)
         typeRegistry.removeValue(forKey: nodeId)
         childrenOf.removeValue(forKey: nodeId)
+        scrollViewNodeIDs.remove(nodeId)
 
         // O(k) cleanup where k = number of handlers on this node, not O(total handlers)
         if let keys = eventKeysPerNode.removeValue(forKey: nodeId) {
@@ -653,7 +688,10 @@ public final class NativeBridge {
             return
         }
 
-        guard let view = viewRegistry[nodeId] else { return }
+        guard let view = viewRegistry[nodeId] else {
+            logMissingNode("addEventListener", nodeId)
+            return
+        }
 
         let handlerKey = "\(nodeId):\(eventName)"
 
@@ -928,7 +966,9 @@ public final class NativeBridge {
         rootView.layoutIfNeeded()
 
         let bounds = rootView.bounds
+        #if DEBUG
         NSLog("[VueNative Bridge] triggerLayout() rootView bounds: %.1f x %.1f", bounds.width, bounds.height)
+        #endif
 
         guard bounds.width > 0 && bounds.height > 0 else {
             // Bounds not yet resolved — schedule a retry.
@@ -970,8 +1010,8 @@ public final class NativeBridge {
 
     /// After the main layout pass, iterate registered scroll views and update their contentSize.
     private func updateScrollViewContentSizes() {
-        for (_, view) in viewRegistry {
-            if let scrollView = view as? UIScrollView {
+        for nodeId in scrollViewNodeIDs {
+            if let scrollView = viewRegistry[nodeId] as? UIScrollView {
                 VScrollViewFactory.layoutContentView(for: scrollView)
             }
         }
@@ -1197,6 +1237,7 @@ public final class NativeBridge {
         eventKeysPerNode.removeAll()
         nodeParent.removeAll()
         childrenOf.removeAll()
+        scrollViewNodeIDs.removeAll()
         teleportMarkers.removeAll()
         teleportContainers.removeAll()
         rootView = nil
@@ -1241,6 +1282,15 @@ public final class NativeBridge {
     }
 
     // MARK: - Helpers
+
+    /// Log an operation that was discarded because its target node is not in the
+    /// registry. Debug-only: release builds keep the silent fast path so a stale
+    /// op never costs anything in production.
+    private func logMissingNode(_ op: String, _ nodeId: Int) {
+        #if DEBUG
+        NSLog("[VueNative Bridge] Warning: \(op) ignored — nodeId \(nodeId) not in registry")
+        #endif
+    }
 
     /// Safely convert a JSON value to Int.
     /// JSON numbers may come as Int, Double, or NSNumber.

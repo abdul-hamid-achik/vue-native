@@ -13,10 +13,8 @@ export type {
   Display,
   Overflow,
   Direction,
-  BorderStyle,
   TextAlign,
   TextDecorationLine,
-  TextDecorationStyle,
   TextTransform,
   FontStyle,
   FontWeight,
@@ -24,6 +22,7 @@ export type {
   ImportantForAccessibility,
   ShadowOffset,
   TransformValue,
+  AccessibilityState,
 } from './styles'
 
 export type {

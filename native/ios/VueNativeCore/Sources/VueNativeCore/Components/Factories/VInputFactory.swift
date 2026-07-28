@@ -90,10 +90,12 @@ final class VInputFactory: NativeComponentFactory {
             }
 
         case "placeholderColor", "placeholderTextColor":
-            if let colorStr = value as? String, let placeholder = textField.placeholder {
+            if let colorStr = value as? String,
+               let placeholder = textField.placeholder,
+               let color = UIColor.fromHex(colorStr) {
                 textField.attributedPlaceholder = NSAttributedString(
                     string: placeholder,
-                    attributes: [.foregroundColor: UIColor.fromHex(colorStr)]
+                    attributes: [.foregroundColor: color]
                 )
             }
 
@@ -151,16 +153,20 @@ final class VInputFactory: NativeComponentFactory {
 
         case "color":
             if let colorStr = value as? String {
-                textField.textColor = UIColor.fromHex(colorStr)
+                if let color = UIColor.fromHex(colorStr) {
+                    textField.textColor = color
+                }
             } else {
                 textField.textColor = .label
             }
 
         case "fontSize":
             if let size = value as? Double {
-                textField.font = UIFont.systemFont(ofSize: CGFloat(size))
+                let scaled = UIFontMetrics.default.scaledValue(for: CGFloat(size))
+                textField.font = UIFont.systemFont(ofSize: scaled)
             } else if let size = value as? Int {
-                textField.font = UIFont.systemFont(ofSize: CGFloat(size))
+                let scaled = UIFontMetrics.default.scaledValue(for: CGFloat(size))
+                textField.font = UIFont.systemFont(ofSize: scaled)
             }
 
         case "textAlign":
@@ -172,6 +178,18 @@ final class VInputFactory: NativeComponentFactory {
                 default: textField.textAlignment = .natural
                 }
             }
+
+        case "multiline":
+            // iOS creates the VInput view (a UITextField) at node-creation time,
+            // before any props arrive. Swapping to a UITextView here would change
+            // the registered view's identity and break the bridge's view registry,
+            // so multiline is not supported on iOS yet. Surface the limitation in
+            // DEBUG so it is discoverable rather than a silent no-op.
+            #if DEBUG
+            if (value as? Bool) == true || (value as? Int) == 1 {
+                NSLog("[VueNative VInput] Warning: 'multiline' is not supported on iOS yet; rendering a single-line UITextField")
+            }
+            #endif
 
         default:
             StyleEngine.apply(key: key, value: value, to: view)

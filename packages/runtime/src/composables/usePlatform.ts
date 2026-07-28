@@ -23,3 +23,40 @@ export function usePlatform() {
   const isMobile = isIOS || isAndroid
   return { platform, isIOS, isAndroid, isMacOS, isApple, isDesktop, isMobile }
 }
+
+function currentPlatform(): Platform {
+  return (typeof __PLATFORM__ !== 'undefined' ? __PLATFORM__ : 'ios') as Platform
+}
+
+/**
+ * Per-platform value map for {@link selectPlatform}, mirroring React Native's
+ * `Platform.select`. `apple` covers both ios and macos when a platform-specific
+ * key is absent; `default` is the final fallback.
+ */
+export interface PlatformSelectSpec<T> {
+  ios?: T
+  android?: T
+  macos?: T
+  apple?: T
+  default?: T
+}
+
+/**
+ * Pick a value for the current platform.
+ *
+ * @example
+ * ```ts
+ * const shadow = selectPlatform({
+ *   ios: { shadowRadius: 4 },
+ *   android: { elevation: 4 },
+ *   default: {},
+ * })
+ * ```
+ */
+export function selectPlatform<T>(spec: PlatformSelectSpec<T>): T | undefined {
+  const platform = currentPlatform()
+  const exact = spec[platform]
+  if (exact !== undefined) return exact
+  if ((platform === 'ios' || platform === 'macos') && spec.apple !== undefined) return spec.apple
+  return spec.default
+}

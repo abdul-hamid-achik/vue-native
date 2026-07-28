@@ -28,8 +28,8 @@ export function useColorScheme() {
   // dark must not report light until the next appearance transition.
   onMounted(() => {
     const revisionAtRequest = eventRevision
-    void NativeBridge.invokeNativeModule('DeviceInfo', 'getInfo', [])
-      .then((info: { colorScheme?: unknown } | undefined) => {
+    void NativeBridge.invokeNativeModule<{ colorScheme?: unknown } | undefined>('DeviceInfo', 'getInfo', [])
+      .then((info) => {
         // A newer push event is authoritative; do not let a delayed launch
         // snapshot roll the UI back to an older appearance.
         if (isActive && eventRevision === revisionAtRequest) {

@@ -78,7 +78,9 @@ final class VTextFactory: NativeComponentFactory {
 
         case "color":
             if let colorStr = value as? String {
-                label.textColor = UIColor.fromHex(colorStr)
+                if let color = UIColor.fromHex(colorStr) {
+                    label.textColor = color
+                }
             } else {
                 label.textColor = .label
             }
@@ -266,7 +268,10 @@ final class VTextFactory: NativeComponentFactory {
 
     /// Rebuild the UIFont from stored fontSize, fontWeight, and fontFamily.
     private func rebuildFont(for label: UILabel) {
-        let size = storedFontSize(on: label) ?? 17.0
+        let storedSize = storedFontSize(on: label) ?? 17.0
+        // Scale the developer-supplied size for Dynamic Type so labels respect
+        // the user's preferred content size category.
+        let size = UIFontMetrics.default.scaledValue(for: storedSize)
         let weightStr = storedFontWeight(on: label)
         let family = storedFontFamily(on: label)
 

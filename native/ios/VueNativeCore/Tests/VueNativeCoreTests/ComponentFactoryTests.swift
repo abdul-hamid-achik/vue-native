@@ -1,6 +1,7 @@
 #if canImport(UIKit)
 import XCTest
 import UIKit
+import FlexLayout
 @testable import VueNativeCore
 
 private class VImageURLProtocolStub: URLProtocol {
@@ -221,6 +222,40 @@ final class ComponentFactoryTests: XCTestCase {
         XCTAssertFalse(pressed, "press handler should be nil after remove")
     }
 
+    func testVButtonFactoryDefaultsToButtonAccessibilityTrait() {
+        let factory = VButtonFactory()
+        let view = factory.createView()
+        XCTAssertTrue(
+            view.accessibilityTraits.contains(.button),
+            "VButton should announce as a button to VoiceOver by default"
+        )
+    }
+
+    func testVButtonFactoryLaysOutChildrenAsCenteredRow() {
+        let factory = VButtonFactory()
+        let button = factory.createView()
+        button.frame = CGRect(x: 0, y: 0, width: 200, height: 60)
+
+        let icon = UIView()
+        icon.flex.width(20).height(20)
+        let label = UIView()
+        label.flex.width(40).height(20)
+        button.flex.addItem(icon)
+        button.flex.addItem(label)
+
+        button.flex.layout(mode: .fitContainer)
+
+        // Row direction: the second child sits to the right of the first
+        // (a column default would place it below).
+        XCTAssertGreaterThan(
+            label.frame.minX,
+            icon.frame.minX,
+            "VButton children should be laid out horizontally (row), matching Android"
+        )
+        // alignItems center: both children share a vertical centerline.
+        XCTAssertEqual(icon.frame.midY, label.frame.midY, accuracy: 0.5, "children should be vertically centered")
+    }
+
     // MARK: - VInputFactory Tests
 
     func testVInputFactoryCreatesUITextField() {
@@ -299,6 +334,15 @@ final class ComponentFactoryTests: XCTestCase {
         XCTAssertEqual(textField.returnKeyType, .search, "returnKeyType 'search' should set .search")
     }
 
+    func testVInputFactoryMultilineStaysSingleLineField() {
+        let factory = VInputFactory()
+        let view = factory.createView()
+        // multiline is not yet supported on iOS; applying it must not crash and
+        // the view must stay a UITextField (its identity cannot change at prop time).
+        factory.updateProp(view: view, key: "multiline", value: true)
+        XCTAssertTrue(view is UITextField, "multiline is unsupported on iOS; view must remain a UITextField")
+    }
+
     // MARK: - VSwitchFactory Tests
 
     func testVSwitchFactoryCreatesUISwitch() {
@@ -332,6 +376,30 @@ final class ComponentFactoryTests: XCTestCase {
 
         factory.updateProp(view: sw, key: "onTintColor", value: "#00ff00")
         XCTAssertNotNil(sw.onTintColor, "onTintColor should be set")
+    }
+
+    func testVSwitchFactorySetsThumbTintColor() {
+        let factory = VSwitchFactory()
+        let sw = factory.createView() as! UISwitch
+
+        factory.updateProp(view: sw, key: "thumbTintColor", value: "#0000ff")
+        XCTAssertNotNil(sw.thumbTintColor, "thumbTintColor should be set")
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        sw.thumbTintColor?.getRed(&r, green: &g, blue: &b, alpha: &a)
+        XCTAssertEqual(b, 1.0, accuracy: 0.01, "thumbTintColor should be blue")
+    }
+
+    func testVSwitchFactoryInvalidTintColorIsIgnored() {
+        let factory = VSwitchFactory()
+        let sw = factory.createView() as! UISwitch
+
+        factory.updateProp(view: sw, key: "onTintColor", value: "#ff0000")
+        factory.updateProp(view: sw, key: "onTintColor", value: "#nothex")
+
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        sw.onTintColor?.getRed(&r, green: &g, blue: &b, alpha: &a)
+        XCTAssertEqual(r, 1.0, accuracy: 0.01, "invalid onTintColor should be ignored, keeping the previous red")
+        XCTAssertEqual(g, 0.0, accuracy: 0.01)
     }
 
     func testVSwitchFactoryHandlesChangeEvent() {
@@ -596,6 +664,25 @@ final class ComponentFactoryTests: XCTestCase {
         let factory = VListFactory()
         let container = factory.createView() as! VListContainerView
         XCTAssertTrue(container.itemViews.isEmpty, "itemViews should start empty")
+    }
+
+    func testVListContainerMeasuresRowHeightLazily() {
+        let factory = VListFactory()
+        let container = factory.createView() as! VListContainerView
+        container.frame = CGRect(x: 0, y: 0, width: 320, height: 480)
+
+        let item = UIView()
+        item.flex.width(320).height(75)
+        container.itemViews.append(item)
+
+        // The item has not been laid out yet; measuredHeight runs Yoga on demand
+        // at the container width and returns the computed height.
+        let height = container.measuredHeight(forRow: 0)
+        XCTAssertEqual(height, 75, accuracy: 0.5, "measuredHeight should compute the item height lazily")
+        XCTAssertEqual(item.frame.size.width, 320, accuracy: 0.5, "measuredHeight should size the item to the container width")
+
+        // Out-of-range rows fall back to the estimated height instead of crashing.
+        XCTAssertEqual(container.measuredHeight(forRow: 5), container.estimatedItemHeight)
     }
 
     // MARK: - VSectionListFactory Tests

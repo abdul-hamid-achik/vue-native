@@ -221,6 +221,23 @@ final class ComponentFactoryTests: XCTestCase {
         XCTAssertEqual(payload?["message"] as? String, "Image not found: \(missingImage)")
     }
 
+    func testVImageFactoryMissingAssetEmitsError() {
+        let factory = VImageFactory()
+        guard let imageView = factory.createView() as? NSImageView else {
+            return XCTFail("Expected NSImageView")
+        }
+        let missingAsset = "vue_native_missing_asset_\(UUID().uuidString)"
+        var payload: [String: Any]?
+
+        factory.addEventListener(view: imageView, event: "error") { eventPayload in
+            payload = eventPayload as? [String: Any]
+        }
+        factory.updateProp(view: imageView, key: "source", value: ["asset": missingAsset])
+
+        XCTAssertEqual(payload?["message"] as? String, "Asset not found: \(missingAsset)")
+        XCTAssertNil(imageView.image)
+    }
+
     func testVImageFactoryDestroyViewCancelsInFlightRequest() {
         let requestStarted = expectation(description: "image request started")
         let requestCancelled = expectation(description: "image request cancelled")

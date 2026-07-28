@@ -53,7 +53,9 @@ final class VSliderFactory: NativeComponentFactory {
         case "minimumTrackTintColor":
             if #available(macOS 14.0, *) {
                 if let colorStr = value as? String {
-                    slider.trackFillColor = NSColor.fromHex(colorStr)
+                    if let color = NSColor.fromHex(colorStr) {
+                        slider.trackFillColor = color
+                    }
                 } else {
                     slider.trackFillColor = nil
                 }

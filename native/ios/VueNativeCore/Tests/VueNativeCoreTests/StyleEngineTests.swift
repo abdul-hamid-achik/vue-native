@@ -126,6 +126,48 @@ final class StyleEngineTests: XCTestCase {
         XCTAssertNil(view.backgroundColor, "backgroundColor should be nil after applying nil value")
     }
 
+    func testInvalidColorIsIgnoredAndKeepsPreviousValue() {
+        StyleEngine.apply(key: "backgroundColor", value: "#00ff00", to: view)
+        StyleEngine.apply(key: "backgroundColor", value: "#nothex", to: view)
+
+        XCTAssertNotNil(view.backgroundColor, "invalid color must not clear the background")
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        view.backgroundColor?.getRed(&r, green: &g, blue: &b, alpha: &a)
+        XCTAssertEqual(r, 0.0, accuracy: 0.01)
+        XCTAssertEqual(g, 1.0, accuracy: 0.01, "invalid color must be ignored, keeping the previous green")
+    }
+
+    func testFromHexSupportsShortFunctionalAndNamedFormats() {
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+
+        // #RGBA short form expands each nibble (opaque red here).
+        let shortRGBA = UIColor.fromHex("#f00f")
+        shortRGBA?.getRed(&r, green: &g, blue: &b, alpha: &a)
+        XCTAssertEqual(r, 1.0, accuracy: 0.01)
+        XCTAssertEqual(a, 1.0, accuracy: 0.01)
+
+        // rgb() functional notation (channels 0...255).
+        let rgb = UIColor.fromHex("rgb(0, 0, 255)")
+        rgb?.getRed(&r, green: &g, blue: &b, alpha: &a)
+        XCTAssertEqual(b, 1.0, accuracy: 0.01)
+        XCTAssertEqual(a, 1.0, accuracy: 0.01)
+
+        // rgba() functional notation with alpha 0...1.
+        let rgba = UIColor.fromHex("rgba(255, 0, 0, 0.5)")
+        rgba?.getRed(&r, green: &g, blue: &b, alpha: &a)
+        XCTAssertEqual(r, 1.0, accuracy: 0.01)
+        XCTAssertEqual(a, 0.5, accuracy: 0.01)
+
+        // Named colors.
+        XCTAssertNotNil(UIColor.fromHex("orange"))
+        XCTAssertEqual(UIColor.fromHex("transparent"), .clear)
+
+        // Invalid inputs return nil so callers can keep the previous value.
+        XCTAssertNil(UIColor.fromHex("#xyz"))
+        XCTAssertNil(UIColor.fromHex("notacolor"))
+        XCTAssertNil(UIColor.fromHex("#12345"), "5-digit hex is invalid")
+    }
+
     // MARK: - opacity Tests
 
     func testApplyOpacity() {
@@ -297,6 +339,45 @@ final class StyleEngineTests: XCTestCase {
         XCTAssertFalse(view.accessibilityTraits.contains(.selected))
     }
 
+    func testAccessibilityRolePreservesReactiveStateTraits() {
+        StyleEngine.apply(
+            key: "accessibilityState",
+            value: ["disabled": true, "selected": true],
+            to: view
+        )
+        StyleEngine.apply(key: "accessibilityRole", value: "button", to: view)
+
+        XCTAssertTrue(view.accessibilityTraits.contains(.button))
+        XCTAssertTrue(
+            view.accessibilityTraits.contains(.notEnabled),
+            "Applying a role must not wipe the disabled state trait"
+        )
+        XCTAssertTrue(
+            view.accessibilityTraits.contains(.selected),
+            "Applying a role must not wipe the selected state trait"
+        )
+    }
+
+    func testAccessibilityRoleReplacesPreviousRoleTrait() {
+        StyleEngine.apply(key: "accessibilityRole", value: "button", to: view)
+        StyleEngine.apply(key: "accessibilityRole", value: "link", to: view)
+
+        XCTAssertTrue(view.accessibilityTraits.contains(.link))
+        XCTAssertFalse(
+            view.accessibilityTraits.contains(.button),
+            "Applying a new role must remove the previous role trait"
+        )
+    }
+
+    func testAccessibilityRoleSelectedIsNotARole() {
+        // "selected" is a reactive state owned by accessibilityState, not a role.
+        StyleEngine.apply(key: "accessibilityRole", value: "selected", to: view)
+        XCTAssertFalse(
+            view.accessibilityTraits.contains(.selected),
+            "'selected' must not be applied as a role trait"
+        )
+    }
+
     // MARK: - Text Property Tests
 
     func testFontSizeOnUILabel() {
@@ -372,6 +453,95 @@ final class StyleEngineTests: XCTestCase {
         // Verify scale components
         XCTAssertEqual(view.transform.a, 2.0, accuracy: 0.001, "Scale X should be 2.0")
         XCTAssertEqual(view.transform.d, 2.0, accuracy: 0.001, "Scale Y should be 2.0")
+    }
+
+    // MARK: - Transform 3D Tests
+
+    func testApplyTransformPerspectiveSetsM34() {
+        let transforms: [[String: Any]] = [["perspective": 500.0]]
+        StyleEngine.apply(key: "transform", value: transforms, to: view)
+        XCTAssertEqual(
+            view.layer.transform.m34,
+            -1.0 / 500.0,
+            accuracy: 0.000001,
+            "perspective should set m34 to -1/perspective"
+        )
+    }
+
+    func testApplyTransformRotateXIsNonIdentity3D() {
+        let transforms: [[String: Any]] = [["rotateX": "45deg"]]
+        StyleEngine.apply(key: "transform", value: transforms, to: view)
+        XCTAssertFalse(
+            CATransform3DIsIdentity(view.layer.transform),
+            "rotateX should produce a non-identity 3D transform"
+        )
+        // A rotation about the X axis leaves the 2D affine projection identity-ish
+        // on the diagonal but introduces off-axis 3D terms; assert the layer
+        // transform changed even though it is not expressible as a 2D affine.
+        XCTAssertNotEqual(view.layer.transform.m22, 1.0, "rotateX should affect the y/z plane")
+    }
+
+    func testApplyTransformRotateYIsNonIdentity3D() {
+        let transforms: [[String: Any]] = [["rotateY": "30deg"]]
+        StyleEngine.apply(key: "transform", value: transforms, to: view)
+        XCTAssertFalse(
+            CATransform3DIsIdentity(view.layer.transform),
+            "rotateY should produce a non-identity 3D transform"
+        )
+        XCTAssertNotEqual(view.layer.transform.m11, 1.0, "rotateY should affect the x/z plane")
+    }
+
+    func testApplyTransformRotateZMatches2DRotate() {
+        let transforms: [[String: Any]] = [["rotateZ": "90deg"]]
+        StyleEngine.apply(key: "transform", value: transforms, to: view)
+        XCTAssertFalse(
+            view.transform.isIdentity,
+            "rotateZ should project to a non-identity 2D affine transform"
+        )
+    }
+
+    func testApplyTransformSkewXSetsM21() {
+        let transforms: [[String: Any]] = [["skewX": "45deg"]]
+        StyleEngine.apply(key: "transform", value: transforms, to: view)
+        XCTAssertEqual(
+            view.layer.transform.m21,
+            tan(CGFloat.pi / 4),
+            accuracy: 0.0001,
+            "skewX should set m21 to tan(angle)"
+        )
+    }
+
+    func testApplyTransformSkewYSetsM12() {
+        let transforms: [[String: Any]] = [["skewY": "45deg"]]
+        StyleEngine.apply(key: "transform", value: transforms, to: view)
+        XCTAssertEqual(
+            view.layer.transform.m12,
+            tan(CGFloat.pi / 4),
+            accuracy: 0.0001,
+            "skewY should set m12 to tan(angle)"
+        )
+    }
+
+    func testApplyTransform3DNilResetsLayerTransform() {
+        StyleEngine.apply(key: "transform", value: [["perspective": 400.0]], to: view)
+        XCTAssertNotEqual(view.layer.transform.m34, 0.0, "precondition: m34 should be set")
+
+        StyleEngine.apply(key: "transform", value: nil, to: view)
+        XCTAssertTrue(
+            CATransform3DIsIdentity(view.layer.transform),
+            "Applying nil should reset the layer transform to identity"
+        )
+    }
+
+    func testApplyTransformComposesMultipleEntries() {
+        // translate then perspective composed from separate array entries.
+        let transforms: [[String: Any]] = [
+            ["translateX": 10.0],
+            ["perspective": 800.0],
+        ]
+        StyleEngine.apply(key: "transform", value: transforms, to: view)
+        XCTAssertEqual(view.layer.transform.m41, 10.0, accuracy: 0.001, "translateX should set m41")
+        XCTAssertEqual(view.layer.transform.m34, -1.0 / 800.0, accuracy: 0.000001, "perspective should set m34")
     }
 
     // MARK: - Text Property Fallback Tests (non-UILabel)

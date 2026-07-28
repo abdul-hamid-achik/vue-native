@@ -170,5 +170,4 @@ async function createPost() {
 - Request bodies are automatically JSON-serialized via `JSON.stringify`.
 - The `loading` ref is shared across all requests from the same `useHttp` instance. If you need independent loading states, create separate `useHttp` instances.
 - On error, the promise is rejected and `error.value` is set to the error message. The `loading` ref is always reset to `false` in the `finally` block.
-- The `headers` property in `HttpResponse` is currently an empty object. Full response header parsing is planned for a future release.
 - For backward compatibility, `get` and `delete` also accept a plain `Record<string, string>` as the second argument, which is treated as headers.

@@ -52,9 +52,7 @@ function useTeleport(target: string): {
 ```vue
 <script setup>
 import { ref } from 'vue'
-import { useTeleport, createNativeNode } from '@thelacanians/vue-native-runtime'
 
-const { teleport } = useTeleport('modal')
 const showModal = ref(false)
 
 function openModal() {
@@ -66,7 +64,7 @@ function openModal() {
   <Teleport to="modal" v-if="showModal">
     <VView :style="{ flex: 1, justifyContent: 'center', alignItems: 'center' }">
       <VText>Modal Content</VText>
-      <VButton label="Close" @press="showModal = false" />
+      <VButton title="Close" @press="showModal = false" />
     </VView>
   </Teleport>
 </template>

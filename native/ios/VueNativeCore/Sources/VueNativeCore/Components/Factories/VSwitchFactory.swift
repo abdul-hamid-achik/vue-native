@@ -49,14 +49,18 @@ final class VSwitchFactory: NativeComponentFactory {
 
         case "onTintColor":
             if let colorStr = value as? String {
-                sw.onTintColor = UIColor.fromHex(colorStr)
+                if let color = UIColor.fromHex(colorStr) {
+                    sw.onTintColor = color
+                }
             } else {
                 sw.onTintColor = nil
             }
 
         case "thumbTintColor":
             if let colorStr = value as? String {
-                sw.thumbTintColor = UIColor.fromHex(colorStr)
+                if let color = UIColor.fromHex(colorStr) {
+                    sw.thumbTintColor = color
+                }
             } else {
                 sw.thumbTintColor = nil
             }

@@ -963,10 +963,13 @@ describe('dev command', () => {
     expect(capturedWssOptions.port).toBe(9999)
   })
 
-  it('configures verifyClient to allow localhost and private network IPs', async () => {
+  it('binds to localhost only by default and rejects private network IPs', async () => {
     const devCommand = await importDevCommand()
     await devCommand.parseAsync(['node', 'dev'])
     await new Promise(resolve => setTimeout(resolve, 10))
+
+    // Secure by default: the bundle-replacing dev server is localhost-only.
+    expect(capturedWssOptions.host).toBe('127.0.0.1')
 
     const verifyClient = capturedWssOptions.verifyClient as (info: {
       req: { socket: { remoteAddress?: string } }
@@ -975,22 +978,44 @@ describe('dev command', () => {
     expect(verifyClient).toBeDefined()
     expect(typeof verifyClient).toBe('function')
 
-    // Localhost IPv4 should be allowed
+    // Localhost IPv4 / IPv6 / IPv4-mapped should be allowed
+    expect(verifyClient({ req: { socket: { remoteAddress: '127.0.0.1' } } })).toBe(true)
+    expect(verifyClient({ req: { socket: { remoteAddress: '::1' } } })).toBe(true)
+    expect(verifyClient({ req: { socket: { remoteAddress: '::ffff:127.0.0.1' } } })).toBe(true)
+    // Android emulator host loopback should be allowed
+    expect(verifyClient({ req: { socket: { remoteAddress: '10.0.2.2' } } })).toBe(true)
+
+    // Private network IPs are rejected unless --lan is passed
+    expect(verifyClient({ req: { socket: { remoteAddress: '192.168.1.100' } } })).toBe(false)
+    expect(verifyClient({ req: { socket: { remoteAddress: '10.0.0.1' } } })).toBe(false)
+    expect(verifyClient({ req: { socket: { remoteAddress: '172.16.5.10' } } })).toBe(false)
+
+    // Public IPs should be rejected
+    expect(verifyClient({ req: { socket: { remoteAddress: '8.8.8.8' } } })).toBe(false)
+    expect(verifyClient({ req: { socket: { remoteAddress: '203.0.113.1' } } })).toBe(false)
+  })
+
+  it('allows private network IPs when --lan is passed', async () => {
+    const devCommand = await importDevCommand()
+    await devCommand.parseAsync(['node', 'dev', '--lan'])
+    await new Promise(resolve => setTimeout(resolve, 10))
+
+    expect(capturedWssOptions.host).toBe('0.0.0.0')
+
+    const verifyClient = capturedWssOptions.verifyClient as (info: {
+      req: { socket: { remoteAddress?: string } }
+    }) => boolean
+
+    // Localhost still allowed
     expect(verifyClient({ req: { socket: { remoteAddress: '127.0.0.1' } } })).toBe(true)
 
-    // Localhost IPv6 should be allowed
-    expect(verifyClient({ req: { socket: { remoteAddress: '::1' } } })).toBe(true)
-
-    // IPv4-mapped localhost should be allowed
-    expect(verifyClient({ req: { socket: { remoteAddress: '::ffff:127.0.0.1' } } })).toBe(true)
-
-    // Private network IPs should be allowed (for physical device testing)
+    // Private network IPs allowed for physical device testing
     expect(verifyClient({ req: { socket: { remoteAddress: '192.168.1.100' } } })).toBe(true)
     expect(verifyClient({ req: { socket: { remoteAddress: '10.0.0.1' } } })).toBe(true)
     expect(verifyClient({ req: { socket: { remoteAddress: '172.16.5.10' } } })).toBe(true)
     expect(verifyClient({ req: { socket: { remoteAddress: '::ffff:192.168.1.50' } } })).toBe(true)
 
-    // Public IPs should be rejected
+    // Public IPs still rejected
     expect(verifyClient({ req: { socket: { remoteAddress: '8.8.8.8' } } })).toBe(false)
     expect(verifyClient({ req: { socket: { remoteAddress: '203.0.113.1' } } })).toBe(false)
   })

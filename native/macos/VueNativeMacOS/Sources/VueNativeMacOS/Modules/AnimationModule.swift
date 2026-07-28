@@ -339,34 +339,3 @@ final class AnimationModule: NativeModule {
         }
     }
 }
-
-// MARK: - NSColor hex helper
-
-private extension NSColor {
-    static func fromHex(_ hex: String) -> NSColor? {
-        var hexString = hex.trimmingCharacters(in: .whitespacesAndNewlines)
-        if hexString.hasPrefix("#") { hexString.removeFirst() }
-
-        var rgb: UInt64 = 0
-        guard Scanner(string: hexString).scanHexInt64(&rgb) else { return nil }
-
-        switch hexString.count {
-        case 6:
-            return NSColor(
-                red: CGFloat((rgb >> 16) & 0xFF) / 255.0,
-                green: CGFloat((rgb >> 8) & 0xFF) / 255.0,
-                blue: CGFloat(rgb & 0xFF) / 255.0,
-                alpha: 1.0
-            )
-        case 8:
-            return NSColor(
-                red: CGFloat((rgb >> 24) & 0xFF) / 255.0,
-                green: CGFloat((rgb >> 16) & 0xFF) / 255.0,
-                blue: CGFloat((rgb >> 8) & 0xFF) / 255.0,
-                alpha: CGFloat(rgb & 0xFF) / 255.0
-            )
-        default:
-            return nil
-        }
-    }
-}

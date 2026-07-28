@@ -30,7 +30,7 @@ final class VSegmentedControlFactory: NativeComponentFactory {
             let idx = (value as? Int) ?? (value as? NSNumber)?.intValue ?? 0
             seg.selectedSegmentIndex = idx
         case "tintColor":
-            if let str = value as? String { seg.selectedSegmentTintColor = UIColor.fromHex(str) }
+            if let str = value as? String, let color = UIColor.fromHex(str) { seg.selectedSegmentTintColor = color }
         case "enabled":
             seg.isEnabled = (value as? Bool) ?? (value as? NSNumber)?.boolValue ?? true
         default:

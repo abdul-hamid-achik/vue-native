@@ -17,7 +17,7 @@ All text in Vue Native must be wrapped in a `VText` component -- raw text outsid
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
 | `style` | `StyleProp` | -- | Text + layout styles |
-| `numberOfLines` | `number` | `0` (unlimited) | Truncate after N lines |
+| `numberOfLines` | `number` | -- (unlimited) | Truncate after N lines |
 | `selectable` | `boolean` | `false` | Allow the user to select and copy text |
 | `accessibilityLabel` | `string` | -- | Accessible description (overrides displayed text) |
 | `accessibilityRole` | `string` | -- | Accessibility role (e.g. `'header'`) |

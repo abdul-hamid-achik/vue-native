@@ -84,7 +84,16 @@ final class ComponentRegistry {
     /// so it can be retrieved later for prop updates and event handling.
     func createView(type: String) -> UIView? {
         guard let factory = factories[type] else {
+            #if DEBUG
+            let registered = factories.keys.sorted()
+            var message = "[VueNative] Warning: No factory registered for component type '\(type)'. Registered types: \(registered.joined(separator: ", "))"
+            if let suggestion = Self.suggestion(for: type, among: registered) {
+                message += ". Did you mean '\(suggestion)'?"
+            }
+            NSLog("%@", message)
+            #else
             NSLog("[VueNative] Warning: No factory registered for component type '%@'", type)
+            #endif
             return nil
         }
 
@@ -150,6 +159,21 @@ final class ComponentRegistry {
     func destroyView(view: UIView) {
         guard let factory = ComponentRegistry.factory(for: view) else { return }
         factory.destroyView(view: view)
+    }
+
+    // MARK: - Debug helpers
+
+    /// Suggest a registered component type for a mistyped name. Used only for
+    /// DEBUG diagnostics so an unknown component error points at the likely fix.
+    private static func suggestion(for type: String, among registered: [String]) -> String? {
+        let lower = type.lowercased()
+        guard !lower.isEmpty else { return nil }
+        if let match = registered.first(where: { $0.lowercased() == lower }) {
+            return match
+        }
+        return registered.first {
+            $0.lowercased().contains(lower) || lower.contains($0.lowercased())
+        }
     }
 }
 

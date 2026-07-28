@@ -170,13 +170,17 @@ final class VListFactory: NativeComponentFactory {
         guard let container = parent as? VListContainerView else { return }
         child.ensureLayoutNode()
 
+        let index: Int
         if let anchor = anchor, let idx = container.childViews.firstIndex(where: { $0 === anchor }) {
+            index = idx
             container.childViews.insert(child, at: idx)
         } else {
+            index = container.childViews.count
             container.childViews.append(child)
         }
         container.itemCount = container.childViews.count
-        container.tableView.reloadData()
+        // Targeted row insert (not reloadData) to avoid full-reload layout loops.
+        container.tableView.insertRows(at: IndexSet(integer: index), withAnimation: [])
     }
 
     func removeChild(_ child: NSView, from parent: NSView) {
@@ -184,10 +188,15 @@ final class VListFactory: NativeComponentFactory {
             child.removeFromSuperview()
             return
         }
-        container.childViews.removeAll { $0 === child }
+        guard let index = container.childViews.firstIndex(where: { $0 === child }) else {
+            child.removeFromSuperview()
+            return
+        }
+        container.childViews.remove(at: index)
         child.removeFromSuperview()
         container.itemCount = container.childViews.count
-        container.tableView.reloadData()
+        // Targeted row removal (not reloadData) to avoid full-reload layout loops.
+        container.tableView.removeRows(at: IndexSet(integer: index), withAnimation: [])
     }
 }
 

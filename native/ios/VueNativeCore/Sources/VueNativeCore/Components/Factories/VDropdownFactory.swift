@@ -66,8 +66,8 @@ final class VDropdownFactory: NativeComponentFactory {
             button.isEnabled = !disabled
 
         case "tintColor":
-            if let colorStr = value as? String {
-                button.tintColor = UIColor.fromHex(colorStr)
+            if let colorStr = value as? String, let color = UIColor.fromHex(colorStr) {
+                button.tintColor = color
             }
 
         default:

@@ -1,6 +1,7 @@
 package com.vuenative.core
 
 import android.content.Context
+import android.graphics.Color
 import android.view.View
 import android.widget.CheckBox
 import android.widget.DatePicker
@@ -205,6 +206,15 @@ class ComponentFactoryTest {
     }
 
     @Test
+    fun testVButtonFactoryDefaultActiveOpacityMatchesIOS() {
+        val factory = VButtonFactory()
+        val view = factory.createView(context) as TouchableView
+
+        // iOS/macOS dim to 0.7 on press; the Android default must match.
+        assertEquals(0.7f, view.activeOpacity, 0.01f)
+    }
+
+    @Test
     fun testVButtonFactoryPressEvent() {
         val factory = VButtonFactory()
         val view = factory.createView(context) as TouchableView
@@ -315,6 +325,27 @@ class ComponentFactoryTest {
         assertEquals(20f, view.textSize, 1f)
     }
 
+    @Test
+    fun testVInputFactoryHasMaterialMinTouchTarget() {
+        val factory = VInputFactory()
+        val view = factory.createView(context) as EditText
+
+        val expected = (48 * context.resources.displayMetrics.density).toInt()
+        assertEquals("Input should meet the 48dp Material touch target", expected, view.minimumHeight)
+    }
+
+    @Test
+    fun testVInputFactoryHasFocusAwareUnderlineBackground() {
+        val factory = VInputFactory()
+        val view = factory.createView(context) as EditText
+
+        assertTrue(
+            "Input background should be a stateful underline drawable",
+            view.background is UnderlineDrawable,
+        )
+        assertTrue("Underline should be stateful (focus-aware)", view.background.isStateful)
+    }
+
     // =========================================================================
     // VSwitchFactory
     // =========================================================================
@@ -364,6 +395,28 @@ class ComponentFactoryTest {
         assertEquals(true, changedValue)
     }
 
+    @Test
+    fun testVSwitchFactoryOnTintColorColorsTrackNotThumb() {
+        val factory = VSwitchFactory()
+        val view = factory.createView(context) as SwitchCompat
+
+        factory.updateProp(view, "onTintColor", "#ff0000")
+
+        // iOS semantics: onTintColor colors the TRACK (on state), not the thumb.
+        assertEquals(Color.RED, view.trackTintList?.defaultColor)
+        assertTrue("onTintColor must not tint the thumb", view.thumbTintList?.defaultColor != Color.RED)
+    }
+
+    @Test
+    fun testVSwitchFactoryThumbColorColorsThumb() {
+        val factory = VSwitchFactory()
+        val view = factory.createView(context) as SwitchCompat
+
+        factory.updateProp(view, "thumbColor", "#00ff00")
+
+        assertEquals(Color.GREEN, view.thumbTintList?.defaultColor)
+    }
+
     // =========================================================================
     // VImageFactory
     // =========================================================================
@@ -405,6 +458,35 @@ class ComponentFactoryTest {
 
         factory.updateProp(view, "resizeMode", "cover")
         assertEquals(ImageView.ScaleType.CENTER_CROP, view.scaleType)
+    }
+
+    @Test
+    fun testVImageFactoryMissingAssetFiresError() {
+        val factory = VImageFactory()
+        val view = factory.createView(context) as ImageView
+
+        var errorPayload: Any? = null
+        var loadFired = false
+        factory.addEventListener(view, "error") { errorPayload = it }
+        factory.addEventListener(view, "load") { loadFired = true }
+
+        factory.updateProp(view, "source", mapOf("asset" to "no_such_drawable_xyz"))
+
+        assertFalse("load must not fire for a missing asset", loadFired)
+        assertNotNull("error must fire for a missing asset", errorPayload)
+        val message = (errorPayload as Map<*, *>)["message"]?.toString() ?: ""
+        assertTrue(message.contains("no_such_drawable_xyz"))
+        assertNull("image must be cleared for a missing asset", view.drawable)
+    }
+
+    @Test
+    fun testVImageFactoryEmptySourceClearsImage() {
+        val factory = VImageFactory()
+        val view = factory.createView(context) as ImageView
+
+        // Neither uri nor asset -> the ImageView is cleared without events.
+        factory.updateProp(view, "source", mapOf<String, Any?>())
+        assertNull(view.drawable)
     }
 
     // =========================================================================

@@ -16,6 +16,8 @@ final class VPressableFactory: NativeComponentFactory {
     func createView() -> NSView {
         let pressable = PressableView()
         pressable.ensureLayoutNode()
+        // Default VoiceOver role for a pressable surface.
+        pressable.setAccessibilityRole(.button)
         return pressable
     }
 

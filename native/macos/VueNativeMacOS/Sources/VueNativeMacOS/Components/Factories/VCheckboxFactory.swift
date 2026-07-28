@@ -58,7 +58,9 @@ final class VCheckboxFactory: NativeComponentFactory {
 
         case "tintColor":
             if let colorStr = value as? String {
-                button.contentTintColor = NSColor.fromHex(colorStr)
+                if let color = NSColor.fromHex(colorStr) {
+                    button.contentTintColor = color
+                }
             } else {
                 button.contentTintColor = nil
             }

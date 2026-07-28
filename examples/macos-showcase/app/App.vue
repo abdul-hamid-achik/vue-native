@@ -301,7 +301,6 @@ const styles = createStyleSheet({
     borderRadius: 10,
     borderWidth: 2,
     borderColor: '#D2D2D7',
-    borderStyle: 'dashed' as any,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#FAFAFA',

@@ -35,6 +35,13 @@ Use the `title` prop for a simple text button, or place `VText` and other views 
 
 In templates, `@press="handler"` and `:onPress="handler"` both bind the native press handler; likewise, `@long-press` and `:onLongPress` are equivalent. Render functions should pass `onPress` and `onLongPress` props.
 
+## Events
+
+| Event | Payload | Description |
+|-------|---------|-------------|
+| `@press` | -- | Emitted when the button is tapped. Equivalent to the `onPress` prop. |
+| `@long-press` | -- | Emitted on a long press (~500ms). Equivalent to the `onLongPress` prop. |
+
 ## Example
 
 ```vue

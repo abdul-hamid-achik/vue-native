@@ -30,6 +30,8 @@ final class VImageFactory: NativeComponentFactory {
         imageView.imageScaling = .scaleProportionallyUpOrDown
         imageView.wantsLayer = true
         imageView.ensureLayoutNode()
+        // Default VoiceOver role.
+        imageView.setAccessibilityRole(.image)
         return imageView
     }
 
@@ -43,6 +45,18 @@ final class VImageFactory: NativeComponentFactory {
         case "source", "src":
             // Cancel any in-flight load
             cancelLoad(on: view)
+
+            // A named asset takes priority over a URI when both are present.
+            if let asset = sourceAsset(from: value), !asset.isEmpty {
+                if let image = NSImage(named: NSImage.Name(asset)) {
+                    imageView.image = image
+                    fireLoadEvent(for: imageView, image: image)
+                } else {
+                    imageView.image = nil
+                    fireErrorEvent(for: imageView, message: "Asset not found: \(asset)")
+                }
+                return
+            }
 
             guard let source = sourceURI(from: value), !source.isEmpty else {
                 imageView.image = nil
@@ -87,9 +101,11 @@ final class VImageFactory: NativeComponentFactory {
 
         case "tintColor":
             if let colorStr = value as? String {
-                imageView.contentTintColor = NSColor.fromHex(colorStr)
-                // Set image as template so tint applies
-                imageView.image?.isTemplate = true
+                if let color = NSColor.fromHex(colorStr) {
+                    imageView.contentTintColor = color
+                    // Set image as template so tint applies
+                    imageView.image?.isTemplate = true
+                }
             } else {
                 imageView.contentTintColor = nil
             }
@@ -274,6 +290,19 @@ final class VImageFactory: NativeComponentFactory {
 
         if let source = value as? NSDictionary {
             return source["uri"] as? String
+        }
+
+        return nil
+    }
+
+    /// Extract a named-asset reference from a source dictionary (`{ asset: "logo" }`).
+    private func sourceAsset(from value: Any?) -> String? {
+        if let source = value as? [String: Any] {
+            return source["asset"] as? String
+        }
+
+        if let source = value as? NSDictionary {
+            return source["asset"] as? String
         }
 
         return nil

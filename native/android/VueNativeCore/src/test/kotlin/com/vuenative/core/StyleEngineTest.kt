@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.view.View
+import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.TextView
 import androidx.test.core.app.ApplicationProvider
@@ -168,6 +169,19 @@ class StyleEngineTest {
         val fp = StyleEngine.getFlexProps(view)
         val expectedPx = StyleEngine.dpToPx(context, 50f).toInt()
         assertEquals(expectedPx, fp.height)
+    }
+
+    @Test
+    fun testAspectRatioDerivesHeightFromWidth() {
+        val view = View(context)
+        view.layoutParams = ViewGroup.LayoutParams(0, 0)
+        StyleEngine.apply("aspectRatio", 2.0, view)
+
+        // Simulate a layout pass that resolves the width to 200px. The installed
+        // layout listener should derive height = width / ratio.
+        view.layout(0, 0, 200, 0)
+
+        assertEquals("height should be width / aspectRatio", 100, view.layoutParams.height)
     }
 
     @Test
@@ -384,12 +398,68 @@ class StyleEngineTest {
 
     @Test
     fun testParseColorHex8() {
-        val color = StyleEngine.parseColor("#80ff0000")
+        // 8-digit hex is #RRGGBBAA (alpha LAST), matching iOS/macOS.
+        val color = StyleEngine.parseColor("#ff000080")
         assertNotNull(color)
         assertEquals(0x80, Color.alpha(color!!))
         assertEquals(0xff, Color.red(color))
         assertEquals(0x00, Color.green(color))
         assertEquals(0x00, Color.blue(color))
+    }
+
+    @Test
+    fun testParseColorHex3Expands() {
+        // #RGB expands each nibble: #f00 -> #ff0000
+        val color = StyleEngine.parseColor("#f00")
+        assertNotNull(color)
+        assertEquals(Color.RED, color)
+    }
+
+    @Test
+    fun testParseColorHex4ExpandsWithAlpha() {
+        // #RGBA expands each nibble: #f008 -> #ff000088
+        val color = StyleEngine.parseColor("#f008")
+        assertNotNull(color)
+        assertEquals(0x88, Color.alpha(color!!))
+        assertEquals(0xff, Color.red(color))
+        assertEquals(0x00, Color.green(color))
+        assertEquals(0x00, Color.blue(color))
+    }
+
+    @Test
+    fun testParseColorRgb() {
+        val color = StyleEngine.parseColor("rgb(0, 0, 255)")
+        assertNotNull(color)
+        assertEquals(Color.BLUE, color)
+    }
+
+    @Test
+    fun testParseColorRgbaAppliesAlpha() {
+        // rgba alpha is a 0..1 fraction; 0.5 -> ~128.
+        val color = StyleEngine.parseColor("rgba(255, 0, 0, 0.5)")
+        assertNotNull(color)
+        assertEquals(128, Color.alpha(color!!))
+        assertEquals(0xff, Color.red(color))
+        assertEquals(0x00, Color.green(color))
+        assertEquals(0x00, Color.blue(color))
+    }
+
+    @Test
+    fun testParseColorNamedOrange() {
+        val color = StyleEngine.parseColor("orange")
+        assertNotNull(color)
+        assertEquals(0xFFFFA500.toInt(), color)
+    }
+
+    @Test
+    fun testInvalidColorKeepsPreviousTextColor() {
+        val textView = TextView(context)
+        StyleEngine.apply("color", "#0000ff", textView)
+        assertEquals(Color.BLUE, textView.currentTextColor)
+
+        // An invalid color must NOT overwrite the previous value.
+        StyleEngine.apply("color", "notacolor", textView)
+        assertEquals(Color.BLUE, textView.currentTextColor)
     }
 
     @Test
@@ -531,5 +601,98 @@ class StyleEngineTest {
 
         val expectedPx = StyleEngine.dpToPx(context, 4f)
         assertEquals(expectedPx, view.elevation, 0.1f)
+    }
+
+    // -------------------------------------------------------------------------
+    // transform (2D + 3D)
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun testTransform2DBasics() {
+        val view = View(context)
+        val density = context.resources.displayMetrics.density
+
+        StyleEngine.apply(
+            "transform",
+            listOf(
+                mapOf("rotate" to "45deg"),
+                mapOf("scale" to 2.0),
+                mapOf("translateX" to 10),
+            ),
+            view,
+        )
+
+        assertEquals(45f, view.rotation, 0.01f)
+        assertEquals(2f, view.scaleX, 0.01f)
+        assertEquals(2f, view.scaleY, 0.01f)
+        assertEquals(10f * density, view.translationX, 0.01f)
+    }
+
+    @Test
+    fun testTransform3DRotationAxes() {
+        val view = View(context)
+
+        StyleEngine.apply(
+            "transform",
+            listOf(
+                mapOf("rotateX" to "45deg"),
+                mapOf("rotateY" to "30deg"),
+                mapOf("rotateZ" to "90deg"),
+            ),
+            view,
+        )
+
+        assertEquals(45f, view.rotationX, 0.01f)
+        assertEquals(30f, view.rotationY, 0.01f)
+        // rotateZ drives the same axis as `rotate`/View.rotation.
+        assertEquals(90f, view.rotation, 0.01f)
+    }
+
+    @Test
+    fun testTransformPerspectiveSetsCameraDistance() {
+        val view = View(context)
+        val density = context.resources.displayMetrics.density
+
+        StyleEngine.apply("transform", listOf(mapOf("perspective" to 500)), view)
+
+        assertEquals(500f * density, view.cameraDistance, 0.01f)
+    }
+
+    @Test
+    fun testTransformRadAngleAndReset() {
+        val view = View(context)
+
+        StyleEngine.apply("transform", listOf(mapOf("rotateX" to "1.5708rad")), view)
+        assertEquals(90f, view.rotationX, 0.1f)
+
+        // Removing the transform restores identity + default camera distance.
+        StyleEngine.apply("transform", "none", view)
+        assertEquals(0f, view.rotation, 0.01f)
+        assertEquals(0f, view.rotationX, 0.01f)
+        assertEquals(0f, view.rotationY, 0.01f)
+        assertEquals(1f, view.scaleX, 0.01f)
+        assertEquals(1f, view.scaleY, 0.01f)
+        assertEquals(0f, view.translationX, 0.01f)
+        assertEquals(0f, view.translationY, 0.01f)
+        assertEquals(
+            1280f * context.resources.displayMetrics.density,
+            view.cameraDistance,
+            0.01f,
+        )
+    }
+
+    @Test
+    fun testTransformSkewIsIgnoredWithoutCrashing() {
+        val view = View(context)
+
+        // skew is unsupported on Android View; it must be a no-op, not a crash,
+        // and must not disturb the other transforms in the same batch.
+        StyleEngine.apply(
+            "transform",
+            listOf(mapOf("skewX" to "20deg"), mapOf("rotateY" to "15deg")),
+            view,
+        )
+
+        assertEquals(15f, view.rotationY, 0.01f)
     }
 }

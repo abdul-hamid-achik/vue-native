@@ -797,7 +797,8 @@ describe('Composables', () => {
         'https://cdn.example.com/bundle.js',
         bundleHash,
         '2.0.0',
-      ])
+        null,
+      ], 0)
       expect(isDownloading.value).toBe(false)
       expect(status.value).toBe('ready')
     })

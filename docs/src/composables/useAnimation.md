@@ -131,7 +131,7 @@ Run multiple animations simultaneously.
 | Property | Type | Description |
 |----------|------|-------------|
 | `type` | `'timing' \| 'spring'` | Animation type. |
-| `target` | `AnimationTarget` | The view to animate. |
+| `viewId` | `number` | The numeric node ID of the view to animate. Use `resolveId()` to obtain it from a template ref or node. |
 | `toStyles` | `Record<string, any>` | Target style properties. |
 | `options` | `TimingConfig \| SpringConfig` | Animation configuration. |
 
@@ -191,7 +191,7 @@ Available via the `Easing` object returned by `useAnimation()`:
 import { ref } from '@thelacanians/vue-native-runtime'
 import { useAnimation } from '@thelacanians/vue-native-runtime'
 
-const { timing, spring, keyframe, sequence, parallel, fadeIn, resolveId } = useAnimation()
+const { timing, spring, keyframe, sequence, parallel, fadeIn, resolveId, Easing } = useAnimation()
 const boxRef = ref(null)
 
 async function animateFadeIn() {
@@ -214,9 +214,9 @@ async function animateFlash() {
 async function animateSequence() {
   const id = resolveId(boxRef)
   await sequence([
-    { type: 'timing', target: id, toStyles: { opacity: 0 }, options: { duration: 200 } },
-    { type: 'timing', target: id, toStyles: { opacity: 1, translateX: 100 }, options: { duration: 300 } },
-    { type: 'timing', target: id, toStyles: { translateX: 0 }, options: { duration: 300, easing: Easing.easeOut } },
+    { type: 'timing', viewId: id, toStyles: { opacity: 0 }, options: { duration: 200 } },
+    { type: 'timing', viewId: id, toStyles: { opacity: 1, translateX: 100 }, options: { duration: 300 } },
+    { type: 'timing', viewId: id, toStyles: { translateX: 0 }, options: { duration: 300, easing: Easing.easeOut } },
   ])
 }
 </script>

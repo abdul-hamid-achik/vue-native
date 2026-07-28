@@ -53,8 +53,7 @@ final class VRadioFactory: NativeComponentFactory {
             }
 
         case "tintColor":
-            if let colorStr = value as? String {
-                let color = NSColor.fromHex(colorStr)
+            if let colorStr = value as? String, let color = NSColor.fromHex(colorStr) {
                 for case let button as NSButton in stack.arrangedSubviews {
                     button.contentTintColor = color
                 }

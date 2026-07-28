@@ -1,105 +1,130 @@
 package com.vuenative.core
 
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.Response
+import okhttp3.WebSocket
+import okhttp3.WebSocketListener
+import org.json.JSONObject
 
 /**
- * Hot reload manager — connects to the Vite dev WebSocket server.
- * On receiving a "full-reload" message, reloads the bundle.
+ * Hot reload manager — connects to the Vue Native dev server over WebSocket.
  *
- * Uses OkHttp WebSocket for connectivity.
+ * Wire protocol (see `packages/cli/src/commands/dev.ts`), all messages are JSON:
+ * - Server sends `{ "type": "connected" }` once the socket is accepted.
+ * - Server sends `{ "type": "ping" }`; the client must reply `{ "type": "pong" }`.
+ * - Server sends `{ "type": "bundle", "bundle": "<code>" }` with the entire bundle
+ *   inline. The client reloads using that string directly — there is no separate
+ *   HTTP bundle fetch.
+ *
+ * Mirrors `native/shared/.../HotReloadManager.swift`.
  */
 class HotReloadManager(
-    private val runtime: JSRuntime,
-    private val onReload: (bundleCode: String) -> Unit
+    private val onReload: (bundleCode: String) -> Unit,
 ) {
     companion object {
         private const val TAG = "VueNative-HotReload"
-        private const val RECONNECT_DELAY_MS = 3000L
+        private const val RECONNECT_DELAY_MS = 2000L
+        private const val MAX_RECONNECT_ATTEMPTS = 10
     }
 
-    private var scopeJob = Job()
-    private var scope = CoroutineScope(Dispatchers.IO + scopeJob)
-    private var wsSession: okhttp3.WebSocket? = null
-    private val httpClient = okhttp3.OkHttpClient()
-    private var devServerUrl: String? = null
-    private var bundleUrl: String? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val httpClient = OkHttpClient()
+    private var webSocket: WebSocket? = null
+    private var serverUrl: String? = null
+    private var reconnectAttempts = 0
+
     @Volatile
-    private var isConnected = false
+    private var disconnected = false
 
-    fun connect(wsUrl: String, bundleUrl: String) {
-        this.devServerUrl = wsUrl
-        this.bundleUrl = bundleUrl
-        scope.launch { connectInternal(wsUrl, bundleUrl) }
+    /** Connect to the dev server WebSocket. Safe to call once per manager. */
+    fun connect(wsUrl: String) {
+        serverUrl = wsUrl
+        reconnectAttempts = 0
+        disconnected = false
+        openConnection()
     }
 
-    private suspend fun connectInternal(wsUrl: String, bundleUrl: String) {
-        try {
-            val request = okhttp3.Request.Builder().url(wsUrl).build()
-            wsSession = httpClient.newWebSocket(request, object : okhttp3.WebSocketListener() {
-                override fun onOpen(webSocket: okhttp3.WebSocket, response: okhttp3.Response) {
-                    isConnected = true
-                    Log.d(TAG, "Connected to dev server: $wsUrl")
-                }
-                override fun onMessage(webSocket: okhttp3.WebSocket, text: String) {
-                    if (text.contains("full-reload") || text.contains("\"type\":\"update\"")) {
-                        Log.d(TAG, "Hot reload triggered")
-                        fetchAndReload(bundleUrl)
-                    }
-                }
-                override fun onClosed(webSocket: okhttp3.WebSocket, code: Int, reason: String) {
-                    isConnected = false
-                    Log.d(TAG, "Dev server disconnected: $reason")
-                    scope.launch {
-                        delay(RECONNECT_DELAY_MS)
-                        connectInternal(wsUrl, bundleUrl)
-                    }
-                }
-                override fun onFailure(webSocket: okhttp3.WebSocket, t: Throwable, response: okhttp3.Response?) {
-                    isConnected = false
-                    Log.w(TAG, "Dev server connection failed: ${t.message}")
-                    scope.launch {
-                        delay(RECONNECT_DELAY_MS)
-                        connectInternal(wsUrl, bundleUrl)
-                    }
-                }
-            })
+    /** Disconnect and stop reconnecting. */
+    fun disconnect() {
+        disconnected = true
+        serverUrl = null
+        mainHandler.removeCallbacksAndMessages(null)
+        webSocket?.close(1000, "Shutting down")
+        webSocket = null
+    }
+
+    private fun openConnection() {
+        val url = serverUrl ?: return
+        if (disconnected) return
+        Log.d(TAG, "Connecting to dev server: $url")
+        val request = Request.Builder().url(url).build()
+        webSocket = httpClient.newWebSocket(request, object : WebSocketListener() {
+            override fun onOpen(webSocket: WebSocket, response: Response) {
+                Log.d(TAG, "WebSocket opened")
+            }
+
+            override fun onMessage(webSocket: WebSocket, text: String) {
+                handleMessage(webSocket, text)
+            }
+
+            override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                Log.d(TAG, "Dev server disconnected: $reason")
+                scheduleReconnect()
+            }
+
+            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                Log.w(TAG, "Dev server connection failed: ${t.message}")
+                scheduleReconnect()
+            }
+        })
+    }
+
+    private fun handleMessage(webSocket: WebSocket, text: String) {
+        val json = try {
+            JSONObject(text)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to connect: ${e.message}")
-            delay(RECONNECT_DELAY_MS)
-            connectInternal(wsUrl, bundleUrl)
+            Log.w(TAG, "Ignoring non-JSON dev server message")
+            return
         }
-    }
-
-    private fun fetchAndReload(bundleUrl: String) {
-        scope.launch {
-            try {
-                val request = okhttp3.Request.Builder().url(bundleUrl).build()
-                val response = httpClient.newCall(request).execute()
-                if (response.isSuccessful) {
-                    val code = response.body?.string() ?: return@launch
-                    onReload(code)
+        when (json.optString("type")) {
+            "connected" -> {
+                reconnectAttempts = 0
+                Log.d(TAG, "Connected — hot reload active")
+            }
+            "ping" -> {
+                // Keep-alive: the server expects a pong reply.
+                webSocket.send("{\"type\":\"pong\"}")
+            }
+            "bundle" -> {
+                val bundle = json.optString("bundle", "")
+                if (bundle.isEmpty()) {
+                    Log.w(TAG, "Received empty bundle; ignoring")
+                    return
                 }
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to fetch bundle for hot reload: ${e.message}")
+                Log.d(TAG, "Received bundle (${bundle.length} bytes) — reloading")
+                mainHandler.post { onReload(bundle) }
+            }
+            else -> {
+                // Unknown message type — ignore for forward compatibility.
             }
         }
     }
 
-    fun disconnect() {
-        // Cancel all pending coroutines (reconnection attempts, bundle fetches)
-        scopeJob.cancel()
-        wsSession?.close(1000, "Shutting down")
-        wsSession = null
-        isConnected = false
-        devServerUrl = null
-        bundleUrl = null
-        // Create a fresh scope/job in case connect() is called again
-        scopeJob = Job()
-        scope = CoroutineScope(Dispatchers.IO + scopeJob)
+    private fun scheduleReconnect() {
+        if (disconnected || serverUrl == null) return
+        reconnectAttempts += 1
+        if (reconnectAttempts > MAX_RECONNECT_ATTEMPTS) {
+            Log.w(
+                TAG,
+                "Giving up after $MAX_RECONNECT_ATTEMPTS attempts — start `bun run dev` and relaunch the app",
+            )
+            return
+        }
+        Log.d(TAG, "Reconnecting in ${RECONNECT_DELAY_MS}ms (attempt $reconnectAttempts/$MAX_RECONNECT_ATTEMPTS)")
+        mainHandler.postDelayed({ openConnection() }, RECONNECT_DELAY_MS)
     }
 }

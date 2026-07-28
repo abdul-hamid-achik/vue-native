@@ -39,6 +39,8 @@ export const validStyleProperties: ReadonlySet<string> = new Set([
   'marginRight',
   'marginBottom',
   'marginLeft',
+  'marginStart',
+  'marginEnd',
   'marginHorizontal',
   'marginVertical',
   'padding',
@@ -46,6 +48,8 @@ export const validStyleProperties: ReadonlySet<string> = new Set([
   'paddingRight',
   'paddingBottom',
   'paddingLeft',
+  'paddingStart',
+  'paddingEnd',
   'paddingHorizontal',
   'paddingVertical',
   'gap',
@@ -56,6 +60,7 @@ export const validStyleProperties: ReadonlySet<string> = new Set([
   'overflow',
   'zIndex',
   'aspectRatio',
+  'elevation',
 
   // Visual
   'backgroundColor',
@@ -77,7 +82,6 @@ export const validStyleProperties: ReadonlySet<string> = new Set([
   'borderTopRightRadius',
   'borderBottomLeftRadius',
   'borderBottomRightRadius',
-  'borderStyle',
 
   // Shadow
   'shadowColor',
@@ -95,8 +99,6 @@ export const validStyleProperties: ReadonlySet<string> = new Set([
   'letterSpacing',
   'textAlign',
   'textDecorationLine',
-  'textDecorationStyle',
-  'textDecorationColor',
   'textTransform',
   'includeFontPadding',
 
@@ -136,6 +138,12 @@ import type { ViewStyle, TextStyle, ImageStyle } from './types/styles'
 
 /** Union of all valid style types for createStyleSheet values */
 export type AnyStyle = ViewStyle | TextStyle | ImageStyle
+
+/**
+ * The thinnest border the platform can render (mirrors React Native's
+ * `StyleSheet.hairlineWidth`). Use for 1px-look dividers and borders.
+ */
+export const hairlineWidth = 0.5
 
 /**
  * Create a style sheet object. This is the recommended way to define styles

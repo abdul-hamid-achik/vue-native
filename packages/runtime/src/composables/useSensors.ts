@@ -32,8 +32,8 @@ export function useAccelerometer(options: SensorOptions = {}) {
   let unsubscribe: (() => void) | null = null
 
   // Check availability
-  NativeBridge.invokeNativeModule('Sensors', 'isAvailable', ['accelerometer'])
-    .then((result: { available: boolean }) => {
+  NativeBridge.invokeNativeModule<{ available: boolean }>('Sensors', 'isAvailable', ['accelerometer'])
+    .then((result) => {
       isAvailable.value = result.available
     })
     .catch((err: unknown) => {
@@ -93,8 +93,8 @@ export function useGyroscope(options: SensorOptions = {}) {
   let unsubscribe: (() => void) | null = null
 
   // Check availability
-  NativeBridge.invokeNativeModule('Sensors', 'isAvailable', ['gyroscope'])
-    .then((result: { available: boolean }) => {
+  NativeBridge.invokeNativeModule<{ available: boolean }>('Sensors', 'isAvailable', ['gyroscope'])
+    .then((result) => {
       isAvailable.value = result.available
     })
     .catch((err: unknown) => {

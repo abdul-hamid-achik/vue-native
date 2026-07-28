@@ -10,8 +10,15 @@ final class VButtonFactory: NativeComponentFactory {
 
     func createView() -> NSView {
         let clickable = ClickableView()
-        // Ensure layout node is attached
-        clickable.ensureLayoutNode()
+        // Lay content out as a centered row to match Android/iOS button content
+        // (LayoutNode defaults to column). Only the button container default is
+        // changed — the global LayoutNode default stays column.
+        let node = clickable.ensureLayoutNode()
+        node.flexDirection = .row
+        node.justifyContent = .center
+        node.alignItems = .center
+        // Default VoiceOver role.
+        clickable.setAccessibilityRole(.button)
         return clickable
     }
 

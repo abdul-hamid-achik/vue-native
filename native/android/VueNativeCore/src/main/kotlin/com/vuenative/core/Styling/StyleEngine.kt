@@ -5,6 +5,7 @@ import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
+import android.util.Log
 import android.util.TypedValue
 import android.view.View
 import android.view.ViewGroup
@@ -25,9 +26,39 @@ import kotlin.math.roundToInt
 /**
  * Converts JS style props to Android View properties.
  * Numbers are treated as dp (density-independent pixels).
- * Colors are hex strings like "#RRGGBB" or "#AARRGGBB".
+ * Colors are hex strings like "#RGB", "#RGBA", "#RRGGBB", or "#RRGGBBAA"
+ * (alpha last, matching iOS/macOS), plus "rgb()"/"rgba()" and named colors.
  */
 object StyleEngine {
+
+    private const val TAG = "VueNative-StyleEngine"
+
+    /**
+     * Android's default View camera distance (in dp) used for 3D transforms.
+     * Mirrors the platform default so resetting a `perspective` transform
+     * restores the stock rendering instead of an extreme zero-distance camera.
+     */
+    private const val DEFAULT_CAMERA_DISTANCE = 1280f
+
+    /**
+     * Named colors kept in parity with the iOS/macOS `fromHex` lookup table.
+     */
+    private val NAMED_COLORS: Map<String, Int> = mapOf(
+        "transparent" to Color.TRANSPARENT,
+        "white" to Color.WHITE,
+        "black" to Color.BLACK,
+        "red" to Color.RED,
+        "blue" to Color.BLUE,
+        "green" to Color.GREEN,
+        "gray" to Color.GRAY,
+        "grey" to Color.GRAY,
+        "orange" to 0xFFFFA500.toInt(),
+        "yellow" to Color.YELLOW,
+        "purple" to 0xFF800080.toInt(),
+        "cyan" to Color.CYAN,
+        "magenta" to Color.MAGENTA,
+        "brown" to 0xFFA52A2A.toInt(),
+    )
 
     fun apply(key: String, value: Any?, view: View) {
         // Store internal props (prefixed with "__") as view tags
@@ -186,6 +217,19 @@ object StyleEngine {
             }
             "maxHeight" -> updateFlexProps(view) { fp ->
                 fp.copy(maxHeight = value?.let { dpToPx(ctx, toFloat(it, 0f)).toInt() } ?: Int.MAX_VALUE)
+            }
+            "aspectRatio" -> {
+                // FlexboxLayout has no native aspectRatio. Derive height from the
+                // laid-out width via a layout listener (covers the common case where
+                // width is resolved by the parent and height follows the ratio).
+                val ratio = toFloat(value, 0f)
+                if (ratio > 0f) {
+                    view.setTag(TAG_ASPECT_RATIO, ratio)
+                    installAspectRatioListener(view)
+                    enforceAspectRatio(view)
+                } else {
+                    view.setTag(TAG_ASPECT_RATIO, null)
+                }
             }
 
             // --- Flex props (stored in FlexProps, applied when inserted) ---
@@ -376,16 +420,22 @@ object StyleEngine {
 
             // --- Accessibility ---
             "accessibilityLabel" -> {
+                view.setTag(TAG_ACCESSIBILITY_LABEL, value?.toString())
                 view.contentDescription = value?.toString()
                 view.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
             }
             "accessibilityHint" -> {
                 // Android doesn't have a direct accessibilityHint API like iOS.
-                // We use AccessibilityDelegate to provide the hint via tooltipText (API 28+)
-                // or append it to contentDescription as a fallback.
+                // On API 27+ we surface it via tooltipText; below that we fall back
+                // to appending the hint to the contentDescription so TalkBack still
+                // reads it.
                 val hint = value?.toString() ?: return
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
                     view.tooltipText = hint
+                } else {
+                    val base = view.getTag(TAG_ACCESSIBILITY_LABEL) as? String
+                    view.contentDescription =
+                        if (base.isNullOrEmpty()) hint else "$base, $hint"
                 }
                 view.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
             }
@@ -396,9 +446,13 @@ object StyleEngine {
             }
             "accessibilityRole" -> {
                 val role = value?.toString() ?: return
+                // Compose over any existing delegate (e.g. one installed by a
+                // factory or a prior role) instead of clobbering it.
+                val existing = ViewCompat.getAccessibilityDelegate(view)
                 ViewCompat.setAccessibilityDelegate(view, object : androidx.core.view.AccessibilityDelegateCompat() {
                     override fun onInitializeAccessibilityNodeInfo(host: View, info: AccessibilityNodeInfoCompat) {
-                        super.onInitializeAccessibilityNodeInfo(host, info)
+                        existing?.onInitializeAccessibilityNodeInfo(host, info)
+                            ?: super.onInitializeAccessibilityNodeInfo(host, info)
                         when (role) {
                             "button" -> info.className = "android.widget.Button"
                             "link" -> info.addAction(AccessibilityNodeInfoCompat.AccessibilityActionCompat.ACTION_CLICK)
@@ -453,7 +507,7 @@ object StyleEngine {
     fun applyTextProp(tv: TextView, key: String, value: Any?) {
         val ctx = tv.context
         when (key) {
-            "color" -> tv.setTextColor(parseColor(value) ?: Color.BLACK)
+            "color" -> parseColor(value)?.let { tv.setTextColor(it) }
             "fontSize" -> tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, toFloat(value, 14f))
             "fontWeight" -> {
                 val current = tv.typeface ?: android.graphics.Typeface.DEFAULT
@@ -671,29 +725,115 @@ object StyleEngine {
         }
     }
 
+    // -- Aspect ratio -------------------------------------------------------------
+
+    /**
+     * Install a one-time layout listener that keeps the view's height in sync with
+     * its width according to the stored aspect ratio. Idempotent.
+     */
+    private fun installAspectRatioListener(view: View) {
+        if (view.getTag(TAG_ASPECT_RATIO_LISTENER) != null) return
+        val listener = View.OnLayoutChangeListener { v, _, _, _, _, _, _, _, _ ->
+            enforceAspectRatio(v)
+        }
+        view.setTag(TAG_ASPECT_RATIO_LISTENER, listener)
+        view.addOnLayoutChangeListener(listener)
+    }
+
+    /** Set the view's height = width / ratio once the width is known. */
+    private fun enforceAspectRatio(view: View) {
+        val ratio = (view.getTag(TAG_ASPECT_RATIO) as? Float) ?: return
+        val width = view.width
+        if (width <= 0 || ratio <= 0f) return
+        val targetHeight = (width / ratio).roundToInt()
+        if (view.height == targetHeight) return
+        val lp = view.layoutParams ?: return
+        if (lp.height != targetHeight) {
+            lp.height = targetHeight
+            view.layoutParams = lp
+        }
+    }
+
     // -- Color parsing ------------------------------------------------------------
 
+    /**
+     * Parse a color value into an ARGB int.
+     *
+     * Supported formats (kept in parity with iOS/macOS `UIColor.fromHex`):
+     * - Hex: "#RGB", "#RGBA", "#RRGGBB", "#RRGGBBAA" — alpha is the LAST channel.
+     * - Functional: "rgb(r, g, b)" and "rgba(r, g, b, a)" where `a` is 0..1.
+     * - Named colors: see [NAMED_COLORS].
+     *
+     * Returns null for invalid input. Callers must keep the previous style when
+     * this returns null (never apply a fallback color), and a warning is logged.
+     */
     fun parseColor(value: Any?): Int? {
-        val s = value?.toString() ?: return null
-        return try {
-            when {
-                s.startsWith("#") -> Color.parseColor(s)
-                s.startsWith("rgb") -> {
-                    val nums = s.filter { it.isDigit() || it == ',' || it == ' ' }
-                        .split(",").map { it.trim().toInt() }
-                    if (nums.size >= 3) Color.rgb(nums[0], nums[1], nums[2]) else null
-                }
-                s == "transparent" -> Color.TRANSPARENT
-                s == "white" -> Color.WHITE
-                s == "black" -> Color.BLACK
-                s == "red" -> Color.RED
-                s == "blue" -> Color.BLUE
-                s == "green" -> Color.GREEN
-                s == "gray" || s == "grey" -> Color.GRAY
-                else -> Color.parseColor(s)
+        val s = value?.toString()?.trim() ?: return null
+        val result = when {
+            s.startsWith("#") -> parseHexColor(s)
+            s.startsWith("rgb", ignoreCase = true) -> parseRgbColor(s)
+            else -> NAMED_COLORS[s.lowercase()]
+        }
+        if (result == null) {
+            Log.w(TAG, "Ignoring invalid color value: '$s' (keeping previous style)")
+        }
+        return result
+    }
+
+    /** Parse a "#RGB" / "#RGBA" / "#RRGGBB" / "#RRGGBBAA" hex string (alpha last). */
+    private fun parseHexColor(s: String): Int? {
+        val hex = s.substring(1)
+        return when (hex.length) {
+            3 -> {
+                // #RGB -> #RRGGBB (each nibble doubled)
+                val r = hex[0].digitToIntOrNull(16) ?: return null
+                val g = hex[1].digitToIntOrNull(16) ?: return null
+                val b = hex[2].digitToIntOrNull(16) ?: return null
+                Color.rgb(r * 17, g * 17, b * 17)
             }
-        } catch (e: Exception) {
-            null
+            4 -> {
+                // #RGBA -> #RRGGBBAA (each nibble doubled)
+                val r = hex[0].digitToIntOrNull(16) ?: return null
+                val g = hex[1].digitToIntOrNull(16) ?: return null
+                val b = hex[2].digitToIntOrNull(16) ?: return null
+                val a = hex[3].digitToIntOrNull(16) ?: return null
+                Color.argb(a * 17, r * 17, g * 17, b * 17)
+            }
+            6 -> {
+                val r = hex.substring(0, 2).toIntOrNull(16) ?: return null
+                val g = hex.substring(2, 4).toIntOrNull(16) ?: return null
+                val b = hex.substring(4, 6).toIntOrNull(16) ?: return null
+                Color.rgb(r, g, b)
+            }
+            8 -> {
+                // #RRGGBBAA — reorder to Android's ARGB
+                val r = hex.substring(0, 2).toIntOrNull(16) ?: return null
+                val g = hex.substring(2, 4).toIntOrNull(16) ?: return null
+                val b = hex.substring(4, 6).toIntOrNull(16) ?: return null
+                val a = hex.substring(6, 8).toIntOrNull(16) ?: return null
+                Color.argb(a, r, g, b)
+            }
+            else -> null
+        }
+    }
+
+    /** Parse "rgb(r, g, b)" or "rgba(r, g, b, a)" where `a` is a 0..1 fraction. */
+    private fun parseRgbColor(s: String): Int? {
+        val open = s.indexOf('(')
+        val close = s.indexOf(')')
+        if (open < 0 || close < 0 || close < open) return null
+        val parts = s.substring(open + 1, close).split(",").map { it.trim() }
+        if (parts.size < 3) return null
+        val r = parts[0].toIntOrNull() ?: return null
+        val g = parts[1].toIntOrNull() ?: return null
+        val b = parts[2].toIntOrNull() ?: return null
+        if (r !in 0..255 || g !in 0..255 || b !in 0..255) return null
+        return if (parts.size >= 4) {
+            val a = parts[3].toFloatOrNull() ?: return null
+            val alpha = (a.coerceIn(0f, 1f) * 255f).roundToInt()
+            Color.argb(alpha, r, g, b)
+        } else {
+            Color.rgb(r, g, b)
         }
     }
 
@@ -846,12 +986,18 @@ object StyleEngine {
     // -- Transform helpers --------------------------------------------------------
 
     private fun applyTransform(view: View, value: Any?, ctx: Context) {
+        val density = ctx.resources.displayMetrics.density
         if (value == null || value == "none") {
             view.rotation = 0f
+            view.rotationX = 0f
+            view.rotationY = 0f
             view.scaleX = 1f
             view.scaleY = 1f
             view.translationX = 0f
             view.translationY = 0f
+            // Restore the platform-default camera distance rather than 0 so a
+            // removed transform does not leave an extreme 3D perspective behind.
+            view.cameraDistance = DEFAULT_CAMERA_DISTANCE * density
             return
         }
 
@@ -860,18 +1006,30 @@ object StyleEngine {
             else -> return
         }
 
-        // Reset to defaults, then apply each transform in order
-        var rotation = 0f
+        // Reset to defaults, then apply each transform in order. `rotate` and
+        // `rotateZ` both drive the Z axis (View.rotation == View.rotationZ).
+        var rotationZ = 0f
+        var rotationX = 0f
+        var rotationY = 0f
         var scaleX = 1f
         var scaleY = 1f
         var translateX = 0f
         var translateY = 0f
-
-        val density = ctx.resources.displayMetrics.density
+        var cameraDistance = DEFAULT_CAMERA_DISTANCE * density
+        var skewRequested = false
 
         for (dict in transforms) {
             dict["rotate"]?.let { v ->
-                rotation += parseAngle(v.toString())
+                rotationZ += parseAngle(v.toString())
+            }
+            dict["rotateZ"]?.let { v ->
+                rotationZ += parseAngle(v.toString())
+            }
+            dict["rotateX"]?.let { v ->
+                rotationX += parseAngle(v.toString())
+            }
+            dict["rotateY"]?.let { v ->
+                rotationY += parseAngle(v.toString())
             }
             dict["scale"]?.let { v ->
                 val s = toFloat(v, 1f)
@@ -890,13 +1048,28 @@ object StyleEngine {
             dict["translateY"]?.let { v ->
                 translateY += toFloat(v, 0f) * density
             }
+            dict["perspective"]?.let { v ->
+                // Perspective is a scalar camera distance; convert to screen density.
+                cameraDistance = toFloat(v, 0f) * density
+            }
+            if (dict.containsKey("skewX") || dict.containsKey("skewY")) {
+                skewRequested = true
+            }
         }
 
-        view.rotation = rotation
+        view.rotation = rotationZ
+        view.rotationX = rotationX
+        view.rotationY = rotationY
         view.scaleX = scaleX
         view.scaleY = scaleY
         view.translationX = translateX
         view.translationY = translateY
+        view.cameraDistance = cameraDistance
+        if (skewRequested) {
+            // android.view.View has no skew transform; faking it with a Matrix
+            // would fight the View's own render transform, so we warn and skip.
+            Log.w(TAG, "skewX/skewY transform is not supported on Android View; ignoring")
+        }
     }
 
     // -- Absolute positioning helpers ---------------------------------------------

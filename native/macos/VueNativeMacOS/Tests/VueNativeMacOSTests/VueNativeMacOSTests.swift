@@ -239,8 +239,9 @@ final class VueNativeMacOSTests: XCTestCase {
     // MARK: - NSColor+Hex
 
     func testColorFromHex6() {
-        let color = NSColor.fromHex("#FF0000")
-        XCTAssertNotNil(color)
+        guard let color = NSColor.fromHex("#FF0000") else {
+            return XCTFail("Expected #FF0000 to parse")
+        }
         // Should be red
         var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
         color.usingColorSpace(.sRGB)?.getRed(&r, green: &g, blue: &b, alpha: &a)
@@ -250,16 +251,12 @@ final class VueNativeMacOSTests: XCTestCase {
     }
 
     func testColorFromHexNamed() {
-        let transparent = NSColor.fromHex("transparent")
-        XCTAssertEqual(transparent, .clear)
-
-        let white = NSColor.fromHex("white")
-        XCTAssertEqual(white, .white)
+        XCTAssertEqual(NSColor.fromHex("transparent"), .clear)
+        XCTAssertEqual(NSColor.fromHex("white"), .white)
     }
 
     func testColorFromHexInvalid() {
-        let color = NSColor.fromHex("notacolor")
-        XCTAssertEqual(color, .clear)
+        XCTAssertNil(NSColor.fromHex("notacolor"))
     }
 }
 

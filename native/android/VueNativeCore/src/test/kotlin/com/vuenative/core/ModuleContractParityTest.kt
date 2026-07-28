@@ -4,9 +4,12 @@ import android.Manifest
 import android.app.Application
 import android.content.Context
 import android.os.Looper
+import android.util.Base64
 import android.view.View
 import android.widget.FrameLayout
 import androidx.test.core.app.ApplicationProvider
+import java.security.KeyPairGenerator
+import java.security.spec.ECGenParameterSpec
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -110,5 +113,27 @@ class ModuleContractParityTest {
         val frame = result as Map<*, *>
         assertEquals(120, frame["width"])
         assertEquals(80, frame["height"])
+    }
+
+    @Test
+    fun otaRecognizesSetVerifyKeyPublisherAuthMethod() {
+        val module = OTAModule().also { it.initialize(context, bridge) }
+
+        val keyPair = KeyPairGenerator.getInstance("EC").apply {
+            initialize(ECGenParameterSpec("secp256r1"))
+        }.generateKeyPair()
+        val publicKeyBase64 = Base64.encodeToString(keyPair.public.encoded, Base64.DEFAULT)
+
+        var result: Any? = null
+        var resultError: String? = "not_called"
+        module.invoke("setVerifyKey", listOf(publicKeyBase64), bridge) { value, error ->
+            result = value
+            resultError = error
+        }
+
+        assertNull(resultError)
+        assertEquals(true, (result as Map<*, *>)["configured"])
+
+        module.destroy()
     }
 }

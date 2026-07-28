@@ -21,13 +21,20 @@ extension NSColor {
         "brown": .brown
     ]
 
-    // MARK: - Hex initializer
+    // MARK: - Hex / functional initializer
 
-    /// Creates an NSColor from a hex string.
-    /// Supports formats: "#RGB", "#RRGGBB", "#RRGGBBAA"
-    /// Also supports named colors: "transparent", "black", "white", "red", "green", "blue", "gray"
-    /// Returns .clear for invalid input.
-    static func fromHex(_ hex: String) -> NSColor {
+    /// Creates an NSColor from a color string.
+    ///
+    /// Supported formats:
+    /// - Hex: `#RGB`, `#RGBA`, `#RRGGBB`, `#RRGGBBAA` (8 digits = alpha last).
+    /// - Functional: `rgb(r, g, b)` and `rgba(r, g, b, a)` where r/g/b are
+    ///   0...255 and alpha is 0...1.
+    /// - Named colors: `transparent`, `white`, `black`, `red`, `blue`, `green`,
+    ///   `gray`, `grey`, `orange`, `yellow`, `purple`, `cyan`, `magenta`, `brown`.
+    ///
+    /// Returns `nil` for invalid input so callers can ignore the style rather
+    /// than silently applying a transparent color. Emits a warning in DEBUG.
+    static func fromHex(_ hex: String) -> NSColor? {
         let trimmed = hex.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
 
         // Check named colors first
@@ -35,17 +42,28 @@ extension NSColor {
             return named
         }
 
+        // Functional notation: rgb(...) / rgba(...)
+        if trimmed.hasPrefix("rgb") {
+            if let color = parseFunctional(trimmed) {
+                return color
+            }
+            warnInvalid(hex)
+            return nil
+        }
+
         // Must start with '#'
         guard trimmed.hasPrefix("#") else {
-            return .clear
+            warnInvalid(hex)
+            return nil
         }
 
         let hexString = String(trimmed.dropFirst())
         let scanner = Scanner(string: hexString)
         var hexNumber: UInt64 = 0
 
-        guard scanner.scanHexInt64(&hexNumber) else {
-            return .clear
+        guard scanner.scanHexInt64(&hexNumber), scanner.isAtEnd else {
+            warnInvalid(hex)
+            return nil
         }
 
         switch hexString.count {
@@ -55,6 +73,14 @@ extension NSColor {
             let g = CGFloat((hexNumber & 0x0F0) >> 4) / 15.0
             let b = CGFloat(hexNumber & 0x00F) / 15.0
             return NSColor(red: r, green: g, blue: b, alpha: 1.0)
+
+        case 4:
+            // #RGBA -> #RRGGBBAA
+            let r = CGFloat((hexNumber & 0xF000) >> 12) / 15.0
+            let g = CGFloat((hexNumber & 0x0F00) >> 8) / 15.0
+            let b = CGFloat((hexNumber & 0x00F0) >> 4) / 15.0
+            let a = CGFloat(hexNumber & 0x000F) / 15.0
+            return NSColor(red: r, green: g, blue: b, alpha: a)
 
         case 6:
             // #RRGGBB
@@ -72,7 +98,52 @@ extension NSColor {
             return NSColor(red: r, green: g, blue: b, alpha: a)
 
         default:
-            return .clear
+            warnInvalid(hex)
+            return nil
         }
+    }
+
+    // MARK: - Functional notation parser
+
+    /// Parses `rgb(r, g, b)` and `rgba(r, g, b, a)`.
+    /// r/g/b are 0...255; alpha is 0...1.
+    private static func parseFunctional(_ input: String) -> NSColor? {
+        guard let open = input.firstIndex(of: "("),
+              let close = input.lastIndex(of: ")"),
+              open < close else { return nil }
+
+        let inner = input[input.index(after: open)..<close]
+        let parts = inner
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+
+        let isRGBA = input.hasPrefix("rgba")
+        let expectedCount = isRGBA ? 4 : 3
+        guard parts.count == expectedCount else { return nil }
+
+        guard let r = Double(parts[0]),
+              let g = Double(parts[1]),
+              let b = Double(parts[2]) else { return nil }
+
+        var alpha = 1.0
+        if isRGBA {
+            guard let a = Double(parts[3]) else { return nil }
+            alpha = a
+        }
+
+        return NSColor(
+            red: CGFloat(r / 255.0),
+            green: CGFloat(g / 255.0),
+            blue: CGFloat(b / 255.0),
+            alpha: CGFloat(max(0, min(1, alpha)))
+        )
+    }
+
+    // MARK: - Invalid input warning
+
+    private static func warnInvalid(_ input: String) {
+        #if DEBUG
+        NSLog("[VueNative macOS] NSColor.fromHex: ignoring invalid color string \"\(input)\"")
+        #endif
     }
 }

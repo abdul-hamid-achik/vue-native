@@ -96,19 +96,29 @@ describe('Bridge resilience', () => {
       ;(globalThis as any).__VN_flushOperations = originalFlush
     })
 
-    it('warns when __VN_flushOperations is not defined', async () => {
+    it('surfaces a bridge:error event and logs when __VN_flushOperations is not defined', async () => {
       const originalFlush = (globalThis as any).__VN_flushOperations
-      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      const bridgeErrors: Array<{ message: string }> = []
+      const unsubscribe = NativeBridge.onGlobalEvent<{ message: string }>('bridge:error', (payload) => {
+        bridgeErrors.push(payload)
+      })
 
       ;(globalThis as any).__VN_flushOperations = undefined
 
       NativeBridge.createNode(1, 'VView')
       await nextTick()
 
+      // Apps can react to a disconnected native runtime via the global event.
+      expect(bridgeErrors.length).toBeGreaterThan(0)
+      expect(bridgeErrors[0].message).toContain('__VN_flushOperations is not registered')
+      // And the failure is logged loudly (throttled) instead of a buried warn.
       expect(consoleSpy).toHaveBeenCalledWith(
         expect.stringContaining('__VN_flushOperations is not registered'),
       )
 
+      unsubscribe()
       consoleSpy.mockRestore()
       ;(globalThis as any).__VN_flushOperations = originalFlush
     })
@@ -174,6 +184,23 @@ describe('Bridge resilience', () => {
 
       expect(caughtError).toBeDefined()
       expect(caughtError!.message).toContain('timed out after 50ms')
+    }, 10_000)
+
+    it('does not reject when timeoutMs is 0 (timeout disabled)', async () => {
+      let caughtError: Error | undefined
+      const promise = NativeBridge.invokeNativeModule('Slow', 'method', [], 0)
+      // Attach a no-op catch immediately to prevent unhandled rejection warning.
+      promise.catch((e: Error) => {
+        caughtError = e
+      })
+
+      await nextTick()
+      // Wait long enough that a small default timeout would have fired.
+      await new Promise(resolve => setTimeout(resolve, 80))
+
+      expect(caughtError).toBeUndefined()
+      // Drop the still-pending callback so it does not leak into other tests.
+      NativeBridge.reset()
     }, 10_000)
 
     it('does not reject if callback resolves before timeout', async () => {

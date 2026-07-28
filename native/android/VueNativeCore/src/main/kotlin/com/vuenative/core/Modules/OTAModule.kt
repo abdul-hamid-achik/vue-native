@@ -2,14 +2,21 @@ package com.vuenative.core
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.util.Base64
+import android.util.Log
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.charset.CodingErrorAction
+import java.security.KeyFactory
 import java.security.MessageDigest
+import java.security.PublicKey
+import java.security.Signature
+import java.security.spec.X509EncodedKeySpec
 import okhttp3.Call
 import okhttp3.Callback
+import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -25,6 +32,8 @@ class OTAModule : NativeModule {
     override val moduleName = "OTA"
 
     companion object {
+        private const val TAG = "VueNative-OTA"
+
         internal const val PREFS_NAME = "vue_native_ota"
         internal const val KEY_CURRENT_VERSION = "vue_native_ota_current_version"
         internal const val KEY_BUNDLE_PATH = "vue_native_ota_bundle_path"
@@ -134,8 +143,18 @@ class OTAModule : NativeModule {
     private var appContext: Context? = null
     private var bridgeRef: NativeBridge? = null
     private var prefs: SharedPreferences? = null
+
+    // OTA only ever talks to HTTPS endpoints (enforced in checkForUpdate /
+    // downloadUpdate). Certificate pinning can be layered on by routing these
+    // calls through HttpModule.client() once pins are configured; it is not wired
+    // here to avoid sharing/tearing down the HttpModule client's dispatcher.
     private val client = OkHttpClient()
     @Volatile private var destroyed = false
+
+    // Optional ECDSA P-256 publisher key. When set, every downloaded bundle must
+    // carry a valid SHA256withECDSA signature or it is rejected. Volatile because
+    // it is written from the invoke thread and read on the OkHttp callback thread.
+    @Volatile private var verifyKey: PublicKey? = null
 
     override fun initialize(context: Context, bridge: NativeBridge) {
         appContext = context.applicationContext
@@ -164,15 +183,29 @@ class OTAModule : NativeModule {
                     }
                 checkForUpdate(serverUrl, preferences, callback)
             }
+            "setVerifyKey" -> {
+                val base64Key = args.getOrNull(0)?.toString()
+                if (base64Key.isNullOrEmpty()) {
+                    callback(null, "setVerifyKey requires a base64 SPKI public key")
+                    return
+                }
+                val error = configureVerifyKey(base64Key)
+                if (error != null) {
+                    callback(null, error)
+                } else {
+                    callback(mapOf("configured" to true), null)
+                }
+            }
             "downloadUpdate" -> {
                 val url = args.getOrNull(0)?.toString()
                 val expectedHash = args.getOrNull(1)?.toString()
                 val version = args.getOrNull(2)?.toString()
+                val signature = args.getOrNull(3)?.toString()
                 if (url == null || expectedHash == null || version == null) {
                     callback(null, "downloadUpdate requires url, SHA-256 hash, and version")
                     return
                 }
-                downloadUpdate(url, expectedHash, version, preferences, callback)
+                downloadUpdate(url, expectedHash, version, signature, preferences, callback)
             }
             "verifyBundle" -> verifyBundle(preferences, callback)
             "cleanupPartialDownload" -> {
@@ -186,6 +219,18 @@ class OTAModule : NativeModule {
         }
     }
 
+    /**
+     * OTA endpoints must be HTTPS. Plain HTTP is permitted only for loopback
+     * hosts (127.0.0.1 / localhost / ::1) so local dev and test fixtures keep
+     * working; loopback traffic never leaves the machine and cannot be
+     * intercepted, so this does not weaken production security.
+     */
+    private fun isAllowedEndpoint(url: HttpUrl): Boolean {
+        if (url.scheme == "https") return true
+        val host = url.host
+        return host == "127.0.0.1" || host == "localhost" || host == "::1"
+    }
+
     private fun checkForUpdate(
         serverUrl: String,
         prefs: SharedPreferences,
@@ -195,8 +240,9 @@ class OTAModule : NativeModule {
             callback(null, "OTA not initialized")
             return
         }
-        val url = serverUrl.toHttpUrlOrNull() ?: run {
-            callback(null, "Invalid update server URL; expected HTTP or HTTPS")
+        val url = serverUrl.toHttpUrlOrNull()
+        if (url == null || !isAllowedEndpoint(url)) {
+            callback(null, "OTA requires HTTPS; refusing insecure update server URL: $serverUrl")
             return
         }
         val currentVersion = if (activeBundleFile(context) == null) {
@@ -254,6 +300,7 @@ class OTAModule : NativeModule {
         url: String,
         expectedHash: String,
         version: String,
+        signature: String?,
         prefs: SharedPreferences,
         callback: (Any?, String?) -> Unit,
     ) {
@@ -261,8 +308,9 @@ class OTAModule : NativeModule {
             callback(null, "OTA not initialized")
             return
         }
-        val downloadUrl = url.toHttpUrlOrNull() ?: run {
-            callback(null, "Invalid bundle URL; expected HTTP or HTTPS")
+        val downloadUrl = url.toHttpUrlOrNull()
+        if (downloadUrl == null || !isAllowedEndpoint(downloadUrl)) {
+            callback(null, "OTA requires HTTPS; refusing insecure bundle URL: $url")
             return
         }
         val normalizedHash = expectedHash.trim().lowercase()
@@ -339,6 +387,16 @@ class OTAModule : NativeModule {
                             return
                         }
 
+                        // Publisher authentication. Runs after the integrity hash
+                        // so a corrupt bundle is rejected before we spend time on
+                        // signature math; a failure here removes the partial file.
+                        val signatureError = verifySignature(partial, signature)
+                        if (signatureError != null) {
+                            partial.delete()
+                            callback(null, signatureError)
+                            return
+                        }
+
                         if (destination.exists() && validationError(destination, normalizedHash) == null) {
                             partial.delete()
                         } else {
@@ -375,6 +433,56 @@ class OTAModule : NativeModule {
                 }
             }
         })
+    }
+
+    /**
+     * Decode a base64 DER (X.509/SPKI) ECDSA P-256 public key and store it as
+     * the publisher verification key. Returns an error message on failure (and
+     * clears any previously configured key) or null on success.
+     */
+    private fun configureVerifyKey(base64Key: String): String? {
+        return try {
+            val der = Base64.decode(base64Key, Base64.DEFAULT)
+            val spec = X509EncodedKeySpec(der)
+            val keyFactory = KeyFactory.getInstance("EC")
+            verifyKey = keyFactory.generatePublic(spec)
+            null
+        } catch (error: Exception) {
+            verifyKey = null
+            "Invalid ECDSA verify key: ${error.message}"
+        }
+    }
+
+    /**
+     * Verify the downloaded bundle's publisher signature.
+     *
+     * - No verify key configured: integrity hash is the only guarantee; log a
+     *   warning that publisher authentication is disabled and accept the bundle.
+     * - Verify key configured but signature missing/empty: reject.
+     * - Verify key configured and signature present: verify SHA256withECDSA over
+     *   the bundle bytes; reject on any failure or mismatch.
+     *
+     * Returns an error message on rejection, or null when the bundle is accepted.
+     */
+    private fun verifySignature(bundleFile: File, signature: String?): String? {
+        val publicKey = verifyKey
+        if (publicKey == null) {
+            Log.w(TAG, "OTA publisher authentication disabled: no verify key configured")
+            return null
+        }
+        if (signature.isNullOrEmpty()) {
+            return "signature required when a verify key is configured"
+        }
+        return try {
+            val bundleBytes = bundleFile.readBytes()
+            val verifier = Signature.getInstance("SHA256withECDSA")
+            verifier.initVerify(publicKey)
+            verifier.update(bundleBytes)
+            val valid = verifier.verify(Base64.decode(signature, Base64.DEFAULT))
+            if (valid) null else "signature verification failed"
+        } catch (error: Exception) {
+            "signature verification failed: ${error.message}"
+        }
     }
 
     private fun verifyBundle(prefs: SharedPreferences, callback: (Any?, String?) -> Unit) {
@@ -562,6 +670,7 @@ class OTAModule : NativeModule {
         client.connectionPool.evictAll()
         client.dispatcher.executorService.shutdown()
         bridgeRef = null
+        verifyKey = null
         appContext?.let { context ->
             bundleDirectory(context).listFiles { file -> file.name.endsWith(".part") }
                 ?.forEach { it.delete() }

@@ -43,6 +43,16 @@ See the [Components guide](../guide/components.md) for a full comparison table.
 - [VModal](./VModal.md) -- Overlay modal
 - [VErrorBoundary](./VErrorBoundary.md) -- Error boundary
 
+## Transition & State
+- [VTransition](./VTransition.md) -- Native enter/leave animations
+- [KeepAlive](./KeepAlive.md) -- Cache component instances
+- [VSuspense](./VSuspense.md) -- Async component loading states
+
+## Navigation
+- [VNavigationBar](./VNavigationBar.md) -- Screen title and back navigation bar
+- [VTabBar](./VTabBar.md) -- Bottom tab bar navigation
+- [VDrawer](./VDrawer.md) -- Side menu drawer navigation
+
 ## System
 - [VStatusBar](./VStatusBar.md) -- Status bar control
 - [VPicker](./VPicker.md) -- Date/time picker

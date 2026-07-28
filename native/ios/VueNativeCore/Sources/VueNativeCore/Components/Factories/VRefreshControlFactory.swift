@@ -64,7 +64,9 @@ final class VRefreshControlFactory: NativeComponentFactory {
 
         case "tintColor":
             if let hex = value as? String {
-                refreshControl.tintColor = UIColor.fromHex(hex)
+                if let color = UIColor.fromHex(hex) {
+                    refreshControl.tintColor = color
+                }
             } else {
                 refreshControl.tintColor = nil
             }

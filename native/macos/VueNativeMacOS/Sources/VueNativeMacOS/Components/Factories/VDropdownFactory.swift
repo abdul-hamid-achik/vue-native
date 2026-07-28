@@ -82,7 +82,9 @@ final class VDropdownFactory: NativeComponentFactory {
 
         case "tintColor":
             if let colorStr = value as? String {
-                popup.contentTintColor = NSColor.fromHex(colorStr)
+                if let color = NSColor.fromHex(colorStr) {
+                    popup.contentTintColor = color
+                }
             } else {
                 popup.contentTintColor = nil
             }

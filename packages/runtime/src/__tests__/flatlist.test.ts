@@ -207,4 +207,21 @@ describe('VFlatList', () => {
     const heightOp = ops.find((o: any) => o.args[1]?.height === 500)
     expect(heightOp).toBeDefined()
   })
+
+  it('infers the item type from data (type-level)', () => {
+    interface Item { id: number, title: string }
+    // Type-level only: this function is never invoked at runtime. If VFlatList
+    // were not generic, `item` would be `unknown` and `item.title` would not
+    // type-check, failing `tsc`.
+    function typeCheck() {
+      const data: Item[] = [{ id: 1, title: 'hi' }]
+      return VFlatList({
+        data,
+        itemHeight: 40,
+        renderItem: ({ item }) => h('VText', {}, item.title),
+        keyExtractor: item => String(item.id),
+      })
+    }
+    expect(typeof typeCheck).toBe('function')
+  })
 })

@@ -48,6 +48,8 @@ All composables are exported from `@thelacanians/vue-native-runtime`.
 - [useShare](./useShare.md) -- Native share sheet
 - [useLinking](./useLinking.md) -- Open URLs
 - [useAnimation](./useAnimation.md) -- Timing and spring animations
+- [useGesture](./useGesture.md) -- Touch and mouse gesture handling
+- [useTeleport](./useTeleport.md) -- Programmatic node teleportation
 - [useNotifications](./useNotifications.md) -- Local notifications
 - [useI18n](./useI18n.md) -- Locale and RTL detection
 - [usePerformance](./usePerformance.md) -- FPS, memory, and bridge metrics

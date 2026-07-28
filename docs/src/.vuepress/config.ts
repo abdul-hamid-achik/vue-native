@@ -1,6 +1,7 @@
 import { defineUserConfig } from 'vuepress'
 import { defaultTheme } from '@vuepress/theme-default'
 import { viteBundler } from '@vuepress/bundler-vite'
+import { searchPlugin } from '@vuepress/plugin-search'
 
 export default defineUserConfig({
   lang: 'en-US',
@@ -8,6 +9,12 @@ export default defineUserConfig({
   description: 'Build native iOS, Android, and macOS apps with Vue 3.',
 
   bundler: viteBundler(),
+
+  plugins: [
+    searchPlugin({
+      maxSuggestions: 10,
+    }),
+  ],
 
   head: [
     ['link', { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' }],
@@ -59,6 +66,7 @@ export default defineUserConfig({
             '/guide/components.md',
             '/guide/styling.md',
             '/guide/navigation.md',
+            '/guide/navigation-components.md',
             '/guide/native-modules.md',
             '/guide/native-blocks.md',
             '/guide/hot-reload.md',
@@ -184,6 +192,7 @@ export default defineUserConfig({
           children: [
             '/components/VNavigationBar.md',
             '/components/VTabBar.md',
+            '/components/VDrawer.md',
           ],
         },
         {
@@ -271,6 +280,7 @@ export default defineUserConfig({
             '/composables/useLinking.md',
             '/composables/useAnimation.md',
             '/composables/useGesture.md',
+            '/composables/useTeleport.md',
             '/composables/useNotifications.md',
             '/composables/useI18n.md',
             '/composables/usePerformance.md',

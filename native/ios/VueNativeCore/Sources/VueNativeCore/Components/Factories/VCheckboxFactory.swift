@@ -63,8 +63,7 @@ final class VCheckboxFactory: NativeComponentFactory {
             stack.isUserInteractionEnabled = !disabled
             stack.alpha = disabled ? 0.4 : 1.0
         case "checkColor", "tintColor":
-            if let colorStr = value as? String, let cb = checkbox {
-                let color = UIColor.fromHex(colorStr)
+            if let colorStr = value as? String, let cb = checkbox, let color = UIColor.fromHex(colorStr) {
                 cb.tintColor = color
                 let checked = (objc_getAssociatedObject(view, &checkboxValueKey) as? Bool) ?? false
                 updateCheckboxImage(cb, checked: checked, tintColor: color)

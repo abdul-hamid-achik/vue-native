@@ -10,6 +10,7 @@
   "devDependencies": {
     "@vercel/analytics": "^2.0.1",
     "@vuepress/bundler-vite": "2.0.0-rc.26",
+    "@vuepress/plugin-search": "2.0.0-rc.123",
     "@vuepress/theme-default": "2.0.0-rc.123",
     "sass-embedded": "^1.97.3",
     "vue": "3.5.40",
