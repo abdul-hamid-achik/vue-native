@@ -1080,6 +1080,39 @@ public final class NativeBridge {
         return viewRegistry.count
     }
 
+    /// Build a JSON-serializable snapshot of the current native view tree.
+    ///
+    /// Used by the Inspector devtools module to expose the live hierarchy to
+    /// JavaScript. Each node carries its bridge node id, the component type it
+    /// was created from, its current `frame`, and its ordered children. Roots
+    /// are the registered nodes that have no parent (typically the `__ROOT__`
+    /// view). Must be called on the main thread because it reads the
+    /// main-thread-only registries.
+    func dumpViewTree() -> [[String: Any]] {
+        dispatchPrecondition(condition: .onQueue(.main))
+        let roots = viewRegistry.keys
+            .filter { nodeParent[$0] == nil }
+            .sorted()
+        return roots.map { viewTreeNode(for: $0) }
+    }
+
+    /// Recursively build the dictionary representation of a single node.
+    private func viewTreeNode(for nodeId: Int) -> [String: Any] {
+        let frame = viewRegistry[nodeId]?.frame ?? .zero
+        let children = childrenOf[nodeId, default: []].map { viewTreeNode(for: $0) }
+        return [
+            "id": nodeId,
+            "type": typeRegistry[nodeId] ?? "Unknown",
+            "frame": [
+                "x": frame.origin.x,
+                "y": frame.origin.y,
+                "width": frame.size.width,
+                "height": frame.size.height,
+            ],
+            "children": children,
+        ]
+    }
+
     // MARK: - Hot Reload
 
     /// Reload the app with a new JavaScript bundle string.

@@ -5,8 +5,11 @@ import FlexLayout
 /// Protocol that all native component factories must implement.
 /// Each factory knows how to create a UIView, update its properties,
 /// and wire up event listeners for a specific component type.
+///
+/// Public so host applications can provide custom components via
+/// ``VueNativeViewController/registerComponent(_:factory:)``.
 @MainActor
-protocol NativeComponentFactory {
+public protocol NativeComponentFactory {
 
     /// Create a new UIView instance for this component type.
     /// The view should be configured with sensible defaults and FlexLayout enabled.
@@ -40,15 +43,15 @@ protocol NativeComponentFactory {
 
 // Default implementation for optional methods
 extension NativeComponentFactory {
-    func removeEventListener(view: UIView, event: String) {
+    public func removeEventListener(view: UIView, event: String) {
         // Default no-op. Factories can override to clean up specific listeners.
     }
 
-    func destroyView(view: UIView) {
+    public func destroyView(view: UIView) {
         // Default no-op. Factories can override to release per-view resources.
     }
 
-    func insertChild(_ child: UIView, into parent: UIView, before anchor: UIView?) {
+    public func insertChild(_ child: UIView, into parent: UIView, before anchor: UIView?) {
         if let anchor = anchor, let idx = parent.subviews.firstIndex(of: anchor) {
             parent.flex.addItem(child)
             // Move to correct position after adding
@@ -58,7 +61,7 @@ extension NativeComponentFactory {
         }
     }
 
-    func removeChild(_ child: UIView, from parent: UIView) {
+    public func removeChild(_ child: UIView, from parent: UIView) {
         child.removeFromSuperview()
     }
 }

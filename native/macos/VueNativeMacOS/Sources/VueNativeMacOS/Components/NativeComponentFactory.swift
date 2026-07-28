@@ -3,8 +3,11 @@ import AppKit
 /// Protocol that all native component factories must implement.
 /// Each factory knows how to create an NSView, update its properties,
 /// and wire up event listeners for a specific component type.
+///
+/// Public so apps can register custom components via
+/// `VueNativeWindowController.registerComponent(_:factory:)`.
 @MainActor
-protocol NativeComponentFactory {
+public protocol NativeComponentFactory {
 
     /// Create a new NSView instance for this component type.
     /// The view should be configured with sensible defaults and a LayoutNode.
@@ -37,7 +40,7 @@ protocol NativeComponentFactory {
 }
 
 // Default implementation for optional methods
-extension NativeComponentFactory {
+public extension NativeComponentFactory {
     func removeEventListener(view: NSView, event: String) {
         // Default no-op. Factories can override to clean up specific listeners.
     }

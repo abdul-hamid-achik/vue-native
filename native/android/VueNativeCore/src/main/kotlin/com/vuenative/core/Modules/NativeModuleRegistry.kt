@@ -122,6 +122,8 @@ class NativeModuleRegistry private constructor(private val context: Context) {
             BluetoothModule(),
             CalendarModule(),
             ContactsModule(),
+            InspectorModule(),
+            ImagePickerModule(),
         ).forEach { module -> registerAndInitialize(module, bridge, hostContext) }
 
         // Register generated modules from <native> blocks

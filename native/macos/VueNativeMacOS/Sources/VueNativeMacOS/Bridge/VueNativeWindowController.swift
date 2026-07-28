@@ -27,6 +27,22 @@ open class VueNativeWindowController: NSWindowController {
     /// Return `nil` (the default) to disable hot reload and load only from the bundle.
     open var devServerURL: URL? { nil }
 
+    // MARK: - Custom component registration (escape hatch)
+
+    /// Register a custom component factory under a component type name.
+    ///
+    /// Escape hatch for apps that need a native component not provided by
+    /// Vue Native. Once registered, the component can be used from JS like any
+    /// built-in (for example `h('MyComponent')`). Call this on the main thread
+    /// before the bundle loads so the factory is available when views are created.
+    ///
+    /// - Parameters:
+    ///   - name: The component type string (e.g. `"MyComponent"`).
+    ///   - factory: The factory that creates and configures the native view.
+    public static func registerComponent(_ name: String, factory: NativeComponentFactory) {
+        ComponentRegistry.shared.register(name, factory: factory)
+    }
+
     // MARK: - Private state
 
     private let runtime = JSRuntime.shared

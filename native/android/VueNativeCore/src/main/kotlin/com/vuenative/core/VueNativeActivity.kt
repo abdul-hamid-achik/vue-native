@@ -46,6 +46,25 @@ abstract class VueNativeActivity : AppCompatActivity() {
      */
     protected open fun createNativeModules(): List<NativeModule> = emptyList()
 
+    /**
+     * Escape hatch: register a custom component factory under [name] so Vue
+     * `create` operations for that type instantiate it. Backed by the process-wide
+     * [ComponentRegistry], so the registration is visible to every bridge in the
+     * process. A factory registered with an existing type name replaces it.
+     *
+     * ```kotlin
+     * class MainActivity : VueNativeActivity() {
+     *     override fun onCreate(savedInstanceState: Bundle?) {
+     *         registerComponent("MyChart", MyChartFactory())
+     *         super.onCreate(savedInstanceState)
+     *     }
+     * }
+     * ```
+     */
+    fun registerComponent(name: String, factory: NativeComponentFactory) {
+        ComponentRegistry.getInstance(this).register(name, factory)
+    }
+
     protected lateinit var runtime: JSRuntime
     private lateinit var rootContainer: FrameLayout
     private var hotReloadManager: HotReloadManager? = null
@@ -84,6 +103,7 @@ abstract class VueNativeActivity : AppCompatActivity() {
         // Provide Activity reference for modules that need it (e.g. PermissionsModule)
         PermissionsModule.setActivity(this)
         BackHandlerModule.setActivity(this)
+        ImagePickerModule.setActivity(this)
 
         // Capture launch intent deep link URL for the LinkingModule
         intent?.data?.toString()?.let { url ->
@@ -242,9 +262,16 @@ abstract class VueNativeActivity : AppCompatActivity() {
         )
     }
 
+    @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        ImagePickerModule.onActivityResult(requestCode, resultCode, data)
+    }
+
     override fun onDestroy() {
         PermissionsModule.clearActivity(this)
         BackHandlerModule.clearActivity(this)
+        ImagePickerModule.clearActivity(this)
         hotReloadManager?.disconnect()
         if (::runtime.isInitialized) {
             runtime.bridge.destroyHost()

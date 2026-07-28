@@ -72,7 +72,9 @@ final class NativeModuleRegistry {
         register(BluetoothModule(bridge: bridge))
         register(CalendarModule())
         register(ContactsModule())
-        
+        register(InspectorModule(bridge: bridge))
+        register(ImagePickerModule())
+
         // Register generated modules from <native> blocks
         registerGeneratedModules()
     }

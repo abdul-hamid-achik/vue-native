@@ -236,11 +236,13 @@ export {
   VTabBar, VToolbar, VSplitView, VOutlineView,
   VDrawer, VDrawerItem, VDrawerSection,
   VTransition, VTransitionGroup, KeepAlive, VSuspense, defineAsyncComponent,
+  createNativeComponent,
   builtInComponents,
 } from './components'
 export type { ImageSource } from './components'
 export type { SVGSource } from './components'
 export type { VSectionListSection } from './components'
+export type { ViewTreeNode, PickedImage } from './composables'
 export type { TabConfig } from './components/VTabBar'
 export type {
   AlertButton, StatusBarStyle, WebViewSource, ActionSheetAction,
@@ -257,7 +259,7 @@ export { vModel } from './directives/vModel'
 
 // Composables (native module wrappers)
 export {
-  useHaptics, useAsyncStorage, useClipboard, useAccessibility, useBattery, useDeviceInfo, useKeyboard,
+  useHaptics, useAsyncStorage, useClipboard, useAccessibility, useBattery, useInspector, useImagePicker, useDeviceInfo, useKeyboard,
   useAnimation, Easing, useNetwork, useAppState, useLinking, useShare, usePermissions,
   useGeolocation, useCamera, useNotifications, useBiometry, useHttp,
   useColorScheme, useBackHandler, useSecureStorage, useI18n,

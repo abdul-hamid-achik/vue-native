@@ -165,7 +165,8 @@ public final class NativeBridge: @preconcurrency NativeEventDispatcher {
         // a view lookup closure for modules that need to reference views (e.g. Animation).
         NativeModuleRegistry.shared.registerDefaults(
             dispatcher: self,
-            viewLookup: { [weak self] nodeId in self?.view(forId: nodeId) }
+            viewLookup: { [weak self] nodeId in self?.view(forId: nodeId) },
+            nodeSnapshot: { [weak self] in self?.inspectionSnapshot() ?? [] }
         )
     }
 
@@ -932,6 +933,17 @@ public final class NativeBridge: @preconcurrency NativeEventDispatcher {
 
     public var registeredViewCount: Int {
         return viewRegistry.count
+    }
+
+    /// Snapshot of every registered node (id, component type, view) for devtools
+    /// inspection. Nodes without a recorded type are omitted. Must be called on
+    /// the main thread.
+    func inspectionSnapshot() -> [(id: Int, type: String, view: NSView)] {
+        dispatchPrecondition(condition: .onQueue(.main))
+        return viewRegistry.compactMap { nodeId, view in
+            guard let type = typeRegistry[nodeId] else { return nil }
+            return (id: nodeId, type: type, view: view)
+        }
     }
 
     // MARK: - Hot Reload

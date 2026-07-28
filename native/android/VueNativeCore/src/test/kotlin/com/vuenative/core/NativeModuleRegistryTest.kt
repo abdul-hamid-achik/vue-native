@@ -246,6 +246,8 @@ class NativeModuleRegistryTest {
         assertNotNull("Animation module should be registered", registry.getModule("Animation"))
         assertNotNull("Http module should be registered", registry.getModule("Http"))
         assertNotNull("BackHandler module should be registered", registry.getModule("BackHandler"))
+        assertNotNull("Inspector module should be registered", registry.getModule("Inspector"))
+        assertNotNull("ImagePicker module should be registered", registry.getModule("ImagePicker"))
 
         val custom = MockNativeModule("OwnedByFirstBridge")
         registry.register(custom)

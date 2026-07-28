@@ -47,6 +47,35 @@ open class VueNativeViewController: UIViewController {
     /// Example: `URL(string: "ws://localhost:8174")`
     open var devServerURL: URL? { nil }
 
+    // MARK: - Custom component registration
+
+    /// Register a custom component factory under a component type name.
+    ///
+    /// This is the escape hatch that lets a host application render native
+    /// components the framework does not ship with. Once registered, a
+    /// `createNativeComponent('Foo')` call on the JS side (i.e. a `<Foo>`
+    /// element in a Vue SFC) is created through `factory` by the bridge like
+    /// any built-in component. Replaces any factory previously registered for
+    /// `name`.
+    ///
+    /// Registration is process-wide and must happen on the main thread, ideally
+    /// before the JS bundle mounts (for example in `viewDidLoad` before calling
+    /// `super`, or at app launch).
+    ///
+    /// ```swift
+    /// final class MapFactory: NativeComponentFactory {
+    ///     func createView() -> UIView { MKMapView() }
+    ///     func updateProp(view: UIView, key: String, value: Any?) { /* ... */ }
+    ///     func addEventListener(view: UIView, event: String, handler: @escaping (Any?) -> Void) { /* ... */ }
+    /// }
+    ///
+    /// VueNativeViewController.registerComponent("VMap", factory: MapFactory())
+    /// ```
+    @MainActor
+    public static func registerComponent(_ name: String, factory: NativeComponentFactory) {
+        ComponentRegistry.shared.register(name, factory: factory)
+    }
+
     // MARK: - Private state
 
     private let runtime = JSRuntime.shared

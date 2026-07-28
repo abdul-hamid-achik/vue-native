@@ -29,7 +29,11 @@ final class NativeModuleRegistry {
     }
 
     /// Register all built-in macOS modules.
-    func registerDefaults(dispatcher: NativeEventDispatcher, viewLookup: @escaping (Int) -> NSView?) {
+    func registerDefaults(
+        dispatcher: NativeEventDispatcher,
+        viewLookup: @escaping (Int) -> NSView?,
+        nodeSnapshot: @escaping () -> [(id: Int, type: String, view: NSView)] = { [] }
+    ) {
         // Reinitialization must produce an exact registry snapshot. Clearing
         // first releases old host-bound modules and removes generated modules
         // that no longer exist in the current generated registry.
@@ -60,6 +64,8 @@ final class NativeModuleRegistry {
         register(MenuModule(dispatcher: dispatcher))
         register(FileDialogModule())
         register(DragDropModule(dispatcher: dispatcher))
+        register(ImagePickerModule())
+        register(InspectorModule(nodeSnapshot: nodeSnapshot))
 
         // Additional cross-platform modules
         register(CameraModule())

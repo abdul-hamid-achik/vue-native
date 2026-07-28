@@ -29,6 +29,7 @@ All composables are exported from `@thelacanians/vue-native-runtime`.
 
 ## Media
 - [useCamera](./useCamera.md) -- Camera + photo library picker
+- [useImagePicker](./useImagePicker.md) -- Photo picker (returns a picked image)
 - [useAudio](./useAudio.md) -- Audio playback and recording
 - [useCalendar](./useCalendar.md) -- Calendar events
 - [useContacts](./useContacts.md) -- Contacts access
@@ -55,6 +56,7 @@ All composables are exported from `@thelacanians/vue-native-runtime`.
 - [useNotifications](./useNotifications.md) -- Local notifications
 - [useI18n](./useI18n.md) -- Locale and RTL detection
 - [usePerformance](./usePerformance.md) -- FPS, memory, and bridge metrics
+- [useInspector](./useInspector.md) -- Dump the native view tree (devtools)
 
 ## Authentication
 - [useAppleSignIn](./useAppleSignIn.md) -- Sign in with Apple

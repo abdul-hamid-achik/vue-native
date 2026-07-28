@@ -218,6 +218,50 @@ describe('Composables', () => {
   })
 
   // ---------------------------------------------------------------------------
+  // useInspector
+  // ---------------------------------------------------------------------------
+  describe('useInspector', () => {
+    it('dumpTree calls Inspector.dumpTree and returns the tree', async () => {
+      const tree = { id: 1, type: 'VView', children: [] }
+      invokeModuleSpy.mockResolvedValueOnce(tree)
+      const { useInspector } = await import('../composables/useInspector')
+      const { dumpTree } = useInspector()
+      const result = await dumpTree()
+      expect(invokeModuleSpy).toHaveBeenCalledWith('Inspector', 'dumpTree', [])
+      expect(result).toEqual(tree)
+    })
+
+    it('dumpTree returns null when the module fails', async () => {
+      invokeModuleSpy.mockRejectedValueOnce(new Error('no module'))
+      const { useInspector } = await import('../composables/useInspector')
+      const { dumpTree } = useInspector()
+      expect(await dumpTree()).toBeNull()
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // useImagePicker
+  // ---------------------------------------------------------------------------
+  describe('useImagePicker', () => {
+    it('pickImage calls ImagePicker.pickImage and returns the photo', async () => {
+      const photo = { uri: 'file:///tmp/photo.jpg', width: 100, height: 200 }
+      invokeModuleSpy.mockResolvedValueOnce(photo)
+      const { useImagePicker } = await import('../composables/useImagePicker')
+      const { pickImage } = useImagePicker()
+      const result = await pickImage()
+      expect(invokeModuleSpy).toHaveBeenCalledWith('ImagePicker', 'pickImage', [{}])
+      expect(result).toEqual(photo)
+    })
+
+    it('pickImage returns null when cancelled', async () => {
+      invokeModuleSpy.mockResolvedValueOnce(null)
+      const { useImagePicker } = await import('../composables/useImagePicker')
+      const { pickImage } = useImagePicker()
+      expect(await pickImage()).toBeNull()
+    })
+  })
+
+  // ---------------------------------------------------------------------------
   // useAnimation
   // ---------------------------------------------------------------------------
   describe('useAnimation', () => {

@@ -81,6 +81,7 @@ export default defineUserConfig({
             '/guide/forms.md',
             '/guide/shared-transitions.md',
             '/guide/teleport.md',
+            '/guide/native-components.md',
           ],
         },
         {
@@ -261,6 +262,7 @@ export default defineUserConfig({
           text: 'Media',
           children: [
             '/composables/useCamera.md',
+            '/composables/useImagePicker.md',
             '/composables/useAudio.md',
             '/composables/useCalendar.md',
             '/composables/useContacts.md',
@@ -300,6 +302,7 @@ export default defineUserConfig({
             '/composables/useNotifications.md',
             '/composables/useI18n.md',
             '/composables/usePerformance.md',
+            '/composables/useInspector.md',
           ],
         },
         {

@@ -1623,4 +1623,20 @@ describe('Components', () => {
       expect(visibleIndex).toBeGreaterThan(cancelHandlerIndex)
     })
   })
+
+  // ---------------------------------------------------------------------------
+  // createNativeComponent (escape hatch)
+  // ---------------------------------------------------------------------------
+  describe('createNativeComponent', () => {
+    it('renders the named intrinsic element with forwarded attrs', async () => {
+      const { createNativeComponent } = await import('../components/createNativeComponent')
+      const VMapGL = createNativeComponent('MapGL')
+      renderComponent(createVNode(VMapGL, { region: 'us' }))
+      await nextTick()
+      const ops = mockBridge.getOpsByType('create')
+      expect(ops.some(o => o.args[1] === 'MapGL')).toBe(true)
+      const propOps = mockBridge.getOpsByType('updateProp')
+      expect(propOps.find(o => o.args[1] === 'region')?.args[2]).toBe('us')
+    })
+  })
 })
