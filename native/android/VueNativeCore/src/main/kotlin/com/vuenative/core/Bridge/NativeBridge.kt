@@ -544,12 +544,7 @@ class NativeBridge(private val context: Context) {
         }
 
         val handler: (Any?) -> Unit = { payload ->
-            val payloadJson = when (payload) {
-                null -> "null"
-                is Map<*, *> -> JSONObject(payload).toString()
-                is String -> JSONObject.quote(payload)
-                else -> payload.toString()
-            }
+            val payloadJson = serializePayloadToJson(payload)
             onFireEvent?.invoke(nodeId, eventName, payloadJson)
         }
 
@@ -581,15 +576,7 @@ class NativeBridge(private val context: Context) {
             moduleName, methodName, moduleArgs, this
         ) { result, error ->
             if (callbackId >= 0) {
-                val resultJson = when (result) {
-                    null -> "null"
-                    is Map<*, *> -> JSONObject(result).toString()
-                    is List<*> -> JSONArray(result).toString()
-                    is String -> JSONObject.quote(result)
-                    is Boolean -> result.toString()
-                    is Number -> result.toString()
-                    else -> result.toString()
-                }
+                val resultJson = serializePayloadToJson(result)
                 val errorJson = if (error != null) JSONObject.quote(error) else "null"
                 mainHandler.post {
                     if (!isActive || nativeCallbackGeneration != originatingGeneration) {
@@ -642,6 +629,79 @@ class NativeBridge(private val context: Context) {
             }
         }
         else -> value
+    }
+
+    /**
+     * Serialize an arbitrary event/module payload into a canonical JSON string
+     * that is safe to interpolate directly into executable JavaScript.
+     *
+     * The bridge embeds this value verbatim into `__VN_handleEvent(...)` and
+     * native-module callback envelopes, so it must always be valid JSON. Maps
+     * and collections are serialized recursively; primitives use their JSON
+     * literal form; strings and any otherwise non-serializable value are quoted
+     * via [JSONObject.quote] so their contents can never escape the JSON value
+     * and inject code. A raw `toString()` is deliberately never concatenated
+     * unescaped.
+     */
+    private fun serializePayloadToJson(payload: Any?): String = try {
+        when (payload) {
+            null -> "null"
+            is JSONObject -> payload.toString()
+            is JSONArray -> payload.toString()
+            is Map<*, *>, is Collection<*>, is Array<*> -> jsonWrap(payload).toString()
+            is Boolean -> payload.toString()
+            is Number -> numberToJsonLiteral(payload)
+            is String -> JSONObject.quote(payload)
+            else -> JSONObject.quote(payload.toString())
+        }
+    } catch (e: Exception) {
+        JSONObject.quote(payload.toString())
+    }
+
+    /**
+     * Recursively convert a Kotlin value into an org.json-friendly value
+     * (JSONObject/JSONArray/primitive). Unknown types degrade to their string
+     * representation, which org.json renders as a quoted JSON string rather than
+     * raw JavaScript.
+     */
+    private fun jsonWrap(value: Any?): Any = when (value) {
+        null -> JSONObject.NULL
+        is JSONObject -> value
+        is JSONArray -> value
+        is Map<*, *> -> JSONObject().apply {
+            for ((key, item) in value) {
+                if (key != null) {
+                    put(key.toString(), jsonWrap(item))
+                }
+            }
+        }
+        is Collection<*> -> JSONArray().apply {
+            for (item in value) {
+                put(jsonWrap(item))
+            }
+        }
+        is Array<*> -> JSONArray().apply {
+            for (item in value) {
+                put(jsonWrap(item))
+            }
+        }
+        is Boolean -> value
+        is Number -> {
+            val double = value.toDouble()
+            if (double.isNaN() || double.isInfinite()) value.toString() else value
+        }
+        is String -> value
+        else -> value.toString()
+    }
+
+    /** Render a number as a JSON numeric literal, quoting non-finite values. */
+    private fun numberToJsonLiteral(value: Number): String {
+        val double = value.toDouble()
+        return if (double.isNaN() || double.isInfinite()) {
+            JSONObject.quote(value.toString())
+        } else {
+            value.toString()
+        }
     }
 
     // -------------------------------------------------------------------------

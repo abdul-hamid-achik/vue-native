@@ -114,14 +114,14 @@ export const runCommand = new Command('run')
   .argument('<platform>', 'platform to run on (ios, android, macos)')
   .option('--device', 'run on physical device instead of simulator')
   .option('--scheme <scheme>', 'Xcode scheme to build')
-  .option('--simulator <name>', 'simulator name', 'iPhone 16')
+  .option('--simulator <name>', 'simulator name (auto-detected when omitted)')
   .option('--bundle-id <id>', 'app bundle identifier')
   .option('--package <name>', 'Android package name (auto-detected from app/build.gradle when omitted)')
   .option('--activity <name>', 'Android activity name', '.MainActivity')
   .action(async (platform: string, options: {
     device?: boolean
     scheme?: string
-    simulator: string
+    simulator?: string
     bundleId?: string
     package?: string
     activity: string
@@ -163,12 +163,37 @@ export const runCommand = new Command('run')
     }
   })
 
+/**
+ * Pick an iOS simulator: prefer one already booted, otherwise the first
+ * available iPhone, otherwise any available device. Returns null if none exist.
+ */
+function detectIOSSimulator(): string | null {
+  try {
+    const output = execFileSync(
+      'xcrun',
+      ['simctl', 'list', 'devices', 'available', '--json'],
+      { stdio: 'pipe' },
+    ).toString()
+    const data = JSON.parse(output) as {
+      devices: Record<string, Array<{ name: string, state: string }>>
+    }
+    const all = Object.values(data.devices).flat()
+    const booted = all.find(d => d.state === 'Booted')
+    if (booted) return booted.name
+    const iphone = all.find(d => d.name.includes('iPhone'))
+    if (iphone) return iphone.name
+    return all[0]?.name ?? null
+  } catch {
+    return null
+  }
+}
+
 async function runIOS(
   cwd: string,
   options: {
     device?: boolean
     scheme?: string
-    simulator: string
+    simulator?: string
     bundleId?: string
   },
 ): Promise<void> {
@@ -184,13 +209,17 @@ async function runIOS(
 
   // Build with xcodebuild
   const scheme = options.scheme || project.path.split('/').pop()?.replace(/\.(xcworkspace|xcodeproj)$/, '') || 'App'
+  const simulatorName = options.simulator ?? detectIOSSimulator()
+  if (!options.device && !simulatorName) {
+    throw new ConfigError('No iOS simulator found. Create one in Xcode or pass --simulator <name>.')
+  }
   const destination = options.device
     ? 'generic/platform=iOS'
-    : `platform=iOS Simulator,name=${options.simulator}`
+    : `platform=iOS Simulator,name=${simulatorName}`
 
   const projectFlag = project.isWorkspace ? '-workspace' : '-project'
 
-  console.log(pc.white(`  Building ${scheme} for ${options.device ? 'device' : options.simulator}...`))
+  console.log(pc.white(`  Building ${scheme} for ${options.device ? 'device' : simulatorName}...`))
 
   let result
   try {
@@ -236,7 +265,9 @@ async function runIOS(
   }
 
   // Launch on simulator
-  const simulatorName = options.simulator
+  if (!simulatorName) {
+    throw new ConfigError('No iOS simulator found. Create one in Xcode or pass --simulator <name>.')
+  }
   const bundleId = options.bundleId || readBundleId(join(cwd, 'ios'))
   validateAppleBundleId(bundleId)
 

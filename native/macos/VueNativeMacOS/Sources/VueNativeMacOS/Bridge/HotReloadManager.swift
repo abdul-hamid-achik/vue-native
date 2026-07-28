@@ -19,10 +19,33 @@ public final class HotReloadManager: NSObject, URLSessionWebSocketDelegate {
     private var serverURL: URL?
     private var isConnecting = false
     private var reconnectAttempts = 0
-    private let maxReconnectAttempts = 10
+
+    /// Exponential backoff bounds for reconnection. The manager retries
+    /// indefinitely while `serverURL` is set (matching Android), so a dev
+    /// server that is down for more than a few seconds never kills hot reload
+    /// silently -- it just keeps probing with a capped delay.
+    private static let baseReconnectDelay: TimeInterval = 1.0
+    private static let maxReconnectDelay: TimeInterval = 30.0
 
     private override init() {
         super.init()
+    }
+
+    /// Exponential backoff delay for a given reconnect attempt (1-based).
+    /// Produces `base, 2*base, 4*base, ...` capped at `max`:
+    /// 1s, 2s, 4s, 8s, 16s, 30s, 30s, ... There is no attempt limit -- the
+    /// caller retries forever while a server URL is configured.
+    static func reconnectDelay(
+        forAttempt attempt: Int,
+        base: TimeInterval = baseReconnectDelay,
+        max: TimeInterval = maxReconnectDelay
+    ) -> TimeInterval {
+        guard attempt > 1 else { return base }
+        let exponent = Double(attempt - 1)
+        // Double overflows to .infinity well past any realistic attempt count,
+        // but guard explicitly so the result is always a finite, capped delay.
+        guard exponent < 63 else { return max }
+        return Swift.min(base * pow(2.0, exponent), max)
     }
 
     // MARK: - Public API
@@ -128,14 +151,13 @@ public final class HotReloadManager: NSObject, URLSessionWebSocketDelegate {
     private func scheduleReconnect() {
         guard serverURL != nil else { return }
         reconnectAttempts += 1
-        if reconnectAttempts > maxReconnectAttempts {
-            NSLog("[VueNative macOS HotReload] Giving up after %d attempts", maxReconnectAttempts)
-            disconnect()
-            return
-        }
         isConnecting = false
-        NSLog("[VueNative macOS HotReload] Reconnecting in 2s... (attempt %d/%d)", reconnectAttempts, maxReconnectAttempts)
-        scheduleConnect(delay: 2.0)
+        // Never give up: retry indefinitely with exponential backoff capped at
+        // maxReconnectDelay, matching Android's behavior. Only disconnect()
+        // (which clears serverURL) stops the reconnect loop.
+        let delay = Self.reconnectDelay(forAttempt: reconnectAttempts)
+        NSLog("[VueNative macOS HotReload] Reconnecting in %.1fs... (attempt %d)", delay, reconnectAttempts)
+        scheduleConnect(delay: delay)
     }
 
     // MARK: - URLSessionWebSocketDelegate

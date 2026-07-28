@@ -287,14 +287,16 @@ final class VVideoFactory: NativeComponentFactory {
         container.playerLayer = nil
     }
 
-    private func applyPlaybackAction(_ action: VideoPlaybackAction, to container: VideoContainerView) {
+    func applyPlaybackAction(_ action: VideoPlaybackAction, to container: VideoContainerView) {
         switch action {
         case .none:
             break
         case .play:
             container.player?.play()
+            fireEvent(for: container, key: &VVideoFactory.onPlayKey, payload: nil)
         case .pause:
             container.player?.pause()
+            fireEvent(for: container, key: &VVideoFactory.onPauseKey, payload: nil)
         }
     }
 
@@ -323,7 +325,7 @@ final class VVideoFactory: NativeComponentFactory {
 // MARK: - VideoContainerView
 
 /// Custom UIView that holds AVPlayerLayer and resizes it on layout.
-private class VideoContainerView: UIView {
+final class VideoContainerView: UIView {
     var player: AVPlayer?
     var playerLayer: AVPlayerLayer?
     var playbackState = VideoPlaybackState()

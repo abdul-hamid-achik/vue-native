@@ -277,9 +277,9 @@ cd docs && bun run build  # VuePress must build without errors
 - `mountElement` → `bridge.enqueue('create', ...)`, `patchProp` → `bridge.enqueue('updateProp', ...)`, etc.
 
 ### Native module callbacks
-- Async modules: JS side calls `invokeNativeModule` with a `callbackId`; native calls back via `nodeId=-1, eventName="__callback__"` with `{ callbackId, result, error }`
-- `bridge.ts` has a **30-second timeout** on all async module calls — do not remove it
-- Sync modules: use `invokeNativeModuleSync` — blocks the JS thread, use sparingly
+- Modules are async: JS side calls `invokeNativeModule<T>` with a `callbackId`; native calls back via `nodeId=-1, eventName="__callback__"` with `{ callbackId, result, error }`. The call returns a `Promise<T>`.
+- `bridge.ts` has a **30-second default timeout** on module calls (pass `timeoutMs: 0` to disable for long-running operations like downloads) — do not remove the default.
+- `invokeNativeModuleSync` is **deprecated**: it cannot return a value through the batched JSON bridge and now aliases the async path. Do not use it; use `invokeNativeModule`.
 
 ### Layout
 - **iOS:** Yoga via `layoutBox/FlexLayout` SPM. Use `view.flex.xxx` to set Yoga props. Call `view.flex.layout(mode:)` to trigger layout. Percentage widths/heights: use `view.flex.width(50%)` (postfix `%` operator, not `FPercent(value:)`).
@@ -350,8 +350,8 @@ Both platforms override `insertChild`/`removeChild` in VListFactory. Item views 
 4. **macOS** — add `native/macos/VueNativeMacOS/Sources/VueNativeMacOS/Modules/<Name>Module.swift`, register in `NativeModuleRegistry.swift`
 5. **Tests** — add test cases in all languages
 5. **Docs** — add `docs/src/composables/use<Name>.md` with API reference; add to sidebar
-6. Async methods: use `invokeNativeModule` (returns a Promise with 30s timeout)
-7. Sync methods: use `invokeNativeModuleSync` only when the result is needed immediately and latency is guaranteed low
+6. All methods are async: use `invokeNativeModule<T>` (returns a `Promise<T>` with a 30s default timeout; pass `timeoutMs: 0` to disable for long operations)
+7. `invokeNativeModuleSync` is deprecated (aliases the async path) — do not use it
 
 ## How to add an example app
 

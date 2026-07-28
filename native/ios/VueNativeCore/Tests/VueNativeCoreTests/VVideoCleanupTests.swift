@@ -62,5 +62,30 @@ final class VVideoCleanupTests: XCTestCase {
 
         XCTAssertFalse(view.layer.sublayers?.contains(where: { $0 is AVPlayerLayer }) == true)
     }
+
+    func testApplyPlaybackActionFiresPlayAndPauseEvents() {
+        let factory = VVideoFactory()
+        let view = factory.createView()
+        guard let container = view as? VideoContainerView else {
+            return XCTFail("VVideoFactory.createView() should return a VideoContainerView")
+        }
+
+        var playCount = 0
+        var pauseCount = 0
+        factory.addEventListener(view: view, event: "play") { _ in playCount += 1 }
+        factory.addEventListener(view: view, event: "pause") { _ in pauseCount += 1 }
+
+        factory.applyPlaybackAction(.play, to: container)
+        XCTAssertEqual(playCount, 1, "a play action should fire the play event")
+        XCTAssertEqual(pauseCount, 0, "a play action should not fire the pause event")
+
+        factory.applyPlaybackAction(.pause, to: container)
+        XCTAssertEqual(pauseCount, 1, "a pause action should fire the pause event")
+        XCTAssertEqual(playCount, 1, "a pause action should not fire the play event")
+
+        factory.applyPlaybackAction(.none, to: container)
+        XCTAssertEqual(playCount, 1, "a none action should not fire any playback event")
+        XCTAssertEqual(pauseCount, 1, "a none action should not fire any playback event")
+    }
 }
 #endif

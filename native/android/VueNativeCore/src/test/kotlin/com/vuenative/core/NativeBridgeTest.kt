@@ -8,6 +8,7 @@ import android.widget.FrameLayout
 import androidx.recyclerview.widget.RecyclerView
 import androidx.test.core.app.ApplicationProvider
 import com.google.android.flexbox.FlexboxLayout
+import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -546,6 +547,82 @@ class NativeBridgeTest {
             "Payload should contain connected",
             capturedPayloadJson.contains("\"connected\"")
         )
+    }
+
+    // -------------------------------------------------------------------------
+    // event payload serialization (must always be valid, injectable-safe JSON)
+    // -------------------------------------------------------------------------
+
+    /** Register a listener and return the bridge-side handler that serializes payloads. */
+    private fun captureEventHandler(nodeId: Int = 1, event: String = "press"): (Any?) -> Unit {
+        bridge.processOperations(
+            """[
+            {"op":"create","args":[$nodeId,"VView"]},
+            {"op":"addEventListener","args":[$nodeId,"$event"]}
+        ]"""
+        )
+        flush()
+        return bridge.eventHandlers["$nodeId:$event"]!!
+    }
+
+    @Test
+    fun testEventListenerSerializesNestedMapAsValidJson() {
+        val handler = captureEventHandler()
+        var captured = ""
+        bridge.onFireEvent = { _, _, payloadJson -> captured = payloadJson }
+
+        handler(mapOf("user" to mapOf("name" to "Ada", "age" to 36), "active" to true))
+
+        val parsed = JSONObject(captured)
+        assertEquals("Ada", parsed.getJSONObject("user").getString("name"))
+        assertEquals(36, parsed.getJSONObject("user").getInt("age"))
+        assertTrue(parsed.getBoolean("active"))
+    }
+
+    @Test
+    fun testEventListenerSerializesListAsJsonArray() {
+        val handler = captureEventHandler()
+        var captured = ""
+        bridge.onFireEvent = { _, _, payloadJson -> captured = payloadJson }
+
+        handler(listOf("one", 2, mapOf("k" to "v")))
+
+        val parsed = JSONArray(captured)
+        assertEquals(3, parsed.length())
+        assertEquals("one", parsed.getString(0))
+        assertEquals(2, parsed.getInt(1))
+        assertEquals("v", parsed.getJSONObject(2).getString("k"))
+    }
+
+    @Test
+    fun testEventListenerEscapesNonStandardPayloadAsString() {
+        val handler = captureEventHandler()
+        var captured = ""
+        bridge.onFireEvent = { _, _, payloadJson -> captured = payloadJson }
+
+        val hostile = object {
+            override fun toString() = "not-json\"); evil();"
+        }
+        handler(hostile)
+
+        // The payload must be a single quoted JSON string, never raw concatenation.
+        val wrapped = JSONArray("[$captured]")
+        assertEquals(1, wrapped.length())
+        assertEquals("not-json\"); evil();", wrapped.getString(0))
+    }
+
+    @Test
+    fun testEventListenerEscapesInjectionAttemptInStringPayload() {
+        val handler = captureEventHandler()
+        var captured = ""
+        bridge.onFireEvent = { _, _, payloadJson -> captured = payloadJson }
+
+        handler("\"); drop();//")
+
+        // A raw concatenation would break JSON parsing; a quoted string survives intact.
+        val wrapped = JSONArray("[$captured]")
+        assertEquals(1, wrapped.length())
+        assertEquals("\"); drop();//", wrapped.getString(0))
     }
 
     // -------------------------------------------------------------------------

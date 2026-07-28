@@ -1261,7 +1261,16 @@ describe('run command', () => {
   beforeEach(() => {
     vi.resetModules()
     mockExecSync.mockReset()
-    mockExecFileSync.mockReset()
+    mockExecFileSync.mockReset().mockImplementation((command: string, args: string[]) => {
+      // Simulator auto-detection: report one available simulator so `run ios`
+      // (without --simulator) can resolve a destination in tests.
+      if (command === 'xcrun' && Array.isArray(args) && args.includes('list') && args.includes('devices')) {
+        return JSON.stringify({
+          devices: { 'iOS-18-0': [{ name: 'iPhone 16', state: 'Shutdown' }] },
+        })
+      }
+      return ''
+    })
     mockSpawn.mockReset().mockImplementation(() => createMockChildProcess())
     mockExistsSync.mockReset().mockReturnValue(false)
     mockReaddirSync.mockReset().mockReturnValue([])

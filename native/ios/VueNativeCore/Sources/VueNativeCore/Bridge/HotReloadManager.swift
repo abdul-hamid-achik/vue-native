@@ -20,7 +20,11 @@ public final class HotReloadManager: NSObject, URLSessionWebSocketDelegate {
     private var serverURL: URL?
     private var isConnecting = false
     private var reconnectAttempts = 0
-    private let maxReconnectAttempts = 10
+
+    /// Delay before the first reconnect attempt.
+    private let baseReconnectDelay: TimeInterval = 1.0
+    /// Upper bound for the exponential backoff between reconnect attempts.
+    private let maxReconnectDelay: TimeInterval = 30.0
 
     override private init() {
         super.init()
@@ -128,17 +132,24 @@ public final class HotReloadManager: NSObject, URLSessionWebSocketDelegate {
 
     // MARK: - Reconnection
 
+    /// Computes the delay before reconnect attempt `attempt` using exponential
+    /// backoff: `baseReconnectDelay` doubled per attempt, capped at
+    /// `maxReconnectDelay`. Reconnection never gives up while `serverURL` is set,
+    /// so the delay simply stays at the cap for large attempt counts (matching
+    /// Android's indefinite-retry behavior).
+    func reconnectDelay(forAttempt attempt: Int) -> TimeInterval {
+        let exponent = max(0, attempt - 1)
+        let delay = baseReconnectDelay * pow(2.0, Double(exponent))
+        return min(delay, maxReconnectDelay)
+    }
+
     private func scheduleReconnect() {
         guard serverURL != nil else { return }
         reconnectAttempts += 1
-        if reconnectAttempts > maxReconnectAttempts {
-            NSLog("[VueNative HotReload] Giving up after %d attempts — start `bun run dev` and relaunch the app", maxReconnectAttempts)
-            disconnect()
-            return
-        }
         isConnecting = false
-        NSLog("[VueNative HotReload] Reconnecting in 2s... (attempt %d/%d)", reconnectAttempts, maxReconnectAttempts)
-        scheduleConnect(delay: 2.0)
+        let delay = reconnectDelay(forAttempt: reconnectAttempts)
+        NSLog("[VueNative HotReload] Reconnecting in %.1fs... (attempt %d)", delay, reconnectAttempts)
+        scheduleConnect(delay: delay)
     }
 
     // MARK: - URLSessionWebSocketDelegate

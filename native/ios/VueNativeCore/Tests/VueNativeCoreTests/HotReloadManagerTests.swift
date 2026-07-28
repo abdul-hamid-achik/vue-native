@@ -85,5 +85,42 @@ final class HotReloadManagerTests: XCTestCase {
         }
         // Multiple cycles should not crash
     }
+
+    // MARK: - Reconnect Backoff
+
+    func testReconnectDelayUsesExponentialBackoff() {
+        // 1s, 2s, 4s, 8s, 16s ... doubling per attempt.
+        XCTAssertEqual(manager.reconnectDelay(forAttempt: 1), 1.0)
+        XCTAssertEqual(manager.reconnectDelay(forAttempt: 2), 2.0)
+        XCTAssertEqual(manager.reconnectDelay(forAttempt: 3), 4.0)
+        XCTAssertEqual(manager.reconnectDelay(forAttempt: 4), 8.0)
+        XCTAssertEqual(manager.reconnectDelay(forAttempt: 5), 16.0)
+    }
+
+    func testReconnectDelayIsCappedAt30Seconds() {
+        // 2^5 = 32s would exceed the cap, so attempt 6 onwards stays at 30s.
+        XCTAssertEqual(manager.reconnectDelay(forAttempt: 6), 30.0)
+        XCTAssertEqual(manager.reconnectDelay(forAttempt: 7), 30.0)
+        XCTAssertEqual(manager.reconnectDelay(forAttempt: 20), 30.0)
+    }
+
+    func testReconnectDelayNeverGivesUp() {
+        // Far beyond the old hard limit of 10 attempts, the delay must remain
+        // finite and positive — reconnection is never abandoned while a server
+        // URL is configured.
+        for attempt in [10, 11, 50, 100, 1000, 10_000] {
+            let delay = manager.reconnectDelay(forAttempt: attempt)
+            XCTAssertTrue(delay.isFinite, "delay for attempt \(attempt) should be finite")
+            XCTAssertGreaterThan(delay, 0, "delay for attempt \(attempt) should stay positive")
+            XCTAssertLessThanOrEqual(delay, 30.0, "delay for attempt \(attempt) should respect the cap")
+        }
+    }
+
+    func testReconnectDelayHandlesNonPositiveAttempts() {
+        // Guard against accidental zero/negative attempt counts: clamp to the
+        // base delay rather than crashing or producing a nonsensical value.
+        XCTAssertEqual(manager.reconnectDelay(forAttempt: 0), 1.0)
+        XCTAssertEqual(manager.reconnectDelay(forAttempt: -3), 1.0)
+    }
 }
 #endif

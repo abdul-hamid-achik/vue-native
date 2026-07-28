@@ -246,10 +246,14 @@ class VVideoFactory : NativeComponentFactory {
                 VideoPlaybackAction.NONE -> Unit
                 VideoPlaybackAction.PLAY -> {
                     player.start()
+                    fireEvent(frame, "play", null)
                     startProgressReporting(frame, player)
                 }
                 VideoPlaybackAction.PAUSE -> {
-                    if (player.isPlaying) player.pause()
+                    if (player.isPlaying) {
+                        player.pause()
+                        fireEvent(frame, "pause", null)
+                    }
                     stopProgressReporting(frame)
                 }
             }

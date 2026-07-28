@@ -474,4 +474,19 @@ final class ComponentFactoryTests: XCTestCase {
 
         XCTAssertNil(window.toolbar)
     }
+
+    func testVButtonContainerLaysOutChildrenAsCenteredRow() {
+        let factory = VButtonFactory()
+        let view = factory.createView()
+
+        guard let node = view.layoutNode else {
+            return XCTFail("Expected VButton container to have a LayoutNode")
+        }
+
+        // Must match Android/iOS: button content flows as a centered row, not
+        // the LayoutNode global default (column).
+        XCTAssertEqual(node.flexDirection, .row)
+        XCTAssertEqual(node.justifyContent, .center)
+        XCTAssertEqual(node.alignItems, .center)
+    }
 }

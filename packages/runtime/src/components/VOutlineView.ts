@@ -1,6 +1,8 @@
 import { defineComponent, h, type PropType } from '@vue/runtime-core'
 import type { ViewStyle } from '../types/styles'
 
+declare const __PLATFORM__: string
+
 export interface OutlineNode {
   id: string
   label: string
@@ -20,6 +22,9 @@ export const VOutlineView = defineComponent({
   },
   emits: ['select', 'expand', 'collapse'],
   setup(props, { emit }) {
+    if (__DEV__ && typeof __PLATFORM__ !== 'undefined' && __PLATFORM__ !== 'macos') {
+      console.warn(`[VueNative] <VOutlineView> is only supported on macOS; it renders nothing on ${__PLATFORM__}.`)
+    }
     return () =>
       h('VOutlineView', {
         ...props,
