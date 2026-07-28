@@ -20,7 +20,8 @@ let package = Package(
         .library(name: "VueNativeMacOS", targets: ["VueNativeMacOS"])
     ],
     dependencies: [
-        .package(url: "https://github.com/layoutBox/FlexLayout.git", from: "2.0.0")
+        .package(url: "https://github.com/layoutBox/FlexLayout.git", from: "2.0.0"),
+        .package(url: "https://github.com/SVGKit/SVGKit.git", from: "3.0.0")
     ],
     targets: [
         .target(
@@ -31,6 +32,7 @@ let package = Package(
             name: "VueNativeCore",
             dependencies: [
                 .product(name: "FlexLayout", package: "FlexLayout"),
+                .product(name: "SVGKit", package: "SVGKit"),
                 "VueNativeShared"
             ],
             path: "native/ios/VueNativeCore/Sources/VueNativeCore",
@@ -40,7 +42,10 @@ let package = Package(
         ),
         .target(
             name: "VueNativeMacOS",
-            dependencies: ["VueNativeShared"],
+            dependencies: [
+                .product(name: "SVGKit", package: "SVGKit"),
+                "VueNativeShared"
+            ],
             path: "native/macos/VueNativeMacOS/Sources/VueNativeMacOS",
             resources: [
                 .copy("Resources/vue-native-placeholder.js")
