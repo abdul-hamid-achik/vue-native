@@ -49,6 +49,38 @@ The native bridge logs every operation batch. To see exactly what the JS rendere
 
 In development mode, you can inspect bridge traffic by watching for `[VueNative Bridge]` in the console output. Each log shows the operation count per batch.
 
+## Bridge Error Events
+
+When the native runtime is not connected (for example, `__VN_flushOperations`
+was never registered), every queued operation is dropped and the UI stops
+updating. Rather than fail silently, the bridge:
+
+- Logs a `console.error`, **throttled** to at most once every 5 seconds so a
+  broken bridge does not flood the console.
+- Emits a subscribable `bridge:error` global event with the message, so your app
+  can react — for instance, show a "reconnecting" banner instead of a blank
+  screen.
+
+Subscribe via the exported `NativeBridge`:
+
+```ts
+import { NativeBridge } from '@thelacanians/vue-native-runtime'
+
+const unsubscribe = NativeBridge.onGlobalEvent<{ message: string }>(
+  'bridge:error',
+  ({ message }) => {
+    console.warn('Bridge disconnected:', message)
+    // surface a user-visible error state here
+  },
+)
+
+// Later:
+unsubscribe()
+```
+
+See the "`__VN_flushOperations` is not registered" issue in
+[Common Issues](#common-issues) below for the usual root cause.
+
 ## Error Overlay
 
 In development, unhandled errors in components trigger an error overlay on the native side showing:

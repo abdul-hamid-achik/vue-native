@@ -19,9 +19,9 @@ const {
 ## API
 
 ```ts
-useOTAUpdate(serverUrl: string): {
+useOTAUpdate(serverUrl: string, options?: { verifyKey?: string }): {
   checkForUpdate: () => Promise<UpdateInfo>
-  downloadUpdate: (url?: string, hash?: string, version?: string) => Promise<void>
+  downloadUpdate: (url?: string, hash?: string, version?: string, signature?: string) => Promise<void>
   applyUpdate: () => Promise<void>
   rollback: () => Promise<void>
   getCurrentVersion: () => Promise<VersionInfo>
@@ -34,6 +34,12 @@ useOTAUpdate(serverUrl: string): {
   error: Ref<string | null>
 }
 ```
+
+### Options
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `verifyKey` | `string?` | Base64 DER (SPKI) ECDSA P-256 public key. When set, the native side verifies the publisher signature on every downloaded bundle. See [Publisher signature verification](#publisher-signature-verification). |
 
 ### Methods
 
@@ -53,16 +59,18 @@ Check the update server for a new bundle version. Returns the update info.
 | `hash` | `string` | SHA-256 hash for integrity verification. |
 | `size` | `number` | Bundle size in bytes. |
 | `releaseNotes` | `string` | Release notes for this version. |
+| `signature` | `string?` | Optional base64 ECDSA (P-256, SHA-256, DER) signature over the bundle bytes. Verified against `verifyKey` when one is configured. |
 
-#### `downloadUpdate(url?, hash?)`
+#### `downloadUpdate(url?, hash?, version?, signature?)`
 
-Download a new bundle. With no arguments, it uses the URL, hash, and version from the last successful `checkForUpdate()` call. All three values are required by the native contract; a direct download must provide them explicitly.
+Download a new bundle. With no arguments, it uses the URL, hash, version, and signature from the last successful `checkForUpdate()` call. The URL, hash, and version are required by the native contract; a direct download must provide them explicitly.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `url` | `string?` | Download URL. Defaults to `lastUpdateInfo.downloadUrl`. |
 | `hash` | `string?` | Expected 64-character hexadecimal SHA-256 digest. Defaults to `lastUpdateInfo.hash`. |
 | `version` | `string?` | Offered version to persist with the bundle. Defaults to `lastUpdateInfo.version`. |
+| `signature` | `string?` | Publisher signature passed to native for verification when a `verifyKey` is set. Defaults to `lastUpdateInfo.signature`. |
 
 #### `applyUpdate()`
 
@@ -123,9 +131,13 @@ The server should return JSON:
   "downloadUrl": "https://cdn.myapp.com/bundles/2.1.0/bundle.js",
   "hash": "a1b2c3d4e5f6...sha256hash",
   "size": 245760,
-  "releaseNotes": "Bug fixes and performance improvements"
+  "releaseNotes": "Bug fixes and performance improvements",
+  "signature": "MEUCIQD...base64ecdsaSignature"
 }
 ```
+
+`signature` is optional and only required when clients configure a `verifyKey`
+(see below).
 
 When no update is available:
 
@@ -138,6 +150,39 @@ When no update is available:
 ### Bundle Hosting
 
 The `downloadUrl` should point to the IIFE output of your Vite build. `hash` is required and must be the lowercase or uppercase hexadecimal SHA-256 digest of those exact bytes. The runtime rejects incomplete metadata before starting a download.
+
+## Publisher signature verification
+
+A SHA-256 hash proves a bundle was not corrupted, but it does **not** prove who
+published it — an attacker who can replace both the bundle and the update
+response can supply a matching hash. To authenticate the publisher, configure a
+signing key:
+
+```ts
+const { checkForUpdate, downloadUpdate, applyUpdate } = useOTAUpdate(
+  'https://updates.myapp.com/api/check',
+  {
+    // Base64 DER (SPKI) ECDSA P-256 public key, embedded in the app binary.
+    verifyKey: 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE...',
+  },
+)
+```
+
+How it works:
+
+- When `verifyKey` is set, the composable calls the native `OTA.setVerifyKey`
+  method once at setup to register the public key.
+- Your release pipeline signs each bundle's bytes with the matching ECDSA P-256
+  private key (SHA-256, DER-encoded signature, base64) and ships the signature
+  in `UpdateInfo.signature`.
+- During `downloadUpdate()`, the native side verifies the signature against the
+  registered key. A bundle with a missing or invalid signature is **rejected**
+  and the download fails.
+- Without a `verifyKey`, only the SHA-256 integrity check runs. The framework
+  logs a warning in development that publisher authentication is disabled.
+
+Keep the private signing key offline and out of the app binary — only the public
+`verifyKey` ships with the app.
 
 ## Platform Details
 

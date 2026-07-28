@@ -111,9 +111,46 @@ When enabled, navigating from `home → detail → settings` will unmount the `h
 `unmountInactiveScreens` defaults to `false` for backward compatibility. Enable it in memory-constrained apps or when screens hold large resources (images, video, maps).
 :::
 
-## Android Back Button
+## Back Navigation
 
-On iOS, the swipe-from-edge gesture automatically navigates back. On Android, the hardware back button/gesture does **nothing** by default -- you must handle it explicitly with `useBackHandler`:
+Vue Native does **not** provide an automatic back gesture. The iOS swipe-from-edge gesture is **not currently supported** (there is no interactive pop transition), and on Android the hardware back button/gesture does **nothing** by default. You drive back navigation yourself with one of:
+
+- The router's `handleBackButton` option (recommended for the Android hardware back button)
+- A back button you render in your header, e.g. `<VButton @back="router.pop()">` or any control wired to `router.pop()`
+- The [`useBackHandler`](/composables/useBackHandler.md) composable (for custom back behavior)
+- A programmatic `router.pop()` / `router.goBack()` call
+
+### Recommended: `handleBackButton`
+
+Pass `handleBackButton: true` to `createRouter` and the router handles the
+Android hardware back button/gesture for you: it pops the stack when it can go
+back, and exits the app (`BackHandler.exitApp`) on the root screen. It defaults
+to `false`.
+
+```ts
+import { createRouter } from '@thelacanians/vue-native-navigation'
+import Home from './screens/Home.vue'
+import Detail from './screens/Detail.vue'
+
+const router = createRouter({
+  routes: [
+    { name: 'home', component: Home },
+    { name: 'detail', component: Detail },
+  ],
+  handleBackButton: true,
+})
+```
+
+::: warning
+When `handleBackButton` is enabled, do **not** also register `useBackHandler`
+for the same screen — both would react to the same back press. Use one or the
+other.
+:::
+
+### Custom back behavior: `useBackHandler`
+
+When you need logic beyond "pop or exit" (confirm dialogs, dismissing an overlay
+first, etc.), wire up the hardware back button yourself with `useBackHandler`:
 
 ```vue
 <script setup>

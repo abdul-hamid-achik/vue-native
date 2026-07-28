@@ -31,7 +31,6 @@ onDragLeave(() => {
     :style="{
       padding: 40,
       borderWidth: 2,
-      borderStyle: 'dashed',
       borderColor: isDragging ? '#007AFF' : '#ccc',
       borderRadius: 12,
       backgroundColor: isDragging ? '#E8F0FE' : '#fff',
@@ -103,7 +102,6 @@ onDrop((files) => {
       :style="{
         padding: 40,
         borderWidth: 2,
-        borderStyle: 'dashed',
         borderColor: isDragging ? '#007AFF' : '#ccc',
         borderRadius: 12,
         backgroundColor: isDragging ? '#E8F0FE' : '#FAFAFA',

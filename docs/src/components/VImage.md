@@ -1,14 +1,21 @@
 # VImage
 
-Displays images from remote URLs. Maps to `UIImageView` on iOS and `ImageView` (powered by Coil) on Android. Images are loaded asynchronously with built-in memory caching.
+Displays images from remote URLs or bundled local assets. Maps to `UIImageView` on iOS and `ImageView` (powered by Coil) on Android. Images are loaded asynchronously with built-in memory caching.
 
 ## Usage
 
 ```vue
+<!-- Remote image -->
 <VImage
   :source="{ uri: 'https://example.com/photo.jpg' }"
   resizeMode="cover"
   :style="{ width: 200, height: 150, borderRadius: 8 }"
+/>
+
+<!-- Bundled local asset -->
+<VImage
+  :source="{ asset: 'logo' }"
+  :style="{ width: 120, height: 40 }"
 />
 ```
 
@@ -16,7 +23,7 @@ Displays images from remote URLs. Maps to `UIImageView` on iOS and `ImageView` (
 
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
-| `source` | `{ uri: string }` | -- | Image source object with a `uri` field |
+| `source` | `ImageSource` (`{ uri?: string; asset?: string }`) | -- | Image source object. Provide `uri` for a remote/absolute URL, or `asset` to load a bundled image by name. Set exactly one. |
 | `resizeMode` | `'cover' \| 'contain' \| 'stretch' \| 'center'` | `'cover'` | How the image is scaled to fit its container |
 | `style` | `Object` | -- | Layout + appearance styles (width and height recommended) |
 | `testID` | `string` | -- | Test identifier for end-to-end testing |
@@ -33,6 +40,37 @@ Displays images from remote URLs. Maps to `UIImageView` on iOS and `ImageView` (
 | `contain` | Scale to fit within the container, preserving aspect ratio |
 | `stretch` | Stretch to fill the exact dimensions of the container |
 | `center` | Center without scaling |
+
+## Local assets
+
+Set `source.asset` to the name of an image bundled with your app to load it from
+the platform's native asset store instead of the network:
+
+```vue
+<VImage :source="{ asset: 'logo' }" :style="{ width: 120, height: 40 }" />
+```
+
+The name resolves against each platform's asset system:
+
+| Platform | Resolved from |
+|----------|---------------|
+| iOS | Asset Catalog (`.xcassets`) image set name |
+| macOS | Named image (`NSImage(named:)`) |
+| Android | `res/drawable` resource name (without extension) |
+
+The `ImageSource` type is exported from the runtime if you need it in TypeScript:
+
+```ts
+import type { ImageSource } from '@thelacanians/vue-native-runtime'
+
+const source: ImageSource = { asset: 'logo' }
+```
+
+::: tip
+Provide exactly one of `uri` or `asset`. Asset loading is synchronous and does
+not fire network caching, but `@load` / `@error` still fire so you can react to
+a missing asset.
+:::
 
 ## Events
 

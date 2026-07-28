@@ -380,22 +380,26 @@ import HomeScreen from './screens/Home.vue'
 import ProfileScreen from './screens/Profile.vue'
 import LoginScreen from './screens/Login.vue'
 
-// Route configuration is fully typed
+// Route configuration is fully typed. Routes are keyed by NAME — there is no
+// `path` field (deep-link paths are configured separately via `linking`).
 const routes: RouteConfig[] = [
-  { path: '/', name: 'Home', component: HomeScreen },
-  { path: '/profile/:id', name: 'Profile', component: ProfileScreen },
-  { path: '/login', name: 'Login', component: LoginScreen },
+  { name: 'Home', component: HomeScreen },
+  { name: 'Profile', component: ProfileScreen },
+  { name: 'Login', component: LoginScreen },
 ]
 
-// Navigation guards are typed
+// Navigation guards are typed. `to`/`from` are RouteEntry objects, so the route
+// name lives at `to.config.name`. Returning a route name redirects there;
+// returning false cancels navigation.
 const authGuard: NavigationGuard = (to, from) => {
   const isAuthenticated = checkAuth()
-  if (to.path !== '/login' && !isAuthenticated) {
-    return '/login'
+  if (to.config.name !== 'Login' && !isAuthenticated) {
+    return 'Login' // redirect by route NAME
   }
 }
 
-const router = createRouter({ routes })
+// createRouter accepts a RouteConfig[] or a { routes, linking } options object
+const router = createRouter(routes)
 router.beforeEach(authGuard)
 
 export default router

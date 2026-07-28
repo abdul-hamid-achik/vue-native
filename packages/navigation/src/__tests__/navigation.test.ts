@@ -1360,3 +1360,74 @@ describe('Navigation — createRouter', () => {
     })
   })
 })
+
+describe('Navigation — hardware back button (opt-in)', () => {
+  beforeEach(() => {
+    mockBridge.reset()
+    NativeBridge.reset()
+    vi.restoreAllMocks()
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+  })
+
+  async function getRouter() {
+    const { createRouter } = await import('../index')
+    return createRouter
+  }
+
+  it('pops the stack on back press when it can go back', async () => {
+    const createRouter = await getRouter()
+    const router = createRouter({
+      routes: [
+        { name: 'home', component: HomeScreen },
+        { name: 'about', component: AboutScreen },
+      ],
+      handleBackButton: true,
+    })
+
+    await router.push('about')
+    expect(router.currentRoute.value.config.name).toBe('about')
+
+    // Simulate the Android hardware back press.
+    NativeBridge.handleGlobalEvent('hardware:backPress', '{}')
+    await nextTick()
+    await nextTick()
+
+    expect(router.currentRoute.value.config.name).toBe('home')
+    expect(router.stack.value).toHaveLength(1)
+  })
+
+  it('exits the app on back press at the root', async () => {
+    const createRouter = await getRouter()
+    const invokeSpy = vi.spyOn(NativeBridge, 'invokeNativeModule').mockResolvedValue(undefined)
+    createRouter({
+      routes: [
+        { name: 'home', component: HomeScreen },
+        { name: 'about', component: AboutScreen },
+      ],
+      handleBackButton: true,
+    })
+
+    NativeBridge.handleGlobalEvent('hardware:backPress', '{}')
+    await nextTick()
+
+    expect(invokeSpy).toHaveBeenCalledWith('BackHandler', 'exitApp', [])
+  })
+
+  it('does not handle back press when handleBackButton is not set', async () => {
+    const createRouter = await getRouter()
+    const invokeSpy = vi.spyOn(NativeBridge, 'invokeNativeModule').mockResolvedValue(undefined)
+    const router = createRouter([
+      { name: 'home', component: HomeScreen },
+      { name: 'about', component: AboutScreen },
+    ])
+    await router.push('about')
+
+    const handled = NativeBridge.handleGlobalEvent('hardware:backPress', '{}')
+    await nextTick()
+
+    // No router handler registered -> event unhandled, stack unchanged.
+    expect(handled).toBe(false)
+    expect(router.currentRoute.value.config.name).toBe('about')
+    expect(invokeSpy).not.toHaveBeenCalledWith('BackHandler', 'exitApp', [])
+  })
+})

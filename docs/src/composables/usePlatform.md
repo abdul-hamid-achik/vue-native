@@ -47,6 +47,75 @@ usePlatform(): {
 | `isDesktop` | `boolean` | `true` if the app is running on a desktop platform (macOS). |
 | `isMobile` | `boolean` | `true` if the app is running on a mobile platform (iOS or Android). |
 
+## selectPlatform
+
+`selectPlatform` picks a value for the current platform from a per-platform map
+— the equivalent of React Native's `Platform.select`. It is exported alongside
+`usePlatform`:
+
+```ts
+import { selectPlatform } from '@thelacanians/vue-native-runtime'
+```
+
+```ts
+const shadow = selectPlatform({
+  ios: { shadowRadius: 4 },
+  android: { elevation: 4 },
+  default: {},
+})
+```
+
+### Signature
+
+```ts
+selectPlatform<T>(spec: {
+  ios?: T
+  android?: T
+  macos?: T
+  apple?: T
+  default?: T
+}): T | undefined
+```
+
+### Resolution order
+
+1. The exact platform key (`ios`, `android`, or `macos`) if present.
+2. Otherwise `apple` — used for **both** iOS and macOS when the exact key is absent.
+3. Otherwise `default`.
+4. If nothing matches, `undefined`.
+
+### Example
+
+```vue
+<script setup>
+import { selectPlatform } from '@thelacanians/vue-native-runtime'
+
+const headerHeight = selectPlatform({
+  ios: 88,
+  android: 56,
+  macos: 44,
+  default: 56,
+})
+
+const fontFamily = selectPlatform({
+  apple: 'System',     // applies to both iOS and macOS
+  android: 'Roboto',
+  default: 'System',
+})
+</script>
+
+<template>
+  <VView :style="{ height: headerHeight }">
+    <VText :style="{ fontFamily }">Platform-tuned header</VText>
+  </VView>
+</template>
+```
+
+::: tip
+Like `usePlatform`, `selectPlatform` resolves at build time from the
+`__PLATFORM__` constant, so unused branches are eliminated in production builds.
+:::
+
 ## Platform Support
 
 | Platform | Support |

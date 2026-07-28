@@ -35,6 +35,12 @@ export interface RouteConfig {
 }
 
 export interface RouteOptions {
+  /**
+   * Per-route presentation options. These are accepted for forward
+   * compatibility and exposed to custom headers/tab bars (e.g. via
+   * `currentRoute.value.config.options`), but the router does not yet render
+   * native transitions, an automatic header, or tab-bar chrome from them.
+   */
   title?: string
   headerShown?: boolean
   animation?: 'push' | 'modal' | 'fade' | 'none'
@@ -143,6 +149,13 @@ export interface RouterOptions {
    * as a child navigator with its own independent stack.
    */
   parent?: RouterInstance
+  /**
+   * When true, the router handles the Android hardware back button/gesture:
+   * it pops the stack when possible and exits the app at the root. Defaults
+   * to false. When enabled, do not also register `useBackHandler` for the
+   * same screen — both would react to the same back press.
+   */
+  handleBackButton?: boolean
 }
 
 export interface NavigationState {
@@ -208,6 +221,7 @@ export function createRouter(optionsOrRoutes: RouterOptions | RouteConfig[]): Ro
     persistState: _persistState = false,
     persistKey = '__vue_native_nav_state__',
     parent: parentRouter,
+    handleBackButton = false,
   } = options
 
   if (routes.length === 0) {
@@ -648,6 +662,22 @@ export function createRouter(optionsOrRoutes: RouterOptions | RouteConfig[]): Ro
     NativeBridge.onGlobalEvent('url', (payload) => {
       const url = getStringProp(payload, 'url')
       if (url) handleURL(url)
+    })
+  }
+
+  // ── Hardware back button (Android) ─────────────────────────────────────────
+  // Opt-in: pop the stack when possible, exit the app at the root. Subscribing
+  // marks the event handled, so the native side will not finish the activity
+  // on its own — at the root we therefore exit explicitly via BackHandler.
+  if (handleBackButton) {
+    NativeBridge.onGlobalEvent('hardware:backPress', () => {
+      if (canGoBack.value) {
+        void goBack()
+      } else {
+        NativeBridge.invokeNativeModule('BackHandler', 'exitApp', []).catch((err: unknown) => {
+          if (__DEV__) console.warn('[vue-native/navigation] BackHandler.exitApp failed:', err)
+        })
+      }
     })
   }
 

@@ -202,59 +202,59 @@ const styles = createDynamicStyleSheet(theme, t => ({
 </script>
 
 <template>
-  <VView :style="styles.value.container">
-    <VScrollView :style="styles.value.scrollContent">
-      <VText :style="styles.value.title">Theming</VText>
-      <VText :style="styles.value.subtitle">
-        {{ colorScheme.value === 'dark' ? 'Dark' : 'Light' }} mode active
+  <VView :style="styles.container">
+    <VScrollView :style="styles.scrollContent">
+      <VText :style="styles.title">Theming</VText>
+      <VText :style="styles.subtitle">
+        {{ colorScheme === 'dark' ? 'Dark' : 'Light' }} mode active
       </VText>
 
       <!-- Theme Toggle -->
-      <VView :style="styles.value.section">
-        <VText :style="styles.value.sectionTitle">Appearance</VText>
+      <VView :style="styles.section">
+        <VText :style="styles.sectionTitle">Appearance</VText>
 
-        <VView :style="styles.value.row">
-          <VText :style="styles.value.label">Current Mode</VText>
-          <VView :style="styles.value.badge">
-            <VText :style="styles.value.badgeText">
-              {{ colorScheme.value }}
+        <VView :style="styles.row">
+          <VText :style="styles.label">Current Mode</VText>
+          <VView :style="styles.badge">
+            <VText :style="styles.badgeText">
+              {{ colorScheme }}
             </VText>
           </VView>
         </VView>
 
-        <VView :style="styles.value.row">
-          <VText :style="styles.value.label">System Preference</VText>
-          <VView :style="styles.value.badge">
-            <VText :style="styles.value.badgeText">
+        <VView :style="styles.row">
+          <VText :style="styles.label">System Preference</VText>
+          <VView :style="styles.badge">
+            <VText :style="styles.badgeText">
               {{ systemScheme.colorScheme.value }}
             </VText>
           </VView>
         </VView>
 
-        <VButton :style="styles.value.toggleButton" :on-press="toggleColorScheme">
-          <VText :style="styles.value.toggleText">
-            Switch to {{ colorScheme.value === 'light' ? 'Dark' : 'Light' }}
+        <VButton :style="styles.toggleButton" :on-press="toggleColorScheme">
+          <VText :style="styles.toggleText">
+            Switch to {{ colorScheme === 'light' ? 'Dark' : 'Light' }}
           </VText>
         </VButton>
       </VView>
 
       <!-- Color Swatches -->
-      <VView :style="styles.value.section">
-        <VText :style="styles.value.sectionTitle">Color Palette</VText>
-        <VView :style="styles.value.colorSwatches">
-          <VView v-for="[name, color] in Object.entries(theme.value.colors)" :key="name">
-            <VView :style="[styles.value.swatch, { backgroundColor: color }]" />
-            <VText :style="styles.value.swatchLabel">{{ name }}</VText>
+      <VView :style="styles.section">
+        <VText :style="styles.sectionTitle">Color Palette</VText>
+        <VView :style="styles.colorSwatches">
+          <VView v-for="[name, color] in Object.entries(theme.colors)" :key="name">
+            <VView :style="[styles.swatch, { backgroundColor: color }]" />
+            <VText :style="styles.swatchLabel">{{ name }}</VText>
           </VView>
         </VView>
       </VView>
 
       <!-- Accessibility -->
-      <VView :style="styles.value.section">
-        <VText :style="styles.value.sectionTitle">Accessibility</VText>
+      <VView :style="styles.section">
+        <VText :style="styles.sectionTitle">Accessibility</VText>
 
-        <VView :style="styles.value.row">
-          <VText :style="styles.value.label">Notifications</VText>
+        <VView :style="styles.row">
+          <VText :style="styles.label">Notifications</VText>
           <VSwitch
             v-model="notificationsEnabled"
             accessibility-label="Toggle notifications"
@@ -263,12 +263,12 @@ const styles = createDynamicStyleSheet(theme, t => ({
           />
         </VView>
 
-        <VView :style="styles.value.separator" />
+        <VView :style="styles.separator" />
 
-        <VView :style="styles.value.sliderRow">
-          <VView :style="styles.value.row">
-            <VText :style="styles.value.label">Font Size</VText>
-            <VText :style="styles.value.label">{{ fontSize }}pt</VText>
+        <VView :style="styles.sliderRow">
+          <VView :style="styles.row">
+            <VText :style="styles.label">Font Size</VText>
+            <VText :style="styles.label">{{ fontSize }}pt</VText>
           </VView>
           <VSlider
             v-model="fontSize"
@@ -280,10 +280,10 @@ const styles = createDynamicStyleSheet(theme, t => ({
           />
         </VView>
 
-        <VView :style="styles.value.separator" />
+        <VView :style="styles.separator" />
 
         <VText
-          :style="[styles.value.label, { fontSize }]"
+          :style="[styles.label, { fontSize }]"
           accessibility-role="text"
         >
           Preview text at {{ fontSize }}pt
@@ -291,13 +291,13 @@ const styles = createDynamicStyleSheet(theme, t => ({
       </VView>
 
       <!-- RTL -->
-      <VView :style="styles.value.section">
-        <VText :style="styles.value.sectionTitle">Layout Direction</VText>
+      <VView :style="styles.section">
+        <VText :style="styles.sectionTitle">Layout Direction</VText>
 
-        <VView :style="styles.value.row">
-          <VText :style="styles.value.label">RTL Mode</VText>
-          <VView :style="styles.value.badge">
-            <VText :style="styles.value.badgeText">
+        <VView :style="styles.row">
+          <VText :style="styles.label">RTL Mode</VText>
+          <VView :style="styles.badge">
+            <VText :style="styles.badgeText">
               {{ i18n.isRTL.value ? 'RTL' : 'LTR' }}
             </VText>
           </VView>
@@ -305,25 +305,25 @@ const styles = createDynamicStyleSheet(theme, t => ({
 
         <VView :style="{ flexDirection: 'row', gap: 8, marginTop: 8 }">
           <VButton
-            :style="styles.value.rtlButton"
+            :style="styles.rtlButton"
             :on-press="() => i18n.setLocale('en')"
             accessibility-label="Set English locale"
           >
-            <VText :style="styles.value.rtlButtonText">English (LTR)</VText>
+            <VText :style="styles.rtlButtonText">English (LTR)</VText>
           </VButton>
           <VButton
-            :style="styles.value.rtlButton"
+            :style="styles.rtlButton"
             :on-press="() => i18n.setLocale('ar')"
             accessibility-label="Set Arabic locale"
           >
-            <VText :style="styles.value.rtlButtonText">Arabic (RTL)</VText>
+            <VText :style="styles.rtlButtonText">Arabic (RTL)</VText>
           </VButton>
         </VView>
       </VView>
 
       <!-- Error Boundary -->
-      <VView :style="styles.value.errorSection">
-        <VText :style="styles.value.sectionTitle">Error Boundary</VText>
+      <VView :style="styles.errorSection">
+        <VText :style="styles.sectionTitle">Error Boundary</VText>
 
         <ErrorBoundary :reset-keys="[crashCount]">
           <template #default>
@@ -332,31 +332,31 @@ const styles = createDynamicStyleSheet(theme, t => ({
               <VText>{{ (undefined as any).crash }}</VText>
             </VView>
             <VView v-else>
-              <VText :style="styles.value.label">Component is healthy</VText>
-              <VText :style="styles.value.infoText">
+              <VText :style="styles.label">Component is healthy</VText>
+              <VText :style="styles.infoText">
                 Recovered {{ crashCount }} time(s)
               </VText>
               <VButton
-                :style="[styles.value.crashButton, { marginTop: 12 }]"
+                :style="[styles.crashButton, { marginTop: 12 }]"
                 :on-press="triggerError"
                 accessibility-label="Trigger error for testing"
               >
-                <VText :style="styles.value.crashText">Trigger Error</VText>
+                <VText :style="styles.crashText">Trigger Error</VText>
               </VButton>
             </VView>
           </template>
 
           <template #fallback="{ error, reset }">
-            <VView :style="styles.value.errorFallback">
-              <VText :style="styles.value.errorTitle">Something went wrong</VText>
-              <VText :style="styles.value.errorMessage">
+            <VView :style="styles.errorFallback">
+              <VText :style="styles.errorTitle">Something went wrong</VText>
+              <VText :style="styles.errorMessage">
                 {{ error?.message ?? 'Unknown error' }}
               </VText>
               <VButton
-                :style="styles.value.retryButton"
+                :style="styles.retryButton"
                 :on-press="() => { handleReset(); reset() }"
               >
-                <VText :style="styles.value.retryText">Retry</VText>
+                <VText :style="styles.retryText">Retry</VText>
               </VButton>
             </VView>
           </template>

@@ -160,6 +160,52 @@ function renderItem({ item, index }) {
 </template>
 ```
 
+## Typing
+
+`VFlatList` is a generic component: `renderItem` and `keyExtractor` infer the
+item type `T` from the `data` prop, so you get full type-checking and
+autocompletion on `item` without manual annotations.
+
+```vue
+<script setup lang="ts">
+import { h } from '@thelacanians/vue-native-runtime'
+
+interface User {
+  id: number
+  name: string
+  email: string
+}
+
+const data: User[] = [
+  { id: 1, name: 'Ada', email: 'ada@example.com' },
+  { id: 2, name: 'Linus', email: 'linus@example.com' },
+]
+
+// `item` is inferred as `User` — `item.name` type-checks, `item.unknown` errors.
+function renderItem({ item, index }: { item: User, index: number }) {
+  return h('VView', { style: { padding: 16 } }, [
+    h('VText', {}, `${item.name} <${item.email}>`),
+  ])
+}
+
+// `item` is inferred as `User` here too.
+const keyExtractor = (item: User) => item.id
+</script>
+
+<template>
+  <VFlatList
+    :data="data"
+    :renderItem="renderItem"
+    :keyExtractor="keyExtractor"
+    :itemHeight="52"
+    :style="{ flex: 1 }"
+  />
+</template>
+```
+
+The same inference applies to the `#item` slot in `<script setup lang="ts">`
+templates — the slot's `item` is typed from `data`.
+
 ## VList vs VFlatList
 
 | | VList | VFlatList |

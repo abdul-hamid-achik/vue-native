@@ -75,9 +75,16 @@ Some layout properties accept percentage strings relative to the parent's dimens
 }
 ```
 
-**Properties supporting percentages:** `width`, `height`, `minWidth`, `minHeight`, `maxWidth`, `maxHeight`, `flexBasis`, `top`, `right`, `bottom`, `left`, `margin*`, `padding*`.
+**Properties supporting percentages:** `width`, `height`, `minWidth`, `minHeight`, `maxWidth`, `maxHeight`, `flexBasis`, `top`, `right`, `bottom`, `left`.
 
 **Note:** Type definitions require casting for percentages on some properties: `maxWidth: '75%' as any`. This will be improved in a future release.
+
+::: warning Breaking change in v0.8.0
+`padding` and `margin` (and their `padding*` / `margin*` variants) are now
+**numbers only** — percentage strings are no longer accepted. If you previously
+used a percentage, compute the value from the parent dimension yourself (for
+example with [`useDimensions`](/composables/useDimensions.md)).
+:::
 
 ## Color formats
 
@@ -122,11 +129,20 @@ Colors are specified as strings. Supported formats:
 | `position` | `'relative'` (default) \| `'absolute'` |
 | `top`, `right`, `bottom`, `left` | number |
 | `padding`, `paddingHorizontal`, `paddingVertical`, `paddingTop`, `paddingBottom`, `paddingLeft`, `paddingRight` | number |
+| `paddingStart`, `paddingEnd` | number (RTL-aware: map to left/right based on `direction`) |
 | `margin`, `marginHorizontal`, `marginVertical`, `marginTop`, `marginBottom`, `marginLeft`, `marginRight` | number |
+| `marginStart`, `marginEnd` | number (RTL-aware: map to left/right based on `direction`) |
 | `gap`, `rowGap`, `columnGap` | number |
 | `display` | `'flex'` \| `'none'` |
-| `overflow` | `'hidden'` \| `'visible'` \| `'scroll'` |
+| `overflow` | `'hidden'` \| `'visible'` |
 | `direction` | `'ltr'` \| `'rtl'` \| `'inherit'` |
+
+::: warning Removed style properties (v0.8.0)
+`borderStyle`, `textDecorationStyle`, and `textDecorationColor` were removed —
+they were never implemented by the native renderers. `overflow: 'scroll'` was
+also removed; `overflow` only accepts `'visible'` or `'hidden'`. For scrollable
+content use [`<VScrollView>`](/components/VScrollView.md) or a list component.
+:::
 
 ### Appearance
 | Property | Values |
@@ -165,6 +181,97 @@ Colors are specified as strings. Supported formats:
 | Property | Values |
 |----------|--------|
 | `elevation` | number (higher = more shadow) |
+
+`elevation` is Android-only and is a no-op on iOS/macOS. It is **required** for
+shadows to render on Android — the iOS `shadow*` properties have no effect
+there, so set `elevation` alongside them for cross-platform cards:
+
+```ts
+const styles = createStyleSheet({
+  card: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    // iOS / macOS
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    // Android
+    elevation: 3,
+  },
+})
+```
+
+## Transforms
+
+The `transform` style accepts an array of transform objects. Transforms are
+applied in array order and do not affect layout (the view's measured box stays
+the same).
+
+```ts
+{
+  transform: [
+    { translateX: 10 },
+    { rotate: '45deg' },
+    { scale: 1.2 },
+  ],
+}
+```
+
+### Supported transform values
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `translateX`, `translateY` | `number` | Translation in points. |
+| `scale`, `scaleX`, `scaleY` | `number` | Scale factor (`1` = unchanged). |
+| `rotate`, `rotateX`, `rotateY`, `rotateZ` | `string` | Rotation angle, e.g. `'45deg'` or `'1.5rad'`. `rotateX`/`rotateY`/`rotateZ` are 3D rotations around each axis. |
+| `perspective` | `number` | Perspective depth for 3D transforms (sets the `m34` term). Larger values look flatter; smaller values exaggerate depth. |
+| `skewX`, `skewY` | `string` | Skew angle, e.g. `'45deg'`. |
+
+### 3D transforms
+
+Combine `perspective` with `rotateX` / `rotateY` for flip and tilt effects:
+
+```ts
+const styles = createStyleSheet({
+  card: {
+    transform: [
+      { perspective: 800 },
+      { rotateY: '25deg' },
+    ],
+  },
+})
+```
+
+::: warning Platform difference: skew
+`skewX` and `skewY` are supported on iOS and macOS only. On Android the native
+`View` has no skew transform, so the request is logged and ignored (it will not
+crash). Keep skew out of cross-platform styles or guard it with
+[`selectPlatform`](/composables/usePlatform.md#selectplatform).
+:::
+
+## Hairline borders
+
+Use the exported `hairlineWidth` constant for the thinnest border the platform
+can render — useful for 1px-look dividers and separators:
+
+```ts
+import { createStyleSheet, hairlineWidth } from '@thelacanians/vue-native-runtime'
+
+const styles = createStyleSheet({
+  separator: {
+    height: hairlineWidth,
+    backgroundColor: '#C6C6C8',
+  },
+  bordered: {
+    borderWidth: hairlineWidth,
+    borderColor: '#E5E5E5',
+  },
+})
+```
+
+`hairlineWidth` is `0.5` and mirrors React Native's `StyleSheet.hairlineWidth`.
 
 ## Common Layout Patterns
 
@@ -257,108 +364,23 @@ const styles = createStyleSheet({
 
 ## Theming & Dark Mode
 
-Vue Native provides a built-in theme system via `createTheme`:
+Vue Native ships a built-in theme system: `createTheme` defines light/dark
+design tokens, `<ThemeProvider>` provides them via Vue's provide/inject, and
+`createDynamicStyleSheet` builds stylesheets that re-evaluate reactively when
+the active theme changes. Pair it with `useColorScheme` to follow the system
+dark-mode setting.
 
 ```ts
-// theme.ts
-import { createTheme } from '@thelacanians/vue-native-runtime'
+import { createTheme, createDynamicStyleSheet } from '@thelacanians/vue-native-runtime'
 
 export const { ThemeProvider, useTheme } = createTheme({
-  light: {
-    colors: {
-      background: '#FFFFFF',
-      surface: '#F5F5F5',
-      text: '#1A1A1A',
-      textSecondary: '#8E8E93',
-      primary: '#007AFF',
-      error: '#FF3B30',
-    },
-    spacing: { xs: 4, sm: 8, md: 16, lg: 24, xl: 32 },
-    borderRadius: { sm: 4, md: 8, lg: 12, xl: 16 },
-  },
-  dark: {
-    colors: {
-      background: '#000000',
-      surface: '#1C1C1E',
-      text: '#F5F5F5',
-      textSecondary: '#8E8E93',
-      primary: '#0A84FF',
-      error: '#FF453A',
-    },
-    spacing: { xs: 4, sm: 8, md: 16, lg: 24, xl: 32 },
-    borderRadius: { sm: 4, md: 8, lg: 12, xl: 16 },
-  },
+  light: { colors: { background: '#FFFFFF', text: '#1A1A1A' }, spacing: { md: 16 } },
+  dark: { colors: { background: '#000000', text: '#F5F5F5' }, spacing: { md: 16 } },
 })
 ```
 
-Wrap your app root:
-
-```vue
-<!-- App.vue -->
-<template>
-  <ThemeProvider>
-    <RouterView />
-  </ThemeProvider>
-</template>
-```
-
-Use `createDynamicStyleSheet` for theme-aware styles that update reactively:
-
-```vue
-<script setup>
-import { useTheme } from '../theme'
-import { createDynamicStyleSheet } from '@thelacanians/vue-native-runtime'
-
-const { theme, colorScheme, toggleColorScheme } = useTheme()
-
-const styles = createDynamicStyleSheet(theme, (t) => ({
-  container: {
-    flex: 1,
-    backgroundColor: t.colors.background,
-    padding: t.spacing.md,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: t.colors.text,
-  },
-  card: {
-    backgroundColor: t.colors.surface,
-    borderRadius: t.borderRadius.lg,
-    padding: t.spacing.md,
-  },
-}))
-</script>
-
-<template>
-  <VView :style="styles.container">
-    <VText :style="styles.title">{{ colorScheme }} mode</VText>
-    <VButton :onPress="toggleColorScheme">
-      <VText>Toggle Theme</VText>
-    </VButton>
-  </VView>
-</template>
-```
-
-### Syncing with system dark mode
-
-Use `useColorScheme` to detect the system setting and sync with the theme:
-
-```vue
-<script setup>
-import { watch } from '@thelacanians/vue-native-runtime'
-import { useColorScheme } from '@thelacanians/vue-native-runtime'
-import { useTheme } from '../theme'
-
-const { colorScheme: systemScheme } = useColorScheme()
-const { setColorScheme } = useTheme()
-
-// Sync theme with system setting
-watch(() => systemScheme.value, (scheme) => {
-  if (scheme) setColorScheme(scheme)
-}, { immediate: true })
-</script>
-```
+For the full walkthrough — token design, system sync, and persisting the user's
+preference — see the [Theming guide](/guide/theming.md).
 
 ## Platform differences
 

@@ -39,6 +39,7 @@ export default defineUserConfig({
       { text: 'Components', link: '/components/' },
       { text: 'Composables', link: '/composables/' },
       { text: 'Navigation', link: '/navigation/' },
+      { text: 'Architecture', link: '/architecture/' },
       {
         text: 'Platforms',
         children: [
@@ -65,6 +66,8 @@ export default defineUserConfig({
           children: [
             '/guide/components.md',
             '/guide/styling.md',
+            '/guide/theming.md',
+            '/guide/typescript.md',
             '/guide/navigation.md',
             '/guide/navigation-components.md',
             '/guide/native-modules.md',
@@ -73,18 +76,27 @@ export default defineUserConfig({
           ],
         },
         {
-          text: 'Advanced',
+          text: 'UI Patterns',
           children: [
-            '/guide/error-handling.md',
-            '/guide/accessibility.md',
-            '/guide/typescript.md',
-            '/guide/performance.md',
-            '/guide/shared-transitions.md',
-            '/guide/testing.md',
-            '/guide/security.md',
-            '/guide/debugging.md',
-            '/guide/teleport.md',
             '/guide/forms.md',
+            '/guide/shared-transitions.md',
+            '/guide/teleport.md',
+          ],
+        },
+        {
+          text: 'Quality & Debugging',
+          children: [
+            '/guide/testing.md',
+            '/guide/debugging.md',
+            '/guide/error-handling.md',
+          ],
+        },
+        {
+          text: 'Platform Hardening',
+          children: [
+            '/guide/security.md',
+            '/guide/accessibility.md',
+            '/guide/performance.md',
           ],
         },
         {
@@ -116,6 +128,7 @@ export default defineUserConfig({
           text: 'Reference',
           children: [
             '/guide/migration.md',
+            '/guide/migrating-from-react-native.md',
             '/guide/limitations.md',
             '/guide/troubleshooting.md',
           ],
@@ -338,7 +351,9 @@ export default defineUserConfig({
         '/macos/VueNativeWindowController.md',
       ],
       '/architecture/': [
+        '/architecture/README.md',
         '/architecture/dual-thread.md',
+        '/architecture/layout-engines.md',
       ],
     },
   }),
