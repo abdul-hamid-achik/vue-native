@@ -240,6 +240,7 @@ class NativeModuleRegistryTest {
         assertNotNull("AsyncStorage module should be registered", registry.getModule("AsyncStorage"))
         assertNotNull("Contacts module should register after any earlier failure", registry.getModule("Contacts"))
         assertNotNull("Clipboard module should be registered", registry.getModule("Clipboard"))
+        assertNotNull("Battery module should be registered", registry.getModule("Battery"))
         assertNotNull("DeviceInfo module should be registered", registry.getModule("DeviceInfo"))
         assertNotNull("Network module should be registered", registry.getModule("Network"))
         assertNotNull("Animation module should be registered", registry.getModule("Animation"))

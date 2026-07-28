@@ -22,6 +22,25 @@ extension UIColor {
         "brown": .brown
     ]
 
+    // MARK: - Semantic color lookup
+
+    /// UIKit dynamic colors that adapt to light/dark mode automatically. Keys
+    /// are matched case-sensitively against the raw (un-lowercased) input so the
+    /// documented camelCase names (`secondaryLabel`, `systemBlue`, …) resolve
+    /// exactly as written.
+    private static let semanticColors: [String: UIColor] = [
+        "background": .systemBackground,
+        "label": .label,
+        "secondaryLabel": .secondaryLabel,
+        "tertiaryLabel": .tertiaryLabel,
+        "separator": .separator,
+        "systemBlue": .systemBlue,
+        "systemRed": .systemRed,
+        "systemGreen": .systemGreen,
+        "systemOrange": .systemOrange,
+        "systemGray": .systemGray
+    ]
+
     // MARK: - Color parsing
 
     /// Creates a UIColor from a CSS-like color string.
@@ -33,29 +52,40 @@ extension UIColor {
     ///   0...255 and alpha is 0...1.
     /// - Named colors: `transparent`, `white`, `black`, `red`, `blue`, `green`,
     ///   `gray`, `grey`, `orange`, `yellow`, `purple`, `cyan`, `magenta`, `brown`.
+    /// - Semantic colors (dynamic, dark-mode aware): `background`, `label`,
+    ///   `secondaryLabel`, `tertiaryLabel`, `separator`, `systemBlue`,
+    ///   `systemRed`, `systemGreen`, `systemOrange`, `systemGray`.
     ///
     /// Returns `nil` for invalid input so callers can ignore the style and keep
     /// the previously applied value instead of silently clearing the view.
     static func fromHex(_ hex: String) -> UIColor? {
-        let trimmed = hex.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let trimmed = hex.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
 
+        // Semantic colors are matched case-sensitively against the raw input so
+        // the documented camelCase names resolve exactly as written.
+        if let semantic = semanticColors[trimmed] {
+            return semantic
+        }
+
+        let normalized = trimmed.lowercased()
+
         // Check named colors first
-        if let named = namedColors[trimmed] {
+        if let named = namedColors[normalized] {
             return named
         }
 
         // Functional notation: rgb(...) / rgba(...)
-        if trimmed.hasPrefix("rgb") {
-            return parseRGBFunctional(trimmed)
+        if normalized.hasPrefix("rgb") {
+            return parseRGBFunctional(normalized)
         }
 
         // Hex notation must start with '#'
-        guard trimmed.hasPrefix("#") else {
+        guard normalized.hasPrefix("#") else {
             return nil
         }
 
-        let hexString = String(trimmed.dropFirst())
+        let hexString = String(normalized.dropFirst())
         // Scanner.scanHexInt64 stops at the first invalid character and still
         // reports success, so validate the whole string is hex up front.
         guard !hexString.isEmpty,

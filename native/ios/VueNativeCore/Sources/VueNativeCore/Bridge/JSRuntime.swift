@@ -65,9 +65,9 @@ public final class JSRuntime: @unchecked Sendable {
                 NSLog("[VueNative JS Stack] \(stack)")
             }
             #if DEBUG
-            let fullMessage = stack.isEmpty ? message : "\(message)\n\n\(stack)"
+            let errorInfo = JSErrorInfo(message: message, stack: stack, componentName: nil)
             Task { @MainActor in
-                ErrorOverlayView.show(error: fullMessage)
+                ErrorOverlayView.show(error: errorInfo)
             }
             #endif
             _ = self

@@ -90,6 +90,40 @@ final class StyleEngineTests: XCTestCase {
         XCTAssertEqual(NSColor.fromHex("transparent"), .clear)
     }
 
+    // MARK: - Color: semantic (dynamic catalog) names
+
+    func testColorSemanticNamesResolve() {
+        // Every documented semantic name must resolve to a non-nil color so a
+        // style like `color: "label"` never silently drops.
+        let names = [
+            "background", "label", "secondaryLabel", "tertiaryLabel",
+            "separator", "systemBlue", "systemRed", "systemGreen",
+            "systemOrange", "systemGray",
+        ]
+        for name in names {
+            XCTAssertNotNil(NSColor.fromHex(name), "semantic color '\(name)' should resolve")
+        }
+    }
+
+    func testColorSemanticNamesMapToDynamicCatalogColors() {
+        // Verify the exact mappings, including the macOS-specific systemBlue →
+        // controlAccentColor substitution and case-insensitivity.
+        XCTAssertEqual(NSColor.fromHex("background"), NSColor.windowBackgroundColor)
+        XCTAssertEqual(NSColor.fromHex("label"), NSColor.labelColor)
+        XCTAssertEqual(NSColor.fromHex("secondaryLabel"), NSColor.secondaryLabelColor)
+        XCTAssertEqual(NSColor.fromHex("tertiaryLabel"), NSColor.tertiaryLabelColor)
+        XCTAssertEqual(NSColor.fromHex("separator"), NSColor.separatorColor)
+        XCTAssertEqual(NSColor.fromHex("systemBlue"), NSColor.controlAccentColor)
+        XCTAssertEqual(NSColor.fromHex("systemRed"), NSColor.systemRed)
+        XCTAssertEqual(NSColor.fromHex("systemGreen"), NSColor.systemGreen)
+        XCTAssertEqual(NSColor.fromHex("systemOrange"), NSColor.systemOrange)
+        XCTAssertEqual(NSColor.fromHex("systemGray"), NSColor.systemGray)
+
+        // Lookup is case-insensitive (input is lowercased before matching).
+        XCTAssertEqual(NSColor.fromHex("LABEL"), NSColor.labelColor)
+        XCTAssertEqual(NSColor.fromHex("SystemRed"), NSColor.systemRed)
+    }
+
     // MARK: - Color: invalid
 
     func testColorInvalidReturnsNil() {

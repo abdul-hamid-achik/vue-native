@@ -66,6 +66,7 @@ final class NativeModuleRegistry {
         register(NotificationsModule())
         register(BiometryModule())
         register(PermissionsModule())
+        register(BatteryModule())
 
         registerGeneratedModules()
     }

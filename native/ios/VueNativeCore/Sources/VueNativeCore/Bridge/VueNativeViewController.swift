@@ -75,6 +75,7 @@ open class VueNativeViewController: UIViewController {
         view.backgroundColor = .black
 
         installSwipeBackGesture()
+        installErrorReloadHandler()
 
         // Initialize JS engine first (creates JSContext, registers polyfills).
         // Bridge init MUST happen inside this callback so the JSContext exists
@@ -265,6 +266,24 @@ open class VueNativeViewController: UIViewController {
             }
             if !success {
                 NSLog("[VueNative] ERROR: Failed to load bundle '%@'", self?.bundleName ?? "unknown")
+            }
+        }
+    }
+
+    /// Wire the error overlay's Reload button to a full reload of the embedded
+    /// bundle in a fresh JS context. A failed render can leave the old context
+    /// in a mutated state, so the runtime is recreated and the bridge re-bound
+    /// before re-loading — mirroring the OTA-fallback recovery path.
+    private func installErrorReloadHandler() {
+        ErrorOverlayView.reloadHandler = { [weak self] in
+            guard let self else { return }
+            self.runtime.recreate { [weak self] in
+                guard let self else { return }
+                DispatchQueue.main.async {
+                    self.bridge.reset()
+                    self.bridge.initialize(rootViewController: self, hostID: self.hostID)
+                    self.loadEmbeddedBundle()
+                }
             }
         }
     }

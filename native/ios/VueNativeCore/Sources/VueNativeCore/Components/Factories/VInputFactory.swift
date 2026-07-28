@@ -416,6 +416,10 @@ final class VInputFactory: NativeComponentFactory {
         switch event {
         case "changetext":
             delegate.onChangeText = handler
+        case "compositionstart":
+            delegate.onCompositionStart = handler
+        case "compositionend":
+            delegate.onCompositionEnd = handler
         case "focus":
             delegate.onFocus = handler
         case "blur":
@@ -436,6 +440,10 @@ final class VInputFactory: NativeComponentFactory {
         switch event {
         case "changetext":
             delegate.onChangeText = nil
+        case "compositionstart":
+            delegate.onCompositionStart = nil
+        case "compositionend":
+            delegate.onCompositionEnd = nil
         case "focus":
             delegate.onFocus = nil
         case "blur":
@@ -529,9 +537,38 @@ final class InputDelegateProxy: NSObject, UITextFieldDelegate, UITextViewDelegat
     weak var container: VInputContainerView?
 
     var onChangeText: ((Any?) -> Void)?
+    var onCompositionStart: ((Any?) -> Void)?
+    var onCompositionEnd: ((Any?) -> Void)?
     var onFocus: ((Any?) -> Void)?
     var onBlur: ((Any?) -> Void)?
     var onSubmit: ((Any?) -> Void)?
+
+    /// Whether an IME composition session is currently active. Tracked via the
+    /// control's `markedTextRange`: a non-nil range means uncommitted marked
+    /// text is present (composition in progress).
+    private var isComposing = false
+
+    // MARK: - IME composition tracking
+
+    /// Emit `compositionstart`/`compositionend` around IME composition sessions
+    /// (e.g. CJK input). `markedTextRange` is non-nil while the IME holds
+    /// uncommitted marked text; it becomes nil when the text is committed (or
+    /// the session is cancelled). Transitioning into/out of that state is the
+    /// reliable, documented signal for composition boundaries.
+    ///
+    /// Internal (rather than private) so the transition logic can be unit-tested
+    /// without driving a real IME, which cannot be synthesized on a simulator.
+    func updateCompositionState(hasMarkedText: Bool, committedText: String) {
+        if hasMarkedText {
+            if !isComposing {
+                isComposing = true
+                onCompositionStart?(nil)
+            }
+        } else if isComposing {
+            isComposing = false
+            onCompositionEnd?(committedText)
+        }
+    }
 
     // MARK: - UITextField target actions
 
@@ -568,6 +605,12 @@ final class InputDelegateProxy: NSObject, UITextFieldDelegate, UITextViewDelegat
         return true
     }
 
+    func textFieldDidChangeSelection(_ textField: UITextField) {
+        // Fires on every selection/marked-text change, including each IME
+        // keystroke, so it reliably brackets composition sessions.
+        updateCompositionState(hasMarkedText: textField.markedTextRange != nil, committedText: textField.text ?? "")
+    }
+
     // MARK: - UITextViewDelegate
 
     func textViewDidChange(_ textView: UITextView) {
@@ -589,6 +632,10 @@ final class InputDelegateProxy: NSObject, UITextFieldDelegate, UITextViewDelegat
         replacementText text: String
     ) -> Bool {
         return isWithinMaxLength(currentText: textView.text ?? "", range: range, replacement: text)
+    }
+
+    func textViewDidChangeSelection(_ textView: UITextView) {
+        updateCompositionState(hasMarkedText: textView.markedTextRange != nil, committedText: textView.text ?? "")
     }
 
     // MARK: - Max length

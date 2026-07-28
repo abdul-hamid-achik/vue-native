@@ -39,6 +39,7 @@ final class NativeModuleRegistry {
         register(AsyncStorageModule())
         register(ClipboardModule())
         register(DeviceInfoModule())
+        register(BatteryModule())
         register(KeyboardModule())
         register(AnimationModule())
         register(AccessibilityModule())

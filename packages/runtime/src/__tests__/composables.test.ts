@@ -193,6 +193,31 @@ describe('Composables', () => {
   })
 
   // ---------------------------------------------------------------------------
+  // useBattery
+  // ---------------------------------------------------------------------------
+  describe('useBattery', () => {
+    it('reads battery info from the Battery module', async () => {
+      invokeModuleSpy.mockResolvedValueOnce({ level: 0.5, isCharging: true })
+      const { useBattery } = await import('../composables/useBattery')
+      const { level, isCharging, isSupported, refresh } = useBattery({ pollInterval: 0 })
+      await refresh()
+      expect(invokeModuleSpy).toHaveBeenCalledWith('Battery', 'getBatteryInfo', [])
+      expect(level.value).toBe(0.5)
+      expect(isCharging.value).toBe(true)
+      expect(isSupported.value).toBe(true)
+    })
+
+    it('marks unsupported when the module reports null level', async () => {
+      invokeModuleSpy.mockResolvedValueOnce({ level: null, isCharging: null })
+      const { useBattery } = await import('../composables/useBattery')
+      const { level, isSupported, refresh } = useBattery({ pollInterval: 0 })
+      await refresh()
+      expect(level.value).toBeNull()
+      expect(isSupported.value).toBe(false)
+    })
+  })
+
+  // ---------------------------------------------------------------------------
   // useAnimation
   // ---------------------------------------------------------------------------
   describe('useAnimation', () => {

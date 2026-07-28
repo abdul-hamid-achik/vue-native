@@ -493,6 +493,56 @@ class StyleEngineTest {
     }
 
     // -------------------------------------------------------------------------
+    // Semantic colors
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun testSemanticColorsResolveToNonNull() {
+        val names = listOf(
+            "background", "label", "secondaryLabel", "tertiaryLabel", "separator",
+            "systemBlue", "systemRed", "systemGreen", "systemOrange", "systemGray",
+        )
+        for (name in names) {
+            assertNotNull("Semantic color '$name' should resolve", StyleEngine.parseColor(name, context))
+        }
+    }
+
+    @Test
+    fun testSemanticColorsResolveWithoutContext() {
+        // With no context, theme-backed names fall back to their hex value and
+        // fixed-palette names resolve directly — all must be non-null.
+        assertNotNull(StyleEngine.parseColor("background"))
+        assertNotNull(StyleEngine.parseColor("label"))
+        assertNotNull(StyleEngine.parseColor("systemBlue"))
+    }
+
+    @Test
+    fun testSemanticFixedPaletteHexValues() {
+        assertEquals(0xFF007AFF.toInt(), StyleEngine.parseColor("systemBlue", context))
+        assertEquals(0xFFFF3B30.toInt(), StyleEngine.parseColor("systemRed", context))
+        assertEquals(0xFF34C759.toInt(), StyleEngine.parseColor("systemGreen", context))
+        assertEquals(0xFFFF9500.toInt(), StyleEngine.parseColor("systemOrange", context))
+        assertEquals(0xFF8E8E93.toInt(), StyleEngine.parseColor("systemGray", context))
+        assertEquals(0xFFC6C6C8.toInt(), StyleEngine.parseColor("separator", context))
+    }
+
+    @Test
+    fun testSemanticColorLookupIsCaseInsensitive() {
+        assertEquals(
+            StyleEngine.parseColor("systemblue", context),
+            StyleEngine.parseColor("systemBlue", context),
+        )
+    }
+
+    @Test
+    fun testSemanticBackgroundColorApplies() {
+        val view = View(context)
+        StyleEngine.apply("backgroundColor", "background", view)
+        assertNotNull("Semantic backgroundColor should apply", view.background)
+        assertTrue(view.background is GradientDrawable)
+    }
+
+    // -------------------------------------------------------------------------
     // toFloat
     // -------------------------------------------------------------------------
 

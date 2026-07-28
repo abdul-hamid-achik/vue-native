@@ -21,6 +21,29 @@ extension NSColor {
         "brown": .brown
     ]
 
+    // MARK: - Semantic color lookup
+
+    /// Semantic color names that resolve to dynamic AppKit catalog colors.
+    /// These adapt automatically to light/dark appearance changes, so a style
+    /// like `color: "label"` stays legible in both modes without extra work.
+    ///
+    /// `systemBlue` maps to `controlAccentColor` because macOS has no
+    /// `NSColor.systemBlue` (that symbol is iOS-only); the control accent color
+    /// is the platform-correct "system blue" on macOS and follows the user's
+    /// accent-color preference.
+    private static let semanticColors: [String: NSColor] = [
+        "background": .windowBackgroundColor,
+        "label": .labelColor,
+        "secondarylabel": .secondaryLabelColor,
+        "tertiarylabel": .tertiaryLabelColor,
+        "separator": .separatorColor,
+        "systemblue": .controlAccentColor,
+        "systemred": .systemRed,
+        "systemgreen": .systemGreen,
+        "systemorange": .systemOrange,
+        "systemgray": .systemGray
+    ]
+
     // MARK: - Hex / functional initializer
 
     /// Creates an NSColor from a color string.
@@ -31,6 +54,9 @@ extension NSColor {
     ///   0...255 and alpha is 0...1.
     /// - Named colors: `transparent`, `white`, `black`, `red`, `blue`, `green`,
     ///   `gray`, `grey`, `orange`, `yellow`, `purple`, `cyan`, `magenta`, `brown`.
+    /// - Semantic colors (dynamic, auto dark-mode): `background`, `label`,
+    ///   `secondaryLabel`, `tertiaryLabel`, `separator`, `systemBlue`,
+    ///   `systemRed`, `systemGreen`, `systemOrange`, `systemGray`.
     ///
     /// Returns `nil` for invalid input so callers can ignore the style rather
     /// than silently applying a transparent color. Emits a warning in DEBUG.
@@ -40,6 +66,11 @@ extension NSColor {
         // Check named colors first
         if let named = namedColors[trimmed] {
             return named
+        }
+
+        // Semantic (dynamic catalog) colors — case-insensitive via `trimmed`.
+        if let semantic = semanticColors[trimmed] {
+            return semantic
         }
 
         // Functional notation: rgb(...) / rgba(...)

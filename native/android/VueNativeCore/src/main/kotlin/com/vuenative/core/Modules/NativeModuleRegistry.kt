@@ -94,6 +94,7 @@ class NativeModuleRegistry private constructor(private val context: Context) {
             AsyncStorageModule(),
             ClipboardModule(),
             DeviceInfoModule(),
+            BatteryModule(),
             NetworkModule(),
             AppStateModule(),
             LinkingModule(),

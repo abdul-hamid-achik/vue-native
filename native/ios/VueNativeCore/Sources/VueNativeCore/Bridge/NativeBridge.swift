@@ -139,16 +139,21 @@ public final class NativeBridge {
             let jsonString = errorInfoValue.toString() ?? "{}"
             NSLog("[VueNative Error] %@", jsonString)
 
-            if let data = jsonString.data(using: .utf8),
-               let info = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                let message = info["message"] as? String ?? "Unknown error"
-                let stack = info["stack"] as? String ?? ""
-                let componentName = info["componentName"] as? String ?? "unknown"
-                NSLog("[VueNative Error] Component: %@, Message: %@", componentName, message)
-                if !stack.isEmpty {
-                    NSLog("[VueNative Error] Stack: %@", stack)
-                }
+            let errorInfo = JSErrorInfo.from(payload: jsonString)
+            NSLog(
+                "[VueNative Error] Component: %@, Message: %@",
+                errorInfo.componentName ?? "unknown",
+                errorInfo.message
+            )
+            if !errorInfo.stack.isEmpty {
+                NSLog("[VueNative Error] Stack: %@", errorInfo.stack)
             }
+
+            #if DEBUG
+            Task { @MainActor in
+                ErrorOverlayView.show(error: errorInfo)
+            }
+            #endif
         }
         context.setObject(handleError, forKeyedSubscript: "__VN_handleError" as NSString)
     }

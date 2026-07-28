@@ -1,6 +1,7 @@
 package com.vuenative.core
 
 import android.content.Context
+import android.graphics.Typeface
 import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.LinearLayout
@@ -38,6 +39,25 @@ class ErrorOverlayViewTest {
         return activity
     }
 
+    private fun card(activity: AppCompatActivity): LinearLayout {
+        val decorView = activity.window.decorView as android.view.ViewGroup
+        val overlay = decorView.findViewWithTag<FrameLayout>("vue_native_error_overlay")
+        assertNotNull("Overlay should be added to decorView", overlay)
+        return overlay!!.getChildAt(0) as LinearLayout
+    }
+
+    private fun findWithTag(parent: android.view.ViewGroup, tag: String): android.view.View? {
+        for (i in 0 until parent.childCount) {
+            val child = parent.getChildAt(i)
+            if (child.tag == tag) return child
+            if (child is android.view.ViewGroup) {
+                val nested = findWithTag(child, tag)
+                if (nested != null) return nested
+            }
+        }
+        return null
+    }
+
     // -------------------------------------------------------------------------
     // ErrorOverlayView is a singleton object
     // -------------------------------------------------------------------------
@@ -50,14 +70,58 @@ class ErrorOverlayViewTest {
     }
 
     // -------------------------------------------------------------------------
+    // parse() — structured JSON payload from the runtime errorHandler
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun testParseStructuredJson() {
+        val json = """{"message":"boom","stack":"at foo (app.js:1:2)","componentName":"MyComp","info":"render"}"""
+        val parsed = ErrorOverlayView.parse(json)
+        assertEquals("boom", parsed.message)
+        assertEquals("at foo (app.js:1:2)", parsed.stack)
+        assertEquals("MyComp", parsed.componentName)
+    }
+
+    @Test
+    fun testParseJsonWithoutComponentName() {
+        val parsed = ErrorOverlayView.parse("""{"message":"boom","stack":"trace"}""")
+        assertEquals("boom", parsed.message)
+        assertEquals("trace", parsed.stack)
+        assertNull("componentName should be null when absent", parsed.componentName)
+    }
+
+    @Test
+    fun testParseBlankStackAndComponentBecomeNull() {
+        val parsed = ErrorOverlayView.parse("""{"message":"boom","stack":"","componentName":""}""")
+        assertEquals("boom", parsed.message)
+        assertNull(parsed.stack)
+        assertNull(parsed.componentName)
+    }
+
+    @Test
+    fun testParsePlainTextFallback() {
+        val parsed = ErrorOverlayView.parse("Failed to load bundle: missing asset")
+        assertEquals("Failed to load bundle: missing asset", parsed.message)
+        assertNull(parsed.stack)
+        assertNull(parsed.componentName)
+    }
+
+    @Test
+    fun testParseInvalidJsonTreatedAsPlainText() {
+        val parsed = ErrorOverlayView.parse("{not valid json")
+        assertEquals("{not valid json", parsed.message)
+        assertNull(parsed.stack)
+        assertNull(parsed.componentName)
+    }
+
+    // -------------------------------------------------------------------------
     // show() with non-activity context does not crash
     // -------------------------------------------------------------------------
 
     @Test
     fun testShowWithNonActivityContext() {
-        // Application context is not an AppCompatActivity, so show() should return early
+        // Application context is not an Activity, so show() should return early.
         ErrorOverlayView.show(context, "Test error")
-        // Should not crash
         assertTrue(true)
     }
 
@@ -73,43 +137,83 @@ class ErrorOverlayViewTest {
 
         val decorView = activity.window.decorView as? android.view.ViewGroup
         assertNotNull("decorView should not be null", decorView)
-
         val overlay = decorView?.findViewWithTag<FrameLayout>("vue_native_error_overlay")
         assertNotNull("Overlay should be added to decorView", overlay)
     }
 
     // -------------------------------------------------------------------------
-    // Overlay contains title, error text, and dismiss button
+    // Overlay renders message (bold), scrollable stack, and a Reload button
     // -------------------------------------------------------------------------
 
     @Test
-    fun testOverlayContents() {
+    fun testOverlayRendersStructuredPayload() {
+        val activity = createActivity()
+        val json = """{"message":"Cannot read property 'value' of null","stack":"at render (app.js:10:5)","componentName":"Counter"}"""
+
+        ErrorOverlayView.show(activity, json)
+
+        val card = card(activity)
+
+        // Message — bold and matching the payload.
+        val message = findWithTag(card, "vue_native_error_message") as TextView
+        assertEquals("Cannot read property 'value' of null", message.text.toString())
+        assertEquals("Message should be bold", Typeface.DEFAULT_BOLD, message.typeface)
+
+        // Component name rendered because the payload carries one.
+        val component = findWithTag(card, "vue_native_error_component") as TextView
+        assertEquals("Component: Counter", component.text.toString())
+
+        // Stack — monospace inside a ScrollView.
+        val scroll = findWithTag(card, "vue_native_error_scroll")
+        assertNotNull("Stack should be inside a ScrollView", scroll)
+        assertTrue(scroll is ScrollView)
+        val stack = findWithTag(card, "vue_native_error_stack") as TextView
+        assertEquals("at render (app.js:10:5)", stack.text.toString())
+        assertEquals(android.graphics.Typeface.MONOSPACE, stack.typeface)
+
+        // Reload button exists.
+        val reload = findWithTag(card, "vue_native_error_reload")
+        assertNotNull("Reload button should exist", reload)
+        assertTrue(reload is Button)
+        assertEquals("Reload", (reload as Button).text.toString())
+    }
+
+    @Test
+    fun testOverlayOmitsComponentWhenAbsent() {
         val activity = createActivity()
 
-        val errorMessage = "TypeError: Cannot read property 'value' of null"
-        ErrorOverlayView.show(activity, errorMessage)
+        ErrorOverlayView.show(activity, "plain failure")
 
+        val card = card(activity)
+        assertNull(
+            "Component label should be omitted for plain-text errors",
+            findWithTag(card, "vue_native_error_component"),
+        )
+        val message = findWithTag(card, "vue_native_error_message") as TextView
+        assertEquals("plain failure", message.text.toString())
+    }
+
+    // -------------------------------------------------------------------------
+    // Reload button invokes the configurable callback
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun testReloadInvokesCallback() {
+        val activity = createActivity()
+        var reloaded = false
+
+        ErrorOverlayView.show(activity, "Some error") { reloaded = true }
+
+        val card = card(activity)
+        val reload = findWithTag(card, "vue_native_error_reload") as Button
+        reload.performClick()
+
+        assertTrue("Reload callback should fire", reloaded)
         val decorView = activity.window.decorView as android.view.ViewGroup
-        val overlay = decorView.findViewWithTag<FrameLayout>("vue_native_error_overlay")!!
-
-        // The overlay contains a card (LinearLayout)
-        val card = overlay.getChildAt(0) as LinearLayout
-
-        // Card should have 3 children: title, scroll (with error text), dismiss button
-        assertEquals("Card should have 3 children", 3, card.childCount)
-
-        // Title
-        val title = card.getChildAt(0) as TextView
-        assertEquals("Vue Native JS Error", title.text.toString())
-
-        // Scroll -> error text
-        val scroll = card.getChildAt(1) as ScrollView
-        val errorText = scroll.getChildAt(0) as TextView
-        assertEquals(errorMessage, errorText.text.toString())
-
-        // Dismiss button
-        val dismiss = card.getChildAt(2) as Button
-        assertEquals("Dismiss", dismiss.text.toString())
+        assertNull(
+            "Overlay should be removed on reload",
+            decorView.findViewWithTag<FrameLayout>("vue_native_error_overlay"),
+        )
     }
 
     // -------------------------------------------------------------------------
@@ -123,16 +227,16 @@ class ErrorOverlayViewTest {
         ErrorOverlayView.show(activity, "Some error")
 
         val decorView = activity.window.decorView as android.view.ViewGroup
-        var overlay = decorView.findViewWithTag<FrameLayout>("vue_native_error_overlay")
-        assertNotNull("Overlay should exist", overlay)
+        assertNotNull(decorView.findViewWithTag<FrameLayout>("vue_native_error_overlay"))
 
-        // Find and click the dismiss button
-        val card = overlay!!.getChildAt(0) as LinearLayout
-        val dismiss = card.getChildAt(2) as Button
+        val card = card(activity)
+        val dismiss = findWithTag(card, "vue_native_error_dismiss") as Button
         dismiss.performClick()
 
-        overlay = decorView.findViewWithTag<FrameLayout>("vue_native_error_overlay")
-        assertNull("Overlay should be removed after dismiss", overlay)
+        assertNull(
+            "Overlay should be removed after dismiss",
+            decorView.findViewWithTag<FrameLayout>("vue_native_error_overlay"),
+        )
     }
 
     // -------------------------------------------------------------------------
@@ -148,7 +252,6 @@ class ErrorOverlayViewTest {
 
         val decorView = activity.window.decorView as android.view.ViewGroup
 
-        // Count overlays with the tag
         var overlayCount = 0
         for (i in 0 until decorView.childCount) {
             if (decorView.getChildAt(i).tag == "vue_native_error_overlay") {
@@ -157,12 +260,9 @@ class ErrorOverlayViewTest {
         }
         assertEquals("Should only have one overlay", 1, overlayCount)
 
-        // Verify it shows the second error
-        val overlay = decorView.findViewWithTag<FrameLayout>("vue_native_error_overlay")!!
-        val card = overlay.getChildAt(0) as LinearLayout
-        val scroll = card.getChildAt(1) as ScrollView
-        val errorText = scroll.getChildAt(0) as TextView
-        assertEquals("Second error", errorText.text.toString())
+        val card = card(activity)
+        val message = findWithTag(card, "vue_native_error_message") as TextView
+        assertEquals("Second error", message.text.toString())
     }
 
     // -------------------------------------------------------------------------

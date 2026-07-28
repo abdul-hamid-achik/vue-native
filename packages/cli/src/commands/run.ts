@@ -1,6 +1,7 @@
 import { Command } from 'commander'
 import { execFileSync, execSync } from 'node:child_process'
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import pc from 'picocolors'
 import { ConfigError, loadConfig } from '../config.js'
@@ -36,8 +37,10 @@ function validateAndroidComponent(applicationId: string, activity: string): void
   }
 }
 
-function findAppPath(_buildDir: string): string | null {
-  // Look for .app bundle in DerivedData or build directory
+function findAppPath(productsSubdir: string): string | null {
+  // Look for .app bundle in DerivedData or build directory. `productsSubdir`
+  // selects the SDK-specific products folder, e.g. "Debug-iphonesimulator" for
+  // simulator builds or "Debug-iphoneos" for physical-device builds.
   const derivedDataBase = join(
     process.env.HOME || '~',
     'Library/Developer/Xcode/DerivedData',
@@ -62,7 +65,8 @@ function findAppPath(_buildDir: string): string | null {
         const productsDir = join(
           derivedDataBase,
           project,
-          'Build/Products/Debug-iphonesimulator',
+          'Build/Products',
+          productsSubdir,
         )
         if (existsSync(productsDir)) {
           const entries = readdirSync(productsDir)
@@ -113,6 +117,7 @@ export const runCommand = new Command('run')
   .description('Build and run the app')
   .argument('<platform>', 'platform to run on (ios, android, macos)')
   .option('--device', 'run on physical device instead of simulator')
+  .option('--device-id <udid>', 'UDID of the physical device to target (auto-detected when omitted)')
   .option('--scheme <scheme>', 'Xcode scheme to build')
   .option('--simulator <name>', 'simulator name (auto-detected when omitted)')
   .option('--bundle-id <id>', 'app bundle identifier')
@@ -120,6 +125,7 @@ export const runCommand = new Command('run')
   .option('--activity <name>', 'Android activity name', '.MainActivity')
   .action(async (platform: string, options: {
     device?: boolean
+    deviceId?: string
     scheme?: string
     simulator?: string
     bundleId?: string
@@ -188,10 +194,136 @@ function detectIOSSimulator(): string | null {
   }
 }
 
+interface PhysicalDevice {
+  udid: string
+  name: string
+}
+
+interface DevicectlDevice {
+  identifier?: string
+  hardwareProperties?: { udid?: string, productType?: string }
+  deviceProperties?: { name?: string, udid?: string }
+  connectionProperties?: { transportType?: string }
+}
+
+interface DevicectlOutput {
+  result?: { devices?: DevicectlDevice[] }
+  devices?: DevicectlDevice[]
+}
+
+/** Flatten an unknown error's message/stderr/stdout into a single searchable string. */
+function processErrorText(error: unknown): string {
+  const err = error as {
+    message?: string
+    stderr?: Buffer | string
+    stdout?: Buffer | string
+  }
+  return [err?.message, err?.stderr, err?.stdout]
+    .map(value => (typeof value === 'string' ? value : value?.toString?.() ?? ''))
+    .join(' ')
+}
+
+/** Parse the JSON produced by `xcrun devicectl list devices --json-output`. */
+function parseDevicectlDevices(json: string): PhysicalDevice[] {
+  let data: DevicectlOutput
+  try {
+    data = JSON.parse(json) as DevicectlOutput
+  } catch {
+    return []
+  }
+
+  const rawDevices = data?.result?.devices ?? data?.devices ?? []
+  if (!Array.isArray(rawDevices)) return []
+
+  const devices: PhysicalDevice[] = []
+  for (const device of rawDevices) {
+    const udid = device?.hardwareProperties?.udid
+      ?? device?.deviceProperties?.udid
+      ?? device?.identifier
+    if (typeof udid !== 'string' || udid.length === 0) continue
+
+    // devicectl lists paired-but-disconnected devices with a transport other
+    // than wired/localNetwork (e.g. "unavailable") — skip those.
+    const transport = device?.connectionProperties?.transportType
+    if (typeof transport === 'string'
+      && transport !== 'wired'
+      && transport !== 'localNetwork') {
+      continue
+    }
+
+    const name = device?.deviceProperties?.name
+      ?? device?.hardwareProperties?.productType
+      ?? 'iOS device'
+    devices.push({ udid, name })
+  }
+  return devices
+}
+
+/**
+ * List connected physical iOS devices via `xcrun devicectl` (Xcode 15+).
+ * Throws a ConfigError with actionable guidance when devicectl is unavailable
+ * or the device list cannot be read.
+ */
+function listPhysicalDevices(): PhysicalDevice[] {
+  const jsonPath = join(tmpdir(), `vue-native-devices-${process.pid}.json`)
+  let raw: string
+  try {
+    execFileSync(
+      'xcrun',
+      ['devicectl', 'list', 'devices', '--json-output', jsonPath],
+      { stdio: 'pipe' },
+    )
+    raw = readFileSync(jsonPath, 'utf8')
+  } catch (error) {
+    const text = processErrorText(error)
+    if (/devicectl/i.test(text)
+      && /(unable to find utility|not a developer tool|could not be found|no such file|ENOENT)/i.test(text)) {
+      throw new ConfigError(
+        'xcrun devicectl is not available. Install Xcode 15+ to run on a physical device, or install/launch the app via Xcode or ios-deploy.',
+      )
+    }
+    const message = error instanceof Error ? error.message : String(error)
+    throw new ConfigError(`Failed to list connected iOS devices: ${message}`)
+  } finally {
+    try {
+      rmSync(jsonPath, { force: true })
+    } catch {}
+  }
+
+  return parseDevicectlDevices(raw)
+}
+
+/**
+ * Pick the physical device to target: the one matching --device-id when given,
+ * otherwise the first connected device. Throws a clear error when no suitable
+ * device is connected.
+ */
+function selectPhysicalDevice(preferredUdid?: string): PhysicalDevice {
+  const devices = listPhysicalDevices()
+
+  if (preferredUdid) {
+    const match = devices.find(device => device.udid === preferredUdid)
+    if (!match) {
+      throw new ConfigError(
+        `No connected iOS device matches --device-id ${preferredUdid}. Connect it and trust the computer, then retry.`,
+      )
+    }
+    return match
+  }
+
+  if (devices.length === 0) {
+    throw new ConfigError(
+      'No connected iOS device found. Connect a device and trust the computer, or run without --device to use a simulator.',
+    )
+  }
+  return devices[0]
+}
+
 async function runIOS(
   cwd: string,
   options: {
     device?: boolean
+    deviceId?: string
     scheme?: string
     simulator?: string
     bundleId?: string
@@ -260,7 +392,47 @@ async function runIOS(
   console.log(pc.green('  ✓ Build successful\n'))
 
   if (options.device) {
-    console.log(pc.green('  App built for device. Install via Xcode.\n'))
+    const bundleId = options.bundleId || readBundleId(join(cwd, 'ios'))
+    validateAppleBundleId(bundleId)
+
+    // Resolve the target device first so a missing/untrusted device surfaces a
+    // clear error before we go looking for build artifacts.
+    const device = selectPhysicalDevice(options.deviceId)
+
+    const appPath = findAppPath('Debug-iphoneos')
+    if (!appPath) {
+      console.log(pc.yellow('  Could not locate the device .app bundle in DerivedData.'))
+      console.log(pc.dim('  The build succeeded — install the app from Xcode directly.\n'))
+      return
+    }
+
+    console.log(pc.white(`  Installing app on ${device.name}...`))
+    try {
+      execFileSync(
+        'xcrun',
+        ['devicectl', 'device', 'install', 'app', '--device', device.udid, appPath],
+        { stdio: 'pipe' },
+      )
+      console.log(pc.green('  ✓ App installed'))
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      console.error(pc.red(`  ✗ Failed to install app: ${message}`))
+      throw new ConfigError(`iOS device app install failed: ${message}`)
+    }
+
+    console.log(pc.white(`  Launching ${bundleId}...`))
+    try {
+      execFileSync(
+        'xcrun',
+        ['devicectl', 'device', 'process', 'launch', '--device', device.udid, bundleId],
+        { stdio: 'pipe' },
+      )
+      console.log(pc.green(`  ✓ App launched on ${device.name}\n`))
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      console.error(pc.red(`  ✗ Failed to launch app: ${message}`))
+      throw new ConfigError(`iOS device app launch failed: ${message}`)
+    }
     return
   }
 
@@ -284,7 +456,7 @@ async function runIOS(
   } catch {}
 
   // Find and install the .app
-  const appPath = findAppPath(join(cwd, 'ios'))
+  const appPath = findAppPath('Debug-iphonesimulator')
   if (appPath) {
     console.log(pc.white(`  Installing app on simulator...`))
     try {

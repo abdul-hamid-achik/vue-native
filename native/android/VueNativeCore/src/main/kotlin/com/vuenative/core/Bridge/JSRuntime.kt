@@ -93,11 +93,16 @@ class JSRuntime(private val context: Context) {
                     }
                 }, "__VN_flushOperations")
 
-                // Register __VN_handleError — JS calls this to report errors to native
+                // Register __VN_handleError — JS calls this to report errors to native.
+                // The payload is the JSON emitted by the runtime errorHandler
+                // ({ message, stack, componentName, info }); ErrorOverlayView parses
+                // it into a structured overlay. show() hops to the UI thread itself,
+                // so it is safe to call from the JS thread.
                 v8?.registerJavaMethod(JavaVoidCallback { _, params ->
                     try {
                         val errorJson = if (params.length() > 0) params.getString(0) else "{}"
                         Log.e(TAG, "[VueNative Error] $errorJson")
+                        ErrorOverlayView.show(context, errorJson)
                     } finally {
                         params.close()
                     }

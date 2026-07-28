@@ -1509,6 +1509,14 @@ describe('run command', () => {
         return false
       })
       mockReaddirSync.mockReturnValue(['MyApp.xcodeproj'])
+      // Report one connected device so the --device flow resolves a target and
+      // returns gracefully (no DerivedData here, so it stops before install).
+      mockReadFileSync.mockImplementation((path: string) => {
+        if (typeof path === 'string' && path.endsWith('.json')) {
+          return JSON.stringify({ result: { devices: [{ hardwareProperties: { udid: 'TEST-UDID' }, connectionProperties: { transportType: 'wired' } }] } })
+        }
+        return ''
+      })
 
       try {
         const runCmd = await importRunCommand()
@@ -1535,6 +1543,14 @@ describe('run command', () => {
         return false
       })
       mockReaddirSync.mockReturnValue(['MyApp.xcodeproj'])
+      // Report one connected device so the --device flow resolves a target and
+      // returns gracefully (no DerivedData here, so it stops before install).
+      mockReadFileSync.mockImplementation((path: string) => {
+        if (typeof path === 'string' && path.endsWith('.json')) {
+          return JSON.stringify({ result: { devices: [{ hardwareProperties: { udid: 'TEST-UDID' }, connectionProperties: { transportType: 'wired' } }] } })
+        }
+        return ''
+      })
 
       const runCmd = await importRunCommand()
       await runCmd.parseAsync(['node', 'run', 'ios', '--device'])
@@ -1542,6 +1558,155 @@ describe('run command', () => {
       const spawnArgs = mockSpawn.mock.calls[0][1] as string[]
       const destIndex = spawnArgs.indexOf('-destination')
       expect(spawnArgs[destIndex + 1]).toBe('generic/platform=iOS')
+    })
+  })
+
+  describe('iOS physical device (--device)', () => {
+    const WIRED_DEVICE = {
+      identifier: 'device-identifier-1',
+      hardwareProperties: { udid: 'TEST-UDID-123', productType: 'iPhone15,2' },
+      deviceProperties: { name: 'Test iPhone' },
+      connectionProperties: { transportType: 'wired' },
+    }
+
+    function devicectlJson(devices: unknown[]): string {
+      return JSON.stringify({ result: { devices } })
+    }
+
+    // Make the xcodebuild device build "succeed" and let findAppPath locate a
+    // Debug-iphoneos .app bundle in DerivedData.
+    function setupDeviceBuildMocks() {
+      mockExecSync.mockImplementation(() => '')
+      mockExistsSync.mockImplementation((path: string) => {
+        if (typeof path !== 'string') return false
+        if (path.endsWith('/ios')) return true
+        if (path.includes('DerivedData')) return true
+        return false
+      })
+      mockReaddirSync.mockImplementation((path: string) => {
+        if (typeof path !== 'string') return []
+        if (path.endsWith('/ios')) return ['MyApp.xcodeproj']
+        if (path.includes('Debug-iphoneos')) return ['MyApp.app']
+        if (path.includes('DerivedData')) return ['MyApp-abc123']
+        return []
+      })
+    }
+
+    function mockDeviceList(devices: unknown[]) {
+      mockReadFileSync.mockImplementation((path: string) => {
+        if (typeof path === 'string' && path.endsWith('.json')) {
+          return devicectlJson(devices)
+        }
+        return ''
+      })
+    }
+
+    it('lists devices, then installs and launches on the connected device', async () => {
+      setupDeviceBuildMocks()
+      mockDeviceList([WIRED_DEVICE])
+
+      const runCmd = await importRunCommand()
+      await runCmd.parseAsync(['node', 'run', 'ios', '--device', '--bundle-id', 'com.example.app'])
+
+      // 1. Listed connected devices via devicectl (JSON written to a temp file)
+      expect(mockExecFileSync).toHaveBeenCalledWith(
+        'xcrun',
+        ['devicectl', 'list', 'devices', '--json-output', expect.stringMatching(/\.json$/)],
+        { stdio: 'pipe' },
+      )
+      // 2. Installed the Debug-iphoneos .app onto the device UDID
+      expect(mockExecFileSync).toHaveBeenCalledWith(
+        'xcrun',
+        [
+          'devicectl', 'device', 'install', 'app',
+          '--device', 'TEST-UDID-123',
+          expect.stringMatching(/Debug-iphoneos\/MyApp\.app$/),
+        ],
+        { stdio: 'pipe' },
+      )
+      // 3. Launched the bundle id on the device UDID
+      expect(mockExecFileSync).toHaveBeenCalledWith(
+        'xcrun',
+        ['devicectl', 'device', 'process', 'launch', '--device', 'TEST-UDID-123', 'com.example.app'],
+        { stdio: 'pipe' },
+      )
+    })
+
+    it('targets the device given by --device-id when several are connected', async () => {
+      setupDeviceBuildMocks()
+      const secondDevice = {
+        identifier: 'device-identifier-2',
+        hardwareProperties: { udid: 'SECOND-UDID', productType: 'iPhone14,5' },
+        deviceProperties: { name: 'Second iPhone' },
+        connectionProperties: { transportType: 'wired' },
+      }
+      mockDeviceList([WIRED_DEVICE, secondDevice])
+
+      const runCmd = await importRunCommand()
+      await runCmd.parseAsync([
+        'node', 'run', 'ios', '--device',
+        '--device-id', 'SECOND-UDID',
+        '--bundle-id', 'com.example.app',
+      ])
+
+      expect(mockExecFileSync).toHaveBeenCalledWith(
+        'xcrun',
+        ['devicectl', 'device', 'install', 'app', '--device', 'SECOND-UDID', expect.stringMatching(/MyApp\.app$/)],
+        { stdio: 'pipe' },
+      )
+      expect(mockExecFileSync).toHaveBeenCalledWith(
+        'xcrun',
+        ['devicectl', 'device', 'process', 'launch', '--device', 'SECOND-UDID', 'com.example.app'],
+        { stdio: 'pipe' },
+      )
+    })
+
+    it('fails with a clear error when no device is connected', async () => {
+      setupDeviceBuildMocks()
+      mockDeviceList([])
+
+      const runCmd = await importRunCommand()
+      await expect(runCmd.parseAsync(['node', 'run', 'ios', '--device', '--bundle-id', 'com.example.app']))
+        .rejects.toThrow(/No connected iOS device found/)
+
+      expect(mockExecFileSync).not.toHaveBeenCalledWith(
+        'xcrun',
+        expect.arrayContaining(['install']),
+        expect.any(Object),
+      )
+      expect(mockExecFileSync).not.toHaveBeenCalledWith(
+        'xcrun',
+        expect.arrayContaining(['launch']),
+        expect.any(Object),
+      )
+    })
+
+    it('reports a clear error when --device-id matches no connected device', async () => {
+      setupDeviceBuildMocks()
+      mockDeviceList([WIRED_DEVICE])
+
+      const runCmd = await importRunCommand()
+      await expect(runCmd.parseAsync([
+        'node', 'run', 'ios', '--device',
+        '--device-id', 'DOES-NOT-EXIST',
+        '--bundle-id', 'com.example.app',
+      ])).rejects.toThrow(/No connected iOS device matches --device-id DOES-NOT-EXIST/)
+    })
+
+    it('suggests Xcode or ios-deploy when devicectl is unavailable', async () => {
+      setupDeviceBuildMocks()
+      mockExecFileSync.mockImplementation((command: string, args: string[]) => {
+        if (command === 'xcrun' && Array.isArray(args) && args.includes('devicectl')) {
+          const error = new Error('Command failed: xcrun devicectl list devices') as Error & { stderr: string }
+          error.stderr = 'xcrun: error: unable to find utility "devicectl", not a developer tool or could not be found'
+          throw error
+        }
+        return ''
+      })
+
+      const runCmd = await importRunCommand()
+      await expect(runCmd.parseAsync(['node', 'run', 'ios', '--device', '--bundle-id', 'com.example.app']))
+        .rejects.toThrow(/devicectl is not available/)
     })
   })
 

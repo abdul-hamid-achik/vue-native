@@ -151,6 +151,52 @@ final class ModuleContractParityTest: XCTestCase {
         XCTAssertTrue(result.error?.contains("Unknown method") == true)
     }
 
+    // MARK: - Battery
+
+    func testBatteryInfoHasDocumentedShape() async {
+        let module = BatteryModule()
+        let result = await invoke(module, method: "getBatteryInfo", args: [])
+        XCTAssertNil(result.error)
+
+        guard let info = result.result as? [String: Any] else {
+            return XCTFail("expected a dictionary result from Battery.getBatteryInfo")
+        }
+
+        // Both keys are always present regardless of hardware. On a desktop Mac
+        // (no battery) the values are NSNull; on a MacBook they are a Double and
+        // a Bool. Either way the documented shape must hold and never crash.
+        XCTAssertTrue(info.keys.contains("level"), "level key must always be present")
+        XCTAssertTrue(info.keys.contains("isCharging"), "isCharging key must always be present")
+
+        if let level = info["level"] {
+            XCTAssertTrue(
+                level is NSNull || level is Double || level is Int,
+                "level must be null or a number, got \(type(of: level))"
+            )
+        }
+        if let charging = info["isCharging"] {
+            XCTAssertTrue(
+                charging is NSNull || charging is Bool || charging is Int,
+                "isCharging must be null or a boolean, got \(type(of: charging))"
+            )
+        }
+    }
+
+    func testBatteryInfoStaticHelperNeverCrashes() {
+        // Direct synchronous check of the helper so the shape contract is
+        // verified even without pumping the async callback run loop.
+        let info = BatteryModule.batteryInfo()
+        XCTAssertTrue(info.keys.contains("level"))
+        XCTAssertTrue(info.keys.contains("isCharging"))
+    }
+
+    func testBatteryRejectsUnknownMethod() async {
+        let module = BatteryModule()
+        let result = await invoke(module, method: "definitelyNotAMethod", args: [])
+        XCTAssertNotNil(result.error)
+        XCTAssertTrue(result.error?.contains("Unknown method") == true)
+    }
+
     // MARK: - FileSystem (shared module)
 
     func testFileSystemWriteAndReadRoundtrip() async {

@@ -11,6 +11,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.ViewOutlineProvider
 import android.widget.TextView
+import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
 import com.google.android.flexbox.AlignContent
@@ -60,6 +61,30 @@ object StyleEngine {
         "brown" to 0xFFA52A2A.toInt(),
     )
 
+    /**
+     * A semantic color: an optional theme attribute to resolve (auto dark-mode)
+     * plus a hex fallback used when the attribute is absent or no context is
+     * available. Keys are lowercase to match the case-insensitive lookup.
+     *
+     * Theme-attribute names mirror iOS semantic colors and resolve against the
+     * host theme so they adapt to light/dark mode; the fixed `system*` names use
+     * the iOS system palette directly.
+     */
+    private data class SemanticColor(val attrRes: Int?, val fallback: Int)
+
+    private val SEMANTIC_COLORS: Map<String, SemanticColor> = mapOf(
+        "background" to SemanticColor(android.R.attr.colorBackground, 0xFFFFFFFF.toInt()),
+        "label" to SemanticColor(android.R.attr.textColorPrimary, 0xFF000000.toInt()),
+        "secondarylabel" to SemanticColor(android.R.attr.textColorSecondary, 0xFF3C3C43.toInt()),
+        "tertiarylabel" to SemanticColor(android.R.attr.textColorTertiary, 0xFF8E8E93.toInt()),
+        "separator" to SemanticColor(null, 0xFFC6C6C8.toInt()),
+        "systemblue" to SemanticColor(null, 0xFF007AFF.toInt()),
+        "systemred" to SemanticColor(null, 0xFFFF3B30.toInt()),
+        "systemgreen" to SemanticColor(null, 0xFF34C759.toInt()),
+        "systemorange" to SemanticColor(null, 0xFFFF9500.toInt()),
+        "systemgray" to SemanticColor(null, 0xFF8E8E93.toInt()),
+    )
+
     fun apply(key: String, value: Any?, view: View) {
         // Store internal props (prefixed with "__") as view tags
         if (key.startsWith("__")) {
@@ -72,7 +97,7 @@ object StyleEngine {
             "backgroundColor" -> {
                 // A removed style is represented by null from the JS renderer.
                 // Keep any border/radius drawable but reset its fill to transparent.
-                val color = if (value == null) Color.TRANSPARENT else parseColor(value) ?: return
+                val color = if (value == null) Color.TRANSPARENT else parseColor(value, ctx) ?: return
                 ensureBackground(view).setColor(color)
                 view.background = view.background
                 view.invalidate()
@@ -126,7 +151,7 @@ object StyleEngine {
                 view.background = view.background
             }
             "borderColor" -> {
-                val color = if (value == null) Color.TRANSPARENT else parseColor(value) ?: return
+                val color = if (value == null) Color.TRANSPARENT else parseColor(value, ctx) ?: return
                 view.setTag(TAG_BORDER_COLOR, color)
                 val width = (view.getTag(TAG_BORDER_WIDTH) as? Int) ?: 1
                 ensureBackground(view).setStroke(width, color)
@@ -331,7 +356,7 @@ object StyleEngine {
                 view.translationZ = dpToPx(ctx, toFloat(value, 0f))
             }
             "shadowColor" -> {
-                val color = parseColor(value) ?: return
+                val color = parseColor(value, ctx) ?: return
                 view.setTag(TAG_SHADOW_COLOR, color)
                 applyShadow(view, ctx)
             }
@@ -507,7 +532,7 @@ object StyleEngine {
     fun applyTextProp(tv: TextView, key: String, value: Any?) {
         val ctx = tv.context
         when (key) {
-            "color" -> parseColor(value)?.let { tv.setTextColor(it) }
+            "color" -> parseColor(value, ctx)?.let { tv.setTextColor(it) }
             "fontSize" -> tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, toFloat(value, 14f))
             "fontWeight" -> {
                 val current = tv.typeface ?: android.graphics.Typeface.DEFAULT
@@ -767,17 +792,61 @@ object StyleEngine {
      * Returns null for invalid input. Callers must keep the previous style when
      * this returns null (never apply a fallback color), and a warning is logged.
      */
-    fun parseColor(value: Any?): Int? {
+    fun parseColor(value: Any?): Int? = parseColor(value, null)
+
+    /**
+     * Context-aware color parsing. Behaves like [parseColor] but additionally
+     * resolves semantic color names that map to theme attributes (e.g.
+     * `background`, `label`) against [context] so they adapt to light/dark mode.
+     * Semantic names with a fixed palette (e.g. `systemBlue`) and all hex/rgb/
+     * named colors resolve identically with or without a context.
+     */
+    fun parseColor(value: Any?, context: Context?): Int? {
         val s = value?.toString()?.trim() ?: return null
         val result = when {
             s.startsWith("#") -> parseHexColor(s)
             s.startsWith("rgb", ignoreCase = true) -> parseRgbColor(s)
-            else -> NAMED_COLORS[s.lowercase()]
+            else -> NAMED_COLORS[s.lowercase()] ?: resolveSemanticColor(s, context)
         }
         if (result == null) {
             Log.w(TAG, "Ignoring invalid color value: '$s' (keeping previous style)")
         }
         return result
+    }
+
+    /**
+     * Resolve a semantic color name (see [SEMANTIC_COLORS]). Returns null when the
+     * name is not semantic. Names backed by a theme attribute resolve against
+     * [context] and fall back to their hex value when the attribute is missing or
+     * no context is supplied; fixed-palette names return their hex directly.
+     */
+    private fun resolveSemanticColor(name: String, context: Context?): Int? {
+        val semantic = SEMANTIC_COLORS[name.lowercase()] ?: return null
+        val attr = semantic.attrRes ?: return semantic.fallback
+        return resolveThemeColor(context, attr, semantic.fallback)
+    }
+
+    /**
+     * Resolve a theme attribute to a color int. Mirrors [ThemeColors.resolveAttr]:
+     * the attribute may resolve to a raw color value or a resource reference.
+     * Returns [fallback] when there is no context, the attribute is absent, or
+     * resolution throws.
+     */
+    private fun resolveThemeColor(context: Context?, attrRes: Int, fallback: Int): Int {
+        if (context == null) return fallback
+        return try {
+            val value = TypedValue()
+            if (!context.theme.resolveAttribute(attrRes, value, true)) return fallback
+            if (value.type >= TypedValue.TYPE_FIRST_COLOR_INT && value.type <= TypedValue.TYPE_LAST_COLOR_INT) {
+                value.data
+            } else if (value.resourceId != 0) {
+                ContextCompat.getColor(context, value.resourceId)
+            } else {
+                value.data
+            }
+        } catch (e: Exception) {
+            fallback
+        }
     }
 
     /** Parse a "#RGB" / "#RGBA" / "#RRGGBB" / "#RRGGBBAA" hex string (alpha last). */

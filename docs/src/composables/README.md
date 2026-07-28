@@ -9,6 +9,7 @@ All composables are exported from `@thelacanians/vue-native-runtime`.
 - [useAppState](./useAppState.md) -- App foreground/background state
 - [useColorScheme](./useColorScheme.md) -- Light/dark mode
 - [useDeviceInfo](./useDeviceInfo.md) -- Device model, screen dimensions
+- [useBattery](./useBattery.md) -- Battery level and charging state
 - [useDimensions](./useDimensions.md) -- Screen and window dimensions
 - [usePlatform](./usePlatform.md) -- Platform detection (iOS/Android/macOS)
 - [useBackHandler](./useBackHandler.md) -- Android back button interception

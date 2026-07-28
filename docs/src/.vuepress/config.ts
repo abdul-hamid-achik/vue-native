@@ -233,6 +233,7 @@ export default defineUserConfig({
             '/composables/useAppState.md',
             '/composables/useColorScheme.md',
             '/composables/useDeviceInfo.md',
+            '/composables/useBattery.md',
             '/composables/useDimensions.md',
             '/composables/usePlatform.md',
           ],

@@ -162,10 +162,34 @@ watch(systemScheme, (scheme) => setColorScheme(scheme), { immediate: true })
 
 ## 6. Persist the user's preference
 
-To remember an explicit user choice across launches, store it with
-[`useAsyncStorage`](/composables/useAsyncStorage.md) and read it back before the
-provider mounts. One pattern: keep the preference in a small module and resolve
-the initial scheme from it.
+The simplest way to remember an explicit user choice across launches is the
+`persist` prop on `<ThemeProvider>`. It stores the scheme (via
+[`useAsyncStorage`](/composables/useAsyncStorage.md)) whenever
+`setColorScheme`/`toggleColorScheme` is called and restores it on startup:
+
+```vue
+<!-- App.vue -->
+<script setup lang="ts">
+import { ThemeProvider } from './theme'
+import HomeScreen from './HomeScreen.vue'
+</script>
+
+<template>
+  <!-- true = default storage key; or pass a custom key string -->
+  <ThemeProvider follow-system persist>
+    <HomeScreen />
+  </ThemeProvider>
+</template>
+```
+
+With `follow-system` + `persist`, the theme follows the OS until the user makes an
+explicit choice, which is then persisted and restored on the next launch.
+
+### Advanced: manual control
+
+For custom flows (e.g. resolving the initial scheme yourself, or a custom storage
+backend), store the preference with [`useAsyncStorage`](/composables/useAsyncStorage.md)
+and read it back before the provider mounts:
 
 ```ts
 // theme.ts (additions)
@@ -184,39 +208,26 @@ export function saveScheme(scheme: 'light' | 'dark'): Promise<void> {
 }
 ```
 
-```vue
-<!-- App.vue -->
-<script setup lang="ts">
-import { ref, watch } from 'vue'
-import { ThemeProvider } from './theme'
-import { loadSavedScheme, saveScheme } from './theme'
-import { useColorScheme } from '@thelacanians/vue-native-runtime'
-import HomeScreen from './HomeScreen.vue'
-
-const initial = ref<'light' | 'dark'>('light')
-const ready = ref(false)
-
-// Fall back to the system scheme when the user has not chosen explicitly.
-const { colorScheme: systemScheme } = useColorScheme()
-
-loadSavedScheme().then((saved) => {
-  initial.value = saved ?? systemScheme.value
-  ready.value = true
-})
-
-// Persist whenever the active scheme changes (wired up in a child via useTheme).
-watch(initial, saveScheme)
-</script>
-
-<template>
-  <ThemeProvider v-if="ready" :initial-color-scheme="initial">
-    <HomeScreen />
-  </ThemeProvider>
-</template>
-```
-
 A child screen can call `useTheme().toggleColorScheme()` to flip the scheme; pair
 that with `saveScheme(colorScheme.value)` to persist the explicit choice.
+
+## Semantic colors
+
+In addition to hex/rgb values, the style engine recognizes **semantic color names**
+that resolve to platform dynamic colors (auto light/dark):
+`background`, `label`, `secondaryLabel`, `tertiaryLabel`, `separator`, `systemBlue`,
+`systemRed`, `systemGreen`, `systemOrange`, `systemGray`.
+
+```ts
+const styles = createStyleSheet({
+  container: { backgroundColor: 'background' },
+  title: { color: 'label' },
+  divider: { backgroundColor: 'separator' },
+})
+```
+
+These map to `UIColor.systemBackground`/`.label`/… on iOS, theme attributes on Android,
+and `NSColor.windowBackgroundColor`/`.labelColor`/… on macOS.
 
 ## Summary
 

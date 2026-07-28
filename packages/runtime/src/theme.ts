@@ -50,11 +50,12 @@
  */
 
 import {
-  inject, provide, computed, defineComponent, ref, watch,
-  type InjectionKey, type Ref, type ComputedRef,
+  inject, provide, computed, defineComponent, ref, watch, onMounted,
+  type InjectionKey, type Ref, type ComputedRef, type PropType,
 } from '@vue/runtime-core'
 import { createStyleSheet, type AnyStyle, type StyleSheet } from './stylesheet'
 import { useColorScheme } from './composables/useColorScheme'
+import { NativeBridge } from './bridge'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -108,9 +109,22 @@ export function createTheme<T extends Record<string, unknown>>(definition: Theme
         type: Boolean,
         default: false,
       },
+      /**
+       * Persist the color scheme across app launches (via AsyncStorage). Pass
+       * `true` to use the default storage key, or a string to use a custom key.
+       * An explicitly set scheme (setColorScheme/toggleColorScheme) is persisted
+       * and restored on startup. Default: false.
+       */
+      persist: {
+        type: [Boolean, String] as PropType<boolean | string>,
+        default: false,
+      },
     },
     setup(props, { slots }) {
       const colorScheme = ref(props.initialColorScheme as ColorScheme)
+      const storageKey = typeof props.persist === 'string'
+        ? props.persist
+        : 'vue-native-color-scheme'
 
       // Sync with the system appearance when followSystem is enabled.
       if (props.followSystem) {
@@ -121,6 +135,27 @@ export function createTheme<T extends Record<string, unknown>>(definition: Theme
         })
       }
 
+      // Restore a persisted scheme on mount (overrides initial/followSystem once
+      // the user has made an explicit choice that was saved).
+      if (props.persist) {
+        onMounted(() => {
+          NativeBridge.invokeNativeModule<string | null>('AsyncStorage', 'getItem', [storageKey])
+            .then((stored) => {
+              if (stored === 'light' || stored === 'dark') {
+                colorScheme.value = stored
+              }
+            })
+            .catch(() => {})
+        })
+      }
+
+      function persistScheme(scheme: ColorScheme): void {
+        if (props.persist) {
+          NativeBridge.invokeNativeModule('AsyncStorage', 'setItem', [storageKey, scheme])
+            .catch(() => {})
+        }
+      }
+
       const theme = computed<T>(() => {
         return colorScheme.value === 'dark' ? definition.dark : definition.light
       })
@@ -129,10 +164,13 @@ export function createTheme<T extends Record<string, unknown>>(definition: Theme
         theme,
         colorScheme,
         toggleColorScheme: () => {
-          colorScheme.value = colorScheme.value === 'light' ? 'dark' : 'light'
+          const next = colorScheme.value === 'light' ? 'dark' : 'light'
+          colorScheme.value = next
+          persistScheme(next)
         },
         setColorScheme: (scheme: ColorScheme) => {
           colorScheme.value = scheme
+          persistScheme(scheme)
         },
       }
 

@@ -2,7 +2,7 @@
  * Theme system tests — verifies createTheme, useTheme, ThemeProvider,
  * createDynamicStyleSheet, and toggleColorScheme.
  */
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { installMockBridge } from './helpers'
 
 const mockBridge = installMockBridge()
@@ -268,6 +268,72 @@ describe('Theme System', () => {
 
       // Unchanged — not following the system.
       expect(captured.colorScheme.value).toBe('light')
+    })
+  })
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // persist
+  // ─────────────────────────────────────────────────────────────────────────
+  describe('persist', () => {
+    it('persists the scheme to AsyncStorage on setColorScheme', async () => {
+      const invokeSpy = vi.spyOn(NativeBridge, 'invokeNativeModule')
+      const { ThemeProvider, useTheme } = createTheme({ light: lightTheme, dark: darkTheme })
+
+      let captured: any
+      const Child = defineComponent({
+        setup() {
+          captured = useTheme()
+          return () => h('VView')
+        },
+      })
+
+      const App = defineComponent({
+        setup() {
+          return () => h(ThemeProvider, { persist: true }, { default: () => h(Child) })
+        },
+      })
+
+      const root = createNativeNode('__ROOT__')
+      const app = baseCreateApp(App)
+      app.mount(root as any)
+
+      captured.setColorScheme('dark')
+
+      expect(invokeSpy).toHaveBeenCalledWith(
+        'AsyncStorage',
+        'setItem',
+        ['vue-native-color-scheme', 'dark'],
+      )
+      invokeSpy.mockRestore()
+    })
+
+    it('restores a persisted scheme on mount', async () => {
+      const invokeSpy = vi.spyOn(NativeBridge, 'invokeNativeModule')
+      invokeSpy.mockResolvedValue('dark')
+
+      const { ThemeProvider, useTheme } = createTheme({ light: lightTheme, dark: darkTheme })
+
+      let captured: any
+      const Child = defineComponent({
+        setup() {
+          captured = useTheme()
+          return () => h('VView')
+        },
+      })
+
+      const App = defineComponent({
+        setup() {
+          return () => h(ThemeProvider, { persist: true }, { default: () => h(Child) })
+        },
+      })
+
+      const root = createNativeNode('__ROOT__')
+      const app = baseCreateApp(App)
+      app.mount(root as any)
+      await new Promise(resolve => setTimeout(resolve, 0))
+
+      expect(captured.colorScheme.value).toBe('dark')
+      invokeSpy.mockRestore()
     })
   })
 
