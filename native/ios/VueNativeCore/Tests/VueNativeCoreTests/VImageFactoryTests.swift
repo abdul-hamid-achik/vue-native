@@ -58,7 +58,7 @@ final class VImageFactoryTests: XCTestCase {
         // asset therefore fires error synchronously WITHOUT any network request,
         // proving the asset branch wins over the (async) uri branch.
         let imageView = factory.createView()
-        var errorPayload: Any? = nil
+        var errorPayload: Any?
         factory.addEventListener(view: imageView, event: "error") { payload in errorPayload = payload }
 
         factory.updateProp(
