@@ -33,8 +33,18 @@ import AppKit
 // MARK: - PanGestureWrapper
 
 /// ObjC-compatible wrapper for NSPanGestureRecognizer action handlers.
+///
+/// When the view marks `pan` as native-driven (via the `nativeDrivenGestures` prop),
+/// this wrapper also applies the pan translation directly to the view's layer transform
+/// on the UI thread, so dragging stays smooth without a JS round-trip per frame. The
+/// `pan` event is still delivered to JS in both modes.
 @objc final class PanGestureWrapper: NSObject {
     private let handler: (Any?) -> Void
+
+    /// The layer transform captured at `.began`, used as the base the pan translation
+    /// is composed onto. This preserves any style-driven transform (StyleEngine writes
+    /// `transform` straight to `layer.transform`) instead of clobbering it.
+    private var baseTransform: CATransform3D = CATransform3DIdentity
 
     init(handler: @escaping (Any?) -> Void) {
         self.handler = handler
@@ -45,8 +55,22 @@ import AppKit
         guard let view = recognizer.view else { return }
         let translation = recognizer.translation(in: view.superview)
         let velocity = recognizer.velocity(in: view.superview)
+        process(view: view, translation: translation, velocity: velocity, state: recognizer.state)
+    }
+
+    /// Core pan handling. Exposed (instead of only the `@objc` recognizer entry point)
+    /// so the transform logic can be driven deterministically in tests without a live
+    /// recognizer event stream.
+    ///
+    /// Gesture-recognizer actions are delivered on the main thread, so mutating the
+    /// layer here satisfies the "UI on main" rule.
+    func process(view: NSView, translation: CGPoint, velocity: CGPoint, state: NSGestureRecognizer.State) {
+        if NativeDrivenGestureStorage.isNativeDriven("pan", for: view) {
+            applyNativeDrivenTranslation(to: view, translation: translation, state: state)
+        }
+
         let stateStr: String
-        switch recognizer.state {
+        switch state {
         case .began:             stateStr = "began"
         case .changed:           stateStr = "changed"
         case .ended:             stateStr = "ended"
@@ -60,6 +84,32 @@ import AppKit
             "velocityY": velocity.y,
             "state": stateStr
         ] as [String: Any])
+    }
+
+    /// Apply the pan translation directly to the view's layer transform.
+    ///
+    /// - At `.began` the current layer transform is captured as the base (this is the
+    ///   style transform, if any).
+    /// - At `.changed`/`.ended` the translation is composed *on top of* that base via
+    ///   `CATransform3DConcat(base, translation)`, so the style transform is preserved
+    ///   and the translation is expressed in the view's superview coordinate space.
+    /// - `.ended` leaves the last applied transform in place (no reset).
+    ///
+    /// Interaction with StyleEngine: if a `transform` style prop is (re)applied while a
+    /// native-driven pan is in flight it overwrites `layer.transform`; the next `.changed`
+    /// recomposes from the base captured at the gesture's `.began`. Style transforms and
+    /// native-driven pans on the same view are therefore best treated as mutually exclusive.
+    private func applyNativeDrivenTranslation(to view: NSView, translation: CGPoint, state: NSGestureRecognizer.State) {
+        guard let layer = view.layer else { return }
+        switch state {
+        case .began:
+            baseTransform = layer.transform
+        case .changed, .ended:
+            let translate = CATransform3DMakeTranslation(translation.x, translation.y, 0)
+            layer.transform = CATransform3DConcat(baseTransform, translate)
+        default:
+            break
+        }
     }
 }
 

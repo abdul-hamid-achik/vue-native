@@ -15,8 +15,28 @@ final class VViewFactory: NativeComponentFactory {
     }
 
     func updateProp(view: UIView, key: String, value: Any?) {
-        // All VView props are style-related — delegate to StyleEngine
+        // Gesture configuration, not a style prop: record which gestures the JS
+        // runtime wants driven natively (e.g. ["pan"]) so the gesture handlers can
+        // apply their visual effect on the UI thread without a per-frame JS round-trip.
+        if key == "nativeDrivenGestures" {
+            NativeDrivenGestures.set(Self.parseGestureNames(value), for: view)
+            return
+        }
+        // All other VView props are style-related — delegate to StyleEngine
         StyleEngine.apply(key: key, value: value, to: view)
+    }
+
+    /// Parse the `nativeDrivenGestures` prop value into a `[String]`.
+    /// Accepts a bridged `[String]`/NSArray-of-NSString, a heterogeneous `[Any]`
+    /// (filtering to strings), or nil/unknown (treated as empty / prop removed).
+    private static func parseGestureNames(_ value: Any?) -> [String] {
+        if let names = value as? [String] {
+            return names
+        }
+        if let items = value as? [Any] {
+            return items.compactMap { $0 as? String }
+        }
+        return []
     }
 
     func addEventListener(view: UIView, event: String, handler: @escaping (Any?) -> Void) {
@@ -257,6 +277,13 @@ enum GestureStorage {
 
     static func get(for view: UIView, event: String) -> GestureWrapper? {
         return getStorage(for: view)[event] as? GestureWrapper
+    }
+
+    /// Untyped accessor for wrappers stored via ``storeObject(_:for:event:)``
+    /// (e.g. ``PanWrapper``, ``SwipeWrapper``). Used by tests to drive the exact
+    /// wrapper instance the factory installed.
+    static func getObject(for view: UIView, event: String) -> NSObject? {
+        return getStorage(for: view)[event]
     }
 
     private static func getStorage(for view: UIView) -> [String: NSObject] {

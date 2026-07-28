@@ -227,6 +227,42 @@ function onPanEnd() {
 </template>
 ```
 
+## Native-driven gestures (smooth dragging)
+
+By default, a pan gesture reports each frame to JavaScript and you apply the transform
+in a computed style (as above). That round-trip per frame can jank on complex screens.
+Set `nativeDrive: true` on the pan config and the native side applies the translation
+directly to the view's transform on the UI thread — no JS round-trip per frame:
+
+```vue
+<script setup>
+import { ref } from 'vue'
+import { useGesture, VView, VText } from '@thelacanians/vue-native-runtime'
+
+const viewRef = ref()
+
+// The view follows the finger natively; the callback still fires for state/`ended`.
+const { pan } = useGesture(viewRef, { pan: { nativeDrive: true } })
+
+function onPanEnd() {
+  if (pan.value?.state === 'ended') {
+    // Commit or snap the final position via a style update here.
+  }
+}
+</script>
+
+<template>
+  <VView ref="viewRef" :style="{ width: 120, height: 120, backgroundColor: '#007AFF' }" />
+</template>
+```
+
+::: tip
+With `nativeDrive`, the view's transform is updated natively during the gesture. The
+`pan` ref still updates (for `state`, velocity, and `ended` handling), but you don't need
+to drive the transform from a computed style for smooth motion. Reset or commit the final
+position in your `ended` handler.
+:::
+
 ## Example: Pinch to Zoom
 
 ```vue

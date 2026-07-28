@@ -517,6 +517,98 @@ describe('Components', () => {
       }
       expect(typeof typeCheck).toBe('function')
     })
+
+    it('renders only a window of items for large datasets (not O(n))', async () => {
+      // 1000 items. With the default estimatedItemHeight (44) and windowSize
+      // (10), the initial render mounts ~20 visible + 10 buffer items, not 1000.
+      const data = Array.from({ length: 1000 }, (_, i) => `item-${i}`)
+      renderComponent(createVNode(VList, { data }, {
+        item: ({ item }: any) => createVNode(VText, null, { default: () => item }),
+      }))
+      await nextTick()
+
+      const createOps = mockBridge.getOpsByType('create')
+      // One VText is created per mounted item slot. Without windowing this
+      // would be 1000; with windowing it must be a small window.
+      const textOps = createOps.filter(o => o.args[1] === 'VText')
+      expect(textOps.length).toBeGreaterThan(0)
+      expect(textOps.length).toBeLessThan(100)
+
+      // A trailing spacer preserves the native content size. Its height equals
+      // the unmounted tail (>> viewport), so look for a large height style op.
+      const styleOps = mockBridge.getOpsByType('updateStyle')
+      const hasLargeSpacer = styleOps.some((o) => {
+        const style = o.args[1] as Record<string, unknown>
+        return typeof style?.height === 'number' && style.height > 1000
+      })
+      expect(hasLargeSpacer).toBe(true)
+    })
+
+    it('shifts the render window as the user scrolls', async () => {
+      const data = Array.from({ length: 1000 }, (_, i) => `item-${i}`)
+      renderComponent(createVNode(VList, { data }, {
+        item: ({ item }: any) => createVNode(VText, null, { default: () => item }),
+      }))
+      await nextTick()
+
+      // Find the native VList node so we can dispatch a scroll event to it.
+      const vlistOp = mockBridge.getOpsByType('create').find(o => o.args[1] === 'VList')
+      expect(vlistOp).toBeDefined()
+      const vlistId = vlistOp!.args[0] as number
+
+      // Clear initial-mount ops so we only measure the window delta on scroll.
+      mockBridge.reset()
+
+      // Scroll deep into the list (y=5000, viewport height 880). The window
+      // should relocate around the new offset, mounting only a small window.
+      NativeBridge.handleNativeEvent(vlistId, 'scroll', {
+        x: 0,
+        y: 5000,
+        contentWidth: 400,
+        contentHeight: 44000,
+        layoutWidth: 400,
+        layoutHeight: 880,
+      })
+      await nextTick()
+
+      const createOps = mockBridge.getOpsByType('create')
+      const newTextOps = createOps.filter(o => o.args[1] === 'VText')
+      // The scrolled window mounts a small set of items, not the whole list.
+      expect(newTextOps.length).toBeGreaterThan(0)
+      expect(newTextOps.length).toBeLessThan(100)
+
+      // The previously-mounted leading items were unmounted (memory reclaimed).
+      const removeOps = mockBridge.getOpsByType('removeChild')
+      expect(removeOps.length).toBeGreaterThan(0)
+
+      // A leading spacer now accounts for the unmounted head of the list.
+      const styleOps = mockBridge.getOpsByType('updateStyle')
+      const hasTopSpacer = styleOps.some((o) => {
+        const style = o.args[1] as Record<string, unknown>
+        return typeof style?.height === 'number' && style.height > 1000
+      })
+      expect(hasTopSpacer).toBe(true)
+    })
+
+    it('renders every item without windowing for small datasets', async () => {
+      const data = ['a', 'b', 'c', 'd', 'e']
+      renderComponent(createVNode(VList, { data }, {
+        item: ({ item }: any) => createVNode(VText, null, { default: () => item }),
+      }))
+      await nextTick()
+
+      const textOps = mockBridge.getOpsByType('create').filter(o => o.args[1] === 'VText')
+      // Small list (length <= windowSize * 2) renders all items, no windowing.
+      expect(textOps.length).toBe(5)
+
+      // No large spacer should exist for a fully-rendered small list.
+      const styleOps = mockBridge.getOpsByType('updateStyle')
+      const hasLargeSpacer = styleOps.some((o) => {
+        const style = o.args[1] as Record<string, unknown>
+        return typeof style?.height === 'number' && style.height > 1000
+      })
+      expect(hasLargeSpacer).toBe(false)
+    })
   })
 
   // ---------------------------------------------------------------------------

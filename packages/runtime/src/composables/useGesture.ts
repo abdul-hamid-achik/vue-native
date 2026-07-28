@@ -64,6 +64,13 @@ export interface GestureConfig {
   minPointers?: number
   maxPointers?: number
   waitFor?: Ref<GestureHandler | null>[]
+  /**
+   * Drive this gesture's visual transform on the native UI thread instead of
+   * round-tripping through JS each frame. Currently supported for `pan`
+   * (applies translationX/Y to the view's transform as the finger moves). The
+   * JS callback still fires for state tracking and `ended` handling.
+   */
+  nativeDrive?: boolean
 }
 
 export interface GestureHandler {
@@ -103,9 +110,17 @@ class GestureManager {
   private nodeId: number | null = null
   private handlers: Map<string, Set<(state: unknown) => void>> = new Map()
   private disposables: Array<() => void> = []
+  private nativeDriven: Set<string> = new Set()
 
   attach(target: GestureTarget): void {
     this.nodeId = resolveViewId(target)
+  }
+
+  /** Push the set of native-driven gesture names to the view as a prop. */
+  private syncNativeDriven(): void {
+    if (this.nodeId) {
+      NativeBridge.updateProp(this.nodeId, 'nativeDrivenGestures', [...this.nativeDriven])
+    }
   }
 
   on<K extends keyof GestureEventMap>(
@@ -123,6 +138,11 @@ class GestureManager {
     }
     this.handlers.get(event)!.add(callback as (state: unknown) => void)
 
+    if (config?.nativeDrive) {
+      this.nativeDriven.add(event)
+      this.syncNativeDriven()
+    }
+
     NativeBridge.addEventListener(this.nodeId, event, (payload: unknown) => {
       if (config?.enabled === false) return
       callback(payload as GestureEventMap[K])
@@ -132,6 +152,9 @@ class GestureManager {
       this.handlers.get(event)?.delete(callback as (state: unknown) => void)
       if (this.nodeId) {
         NativeBridge.removeEventListener(this.nodeId, event)
+      }
+      if (this.nativeDriven.delete(event)) {
+        this.syncNativeDriven()
       }
     }
     this.disposables.push(dispose)
@@ -144,6 +167,7 @@ class GestureManager {
     }
     this.disposables = []
     this.handlers.clear()
+    this.nativeDriven.clear()
     this.nodeId = null
   }
 }

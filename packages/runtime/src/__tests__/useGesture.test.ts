@@ -50,6 +50,22 @@ describe('useGesture', () => {
       expect(addOps[0].args).toEqual([42, 'pan'])
     })
 
+    it('marks native-driven gestures via the nativeDrivenGestures prop', async () => {
+      await withSetup(() => {
+        const nodeRef = ref({ id: 42 })
+        useGesture(nodeRef, { pan: { nativeDrive: true } })
+        return {}
+      })
+
+      await nextTick()
+
+      const propOps = mockBridge.getOpsByType('updateProp')
+      const nativeDriveOp = propOps.find(o => o.args[1] === 'nativeDrivenGestures')
+      expect(nativeDriveOp).toBeDefined()
+      expect(nativeDriveOp?.args[0]).toBe(42)
+      expect(nativeDriveOp?.args[2]).toEqual(['pan'])
+    })
+
     it('attaches to a numeric node id', async () => {
       await withSetup(() => {
         useGesture(123, { press: true })

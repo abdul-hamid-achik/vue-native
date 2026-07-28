@@ -14,7 +14,16 @@ final class VViewFactory: NativeComponentFactory {
     }
 
     func updateProp(view: NSView, key: String, value: Any?) {
-        // All VView props are style-related — delegate to StyleEngine
+        // nativeDrivenGestures is a gesture-behavior prop (array of gesture names, e.g.
+        // ["pan"]), not a style prop — store it on the view so the gesture handlers can
+        // read it at fire time. Handled here (not in StyleEngine) because it has no visual
+        // effect of its own; the pan handler applies the transform when "pan" is present.
+        if key == "nativeDrivenGestures" {
+            let names = (value as? [Any])?.compactMap { $0 as? String } ?? []
+            view.nativeDrivenGestures = Set(names)
+            return
+        }
+        // All other VView props are style-related — delegate to StyleEngine
         StyleEngine.apply(key: key, value: value, to: view)
     }
 

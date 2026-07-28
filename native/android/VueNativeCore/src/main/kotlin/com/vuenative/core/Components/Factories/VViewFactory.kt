@@ -10,6 +10,7 @@ import com.google.android.flexbox.FlexDirection
 import com.google.android.flexbox.FlexboxLayout
 import kotlin.math.abs
 import kotlin.math.atan2
+import org.json.JSONArray
 
 class VViewFactory : NativeComponentFactory {
     override fun createView(context: Context): View {
@@ -23,7 +24,28 @@ class VViewFactory : NativeComponentFactory {
     }
 
     override fun updateProp(view: View, key: String, value: Any?) {
+        if (key == "nativeDrivenGestures") {
+            // Gesture names (e.g. ["pan"]) whose visual effect is applied by the
+            // native gesture handler directly on the view's transform, instead of
+            // waiting for a JS round-trip per frame. The matching JS event still
+            // fires; this only changes who paints the intermediate frames.
+            view.setTag(Tags.NATIVE_DRIVEN_GESTURES, parseGestureNames(value))
+            return
+        }
         StyleEngine.apply(key, value, view)
+    }
+
+    /** Normalize the `nativeDrivenGestures` prop (JSONArray or List) into a Set of names. */
+    private fun parseGestureNames(value: Any?): Set<String> = when (value) {
+        is JSONArray -> (0 until value.length()).mapNotNull { i -> value.opt(i)?.toString() }.toSet()
+        is List<*> -> value.filterIsInstance<String>().toSet()
+        else -> emptySet()
+    }
+
+    /** Whether the given gesture is marked native-driven on this view. */
+    private fun isNativeDriven(view: View, gesture: String): Boolean {
+        val gestures = view.getTag(Tags.NATIVE_DRIVEN_GESTURES) as? Set<*> ?: return false
+        return gesture in gestures
     }
 
     override fun addEventListener(view: View, event: String, handler: (Any?) -> Unit) {
@@ -44,11 +66,44 @@ class VViewFactory : NativeComponentFactory {
 
         when (event) {
             "pan" -> {
+                // Native-drive state. When "pan" is listed in the view's
+                // `nativeDrivenGestures`, we apply the accumulated translation
+                // straight to the view's transform on the UI thread (no JS
+                // round-trip per frame). The `pan` event still fires to JS below.
+                //
+                // Interaction with style transforms: StyleEngine.applyTransform
+                // and absolute positioning also write translationX/translationY.
+                // To avoid clobbering them, we snapshot the view's translation at
+                // the start of each gesture as a baseline and add the pan delta on
+                // top of it. If a style transform changes *during* an active pan it
+                // will be overwritten for the remainder of that gesture; this is an
+                // accepted edge case (native-driven pans are meant for draggable
+                // views without a competing animated transform).
+                var baseTranslationX = 0f
+                var baseTranslationY = 0f
+                var accumulatedX = 0f
+                var accumulatedY = 0f
+                var gestureActive = false
                 val gestureDetector = GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
                     override fun onScroll(e1: MotionEvent?, e2: MotionEvent, distanceX: Float, distanceY: Float): Boolean {
+                        val translationX = -distanceX
+                        val translationY = -distanceY
+                        if (isNativeDriven(view, "pan")) {
+                            if (!gestureActive) {
+                                gestureActive = true
+                                baseTranslationX = view.translationX
+                                baseTranslationY = view.translationY
+                                accumulatedX = 0f
+                                accumulatedY = 0f
+                            }
+                            accumulatedX += translationX
+                            accumulatedY += translationY
+                            view.translationX = baseTranslationX + accumulatedX
+                            view.translationY = baseTranslationY + accumulatedY
+                        }
                         val payload = mapOf(
-                            "translationX" to -distanceX,
-                            "translationY" to -distanceY,
+                            "translationX" to translationX,
+                            "translationY" to translationY,
                             "velocityX" to 0f,
                             "velocityY" to 0f,
                             "state" to "changed"
@@ -58,6 +113,14 @@ class VViewFactory : NativeComponentFactory {
                     }
                 })
                 view.setOnTouchListener { _, motionEvent ->
+                    when (motionEvent.action) {
+                        MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                            // End the gesture; the view keeps its last position.
+                            // The next gesture re-snapshots the baseline so drags
+                            // accumulate from the resting transform.
+                            gestureActive = false
+                        }
+                    }
                     gestureDetector.onTouchEvent(motionEvent)
                     false
                 }
