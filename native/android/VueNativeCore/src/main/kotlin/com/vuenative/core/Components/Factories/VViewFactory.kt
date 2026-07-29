@@ -32,6 +32,14 @@ class VViewFactory : NativeComponentFactory {
             view.setTag(Tags.NATIVE_DRIVEN_GESTURES, parseGestureNames(value))
             return
         }
+        if (key == "__flatListIndex") {
+            // VFlatList tags each item wrapper with its logical index so the
+            // native side can report the measured height back via `itemLayout`.
+            // Store the index and (re)arm the layout listener that emits it.
+            view.setTag(Tags.FLAT_LIST_INDEX, StyleEngine.toInt(value, -1))
+            ensureItemLayoutListener(view)
+            return
+        }
         StyleEngine.apply(key, value, view)
     }
 
@@ -48,12 +56,49 @@ class VViewFactory : NativeComponentFactory {
         return gesture in gestures
     }
 
+    /**
+     * Arm a one-time [View.OnLayoutChangeListener] that reports the view's
+     * measured height to JS via the `itemLayout` event, backing VFlatList's
+     * variable-height layout. The listener is stored in a tag so it is attached
+     * at most once per view; it reads the current index/handler tags on every
+     * layout pass, so the prop and the listener may arrive in either order.
+     *
+     * The height is reported in dp (the same unit the runtime uses for item
+     * offsets / `itemHeight`, and that [StyleEngine] interprets numeric style
+     * dimensions as). It only fires when the height actually changes to avoid
+     * feedback loops with the runtime re-positioning items by `top`.
+     */
+    @Suppress("UNCHECKED_CAST")
+    private fun ensureItemLayoutListener(view: View) {
+        if (view.getTag(Tags.FLAT_LIST_LAYOUT_LISTENER) != null) return
+        var lastHeightPx = -1
+        val listener = View.OnLayoutChangeListener { v, _, _, _, _, _, _, _, _ ->
+            val handler = v.getTag(Tags.FLAT_LIST_HANDLER) as? ((Any?) -> Unit)
+            val index = v.getTag(Tags.FLAT_LIST_INDEX) as? Int
+            val heightPx = v.height
+            if (handler == null || index == null || index < 0) return@OnLayoutChangeListener
+            if (heightPx <= 0 || heightPx == lastHeightPx) return@OnLayoutChangeListener
+            lastHeightPx = heightPx
+            val density = v.resources.displayMetrics.density
+            val heightDp = if (density > 0f) heightPx / density else heightPx.toFloat()
+            handler(mapOf("index" to index, "height" to heightDp.toDouble()))
+        }
+        view.setTag(Tags.FLAT_LIST_LAYOUT_LISTENER, listener)
+        view.addOnLayoutChangeListener(listener)
+    }
+
     override fun addEventListener(view: View, event: String, handler: (Any?) -> Unit) {
         when (event) {
             "press" -> view.setOnClickListener { handler(null) }
             "longPress" -> view.setOnLongClickListener {
                 handler(null)
                 true
+            }
+            "itemLayout" -> {
+                // VFlatList variable-height measurement: store the handler and
+                // arm the layout listener that reports the measured height.
+                view.setTag(Tags.FLAT_LIST_HANDLER, handler)
+                ensureItemLayoutListener(view)
             }
             "pan", "swipeLeft", "swipeRight", "swipeUp", "swipeDown", "pinch", "rotate" -> {
                 setupGestureListener(view, event, handler)
@@ -188,6 +233,17 @@ class VViewFactory : NativeComponentFactory {
             "pinch" -> {
                 val scaleGestureDetector = ScaleGestureDetector(context, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
                     override fun onScale(detector: ScaleGestureDetector): Boolean {
+                        // Native-drive: when "pinch" is listed in the view's
+                        // `nativeDrivenGestures`, apply the scale factor straight
+                        // to the view's transform on the UI thread (no JS
+                        // round-trip per frame). The `pinch` event still fires to
+                        // JS below. Scale compounds multiplicatively across the
+                        // gesture, so each frame multiplies the running transform.
+                        if (isNativeDriven(view, "pinch")) {
+                            val factor = detector.scaleFactor
+                            view.scaleX *= factor
+                            view.scaleY *= factor
+                        }
                         val payload = mapOf(
                             "scale" to detector.scaleFactor,
                             "velocity" to detector.currentSpan,
@@ -204,6 +260,14 @@ class VViewFactory : NativeComponentFactory {
             }
             "rotate" -> {
                 val rotationDetector = RotationGestureDetector { rotation ->
+                    // Native-drive: when "rotate" is listed in the view's
+                    // `nativeDrivenGestures`, apply the rotation delta directly to
+                    // the view's transform on the UI thread. The detector reports
+                    // radians; View.rotation is in degrees. The `rotate` event
+                    // still fires to JS (in radians) below.
+                    if (isNativeDriven(view, "rotate")) {
+                        view.rotation += Math.toDegrees(rotation.toDouble()).toFloat()
+                    }
                     val payload = mapOf(
                         "rotation" to rotation,
                         "state" to "changed"
@@ -222,6 +286,7 @@ class VViewFactory : NativeComponentFactory {
         when (event) {
             "press" -> view.setOnClickListener(null)
             "longPress" -> view.setOnLongClickListener(null)
+            "itemLayout" -> view.setTag(Tags.FLAT_LIST_HANDLER, null)
             else -> view.setOnTouchListener(null)
         }
     }
@@ -238,6 +303,20 @@ class VViewFactory : NativeComponentFactory {
 
     override fun removeChild(parent: View, child: View) {
         (parent as? ViewGroup)?.removeView(child)
+    }
+
+    /**
+     * Detach the `itemLayout` observer and drop the per-view FlatList tags so a
+     * recycled/destroyed item does not keep firing measurement events or retain
+     * its JS handler closure.
+     */
+    override fun destroyView(view: View) {
+        (view.getTag(Tags.FLAT_LIST_LAYOUT_LISTENER) as? View.OnLayoutChangeListener)?.let {
+            view.removeOnLayoutChangeListener(it)
+        }
+        view.setTag(Tags.FLAT_LIST_LAYOUT_LISTENER, null)
+        view.setTag(Tags.FLAT_LIST_HANDLER, null)
+        view.setTag(Tags.FLAT_LIST_INDEX, null)
     }
 
     /**

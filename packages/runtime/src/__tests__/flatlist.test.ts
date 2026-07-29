@@ -208,6 +208,42 @@ describe('VFlatList', () => {
     expect(heightOp).toBeDefined()
   })
 
+  it('renders in variable-height mode without itemHeight (items carry __flatListIndex)', async () => {
+    const data = Array.from({ length: 5 }, (_, i) => ({ id: i, text: `Item ${i}` }))
+    renderComponent(
+      createVNode(VFlatList, {
+        data,
+        estimatedItemHeight: 40,
+        renderItem: ({ item }: any) => h('VText', {}, item.text),
+      }),
+    )
+    await nextTick()
+
+    // In variable-height mode each item wrapper carries its index so the native
+    // side can report measured heights back via the itemLayout event.
+    const indexProps = mockBridge.getOpsByType('updateProp')
+      .filter(op => op.args[1] === '__flatListIndex')
+    expect(indexProps.length).toBeGreaterThan(0)
+  })
+
+  it('wires an itemLayout listener on each item so native can report heights', async () => {
+    const data = Array.from({ length: 4 }, (_, i) => ({ id: i, text: `Item ${i}` }))
+    renderComponent(
+      createVNode(VFlatList, {
+        data,
+        estimatedItemHeight: 40,
+        renderItem: ({ item }: any) => h('VText', {}, item.text),
+      }),
+    )
+    await nextTick()
+
+    // Each item wrapper registers an `itemLayout` listener so the native side
+    // can report its measured height back (driving variable-height positioning).
+    const itemLayoutListeners = mockBridge.getOpsByType('addEventListener')
+      .filter((op: any) => op.args[1] === 'itemLayout')
+    expect(itemLayoutListeners.length).toBeGreaterThan(0)
+  })
+
   it('infers the item type from data (type-level)', () => {
     interface Item { id: number, title: string }
     // Type-level only: this function is never invoked at runtime. If VFlatList

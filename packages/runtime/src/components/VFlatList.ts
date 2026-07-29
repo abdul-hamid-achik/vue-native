@@ -105,10 +105,23 @@ const VFlatListBase = defineComponent({
       type: Function as PropType<(item: unknown, index: number) => string | number>,
       default: getDefaultItemKey,
     },
-    /** Fixed height for each item in points. Required for virtualization math. */
+    /**
+     * Fixed height for every item in points. When provided, virtualization uses
+     * it directly (fast path, no measurement needed).
+     */
     itemHeight: {
       type: Number,
-      required: true,
+      default: undefined,
+    },
+    /**
+     * Estimated height for items whose real height is not yet measured. Used
+     * for variable-height lists until the native side reports each item's actual
+     * height via the `itemLayout` event. Ignored when `itemHeight` is set.
+     * Default: 44.
+     */
+    estimatedItemHeight: {
+      type: Number,
+      default: 44,
     },
     /**
      * Number of viewport-heights to render above and below the visible area.
@@ -154,43 +167,85 @@ const VFlatListBase = defineComponent({
   setup(props, { slots, emit }) {
     const scrollOffset = ref(0)
     const viewportHeight = ref(0)
+    // Bumped whenever a measured height changes, to recompute cumulative offsets.
+    const heightsVersion = ref(0)
+    const measuredHeights = new Map<number, number>()
     let endReachedFired = false
 
-    // Total scrollable content height (includes header when present)
     const hasHeader = computed(() => !!slots.header)
-    const totalHeight = computed(() => {
-      const itemsHeight = (props.data?.length ?? 0) * props.itemHeight
-      return itemsHeight + (hasHeader.value ? props.headerHeight : 0)
+    const headerOffset = computed(() => (hasHeader.value ? props.headerHeight : 0))
+
+    // Fixed-height fast path (no measurement) vs variable-height (estimated + measured).
+    function heightFor(index: number): number {
+      if (props.itemHeight != null) return props.itemHeight
+      return measuredHeights.get(index) ?? props.estimatedItemHeight
+    }
+
+    // Cumulative top offsets: offsets[i] = top of item i, offsets[n] = content height.
+    const offsets = computed(() => {
+      void heightsVersion.value // recompute when measurements change
+      const n = props.data?.length ?? 0
+      const offs = new Array<number>(n + 1)
+      offs[0] = headerOffset.value
+      for (let i = 0; i < n; i++) {
+        offs[i + 1] = offs[i] + heightFor(i)
+      }
+      return offs
     })
 
-    // Compute which indices should be rendered
+    const totalHeight = computed(() => {
+      const offs = offsets.value
+      return offs.length > 0 ? offs[offs.length - 1] : headerOffset.value
+    })
+
     const visibleRange = computed(() => {
-      const vh = viewportHeight.value || props.itemHeight * 20 // Reasonable initial estimate
+      const offs = offsets.value
+      const n = props.data?.length ?? 0
+      const est = props.itemHeight ?? props.estimatedItemHeight
+      const vh = viewportHeight.value || est * 20
       const buffer = vh * props.windowSize
       const startPx = Math.max(0, scrollOffset.value - buffer)
       const endPx = scrollOffset.value + vh + buffer
-      const startIdx = Math.floor(startPx / props.itemHeight)
-      const endIdx = Math.min(
-        Math.ceil(endPx / props.itemHeight),
-        props.data?.length ?? 0,
-      )
-      return { start: startIdx, end: endIdx }
+      // Binary search: first item whose bottom edge is past startPx.
+      let lo = 0
+      let hi = n
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1
+        if (offs[mid + 1] <= startPx) lo = mid + 1
+        else hi = mid
+      }
+      const start = lo
+      let end = start
+      while (end < n && offs[end] < endPx) end++
+      return { start, end }
     })
+
+    // Native reports each item's measured height via the `itemLayout` event so
+    // variable-height lists can position items by their real (cumulative) heights.
+    function onItemLayout(payload: { index?: unknown, height?: unknown }) {
+      if (props.itemHeight != null) return // fixed heights need no measurement
+      const index = typeof payload?.index === 'number' ? payload.index : -1
+      const height = typeof payload?.height === 'number' ? payload.height : -1
+      if (index < 0 || height <= 0) return
+      if (measuredHeights.get(index) !== height) {
+        measuredHeights.set(index, height)
+        heightsVersion.value++
+      }
+    }
 
     function onScroll(event: ScrollEvent) {
       scrollOffset.value = event.y ?? 0
 
-      // Update viewport height from native layout info
       if (event.layoutHeight && event.layoutHeight > 0) {
         viewportHeight.value = event.layoutHeight
       }
 
       emit('scroll', event)
 
-      // endReached detection
       const contentLength = totalHeight.value
       const offset = scrollOffset.value
-      const vh = viewportHeight.value || props.itemHeight * 20
+      const est = props.itemHeight ?? props.estimatedItemHeight
+      const vh = viewportHeight.value || est * 20
       const distanceFromEnd = contentLength - vh - offset
       const threshold = vh * props.endReachedThreshold
 
@@ -205,8 +260,9 @@ const VFlatListBase = defineComponent({
     return () => {
       const items = props.data ?? []
       const { start, end } = visibleRange.value
+      const offs = offsets.value
+      const fixed = props.itemHeight
 
-      // Build only visible item VNodes
       const children: VNode[] = []
 
       for (let i = start; i < end; i++) {
@@ -214,37 +270,36 @@ const VFlatListBase = defineComponent({
         if (item === undefined) continue
 
         const key = props.keyExtractor(item, i)
-        // renderItem returns a single VNode; slots return VNode[]
         const itemContent = props.renderItem
           ? [props.renderItem({ item, index: i })]
           : slots.item?.({ item, index: i }) ?? []
+
+        // Fixed height: set it explicitly. Variable height: let the content size
+        // the wrapper; native measures it and reports via `itemLayout`.
+        const itemStyle: ViewStyle = fixed != null
+          ? { position: 'absolute' as const, top: offs[i], left: 0, right: 0, height: fixed }
+          : { position: 'absolute' as const, top: offs[i], left: 0, right: 0 }
 
         children.push(
           h(
             'VView',
             {
               key,
-              style: {
-                position: 'absolute' as const,
-                top: (hasHeader.value ? props.headerHeight : 0) + i * props.itemHeight,
-                left: 0,
-                right: 0,
-                height: props.itemHeight,
-              },
+              style: itemStyle,
+              __flatListIndex: i,
+              onItemLayout,
             },
             itemContent,
           ),
         )
       }
 
-      // Header slot — positioned at the very top
       if (slots.header) {
         children.unshift(
           h('VView', { key: '__vfl_header__', style: { position: 'absolute' as const, top: 0, left: 0, right: 0 } }, slots.header()),
         )
       }
 
-      // Empty state slot
       if (items.length === 0 && slots.empty) {
         return h(
           'VScrollView',
@@ -257,7 +312,6 @@ const VFlatListBase = defineComponent({
         )
       }
 
-      // Inner container with total height for correct scrollbar
       const innerContainer = h(
         'VView',
         {
@@ -294,8 +348,10 @@ export const VFlatList = VFlatListBase as unknown as <T = unknown>(
     data: T[]
     renderItem?: (info: FlatListRenderItemInfo<T>) => VNode
     keyExtractor?: (item: T, index: number) => string | number
-    /** Fixed height for each item in points. Required for virtualization math. */
-    itemHeight: number
+    /** Fixed height for every item (fast path). Omit for variable-height lists. */
+    itemHeight?: number
+    /** Estimated height for unmeasured items in variable-height lists. Default 44. */
+    estimatedItemHeight?: number
     windowSize?: number
     style?: ViewStyle
     showsScrollIndicator?: boolean

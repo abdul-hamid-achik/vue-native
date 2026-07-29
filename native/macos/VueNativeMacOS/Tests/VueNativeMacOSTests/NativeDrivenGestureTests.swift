@@ -146,5 +146,140 @@ final class NativeDrivenGestureTests: XCTestCase {
         }
         XCTAssertTrue(CATransform3DIsIdentity(transform))
     }
+
+    // MARK: - Native-driven pinch (magnification)
+
+    func testNativeDrivenPinchUpdatesLayerTransform() {
+        let view = FlippedView()
+        view.nativeDrivenGestures = ["pinch"]
+        let wrapper = MagnificationGestureWrapper(handler: { _ in })
+
+        wrapper.process(view: view, magnification: 0, state: .began)
+        wrapper.process(view: view, magnification: 0.5, state: .changed)
+
+        guard let transform = view.layer?.transform else {
+            return XCTFail("expected a layer transform after a native-driven pinch")
+        }
+        // magnification 0.5 -> scale 1.5 applied on the X and Y axes.
+        XCTAssertEqual(transform.m11, 1.5, accuracy: 0.001, "scale X should be applied to the layer")
+        XCTAssertEqual(transform.m22, 1.5, accuracy: 0.001, "scale Y should be applied to the layer")
+    }
+
+    func testPinchWithoutNativeDriveLeavesTransformUnchanged() {
+        let view = FlippedView()
+        // No nativeDrivenGestures prop set.
+        let wrapper = MagnificationGestureWrapper(handler: { _ in })
+
+        wrapper.process(view: view, magnification: 0, state: .began)
+        wrapper.process(view: view, magnification: 0.5, state: .changed)
+
+        guard let transform = view.layer?.transform else {
+            return XCTFail("expected a layer on the view")
+        }
+        XCTAssertTrue(CATransform3DIsIdentity(transform), "non-native-driven pinch must not touch the transform")
+    }
+
+    func testNativeDrivenPinchPreservesStyleTransform() {
+        let view = FlippedView()
+        // StyleEngine writes `transform` straight to layer.transform; a native-driven
+        // pinch must compose on top of it rather than clobber it.
+        StyleEngine.apply(key: "transform", value: [["scale": 2.0]], to: view)
+        view.nativeDrivenGestures = ["pinch"]
+        let wrapper = MagnificationGestureWrapper(handler: { _ in })
+
+        wrapper.process(view: view, magnification: 0, state: .began)
+        wrapper.process(view: view, magnification: 0.5, state: .changed)
+
+        guard let transform = view.layer?.transform else {
+            return XCTFail("expected a layer transform")
+        }
+        // style scale 2 * pinch scale 1.5 = 3
+        XCTAssertEqual(transform.m11, 3.0, accuracy: 0.001, "style scale composed with pinch scale (X)")
+        XCTAssertEqual(transform.m22, 3.0, accuracy: 0.001, "style scale composed with pinch scale (Y)")
+    }
+
+    func testNativeDrivenPinchStillFiresJSEvent() {
+        let view = FlippedView()
+        view.nativeDrivenGestures = ["pinch"]
+        var payloads: [[String: Any]] = []
+        let wrapper = MagnificationGestureWrapper(handler: { payload in
+            if let dict = payload as? [String: Any] { payloads.append(dict) }
+        })
+
+        wrapper.process(view: view, magnification: 0.5, state: .changed)
+
+        XCTAssertEqual(payloads.count, 1, "native-driven pinch must still emit the JS event")
+        XCTAssertEqual(payloads.first?["scale"] as? CGFloat, 1.5)
+        XCTAssertEqual(payloads.first?["state"] as? String, "changed")
+    }
+
+    // MARK: - Native-driven rotate
+
+    func testNativeDrivenRotateUpdatesLayerTransform() {
+        let view = FlippedView()
+        view.nativeDrivenGestures = ["rotate"]
+        let wrapper = RotationGestureWrapper(handler: { _ in })
+
+        wrapper.process(view: view, rotation: 0, state: .began)
+        wrapper.process(view: view, rotation: .pi / 2, state: .changed)
+
+        guard let transform = view.layer?.transform else {
+            return XCTFail("expected a layer transform after a native-driven rotate")
+        }
+        // Rotation of π/2 about the Z axis: cos≈0, sin≈1.
+        XCTAssertEqual(transform.m11, 0, accuracy: 0.001, "cos(π/2) on m11")
+        XCTAssertEqual(transform.m12, 1, accuracy: 0.001, "sin(π/2) on m12")
+        XCTAssertEqual(transform.m21, -1, accuracy: 0.001, "-sin(π/2) on m21")
+        XCTAssertEqual(transform.m22, 0, accuracy: 0.001, "cos(π/2) on m22")
+    }
+
+    func testRotateWithoutNativeDriveLeavesTransformUnchanged() {
+        let view = FlippedView()
+        // No nativeDrivenGestures prop set.
+        let wrapper = RotationGestureWrapper(handler: { _ in })
+
+        wrapper.process(view: view, rotation: 0, state: .began)
+        wrapper.process(view: view, rotation: .pi / 2, state: .changed)
+
+        guard let transform = view.layer?.transform else {
+            return XCTFail("expected a layer on the view")
+        }
+        XCTAssertTrue(CATransform3DIsIdentity(transform), "non-native-driven rotate must not touch the transform")
+    }
+
+    func testNativeDrivenRotatePreservesStyleTransform() {
+        let view = FlippedView()
+        // A style scale must survive a native-driven rotation (composed as the base).
+        StyleEngine.apply(key: "transform", value: [["scale": 2.0]], to: view)
+        view.nativeDrivenGestures = ["rotate"]
+        let wrapper = RotationGestureWrapper(handler: { _ in })
+
+        wrapper.process(view: view, rotation: 0, state: .began)
+        wrapper.process(view: view, rotation: .pi / 2, state: .changed)
+
+        guard let transform = view.layer?.transform else {
+            return XCTFail("expected a layer transform")
+        }
+        // base scale 2 rotated by π/2: m11 = 2*cos ≈ 0, m12 = 2*sin ≈ 2.
+        XCTAssertEqual(transform.m11, 0, accuracy: 0.001, "scaled cos(π/2) on m11")
+        XCTAssertEqual(transform.m12, 2, accuracy: 0.001, "scaled sin(π/2) on m12")
+        XCTAssertEqual(transform.m21, -2, accuracy: 0.001, "scaled -sin(π/2) on m21")
+        XCTAssertEqual(transform.m22, 0, accuracy: 0.001, "scaled cos(π/2) on m22")
+    }
+
+    func testNativeDrivenRotateStillFiresJSEvent() {
+        let view = FlippedView()
+        view.nativeDrivenGestures = ["rotate"]
+        var payloads: [[String: Any]] = []
+        let wrapper = RotationGestureWrapper(handler: { payload in
+            if let dict = payload as? [String: Any] { payloads.append(dict) }
+        })
+
+        wrapper.process(view: view, rotation: .pi / 4, state: .changed)
+
+        XCTAssertEqual(payloads.count, 1, "native-driven rotate must still emit the JS event")
+        XCTAssertEqual(payloads.first?["rotation"] as? CGFloat, .pi / 4)
+        XCTAssertEqual(payloads.first?["state"] as? String, "changed")
+    }
 }
 #endif

@@ -54,6 +54,18 @@ public final class NativeBridge {
     /// viewRegistry on every batch.
     private var scrollViewNodeIDs: Set<Int> = []
 
+    /// Maps a VFlatList item-wrapper node ID to its `__flatListIndex` prop. The
+    /// runtime renders each variable-height item in a `VView` carrying this marker
+    /// prop; after every layout pass the bridge measures those views and reports
+    /// their real heights back to JS via the `itemLayout` event so the list can
+    /// position items by cumulative measured heights.
+    private var flatListIndexes: [Int: Int] = [:]
+
+    /// Last reported height per flat-list item node. Used to suppress duplicate
+    /// `itemLayout` events — re-emitting an unchanged height would make JS re-render
+    /// and re-layout in a loop.
+    private var reportedItemHeights: [Int: CGFloat] = [:]
+
     /// The root UIView that contains all rendered native views.
     private weak var rootView: UIView?
     private var rootConstraints: [NSLayoutConstraint] = []
@@ -434,6 +446,20 @@ public final class NativeBridge {
         // The value might be NSNull for nil
         let value: Any? = (args[2] is NSNull) ? nil : args[2]
 
+        // VFlatList item marker, not a style prop: record the item index so the
+        // post-layout pass can measure this view and report its height to JS.
+        // Consumed here (never forwarded to StyleEngine) because it carries no
+        // visual meaning.
+        if key == "__flatListIndex" {
+            if let index = value.flatMap(asInt) {
+                flatListIndexes[nodeId] = index
+            } else {
+                flatListIndexes.removeValue(forKey: nodeId)
+                reportedItemHeights.removeValue(forKey: nodeId)
+            }
+            return
+        }
+
         registry.updateProp(view: view, key: key, value: value)
     }
 
@@ -666,6 +692,8 @@ public final class NativeBridge {
         typeRegistry.removeValue(forKey: nodeId)
         childrenOf.removeValue(forKey: nodeId)
         scrollViewNodeIDs.remove(nodeId)
+        flatListIndexes.removeValue(forKey: nodeId)
+        reportedItemHeights.removeValue(forKey: nodeId)
 
         // O(k) cleanup where k = number of handlers on this node, not O(total handlers)
         if let keys = eventKeysPerNode.removeValue(forKey: nodeId) {
@@ -991,6 +1019,10 @@ public final class NativeBridge {
 
         // After the main layout pass, recompute content sizes for all scroll views.
         updateScrollViewContentSizes()
+
+        // With frames resolved, report measured heights for variable-height
+        // VFlatList items so JS can position them by cumulative real heights.
+        reportFlatListItemHeights()
     }
 
     /// Attempt layout, retrying up to `remaining` times with 100ms delays if bounds are zero.
@@ -1019,6 +1051,48 @@ public final class NativeBridge {
             if let scrollView = viewRegistry[nodeId] as? UIScrollView {
                 VScrollViewFactory.layoutContentView(for: scrollView)
             }
+        }
+    }
+
+    /// After layout, measure every VFlatList item wrapper (nodes carrying a
+    /// `__flatListIndex`) and emit `itemLayout` with `{ index, height }` on that
+    /// node so the JS list can position variable-height items by their real,
+    /// cumulative heights.
+    ///
+    /// Loop-safety: an event is emitted only when the measured height actually
+    /// changed (within a 0.5pt tolerance to absorb rounding jitter) AND an
+    /// `itemLayout` listener is registered on the node. The reported height is
+    /// recorded only after a successful emit, so if the listener is not wired yet
+    /// (prop arrived before the listener) the measurement is retried on the next
+    /// layout pass instead of being silently dropped.
+    ///
+    /// Access: internal (not private) so `@testable import` can drive a measurement
+    /// pass directly without constructing a full laid-out root view hierarchy.
+    func reportFlatListItemHeights() {
+        dispatchPrecondition(condition: .onQueue(.main))
+        guard !flatListIndexes.isEmpty else { return }
+
+        for (nodeId, index) in flatListIndexes {
+            guard let view = viewRegistry[nodeId] else { continue }
+            let height = view.frame.height
+            guard height > 0 else { continue }
+
+            if let last = reportedItemHeights[nodeId], abs(last - height) < 0.5 {
+                continue
+            }
+
+            // Only emit when JS is listening; otherwise defer to a later pass.
+            guard eventHandlers["\(nodeId):itemLayout"] != nil else { continue }
+
+            reportedItemHeights[nodeId] = height
+            dispatchEventToJS(
+                nodeId: nodeId,
+                eventName: "itemLayout",
+                payload: [
+                    "index": index,
+                    "height": Double(height),
+                ]
+            )
         }
     }
 
@@ -1276,6 +1350,8 @@ public final class NativeBridge {
         nodeParent.removeAll()
         childrenOf.removeAll()
         scrollViewNodeIDs.removeAll()
+        flatListIndexes.removeAll()
+        reportedItemHeights.removeAll()
         teleportMarkers.removeAll()
         teleportContainers.removeAll()
         rootView = nil

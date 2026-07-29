@@ -145,8 +145,19 @@ enum NativeDrivenGestures {
 // MARK: - PinchWrapper
 
 /// ObjC-compatible wrapper for UIPinchGestureRecognizer action handlers.
+///
+/// When `"pinch"` is marked native-driven on the view (see ``NativeDrivenGestures``),
+/// the wrapper applies the pinch scale directly to `view.transform` on the UI thread
+/// on every `.changed`, removing the JS round-trip per frame. The scale is accumulated
+/// on top of the transform present when the pinch began, so a style-applied 2D transform
+/// (translation/rotation) is preserved. The `pinch` event is forwarded to JS in all
+/// cases so state tracking and `ended` handling keep working.
 @objc final class PinchWrapper: NSObject {
     private let handler: (Any?) -> Void
+
+    /// Transform present when the current native-driven pinch began, so the gesture
+    /// scale is accumulated on top of any style-applied transform.
+    private var baseTransform: CGAffineTransform = .identity
 
     init(handler: @escaping (Any?) -> Void) {
         self.handler = handler
@@ -154,16 +165,40 @@ enum NativeDrivenGestures {
     }
 
     @objc func handle(_ recognizer: UIPinchGestureRecognizer) {
+        guard let view = recognizer.view else { return }
+        handlePinch(view: view, state: recognizer.state, scale: recognizer.scale, velocity: recognizer.velocity)
+    }
+
+    /// Core pinch handling, factored out of the recognizer callback so it can be
+    /// exercised in unit tests without synthesizing touches. Applies the native-driven
+    /// transform when enabled, then always forwards the event to JS.
+    func handlePinch(view: UIView, state: UIGestureRecognizer.State, scale: CGFloat, velocity: CGFloat) {
+        if NativeDrivenGestures.contains("pinch", in: view) {
+            switch state {
+            case .began:
+                baseTransform = view.transform
+            case .changed:
+                // Scale uniformly on top of the captured base transform.
+                view.transform = baseTransform.concatenating(
+                    CGAffineTransform(scaleX: scale, y: scale)
+                )
+            default:
+                // ended/cancelled/failed: leave the view at its last scaled size;
+                // JS may adjust it further via the `transform` style if it wants.
+                break
+            }
+        }
+
         let stateStr: String
-        switch recognizer.state {
+        switch state {
         case .began:    stateStr = "began"
         case .changed:  stateStr = "changed"
         case .ended:    stateStr = "ended"
         default:        stateStr = "cancelled"
         }
         handler([
-            "scale": recognizer.scale,
-            "velocity": recognizer.velocity,
+            "scale": scale,
+            "velocity": velocity,
             "state": stateStr
         ] as [String: Any])
     }
@@ -172,8 +207,19 @@ enum NativeDrivenGestures {
 // MARK: - RotationWrapper
 
 /// ObjC-compatible wrapper for UIRotationGestureRecognizer action handlers.
+///
+/// When `"rotate"` is marked native-driven on the view (see ``NativeDrivenGestures``),
+/// the wrapper applies the rotation directly to `view.transform` on the UI thread on
+/// every `.changed`, removing the JS round-trip per frame. The rotation is accumulated
+/// on top of the transform present when the rotation began, so a style-applied 2D
+/// transform (translation/scale) is preserved. The `rotate` event is forwarded to JS
+/// in all cases so state tracking and `ended` handling keep working.
 @objc final class RotationWrapper: NSObject {
     private let handler: (Any?) -> Void
+
+    /// Transform present when the current native-driven rotation began, so the gesture
+    /// rotation is accumulated on top of any style-applied transform.
+    private var baseTransform: CGAffineTransform = .identity
 
     init(handler: @escaping (Any?) -> Void) {
         self.handler = handler
@@ -181,16 +227,40 @@ enum NativeDrivenGestures {
     }
 
     @objc func handle(_ recognizer: UIRotationGestureRecognizer) {
+        guard let view = recognizer.view else { return }
+        handleRotation(view: view, state: recognizer.state, rotation: recognizer.rotation, velocity: recognizer.velocity)
+    }
+
+    /// Core rotation handling, factored out of the recognizer callback so it can be
+    /// exercised in unit tests without synthesizing touches. Applies the native-driven
+    /// transform when enabled, then always forwards the event to JS.
+    func handleRotation(view: UIView, state: UIGestureRecognizer.State, rotation: CGFloat, velocity: CGFloat) {
+        if NativeDrivenGestures.contains("rotate", in: view) {
+            switch state {
+            case .began:
+                baseTransform = view.transform
+            case .changed:
+                // Rotate on top of the captured base transform.
+                view.transform = baseTransform.concatenating(
+                    CGAffineTransform(rotationAngle: rotation)
+                )
+            default:
+                // ended/cancelled/failed: leave the view at its last rotated angle;
+                // JS may adjust it further via the `transform` style if it wants.
+                break
+            }
+        }
+
         let stateStr: String
-        switch recognizer.state {
+        switch state {
         case .began:    stateStr = "began"
         case .changed:  stateStr = "changed"
         case .ended:    stateStr = "ended"
         default:        stateStr = "cancelled"
         }
         handler([
-            "rotation": recognizer.rotation,
-            "velocity": recognizer.velocity,
+            "rotation": rotation,
+            "velocity": velocity,
             "state": stateStr
         ] as [String: Any])
     }

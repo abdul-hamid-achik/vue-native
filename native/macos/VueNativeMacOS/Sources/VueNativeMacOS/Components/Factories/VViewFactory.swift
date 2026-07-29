@@ -23,6 +23,16 @@ final class VViewFactory: NativeComponentFactory {
             view.nativeDrivenGestures = Set(names)
             return
         }
+        // __flatListIndex marks this view as a VFlatList item (its index in the data
+        // set). Store it so the layout hook can emit `itemLayout` with the right index.
+        // Not a style prop — it has no visual effect of its own.
+        if key == "__flatListIndex" {
+            FlatListItemStorage.setIndex(Self.intValue(from: value), for: view)
+            // Layout may already have completed by the time this prop arrives; re-report
+            // on the next runloop turn so the measured height is emitted promptly.
+            DispatchQueue.main.async { view.reportFlatListItemLayoutIfNeeded() }
+            return
+        }
         // All other VView props are style-related — delegate to StyleEngine
         StyleEngine.apply(key: key, value: value, to: view)
     }
@@ -104,12 +114,25 @@ final class VViewFactory: NativeComponentFactory {
             GestureStorage.storeObject(pressureWrapper, for: view, event: event)
             attachPressureHandler(to: view, wrapper: pressureWrapper)
 
+        // MARK: FlatList item layout reporting
+        case "itemLayout":
+            // Native-driven: the layout hook (FlippedView.layout) emits this event with
+            // the item's measured height. Store the handler so the hook can fire it.
+            FlatListItemStorage.setHandler(handler, for: view)
+            // The item may already be laid out; report on the next runloop turn.
+            DispatchQueue.main.async { view.reportFlatListItemLayoutIfNeeded() }
+
         default:
             break
         }
     }
 
     func removeEventListener(view: NSView, event: String) {
+        // itemLayout is native-driven (no gesture recognizer); just drop the handler.
+        if event == "itemLayout" {
+            FlatListItemStorage.setHandler(nil, for: view)
+            return
+        }
         GestureStorage.remove(for: view, event: event)
         // Remove matching gesture recognizers
         view.gestureRecognizers.forEach { recognizer in
@@ -159,6 +182,21 @@ final class VViewFactory: NativeComponentFactory {
         let pressureView = PressureTrackingView(wrapper: wrapper)
         objc_setAssociatedObject(view, &pressureTrackingKey, pressureView, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
         pressureView.attach(to: view)
+    }
+
+    // MARK: - Value coercion
+
+    /// Coerce a JS prop value to an Int. JSON numbers arrive as NSNumber, but Int/Double
+    /// (and numeric strings) are tolerated for robustness.
+    private static func intValue(from value: Any?) -> Int? {
+        switch value {
+        case let v as Int: return v
+        case let v as Double: return Int(v)
+        case let v as CGFloat: return Int(v)
+        case let v as NSNumber: return v.intValue
+        case let v as String: return Int(v)
+        default: return nil
+        }
     }
 }
 

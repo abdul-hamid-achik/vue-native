@@ -16,4 +16,15 @@ open class FlippedView: NSView {
         super.init(coder: coder)
         wantsLayer = true
     }
+
+    /// After every layout pass, report variable-height flat-list items.
+    ///
+    /// This is the canonical "layout finished" hook in AppKit. The call is a no-op for
+    /// any view that is not a VFlatList item (no `__flatListIndex` + `itemLayout`
+    /// handler), so the overhead for the common case is a single associated-object
+    /// lookup. See `reportFlatListItemLayoutIfNeeded()`.
+    override open func layout() {
+        super.layout()
+        reportFlatListItemLayoutIfNeeded()
+    }
 }
