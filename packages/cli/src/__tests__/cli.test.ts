@@ -1959,21 +1959,19 @@ describe('cli entry point', () => {
     expect(runCommand.name()).toBe('run')
   })
 
-  it('create command accepts a name argument', () => {
-    // Verify via commander metadata
-    import('../commands/create').then(({ createCommand }) => {
-      const args = createCommand.registeredArguments
-      expect(args).toHaveLength(1)
-      expect(args[0].name()).toBe('name')
-      expect(args[0].required).toBe(true)
-    })
+  it('create command accepts an optional name argument (prompted when omitted)', async () => {
+    const { createCommand } = await import('../commands/create')
+    const args = createCommand.registeredArguments
+    expect(args).toHaveLength(1)
+    expect(args[0].name()).toBe('name')
+    expect(args[0].required).toBe(false)
   })
 
-  it('create command has template option with default', async () => {
+  it('create command has a template option without a default (prompted when omitted)', async () => {
     const { createCommand } = await import('../commands/create')
     const templateOpt = createCommand.options.find(o => o.long === '--template')
     expect(templateOpt).toBeDefined()
-    expect(templateOpt!.defaultValue).toBe('blank')
+    expect(templateOpt!.defaultValue).toBeUndefined()
   })
 
   it('run command accepts a platform argument', async () => {

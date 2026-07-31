@@ -6,6 +6,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import pc from 'picocolors'
 import cliPackage from '../../package.json'
 import { ConfigError } from '../config.js'
+import { canPrompt, p, unwrap } from '../ui.js'
 
 const DEFAULT_VUE_VERSION = cliPackage.vueNative.vueVersion
 const VUE_COHORT_PACKAGES = [
@@ -74,17 +75,60 @@ const VALID_NAME = /^[a-zA-Z][a-zA-Z0-9_-]*$/
 
 type Template = 'blank' | 'tabs' | 'drawer'
 
-export const createCommand = new Command('create')
-  .description('Create a new Vue Native project')
-  .argument('<name>', 'project name')
-  .option('-t, --template <template>', 'project template (blank, tabs, drawer)', 'blank')
-  .action(async (name: string, options: { template: string }) => {
-    const template = options.template as Template
-    if (!['blank', 'tabs', 'drawer'].includes(template)) {
+const TEMPLATE_CHOICES: Template[] = ['blank', 'tabs', 'drawer']
+
+async function resolveProjectName(provided: string | undefined): Promise<string> {
+  if (provided) return provided
+  if (!canPrompt()) {
+    throw new ConfigError(
+      'Project name is required. Pass it as an argument: vue-native create <name>',
+    )
+  }
+  return unwrap(await p.text({
+    message: 'What is your project named?',
+    placeholder: 'my-app',
+    validate: (value) => {
+      if (!value) return 'Project name is required.'
+      if (!VALID_NAME.test(value)) {
+        return 'Must start with a letter and contain only letters, numbers, hyphens, or underscores.'
+      }
+      if (existsSync(join(process.cwd(), value))) {
+        return `"${value}" already exists. Choose a different name.`
+      }
+      return undefined
+    },
+  }))
+}
+
+async function resolveTemplate(provided: string | undefined): Promise<Template> {
+  if (provided !== undefined) {
+    if (!TEMPLATE_CHOICES.includes(provided as Template)) {
       throw new ConfigError(
-        `Invalid template "${template}". Choose: blank, tabs, drawer`,
+        `Invalid template "${provided}". Choose: blank, tabs, drawer`,
       )
     }
+    return provided as Template
+  }
+  if (!canPrompt()) return 'blank'
+  return unwrap(await p.select({
+    message: 'Which template would you like to use?',
+    options: [
+      { value: 'blank', label: 'blank', hint: 'single screen with a counter' },
+      { value: 'tabs', label: 'tabs', hint: 'bottom tab navigation' },
+      { value: 'drawer', label: 'drawer', hint: 'side drawer navigation' },
+    ],
+  })) as Template
+}
+
+export const createCommand = new Command('create')
+  .description('Create a new Vue Native project')
+  .argument('[name]', 'project name')
+  .option('-t, --template <template>', 'project template (blank, tabs, drawer)')
+  .action(async (nameArg: string | undefined, options: { template?: string }) => {
+    p.intro(pc.cyan('Vue Native'))
+
+    const name = await resolveProjectName(nameArg)
+    const template = await resolveTemplate(options.template)
 
     if (!VALID_NAME.test(name)) {
       throw new ConfigError(
@@ -98,7 +142,7 @@ export const createCommand = new Command('create')
         `Cannot create "${name}": ${dir} already exists. Choose a new name or remove the existing directory.`,
       )
     }
-    console.log(pc.cyan(`\nCreating Vue Native project: ${pc.bold(name)} (template: ${template})\n`))
+    p.log.info(`Creating ${pc.bold(name)} (template: ${template})`)
 
     try {
       await mkdir(dir, { recursive: true })
@@ -559,7 +603,7 @@ zipStorePath=wrapper/dists
           `Bundled Android runtime files are missing or unreadable: ${(error as Error).message}`,
         )
       }
-      console.log(pc.dim('  Bundled native runtimes copied for local builds.\n'))
+      p.log.step('Bundled native runtimes copied for local builds.')
 
       // vue-native.config.ts
       await writeFile(join(dir, 'vue-native.config.ts'), `import { defineConfig } from '@thelacanians/vue-native-cli'
@@ -613,16 +657,20 @@ local.properties
 *.jks
 `)
 
-      console.log(pc.green('  Project created successfully!\n'))
-      console.log(pc.white('  Next steps:\n'))
-      console.log(pc.white(`    cd ${name}`))
-      console.log(pc.white('    bun install'))
-      console.log(pc.white('    vue-native dev\n'))
-      console.log(pc.white('  To run on iOS:'))
-      console.log(pc.white('    vue-native run ios\n'))
-      console.log(pc.white('  To run on Android:'))
-      console.log(pc.dim('    Open android/ in Android Studio, or run:'))
-      console.log(pc.white('    vue-native run android\n'))
+      p.log.success('Project created successfully!')
+      p.note(
+        [
+          `cd ${name}`,
+          'bun install',
+          'vue-native dev',
+          '',
+          'Run on iOS:     vue-native run ios',
+          'Run on Android: vue-native run android',
+          '                (or open android/ in Android Studio)',
+        ].join('\n'),
+        'Next steps',
+      )
+      p.outro('Happy building!')
     } catch (err) {
       throw new ConfigError(
         `Error creating project: ${(err as Error).message}`,

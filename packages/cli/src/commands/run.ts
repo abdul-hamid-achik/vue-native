@@ -11,6 +11,7 @@ import {
   installAndroidBundle,
   readAndroidApplicationId,
 } from '../native-project.js'
+import { p, resolvePlatform } from '../ui.js'
 
 const APPLE_BUNDLE_ID_PATTERN = /^[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$/
 const ANDROID_APPLICATION_ID_PATTERN = /^[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+$/
@@ -115,7 +116,7 @@ function findApkPath(androidDir: string): string | null {
 
 export const runCommand = new Command('run')
   .description('Build and run the app')
-  .argument('<platform>', 'platform to run on (ios, android, macos)')
+  .argument('[platform]', 'platform to run on (ios, android, macos)')
   .option('--device', 'run on physical device instead of simulator')
   .option('--device-id <udid>', 'UDID of the physical device to target (auto-detected when omitted)')
   .option('--scheme <scheme>', 'Xcode scheme to build')
@@ -123,7 +124,7 @@ export const runCommand = new Command('run')
   .option('--bundle-id <id>', 'app bundle identifier')
   .option('--package <name>', 'Android package name (auto-detected from app/build.gradle when omitted)')
   .option('--activity <name>', 'Android activity name', '.MainActivity')
-  .action(async (platform: string, options: {
+  .action(async (platformArg: string | undefined, options: {
     device?: boolean
     deviceId?: string
     scheme?: string
@@ -132,9 +133,7 @@ export const runCommand = new Command('run')
     package?: string
     activity: string
   }) => {
-    if (platform !== 'ios' && platform !== 'android' && platform !== 'macos') {
-      throw new ConfigError('Platform must be "ios", "android", or "macos"')
-    }
+    const platform = await resolvePlatform(platformArg)
 
     const cwd = process.cwd()
     const config = await loadConfig(cwd)
@@ -147,15 +146,15 @@ export const runCommand = new Command('run')
 
     // Step 1: Build the JS bundle
     const platformLabel = platform === 'ios' ? 'iOS' : platform === 'android' ? 'Android' : 'macOS'
-    console.log(pc.cyan(`\n📱 Vue Native — Run ${platformLabel}\n`))
-    console.log(pc.white('  Building JS bundle...'))
+    p.intro(pc.cyan(`Vue Native — Run ${platformLabel}`))
+    p.log.step('Building JS bundle...')
     try {
       execSync('bun run vite build', {
         cwd,
         stdio: 'inherit',
         env: { ...process.env, VUE_NATIVE_PLATFORM: platform },
       })
-      console.log(pc.green('  ✓ Bundle built\n'))
+      p.log.success('Bundle built')
     } catch {
       throw new ConfigError('Bundle build failed')
     }

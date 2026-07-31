@@ -2,6 +2,7 @@ import { Command } from 'commander'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import pc from 'picocolors'
+import { p } from '../ui.js'
 import { parseDirectory } from '@thelacanians/vue-native-sfc-parser'
 import { generateCode, writeGeneratedFiles, cleanGeneratedFiles, validateNativeBlocks, formatValidationErrors } from '@thelacanians/vue-native-codegen'
 import type { CodegenOptions } from '@thelacanians/vue-native-codegen'
@@ -66,71 +67,65 @@ export const generateCommand = new Command('generate')
      * Run code generation
      */
     async function runGeneration() {
-      console.log(pc.cyan('\n🔧 Vue Native Code Generator'))
-      console.log(pc.dim('─────────────────────────────────────\n'))
+      p.intro(pc.cyan('Vue Native Code Generator'))
 
       try {
         // Parse SFCs
-        console.log(pc.blue('📄 Scanning SFC files...'))
+        p.log.step('Scanning SFC files...')
         const parseResult = parseDirectory('.', {
           root: cwd,
           exclude,
         })
 
         if (parseResult.errors.length > 0) {
-          console.log(pc.yellow('⚠️  Parse warnings:'))
-          parseResult.errors.forEach((err) => {
-            console.log(pc.dim(`  - ${err.file}:${err.line || '?'} ${err.message}`))
-          })
-          console.log()
+          p.log.warn(`Parse warnings:\n${parseResult.errors.map(err => `  - ${err.file}:${err.line || '?'} ${err.message}`).join('\n')}`)
         }
 
         const blockCount = parseResult.allNativeBlocks.length
-        console.log(pc.green(`✓ Found ${blockCount} <native> block${blockCount !== 1 ? 's' : ''}`))
+        p.log.success(`Found ${blockCount} <native> block${blockCount !== 1 ? 's' : ''}`)
 
         if (blockCount === 0) {
-          console.log(pc.yellow('\n⚠️  No <native> blocks found.'))
-          console.log(pc.dim('Removing stale generated modules and writing empty registries.'))
+          p.log.warn('No <native> blocks found.')
+          p.log.info('Removing stale generated modules and writing empty registries.')
         }
 
         // Validate native blocks
-        console.log(pc.blue('🔍 Validating native code...'))
+        p.log.step('Validating native code...')
         const validation = validateNativeBlocks(parseResult.allNativeBlocks)
 
         if (!validation.isValid) {
-          console.log(pc.red('\n❌ Validation failed:'))
+          p.log.error('Validation failed:')
           console.log(formatValidationErrors(validation))
           throw new ConfigError('Validation failed')
         }
 
         if (validation.warnings.length > 0) {
-          console.log(pc.yellow(`⚠️  ${validation.warnings.length} warning${validation.warnings.length !== 1 ? 's' : ''}`))
+          p.log.warn(`${validation.warnings.length} warning${validation.warnings.length !== 1 ? 's' : ''}`)
         } else {
-          console.log(pc.green('✓ Validation passed'))
+          p.log.success('Validation passed')
         }
-        console.log()
 
         // Group by platform
         const iosBlocks = parseResult.allNativeBlocks.filter(b => b.platform === 'ios' || b.platform === 'macos')
         const androidBlocks = parseResult.allNativeBlocks.filter(b => b.platform === 'android')
 
+        const platformSummary: string[] = []
         if (iosBlocks.length > 0) {
-          console.log(pc.dim(`  - iOS/macOS: ${iosBlocks.length} block${iosBlocks.length !== 1 ? 's' : ''}`))
+          platformSummary.push(`iOS/macOS: ${iosBlocks.length} block${iosBlocks.length !== 1 ? 's' : ''}`)
         }
         if (androidBlocks.length > 0) {
-          console.log(pc.dim(`  - Android: ${androidBlocks.length} block${androidBlocks.length !== 1 ? 's' : ''}`))
+          platformSummary.push(`Android: ${androidBlocks.length} block${androidBlocks.length !== 1 ? 's' : ''}`)
         }
-        console.log()
+        if (platformSummary.length > 0) {
+          p.log.info(platformSummary.join('\n'))
+        }
 
         // Generate code
-        console.log(pc.blue('⚙️  Generating code...'))
+        p.log.step('Generating code...')
         const codegenResult = generateCode(parseResult.allNativeBlocks, codegenOptions)
 
         if (codegenResult.errors.length > 0) {
-          console.log(pc.red('\n❌ Generation errors:'))
-          codegenResult.errors.forEach((err) => {
-            console.log(pc.red(`  - ${err.file} ${err.message}`))
-          })
+          p.log.error(`Generation errors:\n${codegenResult.errors.map(err => `  - ${err.file} ${err.message}`).join('\n')}`)
           throw new ConfigError('Code generation failed')
         }
 
@@ -138,42 +133,38 @@ export const generateCommand = new Command('generate')
         // This prunes modules removed from an SFC and guarantees the registry
         // cannot retain references to a deleted generated class.
         if (options.clean) {
-          console.log(pc.yellow('🗑️  Cleaning generated files...'))
+          p.log.step('Cleaning generated files...')
         }
         cleanGeneratedFiles(codegenOptions, cwd)
         if (options.clean) {
-          console.log(pc.green('✓ Cleaned\n'))
+          p.log.success('Cleaned')
         }
 
         // Write files
-        console.log(pc.blue('📝 Writing files...'))
+        p.log.step('Writing files...')
         const writeResult = writeGeneratedFiles(codegenResult, cwd)
 
         if (writeResult.errors.length > 0) {
-          console.log(pc.red('\n❌ Write errors:'))
-          writeResult.errors.forEach((err) => {
-            console.log(pc.red(`  - ${err.message}`))
-          })
+          p.log.error(`Write errors:\n${writeResult.errors.map(err => `  - ${err.message}`).join('\n')}`)
           throw new ConfigError('Failed to write generated files')
         }
 
         // Summary
-        console.log(pc.green('\n✅ Generation complete!\n'))
-        console.log(pc.dim('Generated files:'))
-        console.log(pc.dim(`  - Swift:      ${codegenResult.stats.swiftFiles} file${codegenResult.stats.swiftFiles !== 1 ? 's' : ''}`))
-        console.log(pc.dim(`  - Kotlin:     ${codegenResult.stats.kotlinFiles} file${codegenResult.stats.kotlinFiles !== 1 ? 's' : ''}`))
-        console.log(pc.dim(`  - TypeScript: ${codegenResult.stats.typescriptFiles} file${codegenResult.stats.typescriptFiles !== 1 ? 's' : ''}`))
-        console.log()
+        p.log.success('Generation complete!')
+        p.note(
+          [
+            `Swift:      ${codegenResult.stats.swiftFiles} file${codegenResult.stats.swiftFiles !== 1 ? 's' : ''}`,
+            `Kotlin:     ${codegenResult.stats.kotlinFiles} file${codegenResult.stats.kotlinFiles !== 1 ? 's' : ''}`,
+            `TypeScript: ${codegenResult.stats.typescriptFiles} file${codegenResult.stats.typescriptFiles !== 1 ? 's' : ''}`,
+          ].join('\n'),
+          'Generated files',
+        )
 
         if (codegenResult.warnings.length > 0) {
-          console.log(pc.yellow('⚠️  Warnings:'))
-          codegenResult.warnings.forEach((warn) => {
-            console.log(pc.dim(`  - ${warn.message}`))
-          })
-          console.log()
+          p.log.warn(`Warnings:\n${codegenResult.warnings.map(warn => `  - ${warn.message}`).join('\n')}`)
         }
 
-        console.log(pc.green('🎉 Ready to build!\n'))
+        p.outro('Ready to build!')
       } catch (error) {
         if (error instanceof ConfigError) throw error
         throw new ConfigError(
@@ -187,7 +178,7 @@ export const generateCommand = new Command('generate')
 
     // Watch mode
     if (options.watch) {
-      console.log(pc.cyan('\n👁️  Watch mode enabled. Press Ctrl+C to stop.\n'))
+      p.log.info('Watch mode enabled. Press Ctrl+C to stop.')
 
       const chokidar = await import('chokidar')
       const watcher = chokidar.default.watch('app/**/*.vue', {

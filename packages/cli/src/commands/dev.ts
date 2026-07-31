@@ -8,6 +8,7 @@ import { WebSocketServer, WebSocket } from 'ws'
 import pc from 'picocolors'
 import { ConfigError, loadConfig } from '../config.js'
 import { getHotReloadToken } from '../hot-reload-token.js'
+import { p } from '../ui.js'
 
 const DEFAULT_PORT = 8174
 const BUNDLE_FILE = 'dist/vue-native-bundle.js'
@@ -144,9 +145,9 @@ export const devCommand = new Command('dev')
     await loadConfig(cwd)
     const bundlePath = join(cwd, BUNDLE_FILE)
 
-    console.log(pc.cyan('\n  Vue Native Dev Server\n'))
+    p.intro(pc.cyan('Vue Native Dev Server'))
     if (platform) {
-      console.log(pc.white(`  Requested target:   ${pc.bold(platform)}`))
+      p.log.info(`Requested target: ${pc.bold(platform)}`)
     }
 
     // ── iOS Simulator auto-detect ──────────────────────────────────────────
@@ -290,32 +291,35 @@ export const devCommand = new Command('dev')
       console.error(pc.red(`WebSocket server error: ${err.message}`))
     })
 
-    console.log(pc.white(`  Hot reload server: ${pc.bold(`ws://localhost:${port}`)}${exposeLan ? '' : '  (localhost-only)'}`))
+    const serverLines: string[] = [
+      `Hot reload server: ${pc.bold(`ws://localhost:${port}`)}${exposeLan ? '' : '  (localhost-only)'}`,
+    ]
     if (exposeLan && lanIP) {
-      console.log(pc.white(`  LAN address:       ${pc.bold(`ws://${lanIP}:${port}`)}`))
+      serverLines.push(`LAN address:       ${pc.bold(`ws://${lanIP}:${port}`)}`)
     } else if (!exposeLan) {
-      console.log(pc.dim(`  Network access disabled (safer). Use --lan to develop on physical devices.`))
+      serverLines.push(pc.dim('Network access disabled (safer). Use --lan to develop on physical devices.'))
     }
 
     // Show connection info for both platforms
     const iosDir = join(cwd, 'ios')
     const androidDir = join(cwd, 'android')
     if (existsSync(iosDir)) {
-      console.log(pc.dim(`  iOS Simulator:     ws://localhost:${port}`))
+      serverLines.push(pc.dim(`iOS Simulator:     ws://localhost:${port}`))
       if (exposeLan && lanIP) {
-        console.log(pc.dim(`  iOS Device (WiFi): ws://${lanIP}:${port}`))
+        serverLines.push(pc.dim(`iOS Device (WiFi): ws://${lanIP}:${port}`))
       }
     }
     if (existsSync(androidDir)) {
-      console.log(pc.dim(`  Android emulator:  ws://10.0.2.2:${port}`))
+      serverLines.push(pc.dim(`Android emulator:  ws://10.0.2.2:${port}`))
       if (exposeLan && lanIP) {
-        console.log(pc.dim(`  Android Device:    ws://${lanIP}:${port}`))
+        serverLines.push(pc.dim(`Android Device:    ws://${lanIP}:${port}`))
       }
     }
-    console.log(pc.dim('  Waiting for app to connect...\n'))
+    p.note(serverLines.join('\n'), 'Hot reload')
+    p.log.info('Waiting for app to connect...')
 
     // ── Start Vite in watch mode ───────────────────────────────────────────
-    console.log(pc.white('  Starting Vite build watcher...\n'))
+    p.log.step('Starting Vite build watcher...')
     const vite = spawn(
       'bun',
       ['run', 'vite', 'build', '--watch', '--mode', 'development'],

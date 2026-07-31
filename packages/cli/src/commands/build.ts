@@ -6,6 +6,7 @@ import pc from 'picocolors'
 import { ConfigError, loadConfig } from '../config.js'
 import { runManagedProcess } from '../managed-process.js'
 import { ensureXcodeProject, findXcodeProject, installAndroidBundle } from '../native-project.js'
+import { p, resolvePlatform } from '../ui.js'
 
 type BuildMode = 'debug' | 'release'
 
@@ -45,20 +46,18 @@ function ensureOutputDir(outputPath: string): void {
 
 export const buildCommand = new Command('build')
   .description('Create a native build of the app')
-  .argument('<platform>', 'platform to build for (ios, android, macos)')
+  .argument('[platform]', 'platform to build for (ios, android, macos)')
   .option('--mode <mode>', 'build mode', 'release')
   .option('--output <path>', 'output directory for the build artifact', './build')
   .option('--scheme <scheme>', 'Xcode scheme to build (iOS only)')
   .option('--aab', 'build Android App Bundle (.aab) instead of APK')
-  .action(async (platform: string, options: {
+  .action(async (platformArg: string | undefined, options: {
     mode: string
     output: string
     scheme?: string
     aab?: boolean
   }) => {
-    if (platform !== 'ios' && platform !== 'android' && platform !== 'macos') {
-      throw new ConfigError('Platform must be "ios", "android", or "macos"')
-    }
+    const platform = await resolvePlatform(platformArg)
     if (options.mode !== 'debug' && options.mode !== 'release') {
       throw new ConfigError('Build mode must be "debug" or "release"')
     }
@@ -74,15 +73,16 @@ export const buildCommand = new Command('build')
 
     // Step 1: Build the JS bundle
     const platformLabel = platform === 'ios' ? 'iOS' : platform === 'android' ? 'Android' : 'macOS'
-    console.log(pc.cyan(`\n  Vue Native — ${options.mode.charAt(0).toUpperCase() + options.mode.slice(1)} Build (${platformLabel})\n`))
-    console.log(pc.white('  Building JS bundle for production...'))
+    const modeLabel = options.mode.charAt(0).toUpperCase() + options.mode.slice(1)
+    p.intro(pc.cyan(`Vue Native — ${modeLabel} Build (${platformLabel})`))
+    p.log.step('Building JS bundle for production...')
     try {
       execSync('bun run vite build --mode production', {
         cwd,
         stdio: 'inherit',
         env: { ...process.env, VUE_NATIVE_PLATFORM: platform },
       })
-      console.log(pc.green('  ✓ Bundle built\n'))
+      p.log.success('Bundle built')
     } catch {
       throw new ConfigError('Bundle build failed')
     }

@@ -40,13 +40,14 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@thelacanians/vue-native-sfc-parser": "^0.6.7",
+    "@clack/prompts": "^1.7.0",
     "@thelacanians/vue-native-codegen": "^0.6.6",
+    "@thelacanians/vue-native-sfc-parser": "^0.6.7",
+    "chokidar": "^3.6.0",
     "commander": "^12.1.0",
     "jiti": "^2.6.1",
-    "ws": "^8.18.0",
-    "chokidar": "^3.6.0",
-    "picocolors": "^1.1.0"
+    "picocolors": "^1.1.0",
+    "ws": "^8.18.0"
   },
   "devDependencies": {
     "@types/ws": "^8.5.13",
