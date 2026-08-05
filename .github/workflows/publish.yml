@@ -451,7 +451,11 @@ jobs:
       - name: Push version commit
         id: version_commit
         run: |
-          git push origin HEAD:main
+          # --no-verify: the pre-push hook (lefthook -> check:ts) is built for
+          # interactive machines and hangs indefinitely when git invokes it in
+          # Actions, stalling this step forever. The version commit was already
+          # fully validated by the "Validate versioned packages" step above.
+          git push --no-verify origin HEAD:main
           echo "version_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
   # ── Dispatch publication after preparation succeeds ─────
@@ -794,7 +798,9 @@ jobs:
               exit "$STATUS"
             fi
             git tag -a "$TAG_NAME" -m "Release $TAG_NAME"
-            git push origin "$TAG_REF"
+            # --no-verify: the pre-push hook hangs in Actions (see the
+            # "Push version commit" step for details).
+            git push --no-verify origin "$TAG_REF"
           fi
 
       - name: Extract release notes from CHANGELOG
