@@ -1,5 +1,24 @@
 # @thelacanians/vue-native-cli
 
+## 0.18.0
+
+### Minor Changes
+
+- ac43754: Add interactive prompts and a [@clack/prompts](https://www.npmjs.com/package/@clack/prompts) UI across the CLI:
+
+  - `vue-native create` now prompts for the project name and template when they are omitted, with live validation.
+  - `vue-native run` and `vue-native build` prompt for the target platform when it is omitted.
+  - All commands render with the clack UI (intro, step/success/warn logs, notes, outro).
+
+  Non-interactive usage is unchanged: when stdin is not a TTY, missing required arguments still produce a clear error instead of waiting for input.
+
+### Patch Changes
+
+- f8b825f: Make Android Gradle failures diagnosable instead of opaque:
+
+  - `vue-native run android` and `vue-native build android` now capture Gradle's stderr and print the `* What went wrong:` block (SDK location not found, wrong Java version, unaccepted SDK licenses, Kotlin compile errors, ...) when the build exits non-zero, instead of only a bare exit code.
+  - When the Gradle wrapper exists but cannot be executed (spawn ENOENT — e.g. NixOS hosts without `/usr/bin/env`), the CLI now prints an actionable hint to run it through a shell.
+
 ## 0.17.0
 
 ## 0.16.0
