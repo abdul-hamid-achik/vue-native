@@ -4,7 +4,7 @@ Vue Native is written in TypeScript and provides full type safety for components
 
 ## Configuration
 
-A recommended `tsconfig.json` for Vue Native projects:
+This is the `tsconfig.json` that `vue-native create` generates (recommended):
 
 ```json
 {
@@ -14,14 +14,13 @@ A recommended `tsconfig.json` for Vue Native projects:
     "moduleResolution": "bundler",
     "strict": true,
     "jsx": "preserve",
-    "types": ["@thelacanians/vue-native-runtime/types"],
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "types": [],
     "paths": {
-      "@/*": ["./src/*"]
-    },
-    "skipLibCheck": true
+      "vue": ["./node_modules/@thelacanians/vue-native-runtime/dist/index.d.ts"]
+    }
   },
-  "include": ["src/**/*.ts", "src/**/*.vue"],
-  "exclude": ["node_modules"]
+  "include": ["app/**/*", "env.d.ts"]
 }
 ```
 
@@ -34,7 +33,54 @@ Key settings explained:
 | `moduleResolution`  | `bundler`   | Matches Vite's resolution strategy for imports.              |
 | `strict`            | `true`      | Enables all strict type-checking options.                    |
 | `jsx`               | `preserve`  | Allows Vue SFC `<script setup lang="ts">` to work correctly. |
-| `types`             | See above   | Registers Vue Native's global type augmentations.            |
+| `types`             | `[]`        | Avoids pulling in ambient `@types` packages; project ambient declarations live in `env.d.ts`. |
+| `paths.vue`         | See above   | Resolves `vue` imports to the native runtime so the Composition API types come from the custom-renderer build. |
+
+## Editor setup
+
+The runtime augments Vue's `GlobalComponents` interface with every built-in
+component (`VView`, `VText`, `VButton`, ...), so any editor running the Vue
+language server (Volar) resolves the globally registered components in your
+templates with no extra configuration: tag autocomplete, prop typing, and
+`createStyleSheet` style checking all work out of the box.
+
+### VS Code
+
+Install the [Vue (Official)](https://marketplace.visualstudio.com/items?itemName=Vue.volar)
+extension. That is the only setup needed.
+
+### Neovim
+
+Run the Vue language server alongside your TypeScript server, for example with
+[nvim-lspconfig](https://github.com/neovim/nvim-lspconfig):
+
+```lua
+-- Vue single-file components (templates, script blocks)
+vim.lsp.enable('vueols')
+-- TypeScript files
+vim.lsp.enable('ts_ls')
+```
+
+Both servers must be able to see the project's `node_modules` (with `vue` and
+`typescript` installed), so open Neovim at the project root.
+
+### Type-checking templates in CI
+
+Plain `tsc --noEmit` does not check `.vue` templates. Use
+[vue-tsc](https://www.npmjs.com/package/vue-tsc) — the same engine as the
+editor LSP — for CI type-checking:
+
+```bash
+bun add -d vue-tsc
+```
+
+```json
+{
+  "scripts": {
+    "typecheck": "vue-tsc --noEmit"
+  }
+}
+```
 
 ## Style Types
 

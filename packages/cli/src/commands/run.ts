@@ -8,6 +8,7 @@ import { ConfigError, loadConfig } from '../config.js'
 import { runManagedProcess } from '../managed-process.js'
 import {
   ensureXcodeProject,
+  formatGradleFailure,
   installAndroidBundle,
   readAndroidApplicationId,
 } from '../native-project.js'
@@ -518,6 +519,10 @@ async function runAndroid(
   // Build with Gradle
   console.log(pc.white('  Building Android app with Gradle...'))
 
+  // Gradle writes the cause of a failed build to stderr in a `* What went
+  // wrong:` block. Capture it so a non-zero exit surfaces the real error.
+  let gradleStderr = ''
+
   let result
   try {
     result = await runManagedProcess('./gradlew', ['assembleDebug'], {
@@ -532,15 +537,25 @@ async function runAndroid(
         }
       },
       stderr: (data) => {
-        const text = data.toString().trim()
-        if (text.includes('ERROR') || text.includes('FAILURE')) {
-          console.log(pc.red(`  ${text}`))
+        const text = data.toString()
+        gradleStderr += text
+        const trimmed = text.trim()
+        if (trimmed.includes('ERROR') || trimmed.includes('FAILURE')) {
+          console.log(pc.red(`  ${trimmed}`))
         }
       },
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     console.error(pc.red(`  Gradle process error: ${message}`))
+    if (/ENOENT/.test(message)) {
+      console.error(pc.yellow(
+        '  The Gradle wrapper exists but could not be executed. This usually means the\n'
+        + '  shebang interpreter is unavailable (e.g. NixOS has no /usr/bin/env) or the\n'
+        + '  file lost its execute bit. Try running it through a shell instead:\n'
+        + '    sh android/gradlew assembleDebug',
+      ))
+    }
     throw new ConfigError(`Android Gradle process failed: ${message}`)
   }
 
@@ -549,6 +564,10 @@ async function runAndroid(
       ? `signal ${result.signal ?? 'unknown'}`
       : `exit code ${result.code}`
     console.error(pc.red(`  ✗ Gradle build failed (${outcome})`))
+    const failure = formatGradleFailure(gradleStderr)
+    if (failure) {
+      console.error(pc.red(`\n${failure}\n`))
+    }
     throw new ConfigError(`Android Gradle build failed with ${outcome}`)
   }
 

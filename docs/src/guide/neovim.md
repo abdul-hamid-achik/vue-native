@@ -149,12 +149,30 @@ The plugin uses `vim.diagnostic` to show real-time warnings for common Vue Nativ
 
 Diagnostics appear inline and in the diagnostics list (`:lua vim.diagnostic.setloclist()`).
 
+## Language server (LSP)
+
+This plugin provides snippets, completions, and diagnostics, but full language
+support (template type checking, hover, go-to-definition) comes from the Vue
+language server. Vue Native ships `GlobalComponents` types for every built-in
+component, so Volar resolves `<VView>`, `<VButton>`, etc. with no extra
+configuration:
+
+```lua
+-- with nvim-lspconfig
+vim.lsp.enable('vueols')  -- .vue files
+vim.lsp.enable('ts_ls')   -- .ts files
+```
+
+Open Neovim at the project root so the servers can find `node_modules` (the
+scaffold installs `vue` and `typescript` for you). See the
+[TypeScript guide](./typescript.md#editor-setup) for details.
+
 ## Requirements
 
 - Neovim 0.8+
 - [LuaSnip](https://github.com/L3MON4D3/LuaSnip) — for snippet expansion
 - [nvim-cmp](https://github.com/hrsh7th/nvim-cmp) — for completion menu
-- [Volar](https://github.com/vuejs/language-tools) — recommended for Vue LSP support
+- [Vue language server](https://github.com/vuejs/language-tools) — for full LSP support in `.vue` files
 
 ## Related
 

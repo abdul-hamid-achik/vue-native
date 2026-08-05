@@ -171,7 +171,7 @@ export const hairlineWidth = 0.5
  * })
  * ```
  */
-export function createStyleSheet<T extends Record<string, object>>(
+export function createStyleSheet<const T extends Record<string, object>>(
   styles: T,
 ): StyleSheet<T> {
   const isDev = typeof __DEV__ !== 'undefined' ? __DEV__ : true

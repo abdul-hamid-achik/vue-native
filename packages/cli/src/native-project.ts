@@ -104,3 +104,27 @@ export function readAndroidApplicationId(androidDir: string): string | null {
 
   return null
 }
+
+/**
+ * Extract the diagnostic section from a failed Gradle build's stderr.
+ *
+ * Gradle reports the cause of a failure in a `* What went wrong:` block
+ * ("SDK location not found...", "Android Gradle plugin requires Java 17...",
+ * "You have not accepted the license agreements...", Kotlin compile errors).
+ * Surfacing that block — or the tail of the output when the block is absent —
+ * turns an opaque non-zero exit code into an actionable error.
+ */
+export function formatGradleFailure(stderr: string): string {
+  const trimmed = stderr.trim()
+  if (!trimmed) return ''
+
+  const start = trimmed.indexOf('* What went wrong:')
+  if (start !== -1) {
+    const rest = trimmed.slice(start)
+    const end = rest.indexOf('\n* Try:')
+    const block = end === -1 ? rest : rest.slice(0, end)
+    return block.trim()
+  }
+
+  return trimmed.split('\n').slice(-20).join('\n').trim()
+}

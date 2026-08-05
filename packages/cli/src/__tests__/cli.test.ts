@@ -1914,6 +1914,79 @@ describe('run command', () => {
       )
     })
 
+    it('surfaces the Gradle "What went wrong" block when the build fails', async () => {
+      const child = createMockChildProcess(false)
+      mockSpawn.mockReturnValue(child)
+      mockExecSync.mockImplementation(() => '')
+      mockExistsSync.mockImplementation((path: string) => {
+        return typeof path === 'string' && (
+          path.endsWith('/android')
+          || path.endsWith('/gradlew')
+          || path.endsWith('/dist/vue-native-bundle.js')
+          || path.endsWith('/app/build.gradle.kts')
+        )
+      })
+
+      const runCmd = await importRunCommand()
+      const command = runCmd.parseAsync(['node', 'run', 'android'])
+      const rejection = command.then(
+        () => null,
+        error => error as Error,
+      )
+      await vi.waitFor(() => expect(child.on).toHaveBeenCalledWith('close', expect.any(Function)))
+
+      const stderrCall = (child.stderr.on as ReturnType<typeof vi.fn>).mock.calls
+        .find(([event]: unknown[]) => event === 'data')
+      const stderrHandler = stderrCall?.[1] as (data: Buffer) => void
+      stderrHandler(Buffer.from(
+        'Some earlier stderr noise\n'
+        + 'FAILURE: Build failed with an exception.\n\n'
+        + '* What went wrong:\n'
+        + 'SDK location not found. Define a valid location in the ANDROID_HOME environment variable.\n\n'
+        + '* Try:\n'
+        + '> Run with --stacktrace option to get the stack trace.\n',
+      ))
+
+      child.emit('close', 1, null)
+
+      expect((await rejection)?.message).toContain('Android Gradle build failed with exit code 1')
+      const errOutput = (console.error as ReturnType<typeof vi.fn>).mock.calls
+        .map(([msg]: unknown[]) => String(msg))
+        .join('\n')
+      expect(errOutput).toContain('SDK location not found')
+      expect(errOutput).not.toContain('Run with --stacktrace')
+    })
+
+    it('prints an actionable hint when the Gradle wrapper cannot be executed', async () => {
+      const child = createMockChildProcess(false)
+      mockSpawn.mockReturnValue(child)
+      mockExecSync.mockImplementation(() => '')
+      mockExistsSync.mockImplementation((path: string) => {
+        return typeof path === 'string' && (
+          path.endsWith('/android')
+          || path.endsWith('/gradlew')
+          || path.endsWith('/dist/vue-native-bundle.js')
+          || path.endsWith('/app/build.gradle.kts')
+        )
+      })
+
+      const runCmd = await importRunCommand()
+      const command = runCmd.parseAsync(['node', 'run', 'android'])
+      const rejection = command.then(
+        () => null,
+        error => error as Error,
+      )
+      await vi.waitFor(() => expect(child.on).toHaveBeenCalledWith('error', expect.any(Function)))
+
+      child.emit('error', new Error('spawn ./gradlew ENOENT'))
+
+      expect((await rejection)?.message).toContain('Android Gradle process failed: spawn ./gradlew ENOENT')
+      const errOutput = (console.error as ReturnType<typeof vi.fn>).mock.calls
+        .map(([msg]: unknown[]) => String(msg))
+        .join('\n')
+      expect(errOutput).toContain('sh android/gradlew assembleDebug')
+    })
+
     it('rejects instead of hanging when Gradle cannot be started', async () => {
       const child = createMockChildProcess(false)
       mockSpawn.mockReturnValue(child)

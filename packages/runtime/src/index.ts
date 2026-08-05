@@ -15,6 +15,9 @@ import { createNativeNode, releaseNodeId, type NativeNode } from './node'
 import { NativeBridge, registerAppTeardown } from './bridge'
 import { VDrawerItem, VDrawerSection, builtInComponents } from './components'
 import { ErrorBoundary } from './errorBoundary'
+// Side-effect import: augments @vue/runtime-core's GlobalComponents so
+// editors and vue-tsc resolve the globally-registered native components.
+import './globalComponents'
 
 interface VueNativeGlobals {
   __VN_handleError?: (errorInfo: string) => void

@@ -107,7 +107,10 @@ export type { OutlineNode } from './VOutlineView'
 export type { TransitionProps, TransitionMode } from './VTransition'
 export type { AsyncComponentOptions } from './VSuspense'
 
-export const builtInComponents: Record<string, Component> = {
+// `satisfies` (instead of a `Record<string, Component>` annotation) keeps the
+// literal component names in the type so language-tooling tests can assert the
+// GlobalComponents augmentation stays in sync with this registry.
+export const builtInComponents = {
   VView,
   VText,
   VButton,
@@ -151,4 +154,4 @@ export const builtInComponents: Record<string, Component> = {
   // valid in the global component registry and handled specially by the
   // renderer at runtime.
   VSuspense: VSuspense as unknown as Component,
-}
+} satisfies Record<string, Component>
