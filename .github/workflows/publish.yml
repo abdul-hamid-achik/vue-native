@@ -740,6 +740,11 @@ jobs:
             exit 1
           fi
 
+      # Creates annotated git tags per published package (e.g.
+      # @thelacanians/vue-native-runtime@0.18.0). The script itself pushes with
+      # --no-verify: after `bun install`, lefthook installs a pre-push hook that
+      # runs the full `check:ts` gate and hangs indefinitely in Actions (see
+      # scripts/sync-release-tags.mjs and the "Push version commit" step).
       - name: Sync npm package tags
         env:
           RELEASE_SHA: ${{ needs.release-context.outputs.release_sha }}

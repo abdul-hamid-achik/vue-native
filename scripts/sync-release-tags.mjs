@@ -168,8 +168,14 @@ export function syncReleaseTags({
       )
     }
 
+    // --no-verify: package tags mark an already-validated release commit.
+    // After `bun install`, lefthook's pre-push hook runs `bun run check:ts`
+    // (full lint/typecheck/build/tests). In GitHub Actions that hook hangs
+    // indefinitely and stalled the Publish workflow's "Sync npm package tags"
+    // step for hours (run 31027818913), skipping Tag release + GitHub Release.
+    // Same rationale as the --no-verify pushes in .github/workflows/publish.yml.
     const push = runGit(
-      ['push', remote, tagRef],
+      ['push', '--no-verify', remote, tagRef],
       { cwd, tolerateFailure: true },
     )
     if (push.status !== 0) {

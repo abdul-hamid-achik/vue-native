@@ -169,3 +169,36 @@ test('release tag synchronization refuses a conflicting remote tag', () => {
     rmSync(fixture.root, { force: true, recursive: true })
   }
 })
+
+// Regression: Publish run 31027818913 hung for ~6h on "Sync npm package tags"
+// because `bun install` had installed lefthook's pre-push hook, and
+// `git push` without --no-verify re-ran the full check:ts gate (or hung in it).
+// Package-tag pushes must skip hooks so release finalization can finish.
+test('release tag push skips local pre-push hooks', () => {
+  const fixture = createFixture()
+  try {
+    const hooksDir = join(fixture.repo, '.git', 'hooks')
+    mkdirSync(hooksDir, { recursive: true })
+    const prePush = join(hooksDir, 'pre-push')
+    writeFileSync(
+      prePush,
+      '#!/bin/sh\necho "pre-push should not run for package tag sync" >&2\nexit 1\n',
+      { mode: 0o755 },
+    )
+
+    // Without --no-verify this would fail (or hang, if the hook slept forever).
+    const created = syncReleaseTags({
+      cwd: fixture.repo,
+      releaseSha: fixture.releaseSha,
+    })
+    assert.deepEqual(
+      created.map(result => result.action),
+      ['created', 'created'],
+    )
+    for (const result of created) {
+      assert.equal(remoteTagCommit(fixture.repo, result.tag), fixture.releaseSha)
+    }
+  } finally {
+    rmSync(fixture.root, { force: true, recursive: true })
+  }
+})
