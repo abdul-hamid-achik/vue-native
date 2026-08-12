@@ -7,6 +7,8 @@ export type Permission =
   | 'location'
   | 'locationAlways'
   | 'notifications'
+  | 'contacts'
+  | 'calendar'
 
 export type PermissionStatus =
   | 'granted'
@@ -17,6 +19,12 @@ export type PermissionStatus =
 
 /**
  * Check and request runtime permissions.
+ *
+ * 'contacts' and 'calendar' flow through the same native Permissions module
+ * as every other domain; `useContacts().requestAccess()` and
+ * `useCalendar().requestAccess()` remain as boolean-returning conveniences.
+ * Android reports only granted/denied/notDetermined for contacts/calendar —
+ * restricted/limited are Apple-platform statuses.
  *
  * @example
  * const { request, check } = usePermissions()

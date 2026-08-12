@@ -51,6 +51,11 @@ open class VueNativeWindowController: NSWindowController {
     private var resizeObserver: NSObjectProtocol?
     private var lastDimensions: (width: CGFloat, height: CGFloat, scale: CGFloat)?
     private var hasLoadedBundle = false
+    #if DEBUG
+    /// Bottom-right connection-status badge, installed only when a dev server
+    /// is configured. `nil` otherwise (production apps never allocate it).
+    private var hotReloadStatusView: HotReloadStatusView?
+    #endif
 
     // MARK: - Convenience initializer
 
@@ -82,6 +87,10 @@ open class VueNativeWindowController: NSWindowController {
         guard let contentView = window?.contentView else { return }
         contentView.wantsLayer = true
         contentView.layer?.backgroundColor = NSColor.black.cgColor
+
+        #if DEBUG
+        installHotReloadStatusIndicator(in: contentView)
+        #endif
 
         // Initialize JS engine first, then bridge.
         runtime.initializeForHost { [weak self] in
@@ -141,6 +150,30 @@ open class VueNativeWindowController: NSWindowController {
             ]
         )
     }
+
+    #if DEBUG
+    /// Install the bottom-right hot-reload connection badge and wire it to
+    /// `HotReloadManager`'s status callback. No-op when no dev server is
+    /// configured -- production apps (and DEBUG builds without hot reload)
+    /// never see it, matching `loadEmbeddedBundle()`'s dev-server gate.
+    private func installHotReloadStatusIndicator(in contentView: NSView) {
+        guard devServerURL != nil else { return }
+
+        let statusView = HotReloadStatusView()
+        contentView.addSubview(statusView)
+        NSLayoutConstraint.activate([
+            statusView.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -12),
+            statusView.bottomAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.bottomAnchor, constant: -12),
+        ])
+        hotReloadStatusView = statusView
+
+        HotReloadManager.shared.onStatusChange = { [weak statusView] status in
+            DispatchQueue.main.async {
+                statusView?.apply(status)
+            }
+        }
+    }
+    #endif
 
     // MARK: - Hot Reload URL
 

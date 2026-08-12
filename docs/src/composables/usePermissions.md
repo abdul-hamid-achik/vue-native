@@ -2,16 +2,13 @@
 
 Check and request runtime permissions for device capabilities such as camera, microphone, photo library, location, and notifications.
 
-::: tip Contacts and Calendar use their own flow
-`usePermissions` covers `camera`, `microphone`, `photos`, `location`,
-`locationAlways`, and `notifications` only. [`useContacts`](./useContacts.md)
-and [`useCalendar`](./useCalendar.md) are not wired into this composable --
-each exposes its own `requestAccess(): Promise<boolean>` and `hasAccess:
-Ref<boolean>` instead of the `PermissionStatus` values used here. This is
-intentional for now: contacts/calendar access is boolean (granted or not)
-rather than the richer `granted` / `denied` / `restricted` / `limited` /
-`notDetermined` state model the other permissions need, so they were kept on
-their simpler, purpose-built API rather than forced into this one.
+::: tip Contacts and Calendar
+`'contacts'` and `'calendar'` are supported here like every other domain, so a
+generic permissions UI can `check()` and `request()` them with the full
+`PermissionStatus` model. [`useContacts`](./useContacts.md) and
+[`useCalendar`](./useCalendar.md) also keep their simpler
+`requestAccess(): Promise<boolean>` / `hasAccess: Ref<boolean>` conveniences —
+both flows drive the same underlying system permission.
 :::
 
 ## Usage
@@ -60,6 +57,8 @@ usePermissions(): {
 | `'location'` | Location when in use (iOS: CLLocationManager, Android: ACCESS_FINE_LOCATION) |
 | `'locationAlways'` | Background location access (iOS: requestAlwaysAuthorization, Android: ACCESS_BACKGROUND_LOCATION) |
 | `'notifications'` | Push notification permission (iOS: UNUserNotificationCenter, Android: POST_NOTIFICATIONS on API 33+) |
+| `'contacts'` | Contacts access (iOS: CNContactStore, Android: READ_CONTACTS). Android reports only `granted`/`denied`/`notDetermined`. |
+| `'calendar'` | Calendar access (iOS: EKEventStore — on iOS 17+ `writeOnly` access maps to `limited`, Android: READ_CALENDAR). Android reports only `granted`/`denied`/`notDetermined`. |
 
 ### Permission Status Values
 

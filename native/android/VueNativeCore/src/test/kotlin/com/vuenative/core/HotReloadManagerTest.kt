@@ -289,4 +289,55 @@ class HotReloadManagerTest {
         // base delay instead of continuing from the old backoff level.
         assertEquals(1_000L, HotReloadManager.reconnectDelay(field.getInt(manager) + 1))
     }
+
+    // -------------------------------------------------------------------------
+    // onStatusChange — drives HotReloadStatusView. Connecting(0) on connect(),
+    // Connecting(N) on every scheduled retry, Connected on the "connected" message.
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun testConnectEmitsConnectingZero() {
+        val statuses = mutableListOf<HotReloadStatus>()
+        manager.onStatusChange = { statuses.add(it) }
+
+        manager.connect("ws://localhost:3000")
+
+        assertEquals(listOf(HotReloadStatus.Connecting(0)), statuses)
+        manager.disconnect()
+    }
+
+    @Test
+    fun testScheduleReconnectEmitsConnectingWithCurrentAttempt() {
+        val statuses = mutableListOf<HotReloadStatus>()
+        manager.onStatusChange = { statuses.add(it) }
+
+        val scheduleReconnect = HotReloadManager::class.java.getDeclaredMethod("scheduleReconnect")
+        scheduleReconnect.isAccessible = true
+        val serverUrlField = HotReloadManager::class.java.getDeclaredField("serverUrl")
+        serverUrlField.isAccessible = true
+        val disconnectedField = HotReloadManager::class.java.getDeclaredField("disconnected")
+        disconnectedField.isAccessible = true
+        serverUrlField.set(manager, "ws://localhost:3000")
+        disconnectedField.setBoolean(manager, false)
+
+        scheduleReconnect.invoke(manager)
+        scheduleReconnect.invoke(manager)
+
+        assertEquals(
+            listOf(HotReloadStatus.Connecting(1), HotReloadStatus.Connecting(2)),
+            statuses,
+        )
+        manager.disconnect()
+    }
+
+    @Test
+    fun testConnectedMessageEmitsConnectedStatus() {
+        val statuses = mutableListOf<HotReloadStatus>()
+        manager.onStatusChange = { statuses.add(it) }
+        val socket = mockk<WebSocket>(relaxed = true)
+
+        invokeHandleMessage(socket, "{\"type\":\"connected\"}")
+
+        assertEquals(listOf(HotReloadStatus.Connected), statuses)
+    }
 }

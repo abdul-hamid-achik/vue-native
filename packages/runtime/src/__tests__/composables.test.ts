@@ -1423,6 +1423,20 @@ describe('Composables', () => {
       expect(status).toBe('denied')
     })
 
+    it('supports the contacts and calendar domains', async () => {
+      invokeModuleSpy.mockResolvedValueOnce('granted').mockResolvedValueOnce('notDetermined')
+      const { usePermissions } = await import('../composables/usePermissions')
+      const { request, check } = usePermissions()
+
+      const contactsStatus = await request('contacts')
+      expect(invokeModuleSpy).toHaveBeenCalledWith('Permissions', 'request', ['contacts'])
+      expect(contactsStatus).toBe('granted')
+
+      const calendarStatus = await check('calendar')
+      expect(invokeModuleSpy).toHaveBeenCalledWith('Permissions', 'check', ['calendar'])
+      expect(calendarStatus).toBe('notDetermined')
+    })
+
     it('request returns notDetermined for first-time permission', async () => {
       invokeModuleSpy.mockResolvedValueOnce('notDetermined')
       const { usePermissions } = await import('../composables/usePermissions')

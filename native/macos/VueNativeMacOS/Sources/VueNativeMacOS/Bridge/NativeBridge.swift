@@ -44,6 +44,12 @@ public final class NativeBridge: @preconcurrency NativeEventDispatcher {
     /// Reverse index: maps parent node ID to an ordered list of child node IDs.
     private var childrenOf: [Int: [Int]] = [:]
 
+    /// Node IDs whose view is an `NSScrollView`. After each layout pass, each
+    /// registered scroll view's `documentView` is resized to fit its content
+    /// -- see `VScrollViewFactory.layoutDocumentView(for:)`. Mirrors iOS's
+    /// `scrollViewNodeIDs` / `updateScrollViewContentSizes()`.
+    private var scrollViewNodeIDs: Set<Int> = []
+
     /// The root NSView that contains all rendered native views.
     private weak var rootView: NSView?
     private var rootConstraints: [NSLayoutConstraint] = []
@@ -290,6 +296,9 @@ public final class NativeBridge: @preconcurrency NativeEventDispatcher {
 
         viewRegistry[nodeId] = view
         typeRegistry[nodeId] = type
+        if view is NSScrollView {
+            scrollViewNodeIDs.insert(nodeId)
+        }
     }
 
     /// createText: [nodeId: Int, text: String]
@@ -567,6 +576,7 @@ public final class NativeBridge: @preconcurrency NativeEventDispatcher {
         viewRegistry.removeValue(forKey: nodeId)
         typeRegistry.removeValue(forKey: nodeId)
         childrenOf.removeValue(forKey: nodeId)
+        scrollViewNodeIDs.remove(nodeId)
 
         if let keys = eventKeysPerNode.removeValue(forKey: nodeId) {
             for key in keys {
@@ -864,6 +874,24 @@ public final class NativeBridge: @preconcurrency NativeEventDispatcher {
             layoutNode.layout(availableWidth: bounds.width, availableHeight: bounds.height)
         }
         ExternalLayoutRootRegistry.layoutAll()
+
+        // NSScrollView's documentView sits behind an NSClipView, which has no
+        // LayoutNode of its own -- the recursive walk above never reaches it,
+        // so its children never get positioned by the pass above (run after
+        // ExternalLayoutRootRegistry so scroll views nested inside a modal
+        // have their own scrollView frame already resolved).
+        updateScrollViewDocumentSizes()
+    }
+
+    /// After the main layout pass, resize each registered scroll view's
+    /// `documentView` to fit its content. See
+    /// `VScrollViewFactory.layoutDocumentView(for:)`.
+    private func updateScrollViewDocumentSizes() {
+        for nodeId in scrollViewNodeIDs {
+            if let scrollView = viewRegistry[nodeId] as? NSScrollView {
+                VScrollViewFactory.layoutDocumentView(for: scrollView)
+            }
+        }
     }
 
     private func triggerLayoutWithRetries(remaining: Int) {
@@ -1017,6 +1045,7 @@ public final class NativeBridge: @preconcurrency NativeEventDispatcher {
         eventKeysPerNode.removeAll()
         nodeParent.removeAll()
         childrenOf.removeAll()
+        scrollViewNodeIDs.removeAll()
         teleportMarkers.removeAll()
         teleportContainers.removeAll()
         rootView = nil

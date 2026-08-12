@@ -6,6 +6,12 @@ import XCTest
 @MainActor
 final class HotReloadManagerTests: XCTestCase {
 
+    override func tearDown() {
+        HotReloadManager.shared.disconnect()
+        HotReloadManager.shared.onStatusChange = nil
+        super.tearDown()
+    }
+
     // MARK: - Exponential backoff
 
     func testReconnectDelayDoublesPerAttempt() {
@@ -66,6 +72,41 @@ final class HotReloadManagerTests: XCTestCase {
         // attempt <= 1 falls back to the base delay rather than crashing.
         XCTAssertEqual(HotReloadManager.reconnectDelay(forAttempt: 0), 1.0, accuracy: 0.0001)
         XCTAssertEqual(HotReloadManager.reconnectDelay(forAttempt: -3), 1.0, accuracy: 0.0001)
+    }
+
+    // MARK: - Status callback
+
+    /// `connect(to:)` emits `.connecting(attempt: 0)` synchronously, before
+    /// any network activity is scheduled, so this is deterministic without a
+    /// real dev server. Reconnect/connected transitions depend on real
+    /// socket activity and are covered by the `HotReloadStatus` enum mapping
+    /// tests instead (`HotReloadStatusViewTests`).
+    func testConnectEmitsConnectingAtAttemptZero() {
+        var received: [HotReloadStatus] = []
+        HotReloadManager.shared.onStatusChange = { received.append($0) }
+
+        HotReloadManager.shared.connect(to: URL(string: "ws://localhost:8174")!)
+
+        XCTAssertEqual(received, [.connecting(attempt: 0)])
+    }
+
+    func testReconnectAttemptsResetOnEachConnectCall() {
+        var received: [HotReloadStatus] = []
+        HotReloadManager.shared.onStatusChange = { received.append($0) }
+
+        HotReloadManager.shared.connect(to: URL(string: "ws://localhost:8174")!)
+        HotReloadManager.shared.connect(to: URL(string: "ws://localhost:8175")!)
+
+        // Every fresh connect() call restarts the attempt counter at 0,
+        // regardless of how many prior connects/reconnects happened.
+        XCTAssertEqual(received, [.connecting(attempt: 0), .connecting(attempt: 0)])
+    }
+
+    func testHotReloadStatusEquatable() {
+        XCTAssertEqual(HotReloadStatus.connecting(attempt: 1), HotReloadStatus.connecting(attempt: 1))
+        XCTAssertNotEqual(HotReloadStatus.connecting(attempt: 1), HotReloadStatus.connecting(attempt: 2))
+        XCTAssertNotEqual(HotReloadStatus.connecting(attempt: 0), HotReloadStatus.connected)
+        XCTAssertEqual(HotReloadStatus.connected, HotReloadStatus.connected)
     }
 }
 #endif

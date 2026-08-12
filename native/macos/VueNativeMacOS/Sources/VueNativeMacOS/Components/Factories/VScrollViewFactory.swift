@@ -187,4 +187,62 @@ final class VScrollViewFactory: NativeComponentFactory {
         // Child is in the document view, just remove from superview
         child.removeFromSuperview()
     }
+
+    // MARK: - Post-layout content sizing
+
+    /// Recompute `documentView`'s children and resize it to fit them.
+    /// `NativeBridge.triggerLayout()` calls this for every registered scroll
+    /// view after the main `LayoutNode` pass, because that pass never
+    /// reaches `documentView` on its own: it sits behind `NSClipView`
+    /// (`NSScrollView` -> `NSClipView` -> `documentView`), and `LayoutNode
+    /// .children` walks `view.subviews` directly, which stops at the
+    /// (LayoutNode-less) clip view.
+    ///
+    /// `LayoutNode` (unlike iOS's real Yoga) has no "measure my natural size
+    /// from content" mode -- a node's own resolved size is always derived
+    /// top-down from the size its parent hands it, never bottom-up from its
+    /// children. To approximate content-driven sizing without that
+    /// capability, `documentView` is laid out against a generous sentinel
+    /// size on the scroll axis (so children are never clipped mid-measure),
+    /// then resized to the *actual* extent its children ended up at (the max
+    /// `computedFrame` maxY/maxX among them) rather than the sentinel.
+    ///
+    /// Caveat: a child with `flexGrow > 0` has no real "available space" to
+    /// grow into inside scrollable content, so it will expand toward the
+    /// sentinel instead of its intended size -- the same ambiguity Yoga
+    /// resolves with a dedicated measure pass that this simplified engine
+    /// does not implement. Fixed/percentage/auto-sized children (the common
+    /// case for scrollable content) size and position correctly; a
+    /// `flexGrow` child directly inside a `VScrollView` does not.
+    @MainActor
+    static func layoutDocumentView(for scrollView: NSScrollView) {
+        guard let documentView = scrollView.documentView,
+              let layoutNode = documentView.layoutNode else {
+            // Not a plain VScrollView document view -- VList/VSectionList's
+            // NSTableView and VOutlineView's NSOutlineView never get a
+            // LayoutNode (they manage their own sizing) and must be left alone.
+            return
+        }
+
+        let viewportSize = scrollView.contentView.bounds.size
+        guard viewportSize.width > 0, viewportSize.height > 0 else { return }
+
+        // Mutually exclusive per `updateProp`'s "horizontal" case.
+        let isHorizontal = scrollView.hasHorizontalScroller && !scrollView.hasVerticalScroller
+        let sentinel: CGFloat = 100_000
+
+        let passWidth = isHorizontal ? sentinel : viewportSize.width
+        let passHeight = isHorizontal ? viewportSize.height : sentinel
+
+        documentView.frame = CGRect(x: 0, y: 0, width: passWidth, height: passHeight)
+        layoutNode.layout(availableWidth: passWidth, availableHeight: passHeight)
+
+        let contentExtent = layoutNode.children.reduce(CGFloat(0)) { furthest, child in
+            Swift.max(furthest, isHorizontal ? child.computedFrame.maxX : child.computedFrame.maxY)
+        }
+
+        let finalWidth = isHorizontal ? Swift.max(contentExtent, viewportSize.width) : viewportSize.width
+        let finalHeight = isHorizontal ? viewportSize.height : Swift.max(contentExtent, viewportSize.height)
+        documentView.frame = CGRect(x: 0, y: 0, width: finalWidth, height: finalHeight)
+    }
 }

@@ -67,6 +67,20 @@ retries **indefinitely** while a dev server URL is configured -- it never gives
 up and does not need to be restarted manually. iOS/macOS and Android share the
 same backoff schedule, so reconnection behavior is identical across platforms.
 
+## Connection indicator
+
+Debug builds with a dev server configured show a small non-interactive badge in
+the bottom-right corner reflecting the hot reload connection state:
+
+| Badge | Meaning |
+|-------|---------|
+| Orange "Connecting…" | Trying to reach the dev server (first attempts). |
+| Red "Disconnected — check `vue-native dev`" | Several attempts have failed. Reconnection keeps retrying in the background; check that the dev server is running and reachable. |
+| Green "Connected" | Live connection established. Auto-hides after ~2 seconds and reappears only if the connection drops. |
+
+The badge never appears in release builds, or when no dev server URL is
+configured, and it never intercepts touches.
+
 ## Start development
 
 ```bash

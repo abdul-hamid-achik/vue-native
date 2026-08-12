@@ -199,6 +199,12 @@ class PermissionsModule : NativeModule {
         "location" -> Manifest.permission.ACCESS_FINE_LOCATION
         "locationAlways" -> Manifest.permission.ACCESS_BACKGROUND_LOCATION
         "notifications" -> if (android.os.Build.VERSION.SDK_INT >= 33) Manifest.permission.POST_NOTIFICATIONS else null
+        // Mirrors ContactsModule/CalendarModule's own requestAccess(), which
+        // gates on read access only (write access is checked separately, at
+        // the point of use, by createContact/createEvent etc.) — so the
+        // generic Permissions surface tracks the same single permission.
+        "contacts" -> Manifest.permission.READ_CONTACTS
+        "calendar" -> Manifest.permission.READ_CALENDAR
         else -> null
     }
 

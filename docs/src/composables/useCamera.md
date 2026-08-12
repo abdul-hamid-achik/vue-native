@@ -98,7 +98,7 @@ interface QRCodeResult {
 | Platform | Support |
 |----------|---------|
 | iOS | Camera uses `UIImagePickerController`. Image library uses `PHPickerViewController` (no permission dialog required for selection). Requires `NSCameraUsageDescription` in `Info.plist` for camera access. `scanQRCode` is supported. |
-| Android | `launchCamera`, `launchImageLibrary`, and `captureVideo` are fully implemented via `ACTION_IMAGE_CAPTURE` / `ACTION_VIDEO_CAPTURE` intents and the system photo picker, with result payloads identical in shape to iOS. `scanQRCode` is **not implemented** -- it returns an actionable error (it would require CameraX + ML Kit or a raw Camera2 session, which this module does not depend on). `stopQRScan` is a no-op. |
+| Android | `launchCamera`, `launchImageLibrary`, and `captureVideo` are fully implemented via `ACTION_IMAGE_CAPTURE` / `ACTION_VIDEO_CAPTURE` intents and the system photo picker, with result payloads identical in shape to iOS. `scanQRCode` opens a CameraX scanning screen backed by ML Kit's bundled barcode model (no Google Play Services required) supporting the same formats as iOS (QR, EAN-8, EAN-13, PDF417, Code128); `type` strings in `onQRCodeDetected` payloads match iOS's values (e.g. `org.iso.QRCode`). `stopQRScan` closes the scanner. |
 | macOS | Photo capture and image selection are supported. Video capture and QR scanning return an explicit unsupported error. |
 
 ### Android specifics

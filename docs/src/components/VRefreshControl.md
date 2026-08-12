@@ -25,7 +25,7 @@ On iOS this attaches a `UIRefreshControl` to the parent `UIScrollView`. On Andro
 | `onRefresh` | `Function` | -- | Callback fired when the user triggers a pull-to-refresh |
 | `tintColor` | `string` | system default | Color of the spinner indicator |
 | `title` | `string` | -- | Title text shown below the spinner (iOS only) |
-| `style` | `ViewStyle` | -- | Declared for API consistency with other components, but currently not forwarded to the native view -- it has no visual effect. Only `tintColor` and `title` affect the control's appearance. |
+| `style` | `ViewStyle` | -- | Style applied to the refresh control's native view. Most visual styling comes from `tintColor` and `title`; `style` is useful for e.g. `backgroundColor`. |
 
 ## Example
 

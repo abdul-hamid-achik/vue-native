@@ -84,6 +84,11 @@ open class VueNativeViewController: UIViewController {
     private var lastDimensions: ViewDimensions?
     private var hasLoadedBundle = false
     private var swipeBackGesture: UIScreenEdgePanGestureRecognizer?
+    #if DEBUG
+    /// Bottom-right connection-status badge, installed only when a dev server
+    /// is configured. `nil` otherwise (production apps never allocate it).
+    private var hotReloadStatusView: HotReloadStatusView?
+    #endif
 
     // MARK: - Swipe-back gesture thresholds
 
@@ -105,6 +110,9 @@ open class VueNativeViewController: UIViewController {
 
         installSwipeBackGesture()
         installErrorReloadHandler()
+        #if DEBUG
+        installHotReloadStatusIndicator()
+        #endif
 
         // Initialize JS engine first (creates JSContext, registers polyfills).
         // Bridge init MUST happen inside this callback so the JSContext exists
@@ -335,6 +343,30 @@ open class VueNativeViewController: UIViewController {
             }
         }
     }
+
+    #if DEBUG
+    /// Install the bottom-right hot-reload connection badge and wire it to
+    /// `HotReloadManager`'s status callback. No-op when no dev server is
+    /// configured -- production apps (and DEBUG builds without hot reload)
+    /// never see it, matching `loadBundle()`'s dev-server gate.
+    private func installHotReloadStatusIndicator() {
+        guard devServerURL != nil else { return }
+
+        let statusView = HotReloadStatusView()
+        view.addSubview(statusView)
+        NSLayoutConstraint.activate([
+            statusView.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -12),
+            statusView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -12),
+        ])
+        hotReloadStatusView = statusView
+
+        HotReloadManager.shared.onStatusChange = { [weak statusView] status in
+            DispatchQueue.main.async {
+                statusView?.apply(status)
+            }
+        }
+    }
+    #endif
 
     deinit {
         let hostID = hostID

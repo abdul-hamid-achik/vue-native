@@ -26,8 +26,8 @@ import java.util.UUID
  *                                    picker intent; always single-select, so
  *                                    `selectionLimit` has no effect on Android)
  *   - captureVideo(options)       -- video capture via ACTION_VIDEO_CAPTURE
- *   - scanQRCode()                -- not implemented on Android (see below)
- *   - stopQRScan()                -- no-op (nothing is ever started)
+ *   - scanQRCode()                -- launches [QRScannerActivity] (CameraX + ML Kit)
+ *   - stopQRScan()                -- closes the scanner activity, if any is running
  *
  * Photo/video capture writes to a private `cacheDir/vuenative-camera` file and
  * hands the camera app write access to it via the FileProvider declared in
@@ -36,10 +36,13 @@ import java.util.UUID
  * type }` for photos, `{ uri, duration, type }` for video, and `{ didCancel:
  * true }` when the user backs out — never a mid-shape hybrid of the two.
  *
- * scanQRCode() is a real gap, not merely deferred: it needs either a live
- * camera preview + frame analysis (CameraX + ML Kit) or a raw Camera2 session,
- * neither of which this module pulls in as a dependency. It returns a clear,
- * actionable error rather than a silent no-op.
+ * scanQRCode() mirrors iOS's shape exactly, not just its result type: the
+ * `invoke` callback resolves `(null, null)` as soon as scanning has started
+ * (mirroring `CameraModule.swift`'s `scanQRCode`, which resolves before any
+ * code is ever detected), and every detected code is delivered separately as
+ * a `camera:qrDetected` global event via [NativeBridge.dispatchGlobalEvent]
+ * (see [QRScannerActivity]). Scanning does not auto-stop after the first hit;
+ * the caller stops it via `stopQRScan()`.
  */
 class CameraModule : NativeModule {
     override val moduleName = "Camera"
@@ -58,6 +61,12 @@ class CameraModule : NativeModule {
 
         /** Destination file for the in-flight photo/video capture (null for the library pick). */
         private var pendingOutputFile: File? = null
+
+        /** Bridge to relay `camera:qrDetected` events to, set on every `scanQRCode` call. */
+        private var qrEventBridge: WeakReference<NativeBridge>? = null
+
+        /** The currently running scanner activity, if any — set/cleared by [QRScannerActivity] itself. */
+        private var qrScannerActivityRef: WeakReference<QRScannerActivity>? = null
 
         fun setActivity(activity: Activity?) {
             activityRef = if (activity != null) WeakReference(activity) else null
@@ -203,6 +212,23 @@ class CameraModule : NativeModule {
             val dir = File(context.cacheDir, OUTPUT_DIR_NAME).apply { mkdirs() }
             return File(dir, "vn_${UUID.randomUUID()}.$extension")
         }
+
+        /** Called from [QRScannerActivity.onCreate] once it starts running. */
+        internal fun onQrScannerOpened(activity: QRScannerActivity) {
+            qrScannerActivityRef = WeakReference(activity)
+        }
+
+        /** Called from [QRScannerActivity.onDestroy] (back button, Close button, or `stopQRScan`). */
+        internal fun onQrScannerClosed(activity: QRScannerActivity) {
+            if (qrScannerActivityRef?.get() === activity) {
+                qrScannerActivityRef = null
+            }
+        }
+
+        /** Relay a detected code to JS as the `camera:qrDetected` global event. */
+        internal fun dispatchQrDetected(payload: Map<String, Any>) {
+            qrEventBridge?.get()?.dispatchGlobalEvent("camera:qrDetected", payload)
+        }
     }
 
     override fun invoke(
@@ -215,13 +241,8 @@ class CameraModule : NativeModule {
             "launchCamera" -> launchCamera(callback)
             "launchImageLibrary" -> launchImageLibrary(callback)
             "captureVideo" -> captureVideo(args.getOrNull(0) as? Map<*, *>, callback)
-            "scanQRCode" -> callback(
-                null,
-                "Camera.scanQRCode is not yet supported on Android — available on iOS. " +
-                    "It requires a live camera preview + barcode analysis (e.g. CameraX + " +
-                    "ML Kit), which this module does not currently depend on.",
-            )
-            "stopQRScan" -> callback(null, null)
+            "scanQRCode" -> scanQRCode(bridge, callback)
+            "stopQRScan" -> stopQRScan(callback)
             else -> callback(null, "Unknown Camera method: $method")
         }
     }
@@ -332,5 +353,37 @@ class CameraModule : NativeModule {
             file.delete()
             callback(null, e.message ?: "Failed to launch video capture")
         }
+    }
+
+    // -- QR / barcode scanning -------------------------------------------------------
+
+    /**
+     * Launch [QRScannerActivity] and resolve `(null, null)` immediately once it
+     * starts — mirroring iOS's `scanQRCode`, which resolves as soon as the
+     * `AVCaptureSession` starts running rather than waiting for a detection.
+     * Detected codes arrive later, one at a time, as `camera:qrDetected` events
+     * (see [dispatchQrDetected]).
+     */
+    private fun scanQRCode(bridge: NativeBridge, callback: (Any?, String?) -> Unit) {
+        val activity = activityRef?.get()
+        if (activity == null) {
+            callback(null, "Camera.scanQRCode requires an active Activity host")
+            return
+        }
+        qrEventBridge = WeakReference(bridge)
+        try {
+            activity.startActivity(Intent(activity, QRScannerActivity::class.java))
+        } catch (e: Exception) {
+            callback(null, e.message ?: "Failed to launch the QR scanner")
+            return
+        }
+        callback(null, null)
+    }
+
+    /** Close any running scanner. A no-op (resolves `(null, null)`) when nothing is scanning. */
+    private fun stopQRScan(callback: (Any?, String?) -> Unit) {
+        qrScannerActivityRef?.get()?.finish()
+        qrScannerActivityRef = null
+        callback(null, null)
     }
 }

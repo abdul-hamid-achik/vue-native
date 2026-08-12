@@ -68,6 +68,16 @@ class CameraModuleTest {
         // Clears the static Activity reference and settles any in-flight
         // capture so pending callbacks never leak into the next test.
         CameraModule.clearActivity(activity)
+        resetQrCompanionState()
+    }
+
+    /** [CameraModule]'s QR bridge/scanner references are companion (process-wide) state — clear them so one test's `scanQRCode` call never leaks into the next. */
+    private fun resetQrCompanionState() {
+        listOf("qrEventBridge", "qrScannerActivityRef").forEach { name ->
+            val field = CameraModule::class.java.getDeclaredField(name)
+            field.isAccessible = true
+            field.set(null, null)
+        }
     }
 
     /** Read the companion's private in-flight output file via reflection (mirrors the pending-state files other companion-backed modules expose only internally). */
@@ -113,13 +123,74 @@ class CameraModuleTest {
         assertNull(error)
     }
 
+    // -------------------------------------------------------------------------
+    // scanQRCode / stopQRScan
+    // -------------------------------------------------------------------------
+
     @Test
-    fun scanQRCodeReturnsAnActionableAndroidGapError() {
+    fun scanQRCodeRequiresActivityHost() {
+        CameraModule.clearActivity(activity)
+
         var error: String? = null
         module.invoke("scanQRCode", emptyList(), bridge) { _, err -> error = err }
+
         assertNotNull(error)
-        assertTrue(error!!.contains("not yet supported on Android"))
-        assertTrue(error!!.contains("iOS"))
+        assertTrue(error!!.contains("Activity"))
+    }
+
+    @Test
+    fun scanQRCodeLaunchesTheScannerActivityAndResolvesImmediately() {
+        var settled = false
+        var result: Any? = "sentinel"
+        var error: String? = "sentinel"
+        module.invoke("scanQRCode", emptyList(), bridge) { value, err ->
+            settled = true
+            result = value
+            error = err
+        }
+
+        // Mirrors CameraModule.swift's scanQRCode: the invoke callback resolves
+        // as soon as scanning has started, not on the first detection.
+        assertTrue("scanQRCode should resolve once the scanner activity is launched", settled)
+        assertNull(result)
+        assertNull(error)
+
+        val started = shadowOf(activity).nextStartedActivity
+        assertNotNull("scanQRCode should launch the QR scanner activity", started)
+        assertEquals(QRScannerActivity::class.java.name, started.component?.className)
+    }
+
+    @Test
+    fun qrDetectionDispatchesGlobalEventWithDataTypeAndBounds() {
+        var eventName: String? = null
+        var payloadJson: String? = null
+        bridge.onDispatchGlobalEvent = { name, json ->
+            eventName = name
+            payloadJson = json
+        }
+        module.invoke("scanQRCode", emptyList(), bridge) { _, _ -> }
+
+        CameraModule.dispatchQrDetected(
+            mapOf(
+                "data" to "SCANNED123",
+                "type" to "org.iso.QRCode",
+                "bounds" to mapOf("x" to 0.1, "y" to 0.2, "width" to 0.3, "height" to 0.4),
+            ),
+        )
+
+        assertEquals("camera:qrDetected", eventName)
+        assertNotNull(payloadJson)
+        assertTrue(payloadJson!!.contains("\"data\":\"SCANNED123\""))
+        assertTrue(payloadJson!!.contains("\"type\":\"org.iso.QRCode\""))
+        assertTrue(payloadJson!!.contains("\"bounds\""))
+    }
+
+    @Test
+    fun qrDetectionBeforeAnyScanIsSilentlyDropped() {
+        // Nothing has called scanQRCode yet, so no bridge is registered —
+        // dispatchQrDetected must not crash.
+        CameraModule.dispatchQrDetected(mapOf("data" to "x", "type" to "org.iso.QRCode", "bounds" to emptyMap<String, Double>()))
+        assertTrue(true)
     }
 
     // -------------------------------------------------------------------------

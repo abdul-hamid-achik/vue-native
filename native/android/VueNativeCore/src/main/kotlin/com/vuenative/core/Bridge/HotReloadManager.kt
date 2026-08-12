@@ -11,6 +11,25 @@ import okhttp3.WebSocketListener
 import org.json.JSONObject
 
 /**
+ * Connection status of the hot-reload WebSocket, surfaced through
+ * [HotReloadManager.onStatusChange] so a host can render a live indicator
+ * (see [HotReloadStatusView]). Mirrors the shared iOS/Android hot-reload
+ * status indicator spec.
+ */
+sealed class HotReloadStatus {
+    /**
+     * A connection attempt is in flight or scheduled. [attempt] is 0 for the
+     * very first attempt made by [HotReloadManager.connect], and the current
+     * retry count (1, 2, 3, …) for every attempt scheduled afterward by
+     * [HotReloadManager]'s exponential backoff.
+     */
+    data class Connecting(val attempt: Int) : HotReloadStatus()
+
+    /** The dev server accepted the socket and confirmed with a `"connected"` message. */
+    object Connected : HotReloadStatus()
+}
+
+/**
  * Hot reload manager — connects to the Vue Native dev server over WebSocket.
  *
  * Wire protocol (see `packages/cli/src/commands/dev.ts`), all messages are JSON:
@@ -25,6 +44,15 @@ import org.json.JSONObject
 class HotReloadManager(
     private val onReload: (bundleCode: String) -> Unit,
 ) {
+    /**
+     * Fires on every connection-state transition: `Connecting(0)` when
+     * [connect] starts, `Connecting(N)` on each scheduled reconnect attempt,
+     * and `Connected` once the dev server confirms the socket. Drives
+     * [HotReloadStatusView] but has no dependency on it, so it stays testable
+     * without Android views.
+     */
+    var onStatusChange: ((HotReloadStatus) -> Unit)? = null
+
     companion object {
         private const val TAG = "VueNative-HotReload"
 
@@ -79,6 +107,7 @@ class HotReloadManager(
         serverUrl = wsUrl
         reconnectAttempts = 0
         disconnected = false
+        onStatusChange?.invoke(HotReloadStatus.Connecting(0))
         openConnection()
     }
 
@@ -128,6 +157,7 @@ class HotReloadManager(
             "connected" -> {
                 reconnectAttempts = 0
                 Log.d(TAG, "Connected — hot reload active")
+                onStatusChange?.invoke(HotReloadStatus.Connected)
             }
             "ping" -> {
                 // Keep-alive: the server expects a pong reply.
@@ -153,6 +183,7 @@ class HotReloadManager(
         reconnectAttempts += 1
         val delay = reconnectDelay(reconnectAttempts)
         Log.d(TAG, "Reconnecting in ${delay}ms (attempt $reconnectAttempts)")
+        onStatusChange?.invoke(HotReloadStatus.Connecting(reconnectAttempts))
         mainHandler.postDelayed({ openConnection() }, delay)
     }
 }

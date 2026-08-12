@@ -42,6 +42,7 @@ export const VRefreshControl = defineComponent({
         onRefresh: props.onRefresh,
         tintColor: props.tintColor,
         title: props.title,
+        style: props.style,
       })
   },
 })

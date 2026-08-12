@@ -2,6 +2,20 @@
 import Foundation
 import UIKit
 
+/// Connection status of the hot-reload WebSocket, surfaced through
+/// ``HotReloadManager/onStatusChange`` so a host (``VueNativeViewController``)
+/// can render a live indicator (see `HotReloadStatusView`). Mirrors the
+/// shared iOS/macOS/Android hot-reload status indicator spec.
+public enum HotReloadStatus: Equatable {
+    /// A connection attempt is in flight or scheduled. `attempt` is `0` for
+    /// the very first attempt made by ``HotReloadManager/connect(to:)``, and
+    /// the current retry count (1, 2, 3, …) for every attempt scheduled
+    /// afterward by the manager's exponential backoff.
+    case connecting(attempt: Int)
+    /// The dev server accepted the socket and confirmed with a `"connected"` message.
+    case connected
+}
+
 /// Manages a WebSocket connection to the Vue Native dev server for hot reload.
 /// When a new bundle is broadcast, triggers a full app reload via NativeBridge.
 ///
@@ -26,6 +40,13 @@ public final class HotReloadManager: NSObject, URLSessionWebSocketDelegate {
     /// Upper bound for the exponential backoff between reconnect attempts.
     private let maxReconnectDelay: TimeInterval = 30.0
 
+    /// Fires on every connection-state transition: `.connecting(attempt: 0)`
+    /// when `connect(to:)` starts, `.connecting(attempt: N)` on each
+    /// scheduled reconnect attempt, and `.connected` once the dev server
+    /// confirms the socket. Drives the on-screen status badge but has no
+    /// dependency on it, so it stays testable without touching UIKit.
+    public var onStatusChange: ((HotReloadStatus) -> Void)?
+
     override private init() {
         super.init()
     }
@@ -36,6 +57,7 @@ public final class HotReloadManager: NSObject, URLSessionWebSocketDelegate {
     public func connect(to url: URL) {
         serverURL = url
         reconnectAttempts = 0
+        onStatusChange?(.connecting(attempt: 0))
         scheduleConnect(delay: 0)
     }
 
@@ -112,6 +134,7 @@ public final class HotReloadManager: NSObject, URLSessionWebSocketDelegate {
             isConnecting = false
             reconnectAttempts = 0
             NSLog("[VueNative HotReload] Connected — hot reload active")
+            onStatusChange?(.connected)
 
         case "bundle":
             guard let bundle = json["bundle"] as? String else { return }
@@ -149,6 +172,7 @@ public final class HotReloadManager: NSObject, URLSessionWebSocketDelegate {
         isConnecting = false
         let delay = reconnectDelay(forAttempt: reconnectAttempts)
         NSLog("[VueNative HotReload] Reconnecting in %.1fs... (attempt %d)", delay, reconnectAttempts)
+        onStatusChange?(.connecting(attempt: reconnectAttempts))
         scheduleConnect(delay: delay)
     }
 

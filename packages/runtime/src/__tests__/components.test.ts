@@ -1140,6 +1140,13 @@ describe('Components', () => {
       expect(prop).toBeDefined()
       expect(prop!.args[2]).toBe(true)
     })
+
+    it('forwards the style prop to native', async () => {
+      renderComponent(createVNode(VRefreshControl, { style: { backgroundColor: '#123456' } }))
+      await nextTick()
+      const styleOps = mockBridge.getOpsByType('updateStyle')
+      expect(styleOps.some(o => o.args[1]?.backgroundColor === '#123456')).toBe(true)
+    })
   })
 
   // ---------------------------------------------------------------------------

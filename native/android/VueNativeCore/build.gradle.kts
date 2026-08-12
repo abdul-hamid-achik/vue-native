@@ -51,6 +51,10 @@ android {
 
     kotlinOptions {
         jvmTarget = "17"
+        // ImageProxy.image (used by the QR scanner's ML Kit frame analysis) is
+        // marked @ExperimentalGetImage; opt in at the module level rather than
+        // annotating every call site.
+        freeCompilerArgs += listOf("-opt-in=androidx.camera.core.ExperimentalGetImage")
     }
 
     // Allow lint checks to pass without strict enforcement during development
@@ -114,6 +118,18 @@ dependencies {
     // Credential Manager + Google Identity (for SocialAuthModule)
     implementation("androidx.credentials:credentials:1.2.2")
     implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
+
+    // CameraX — live preview + frame analysis for Camera.scanQRCode.
+    // Pinned to 1.4.2 (not the newer 1.5.x/1.6.x lines): those require
+    // compileSdk 36 and AGP 8.9+, both ahead of this project's compileSdk 35 /
+    // AGP 8.2.2. 1.4.2 is the latest stable release compatible with both.
+    implementation("androidx.camera:camera-camera2:1.4.2")
+    implementation("androidx.camera:camera-lifecycle:1.4.2")
+    implementation("androidx.camera:camera-view:1.4.2")
+
+    // ML Kit Barcode Scanning — bundled model, no Google Play Services required
+    // (see https://developers.google.com/ml-kit/vision/barcode-scanning/android)
+    implementation("com.google.mlkit:barcode-scanning:17.3.0")
 
     // Testing
     testImplementation("junit:junit:4.13.2")

@@ -22,6 +22,7 @@ import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
+@Config(sdk = [34])
 class PermissionsModuleTest {
     private lateinit var application: Application
     private lateinit var activity: Activity
@@ -105,5 +106,125 @@ class PermissionsModuleTest {
 
         assertEquals("denied", requested)
         assertTrue(PermissionsModule.pendingCallbacks.isEmpty())
+    }
+
+    // -------------------------------------------------------------------------
+    // contacts / calendar — routed through the same generic Permissions
+    // surface as every other domain (usePermissions.ts). Android has no
+    // restricted/limited status for these: never granted before -> notDetermined,
+    // requested and denied -> denied.
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun contactsIsNotDeterminedBeforeItIsEverRequested() {
+        var checked: Any? = null
+        permissions.invoke("check", listOf("contacts"), bridge) { value, error ->
+            assertNull(error)
+            checked = value
+        }
+        assertEquals("notDetermined", checked)
+    }
+
+    @Test
+    fun contactsRequestMapsToReadContactsAndReportsGrantedStatus() {
+        var requested: Any? = "pending"
+        permissions.invoke("request", listOf("contacts"), bridge) { value, error ->
+            assertNull(error)
+            requested = value
+        }
+
+        val request = shadowOf(activity).lastRequestedPermission
+        assertNotNull(request)
+        assertArrayEquals(arrayOf(Manifest.permission.READ_CONTACTS), request.requestedPermissions)
+
+        PermissionsModule.onPermissionsResult(
+            request.requestCode,
+            request.requestedPermissions,
+            intArrayOf(PackageManager.PERMISSION_GRANTED),
+        )
+
+        assertEquals("granted", requested)
+    }
+
+    @Test
+    fun contactsRequestDeniedReportsDeniedAndThenStaysDeniedOnRecheck() {
+        var requested: Any? = "pending"
+        permissions.invoke("request", listOf("contacts"), bridge) { value, error ->
+            assertNull(error)
+            requested = value
+        }
+        val request = shadowOf(activity).lastRequestedPermission
+        PermissionsModule.onPermissionsResult(
+            request.requestCode,
+            request.requestedPermissions,
+            intArrayOf(PackageManager.PERMISSION_DENIED),
+        )
+        assertEquals("denied", requested)
+
+        var rechecked: Any? = null
+        permissions.invoke("check", listOf("contacts"), bridge) { value, _ -> rechecked = value }
+        assertEquals("denied", rechecked)
+    }
+
+    @Test
+    fun calendarIsNotDeterminedBeforeItIsEverRequested() {
+        var checked: Any? = null
+        permissions.invoke("check", listOf("calendar"), bridge) { value, error ->
+            assertNull(error)
+            checked = value
+        }
+        assertEquals("notDetermined", checked)
+    }
+
+    @Test
+    fun calendarRequestMapsToReadCalendarAndReportsGrantedStatus() {
+        var requested: Any? = "pending"
+        permissions.invoke("request", listOf("calendar"), bridge) { value, error ->
+            assertNull(error)
+            requested = value
+        }
+
+        val request = shadowOf(activity).lastRequestedPermission
+        assertNotNull(request)
+        assertArrayEquals(arrayOf(Manifest.permission.READ_CALENDAR), request.requestedPermissions)
+
+        PermissionsModule.onPermissionsResult(
+            request.requestCode,
+            request.requestedPermissions,
+            intArrayOf(PackageManager.PERMISSION_GRANTED),
+        )
+
+        assertEquals("granted", requested)
+    }
+
+    @Test
+    fun calendarRequestDeniedReportsDenied() {
+        var requested: Any? = "pending"
+        permissions.invoke("request", listOf("calendar"), bridge) { value, error ->
+            assertNull(error)
+            requested = value
+        }
+        val request = shadowOf(activity).lastRequestedPermission
+
+        PermissionsModule.onPermissionsResult(
+            request.requestCode,
+            request.requestedPermissions,
+            intArrayOf(PackageManager.PERMISSION_DENIED),
+        )
+
+        assertEquals("denied", requested)
+    }
+
+    @Test
+    fun contactsAndCalendarNeverReportRestrictedOrLimited() {
+        // Android only ever reports granted/denied/notDetermined for these —
+        // restricted/limited are Apple-platform-only PermissionStatus values.
+        val possibleStatuses = mutableSetOf<Any?>()
+        permissions.invoke("check", listOf("contacts"), bridge) { value, _ -> possibleStatuses.add(value) }
+        permissions.invoke("check", listOf("calendar"), bridge) { value, _ -> possibleStatuses.add(value) }
+
+        possibleStatuses.forEach { status ->
+            assertTrue(status == "granted" || status == "denied" || status == "notDetermined")
+        }
     }
 }

@@ -122,7 +122,7 @@ abstract class VueNativeActivity : AppCompatActivity() {
     private fun loadBundle() {
         val devUrl = getDevServerUrl()
         if (devUrl != null) {
-            hotReloadManager = HotReloadManager { bundleCode ->
+            val manager = HotReloadManager { bundleCode ->
                 // Properly sequence reload steps to avoid races between threads.
                 // Step 1: Teardown old app and reset polyfills on JS thread
                 runtime.runOnJsThread {
@@ -161,6 +161,10 @@ abstract class VueNativeActivity : AppCompatActivity() {
                     }
                 }
             }
+            // Drives the bottom-right connection badge (HotReloadStatusView);
+            // gated internally on the host app's debuggability.
+            manager.onStatusChange = { status -> HotReloadStatusView.update(this, status) }
+            hotReloadManager = manager
             // Development uses the embedded bundle as its deterministic
             // fallback. An applied OTA must not race the live-reload source.
             // Load it first so the hot-reload auth token embedded in the bundle
@@ -276,6 +280,7 @@ abstract class VueNativeActivity : AppCompatActivity() {
         ImagePickerModule.clearActivity(this)
         CameraModule.clearActivity(this)
         hotReloadManager?.disconnect()
+        HotReloadStatusView.hide(this)
         if (::runtime.isInitialized) {
             runtime.bridge.destroyHost()
             NativeModuleRegistry.getInstance(this).destroyAll(runtime.bridge)
