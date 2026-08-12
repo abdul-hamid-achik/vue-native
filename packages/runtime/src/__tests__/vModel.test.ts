@@ -106,16 +106,50 @@ describe('vModel directive', () => {
     })
   })
 
+  describe('stale assign protection', () => {
+    it('writes through the latest assign function after a re-render', async () => {
+      const el = createNativeNode('VInput')
+      const staleAssign = vi.fn()
+      const currentAssign = vi.fn()
+
+      const mountVnode = { dirs: [{ value: staleAssign }] } as any
+      vModel.beforeMount!(el, { value: '' } as any, mountVnode, null as any)
+
+      // A re-render hands the directive a fresh vnode whose assign targets a
+      // different binding; the listener must follow it.
+      const updatedVnode = { dirs: [{ value: currentAssign }] } as any
+      vModel.updated!(el, { value: 'a', oldValue: 'a' } as any, updatedVnode, null as any)
+
+      NativeBridge.handleNativeEvent(el.id, 'input', { value: 'typed' })
+      await nextTick()
+
+      expect(staleAssign).not.toHaveBeenCalled()
+      expect(currentAssign).toHaveBeenCalledWith('typed')
+    })
+  })
+
   describe('beforeUnmount', () => {
-    it('removes event listeners', async () => {
+    it('removes the event listener the directive registered', async () => {
+      const el = createNativeNode('VInput')
+      const vnode = { dirs: [{ value: (_v: unknown) => {} }] } as any
+
+      vModel.beforeMount!(el, { value: '' } as any, vnode, null as any)
+      vModel.beforeUnmount!(el, { value: '' } as any, vnode, null as any)
+      await nextTick()
+
+      const removeOps = mockBridge.getOpsByType('removeEventListener')
+      expect(removeOps.length).toBe(1)
+      expect(removeOps[0].args).toEqual([el.id, 'input'])
+    })
+
+    it('does not emit removals when nothing was registered', async () => {
       const el = createNativeNode('VInput')
       const vnode = { dirs: [] } as any
 
       vModel.beforeUnmount!(el, { value: '' } as any, vnode, null as any)
       await nextTick()
 
-      const removeOps = mockBridge.getOpsByType('removeEventListener')
-      expect(removeOps.length).toBeGreaterThanOrEqual(1)
+      expect(mockBridge.getOpsByType('removeEventListener')).toEqual([])
     })
   })
 

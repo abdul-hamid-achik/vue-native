@@ -143,15 +143,19 @@ class GestureManager {
       this.syncNativeDriven()
     }
 
-    NativeBridge.addEventListener(this.nodeId, event, (payload: unknown) => {
+    // The bridge supports multiple subscribers per (node, event); keep a
+    // reference to this listener so dispose removes it without knocking out
+    // other bindings (e.g. the declarative option refs plus a manual on()).
+    const listener = (payload: unknown) => {
       if (config?.enabled === false) return
       callback(payload as GestureEventMap[K])
-    })
+    }
+    NativeBridge.addEventListener(this.nodeId, event, listener)
 
     const dispose = () => {
       this.handlers.get(event)?.delete(callback as (state: unknown) => void)
       if (this.nodeId) {
-        NativeBridge.removeEventListener(this.nodeId, event)
+        NativeBridge.removeEventListener(this.nodeId, event, listener)
       }
       if (this.nativeDriven.delete(event)) {
         this.syncNativeDriven()

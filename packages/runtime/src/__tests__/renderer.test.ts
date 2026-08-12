@@ -231,10 +231,10 @@ describe('NativeRenderer (nodeOps)', () => {
       expect(eventNames).toEqual(['longPress', 'itemClick'])
     })
 
-    it('removes old listener before adding new one when handler changes', async () => {
+    it('swaps handlers in place without native round-trips when the handler changes', async () => {
       const el = nodeOps.createElement('VButton')
-      const handler1 = () => {}
-      const handler2 = () => {}
+      const handler1 = vi.fn()
+      const handler2 = vi.fn()
       nodeOps.patchProp(el, 'onPress', null, handler1)
       await nextTick()
       mockBridge.reset()
@@ -242,10 +242,15 @@ describe('NativeRenderer (nodeOps)', () => {
       nodeOps.patchProp(el, 'onPress', handler1, handler2)
       await nextTick()
 
-      const addOps = mockBridge.getOpsByType('addEventListener')
-      const removeOps = mockBridge.getOpsByType('removeEventListener')
-      expect(addOps).toHaveLength(1)
-      expect(removeOps).toHaveLength(1)
+      // The native listener just forwards events to JS — a handler identity
+      // change must not emit any bridge traffic.
+      expect(mockBridge.getOpsByType('addEventListener')).toHaveLength(0)
+      expect(mockBridge.getOpsByType('removeEventListener')).toHaveLength(0)
+
+      // Events now reach the new handler only.
+      NativeBridge.handleNativeEvent(el.id, 'press', { x: 1 })
+      expect(handler1).not.toHaveBeenCalled()
+      expect(handler2).toHaveBeenCalledWith({ x: 1 })
     })
 
     it('removes listener when next value is null', async () => {

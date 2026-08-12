@@ -323,15 +323,115 @@ describe('Integration: full Vue render cycle', () => {
 
     render(h(App), root)
     await nextTick()
+    const buttonNodeId = mockBridge.getOpsByType('addEventListener')
+      .find(o => o.args[1] === 'press')!.args[0]
     mockBridge.reset()
 
     show.value = false
     await vueNextTick()
     await nextTick()
 
-    // Should see removeChild (and possibly removeEventListener) for the button
     const removeOps = mockBridge.getOpsByType('removeChild')
     expect(removeOps.length).toBeGreaterThanOrEqual(1)
+
+    // The removed node must not keep its handler closure registered: a late
+    // native event for the dead node id no longer reaches the handler.
+    const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      NativeBridge.handleNativeEvent(buttonNodeId, 'press', null)
+    } finally {
+      consoleWarnSpy.mockRestore()
+    }
+    expect(handler).not.toHaveBeenCalled()
+  })
+
+  it('KeepAlive parks deactivated subtrees in a detached native container', async () => {
+    const root = createNativeNode('__ROOT__')
+    const current = ref('a')
+
+    const CompA = defineComponent({
+      name: 'CompA',
+      setup: () => () => h('VText', { text: 'A' }),
+    })
+    const CompB = defineComponent({
+      name: 'CompB',
+      setup: () => () => h('VText', { text: 'B' }),
+    })
+
+    const App = defineComponent({
+      setup() {
+        return () => h(runtimeExports.KeepAlive, {}, [
+          current.value === 'a' ? h(CompA, { key: 'a' }) : h(CompB, { key: 'b' }),
+        ])
+      },
+    })
+
+    render(h(App), root)
+    await nextTick()
+
+    // KeepAlive's storage container mounts as a real (never-attached) VView.
+    const createOps = mockBridge.getOpsByType('create')
+    expect(createOps.every(o => o.args[1] !== 'div')).toBe(true)
+    const textNodeId = createOps.find(o => o.args[1] === 'VText')!.args[0]
+    const attachedIds = new Set(
+      [...mockBridge.getOpsByType('appendChild'), ...mockBridge.getOpsByType('insertBefore')]
+        .map(o => o.args[1]),
+    )
+    const storageId = createOps.find(o => o.args[1] === 'VView' && !attachedIds.has(o.args[0]))!.args[0]
+    mockBridge.reset()
+
+    current.value = 'b'
+    await vueNextTick()
+    await nextTick()
+
+    // Deactivation moves A's subtree into the storage container natively,
+    // which detaches it from the screen instead of leaving it visible.
+    const moves = mockBridge.getOpsByType('appendChild')
+    expect(moves.some(o => o.args[0] === storageId && o.args[1] === textNodeId)).toBe(true)
+    mockBridge.reset()
+
+    current.value = 'a'
+    await vueNextTick()
+    await nextTick()
+
+    // Reactivation moves the same node back out of storage — no re-create.
+    expect(mockBridge.getOpsByType('create').every(o => o.args[0] !== textNodeId)).toBe(true)
+    const reattach = [...mockBridge.getOpsByType('appendChild'), ...mockBridge.getOpsByType('insertBefore')]
+    expect(reattach.some(o => o.args[1] === textNodeId && o.args[0] !== storageId)).toBe(true)
+  })
+
+  it('mounts <Teleport to="modal"> content through teleportTo', async () => {
+    const root = createNativeNode('__ROOT__')
+    const show = ref(true)
+
+    const App = defineComponent({
+      setup() {
+        return () => h('VView', {}, [
+          show.value
+            ? h(runtimeExports.Teleport as any, { to: 'modal' }, [
+                h('VText', { text: 'overlay' }),
+              ])
+            : null,
+        ])
+      },
+    })
+
+    render(h(App), root)
+    await nextTick()
+
+    // The teleported subtree lands in the named native container.
+    const teleportOps = mockBridge.getOpsByType('teleportTo')
+    const textNodeId = mockBridge.getOpsByType('create').find(o => o.args[1] === 'VText')!.args[0]
+    expect(teleportOps.some(o => o.args[0] === 'modal' && o.args[1] === textNodeId)).toBe(true)
+    mockBridge.reset()
+
+    show.value = false
+    await vueNextTick()
+    await nextTick()
+
+    // Unmounting tears the teleported content down natively.
+    const removed = mockBridge.getOpsByType('removeChild').map(o => o.args[0])
+    expect(removed).toContain(textNodeId)
   })
 
   it('handles nested components', async () => {

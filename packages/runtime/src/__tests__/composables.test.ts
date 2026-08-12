@@ -8,6 +8,7 @@ import { installMockBridge, withSetup } from './helpers'
 const mockBridge = installMockBridge()
 
 const { NativeBridge } = await import('../bridge')
+const { __resetDatabaseInstanceCounts } = await import('../composables/useDatabase')
 
 // We need to spy on NativeBridge methods
 let invokeModuleSpy: ReturnType<typeof vi.spyOn>
@@ -21,6 +22,7 @@ describe('Composables', () => {
   beforeEach(() => {
     mockBridge.reset()
     NativeBridge.reset()
+    __resetDatabaseInstanceCounts()
 
     // Clear tracked handlers
     globalEventHandlers.clear()
@@ -598,6 +600,24 @@ describe('Composables', () => {
   })
 
   // ---------------------------------------------------------------------------
+  // useTeleport
+  // ---------------------------------------------------------------------------
+  describe('useTeleport', () => {
+    it('teleports a node to the named target via the bridge', async () => {
+      const { useTeleport } = await import('../composables/useTeleport')
+      const { createNativeNode } = await import('../node')
+      const teleportSpy = vi.spyOn(NativeBridge, 'teleportTo')
+
+      const { teleport } = await withSetup(() => useTeleport('modal'))
+      const node = createNativeNode('VView')
+      teleport(node)
+
+      expect(teleportSpy).toHaveBeenCalledWith('modal', node.id)
+      teleportSpy.mockRestore()
+    })
+  })
+
+  // ---------------------------------------------------------------------------
   // useDatabase
   // ---------------------------------------------------------------------------
   describe('useDatabase', () => {
@@ -632,6 +652,24 @@ describe('Composables', () => {
       const db = await withSetup(() => useDatabase())
       await db.execute('SELECT 1')
       expect(invokeModuleSpy).toHaveBeenCalledWith('Database', 'open', ['default'])
+    })
+
+    it('does not close a shared connection while another instance still uses it', async () => {
+      const { useDatabase } = await import('../composables/useDatabase')
+      const dbA = await withSetup(() => useDatabase('shared'))
+      const dbB = await withSetup(() => useDatabase('shared'))
+      await dbA.execute('SELECT 1')
+      await dbB.execute('SELECT 2')
+
+      // First instance closing must not pull the native connection out from
+      // under the second one.
+      await dbA.close()
+      expect(invokeModuleSpy).not.toHaveBeenCalledWith('Database', 'close', ['shared'])
+      expect(dbB.isOpen.value).toBe(true)
+
+      // The last instance closing releases the native connection for real.
+      await dbB.close()
+      expect(invokeModuleSpy).toHaveBeenCalledWith('Database', 'close', ['shared'])
     })
   })
 

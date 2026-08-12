@@ -1,16 +1,21 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { installMockBridge, nextTick, withSetup } from './helpers'
 import { ref } from '@vue/runtime-core'
 
 const mockBridge = installMockBridge()
 
 const { useGesture, useComposedGestures } = await import('../composables/useGesture')
+const { NativeBridge } = await import('../bridge')
 
 describe('useGesture', () => {
   const eventHandlers = new Map<string, (payload: unknown) => void>()
 
   beforeEach(() => {
     mockBridge.reset()
+    // Tests reuse hardcoded node ids (42, 1, ...): clear the bridge's
+    // subscription registry so this test's addEventListener ops are not
+    // deduped against leftovers from the previous test.
+    NativeBridge.reset()
     eventHandlers.clear()
 
     const globals = globalThis as typeof globalThis & {
@@ -123,6 +128,20 @@ describe('useGesture', () => {
       expect(events).toContain('rotate')
     })
 
+    it('manual on() coexists with the declarative option binding', async () => {
+      const manualCallback = vi.fn()
+      const gestures = await withSetup(() => useGesture({ id: 1 }, { pan: true }))
+      gestures.on('pan', manualCallback)
+      await nextTick()
+
+      // Both subscriptions fire: the declarative one keeps updating the ref
+      // and the manual callback receives the same event.
+      const state = { translationX: 10, translationY: 0, velocityX: 0, velocityY: 0, state: 'changed' }
+      NativeBridge.handleNativeEvent(1, 'pan', state)
+      expect(manualCallback).toHaveBeenCalledWith(state)
+      expect(gestures.pan.value).toEqual(state)
+    })
+
     it('subscribes to swipe gestures', async () => {
       await withSetup(() => {
         useGesture({ id: 1 }, {
@@ -227,6 +246,9 @@ describe('useGesture', () => {
 describe('useComposedGestures', () => {
   beforeEach(() => {
     mockBridge.reset()
+    // Tests reuse node id 1: clear leftover subscriptions so addEventListener
+    // ops are not deduped against the previous test's listeners.
+    NativeBridge.reset()
   })
 
   it('subscribes to pan, pinch, and rotate by default', async () => {

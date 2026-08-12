@@ -101,16 +101,44 @@ function releaseSubtree(node: NativeNode): void {
     child.parent = null
     releaseSubtree(child)
   }
+  // Native teardown already destroyed the views; drop the JS-side event
+  // subscriptions so removed nodes cannot pin their handler closures forever.
+  NativeBridge.releaseNode(node.id)
   releaseNodeId(node.id)
+}
+
+/**
+ * Exact callback registered on the bridge per (node, event). Array-valued
+ * props are combined into a fresh wrapper function, so removal has to target
+ * the wrapper that was actually registered, not a rebuilt one.
+ */
+const registeredHandlers = new WeakMap<NativeNode, Map<string, EventHandler>>()
+
+/**
+ * Placeholder parent nodes returned by querySelector for <Teleport to="...">.
+ * They are JS-only (never announced to native); insert() translates their
+ * children into `teleportTo` operations against the named native container.
+ */
+const TELEPORT_TARGET_TYPE = '__TELEPORT_TARGET__'
+const teleportTargets = new Map<string, NativeNode>()
+
+function isTeleportTarget(node: NativeNode): boolean {
+  return node.type === TELEPORT_TARGET_TYPE
 }
 
 const nodeOps: RendererOptions<NativeNode, NativeNode> = {
   /**
    * Create a native element node.
+   *
+   * Vue core mounts detached 'div' containers for internal bookkeeping
+   * (KeepAlive's storage container, Suspense's hidden container). Those are
+   * created as real — but never screen-attached — VViews, so moving a subtree
+   * into one detaches its native views from screen and moving it back
+   * reattaches them (native appendChild moves views without destroying them).
    */
   createElement(type: string): NativeNode {
-    const node = createNativeNode(type)
-    NativeBridge.createNode(node.id, type)
+    const node = createNativeNode(type === 'div' ? 'VView' : type)
+    NativeBridge.createNode(node.id, node.type)
     return node
   },
 
@@ -182,14 +210,27 @@ const nodeOps: RendererOptions<NativeNode, NativeNode> = {
       if (/^on[A-Z]/.test(key) && (previousHandler || nextHandler)) {
         const eventName = toEventName(key)
 
-        // Remove old handler if it existed
-        if (previousHandler) {
-          NativeBridge.removeEventListener(el.id, eventName)
-        }
+        // Track the exact callback registered for this prop so updates and
+        // removals never touch other subscribers on the same (node, event)
+        // pair (manual gesture bindings, v-model listeners).
+        const nodeHandlers = registeredHandlers.get(el)
+        const registered = nodeHandlers?.get(eventName)
 
-        // Register new handler if provided
-        if (nextHandler) {
+        if (registered && nextHandler) {
+          // Handler-identity change: swap in place, no native round-trip.
+          NativeBridge.replaceEventListener(el.id, eventName, registered, nextHandler)
+          nodeHandlers!.set(eventName, nextHandler)
+        } else if (registered) {
+          NativeBridge.removeEventListener(el.id, eventName, registered)
+          nodeHandlers!.delete(eventName)
+        } else if (nextHandler) {
           NativeBridge.addEventListener(el.id, eventName, nextHandler)
+          let handlerMap = nodeHandlers
+          if (!handlerMap) {
+            handlerMap = new Map()
+            registeredHandlers.set(el, handlerMap)
+          }
+          handlerMap.set(eventName, nextHandler)
         }
         return
       }
@@ -225,6 +266,23 @@ const nodeOps: RendererOptions<NativeNode, NativeNode> = {
     child.parent = parent
 
     try {
+      // Children of a teleport target are appended to the named native
+      // container ('modal', 'root', ...) via teleportTo. Anchor order is not
+      // representable there; comments and the empty text anchors Vue mounts
+      // into the target are tracked JS-side only.
+      if (isTeleportTarget(parent)) {
+        const anchorIdx = anchor ? parent.children.indexOf(anchor) : -1
+        if (anchorIdx !== -1) {
+          parent.children.splice(anchorIdx, 0, child)
+        } else {
+          parent.children.push(child)
+        }
+        if (child.type !== '__COMMENT__' && !(child.isText && !child.text)) {
+          NativeBridge.teleportTo(parent.props.target as string, child.id)
+        }
+        return
+      }
+
       if (anchor) {
         const anchorIdx = parent.children.indexOf(anchor)
         if (anchorIdx !== -1) {
@@ -297,6 +355,26 @@ const nodeOps: RendererOptions<NativeNode, NativeNode> = {
     const idx = parent.children.indexOf(node)
     if (idx === -1 || idx >= parent.children.length - 1) return null
     return parent.children[idx + 1]
+  },
+
+  /**
+   * Resolve a string Teleport target to its placeholder parent node.
+   *
+   * Vue's <Teleport to="..."> resolves string targets through this hook; the
+   * runtime has no DOM, so target names map to the named native containers
+   * that `teleportTo` understands ('modal', 'root'). A leading '#' is
+   * tolerated for DOM-style habits. One cached placeholder per name keeps
+   * repeated queries pointing at the same parent node.
+   */
+  querySelector(selector: string): NativeNode | null {
+    const name = selector.startsWith('#') ? selector.slice(1) : selector
+    let target = teleportTargets.get(name)
+    if (!target) {
+      target = createNativeNode(TELEPORT_TARGET_TYPE)
+      target.props.target = name
+      teleportTargets.set(name, target)
+    }
+    return target
   },
 
   /**

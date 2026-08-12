@@ -18,6 +18,29 @@ export interface TransactionContext {
 // ─── useDatabase composable ───────────────────────────────────────────────
 
 /**
+ * Open-instance count per database name. Several components commonly share a
+ * name ('default'); the native connection is only closed when the last open
+ * instance closes or unmounts, so one unmount cannot pull the connection out
+ * from under the others.
+ */
+const openInstanceCounts = new Map<string, number>()
+
+/** @internal Reset the shared open-instance counts. Used by tests. */
+export function __resetDatabaseInstanceCounts(): void {
+  openInstanceCounts.clear()
+}
+
+function releaseInstance(name: string): boolean {
+  const count = openInstanceCounts.get(name) ?? 0
+  if (count <= 1) {
+    openInstanceCounts.delete(name)
+    return true
+  }
+  openInstanceCounts.set(name, count - 1)
+  return false
+}
+
+/**
  * Reactive SQLite database access. Opens a named database on first use
  * and auto-closes on component unmount.
  *
@@ -48,8 +71,11 @@ export function useDatabase(name: string = 'default') {
   async function ensureOpen(): Promise<void> {
     if (opened) return
     await NativeBridge.invokeNativeModule('Database', 'open', [name])
-    opened = true
-    isOpen.value = true
+    if (!opened) {
+      opened = true
+      isOpen.value = true
+      openInstanceCounts.set(name, (openInstanceCounts.get(name) ?? 0) + 1)
+    }
   }
 
   async function execute(sql: string, params?: unknown[]): Promise<ExecuteResult> {
@@ -91,18 +117,23 @@ export function useDatabase(name: string = 'default') {
 
   async function close(): Promise<void> {
     if (!opened) return
-    await NativeBridge.invokeNativeModule('Database', 'close', [name])
     opened = false
     isOpen.value = false
+    // Only the last open instance actually closes the shared native connection.
+    if (releaseInstance(name)) {
+      await NativeBridge.invokeNativeModule('Database', 'close', [name])
+    }
   }
 
   onUnmounted(() => {
     if (opened) {
-      NativeBridge.invokeNativeModule('Database', 'close', [name]).catch((err: unknown) => {
-        if (__DEV__) console.warn('[vue-native] Database.close failed:', err)
-      })
       opened = false
       isOpen.value = false
+      if (releaseInstance(name)) {
+        NativeBridge.invokeNativeModule('Database', 'close', [name]).catch((err: unknown) => {
+          if (__DEV__) console.warn('[vue-native] Database.close failed:', err)
+        })
+      }
     }
   })
 

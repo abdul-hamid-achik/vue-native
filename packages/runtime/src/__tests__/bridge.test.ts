@@ -248,4 +248,121 @@ describe('NativeBridge', () => {
       expect(mockBridge.getOps()).toHaveLength(0)
     })
   })
+
+  describe('multi-subscriber event handling', () => {
+    it('supports several callbacks per (node, event) with one native listener', async () => {
+      const cb1 = vi.fn()
+      const cb2 = vi.fn()
+      NativeBridge.addEventListener(1, 'pan', cb1)
+      NativeBridge.addEventListener(1, 'pan', cb2)
+      await nextTick()
+
+      // Native only needs to know once.
+      expect(mockBridge.getOpsByType('addEventListener')).toHaveLength(1)
+
+      NativeBridge.handleNativeEvent(1, 'pan', { x: 5 })
+      expect(cb1).toHaveBeenCalledWith({ x: 5 })
+      expect(cb2).toHaveBeenCalledWith({ x: 5 })
+    })
+
+    it('tears the native listener down only when the last subscriber leaves', async () => {
+      const cb1 = vi.fn()
+      const cb2 = vi.fn()
+      NativeBridge.addEventListener(1, 'pan', cb1)
+      NativeBridge.addEventListener(1, 'pan', cb2)
+      await nextTick()
+      mockBridge.reset()
+
+      NativeBridge.removeEventListener(1, 'pan', cb1)
+      await nextTick()
+      expect(mockBridge.getOpsByType('removeEventListener')).toHaveLength(0)
+
+      NativeBridge.handleNativeEvent(1, 'pan', { x: 1 })
+      expect(cb1).not.toHaveBeenCalled()
+      expect(cb2).toHaveBeenCalled()
+
+      NativeBridge.removeEventListener(1, 'pan', cb2)
+      await nextTick()
+      expect(mockBridge.getOpsByType('removeEventListener')).toHaveLength(1)
+    })
+
+    it('removeEventListener without a callback drops every subscriber', async () => {
+      const cb1 = vi.fn()
+      const cb2 = vi.fn()
+      NativeBridge.addEventListener(1, 'press', cb1)
+      NativeBridge.addEventListener(1, 'press', cb2)
+      await nextTick()
+      mockBridge.reset()
+
+      NativeBridge.removeEventListener(1, 'press')
+      await nextTick()
+
+      expect(mockBridge.getOpsByType('removeEventListener')).toHaveLength(1)
+      const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      try {
+        NativeBridge.handleNativeEvent(1, 'press', null)
+      } finally {
+        consoleWarnSpy.mockRestore()
+      }
+      expect(cb1).not.toHaveBeenCalled()
+      expect(cb2).not.toHaveBeenCalled()
+    })
+
+    it('replaceEventListener swaps callbacks without emitting bridge ops', async () => {
+      const oldCb = vi.fn()
+      const newCb = vi.fn()
+      NativeBridge.addEventListener(1, 'press', oldCb)
+      await nextTick()
+      mockBridge.reset()
+
+      NativeBridge.replaceEventListener(1, 'press', oldCb, newCb)
+      await nextTick()
+
+      expect(mockBridge.getOps()).toHaveLength(0)
+      NativeBridge.handleNativeEvent(1, 'press', 'payload')
+      expect(oldCb).not.toHaveBeenCalled()
+      expect(newCb).toHaveBeenCalledWith('payload')
+    })
+
+    it('replaceEventListener falls back to a plain add when the old callback is unknown', async () => {
+      const newCb = vi.fn()
+      NativeBridge.replaceEventListener(1, 'press', vi.fn(), newCb)
+      await nextTick()
+
+      expect(mockBridge.getOpsByType('addEventListener')).toHaveLength(1)
+      NativeBridge.handleNativeEvent(1, 'press', null)
+      expect(newCb).toHaveBeenCalled()
+    })
+
+    it('releaseNode drops every subscription of a node without bridge ops', async () => {
+      const cbPress = vi.fn()
+      const cbPan = vi.fn()
+      const cbOther = vi.fn()
+      NativeBridge.addEventListener(7, 'press', cbPress)
+      NativeBridge.addEventListener(7, 'pan', cbPan)
+      NativeBridge.addEventListener(8, 'press', cbOther)
+      await nextTick()
+      mockBridge.reset()
+
+      NativeBridge.releaseNode(7)
+      await nextTick()
+
+      // Cleanup is JS-side only: native subtree teardown already handled views.
+      expect(mockBridge.getOps()).toHaveLength(0)
+
+      const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      try {
+        NativeBridge.handleNativeEvent(7, 'press', null)
+        NativeBridge.handleNativeEvent(7, 'pan', null)
+      } finally {
+        consoleWarnSpy.mockRestore()
+      }
+      expect(cbPress).not.toHaveBeenCalled()
+      expect(cbPan).not.toHaveBeenCalled()
+
+      // Other nodes are untouched.
+      NativeBridge.handleNativeEvent(8, 'press', null)
+      expect(cbOther).toHaveBeenCalled()
+    })
+  })
 })

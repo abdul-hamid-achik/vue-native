@@ -100,8 +100,8 @@ class NativeBridgeImpl {
   /** Whether a microtask flush has been scheduled */
   private flushScheduled = false
 
-  /** Event handler registry: "nodeId:eventName" -> callback */
-  private eventHandlers = new Map<string, EventCallback>()
+  /** Event handler registry: "nodeId:eventName" -> callbacks */
+  private eventHandlers = new Map<string, Set<EventCallback>>()
 
   /** Pending async callbacks from native module invocations */
   private pendingCallbacks = new Map<number, PendingCallback>()
@@ -315,38 +315,90 @@ class NativeBridgeImpl {
   // ---------------------------------------------------------------------------
 
   /**
-   * Register an event listener for a node.
-   * The native side will call __VN_handleEvent when this event fires.
+   * Register an event listener for a node. Multiple callbacks may subscribe to
+   * the same (node, event) pair — e.g. a declarative gesture ref plus a manual
+   * `on()` binding. The native side is only told about the first subscription.
    * Swift handler: handleAddEventListener(args: [nodeId, eventName])
    */
   addEventListener<T = unknown>(nodeId: number, eventName: string, callback: EventCallback<T>): void {
     const key = `${nodeId}:${eventName}`
-    this.eventHandlers.set(key, callback)
-    this.enqueue('addEventListener', [nodeId, eventName])
+    let callbacks = this.eventHandlers.get(key)
+    if (!callbacks) {
+      callbacks = new Set()
+      this.eventHandlers.set(key, callbacks)
+      this.enqueue('addEventListener', [nodeId, eventName])
+    }
+    callbacks.add(callback as EventCallback)
   }
 
   /**
-   * Remove a previously registered event listener.
+   * Remove a previously registered event listener. When `callback` is given,
+   * only that subscription is removed; the native listener is torn down once
+   * the last subscriber for the (node, event) pair is gone. Without `callback`
+   * every subscription for the pair is removed at once.
    * Swift handler: handleRemoveEventListener(args: [nodeId, eventName])
    */
-  removeEventListener(nodeId: number, eventName: string): void {
+  removeEventListener(nodeId: number, eventName: string, callback?: EventCallback<never>): void {
     const key = `${nodeId}:${eventName}`
+    const callbacks = this.eventHandlers.get(key)
+    if (!callbacks) return
+    if (callback) {
+      callbacks.delete(callback as EventCallback)
+      if (callbacks.size > 0) return
+    }
     this.eventHandlers.delete(key)
     this.enqueue('removeEventListener', [nodeId, eventName])
   }
 
   /**
+   * Swap one callback for another on a (node, event) pair. The native listener
+   * only forwards events to JS, so a handler-identity change (a fresh inline
+   * closure on every render) needs no native round-trip at all.
+   */
+  replaceEventListener<T = unknown>(
+    nodeId: number,
+    eventName: string,
+    oldCallback: EventCallback<never>,
+    newCallback: EventCallback<T>,
+  ): void {
+    const key = `${nodeId}:${eventName}`
+    const callbacks = this.eventHandlers.get(key)
+    if (callbacks?.delete(oldCallback as EventCallback)) {
+      callbacks.add(newCallback as EventCallback)
+      return
+    }
+    this.addEventListener(nodeId, eventName, newCallback)
+  }
+
+  /**
+   * Drop every event subscription for a node without emitting bridge ops.
+   * Called when a node is removed from the tree: the native subtree teardown
+   * already destroys the views (and their listeners), so this only has to keep
+   * the JS-side registry from leaking the callbacks and whatever they close over.
+   */
+  releaseNode(nodeId: number): void {
+    const prefix = `${nodeId}:`
+    for (const key of this.eventHandlers.keys()) {
+      if (key.startsWith(prefix)) {
+        this.eventHandlers.delete(key)
+      }
+    }
+  }
+
+  /**
    * Called from Swift via globalThis.__VN_handleEvent when a native event fires.
-   * Looks up the registered handler and invokes it with the event payload.
+   * Looks up the registered handlers and invokes them with the event payload.
    */
   handleNativeEvent(nodeId: number, eventName: string, payload: unknown): void {
     const key = `${nodeId}:${eventName}`
-    const handler = this.eventHandlers.get(key)
-    if (handler) {
-      try {
-        handler(payload)
-      } catch (err) {
-        console.error(`[VueNative] Error in event handler "${eventName}" on node ${nodeId}:`, err)
+    const handlers = this.eventHandlers.get(key)
+    if (handlers && handlers.size > 0) {
+      for (const handler of [...handlers]) {
+        try {
+          handler(payload)
+        } catch (err) {
+          console.error(`[VueNative] Error in event handler "${eventName}" on node ${nodeId}:`, err)
+        }
       }
     } else if (__DEV__) {
       console.warn(
