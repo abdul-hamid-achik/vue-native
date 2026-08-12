@@ -2,6 +2,7 @@ package com.vuenative.core
 
 import android.content.Context
 import android.graphics.Color
+import android.graphics.Matrix
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
@@ -10,6 +11,8 @@ import android.util.TypedValue
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewOutlineProvider
+import android.view.animation.Animation
+import android.view.animation.Transformation
 import android.widget.TextView
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
@@ -23,6 +26,7 @@ import com.google.android.flexbox.FlexboxLayout
 import com.google.android.flexbox.JustifyContent
 import kotlin.math.PI
 import kotlin.math.roundToInt
+import kotlin.math.tan
 
 /**
  * Converts JS style props to Android View properties.
@@ -35,14 +39,20 @@ object StyleEngine {
     private const val TAG = "VueNative-StyleEngine"
 
     /**
-     * Guards the skewX/skewY unsupported-transform warning so it logs at most
-     * once per process instead of spamming Logcat on every style pass (a view
-     * with an active skew transform re-applies it on essentially every layout
-     * refresh). `android.view.View` has no public arbitrary-matrix transform
-     * available at this module's minSdk (21) — `setAnimationMatrix` only exists
-     * from API 28 — so faking skew would require restructuring the view
-     * pipeline (e.g. a wrapper compositing layer) rather than a local fix here.
-     * iOS applies skew via its transform matrix; this is a tracked Android gap.
+     * Guards the "skew combined with 3D rotation" unsupported-transform warning
+     * so it logs at most once per process instead of spamming Logcat on every
+     * style pass (a view with an active unsupported combo re-applies it on
+     * essentially every layout refresh).
+     *
+     * skewX/skewY themselves ARE supported (see [applyTransformMatrix]): a
+     * transform list containing skew but no 3D op (`rotateX`/`rotateY`/
+     * `perspective`) is composed into a full 2D `android.graphics.Matrix` and
+     * applied via [applyStaticMatrix], mirroring iOS's `composeTransform3D`.
+     * Combining skew with a 3D rotation in the same list is the one gap left:
+     * `android.graphics.Camera` (used to fake 3D rotation on a 2D `Matrix`)
+     * does not compose cleanly with an arbitrary shear, so that specific combo
+     * still falls back to the View-property path with skew dropped and this
+     * warning logged once.
      */
     private var skewWarningLogged = false
 
@@ -1066,9 +1076,25 @@ object StyleEngine {
 
     // -- Transform helpers --------------------------------------------------------
 
+    /**
+     * Dispatch a `transform` style value to one of three implementations:
+     *
+     *  1. `null`/`"none"` — reset (both the Matrix path and the View-property
+     *     path) to identity.
+     *  2. The list contains `skewX`/`skewY` but no 3D op (`rotateX`/`rotateY`/
+     *     `perspective`) — [applyTransformMatrix] composes the *entire* 2D
+     *     chain into a single `android.graphics.Matrix`.
+     *  3. Everything else (no skew, or skew combined with a 3D op) — the
+     *     original View-property path ([applyTransformViaProperties]).
+     *
+     * Only case 2 touches `android.graphics.Matrix` / the layout listener, so
+     * the no-skew path is byte-for-byte what it was before this file learned
+     * about skew.
+     */
     private fun applyTransform(view: View, value: Any?, ctx: Context) {
         val density = ctx.resources.displayMetrics.density
         if (value == null || value == "none") {
+            clearTransformMatrix(view)
             view.rotation = 0f
             view.rotationX = 0f
             view.rotationY = 0f
@@ -1084,11 +1110,42 @@ object StyleEngine {
 
         val transforms = when (value) {
             is List<*> -> value.filterIsInstance<Map<*, *>>()
-            else -> return
+            else -> {
+                // Unexpected payload type: still tear down any active Matrix
+                // mode so a previously skewed view cannot keep a stale matrix
+                // and layout listener alive indefinitely.
+                clearTransformMatrix(view)
+                return
+            }
         }
 
-        // Reset to defaults, then apply each transform in order. `rotate` and
-        // `rotateZ` both drive the Z axis (View.rotation == View.rotationZ).
+        val hasSkew = transforms.any { it.containsKey("skewX") || it.containsKey("skewY") }
+        val has3DOp = transforms.any {
+            it.containsKey("rotateX") || it.containsKey("rotateY") || it.containsKey("perspective")
+        }
+
+        if (hasSkew && !has3DOp) {
+            applyTransformMatrix(view, transforms, density)
+            return
+        }
+
+        // No skew requested, or skew combined with a 3D rotation/perspective
+        // (that specific combo is not supported — see applyTransformViaProperties).
+        clearTransformMatrix(view)
+        applyTransformViaProperties(view, transforms, density)
+    }
+
+    /**
+     * The original transform implementation: maps the list onto plain `View`
+     * properties (rotation/scale/translation/cameraDistance). `rotate` and
+     * `rotateZ` both drive the Z axis (View.rotation == View.rotationZ).
+     *
+     * `skewX`/`skewY` cannot be represented this way — a list that reaches
+     * this function still containing skew is the skew+3D combo that
+     * [applyTransform] declined to hand to [applyTransformMatrix]; skew is
+     * dropped and a warning is logged once per process.
+     */
+    private fun applyTransformViaProperties(view: View, transforms: List<Map<*, *>>, density: Float) {
         var rotationZ = 0f
         var rotationX = 0f
         var rotationY = 0f
@@ -1150,10 +1207,203 @@ object StyleEngine {
             skewWarningLogged = true
             Log.w(
                 TAG,
-                "skewX/skewY are not supported on Android — the view will render " +
-                    "without skew (iOS renders it). This warning logs once per process.",
+                "skew combined with 3D rotations is not supported on Android — the view " +
+                    "will render without skew (iOS renders it). This warning logs once per process.",
             )
         }
+    }
+
+    /**
+     * Compose the full 2D transform chain (`translateX/Y`, `scale`/`scaleX`/
+     * `scaleY`, `rotate`/`rotateZ`, `skewX`/`skewY`) into a single
+     * `android.graphics.Matrix` and apply it via [applyStaticMatrix], mirroring
+     * iOS's `composeTransform3D`: right-to-left composition (the first list
+     * entry ends up outermost) around a pivot at the view's center.
+     *
+     * Resets the View-property transform fields to identity first so they
+     * don't compose a second time on top of the matrix, and installs a
+     * one-time [View.OnLayoutChangeListener] (see [installTransformMatrixListener])
+     * that recomputes the matrix once real width/height are known — the first
+     * pass here may run before layout, when `view.width`/`view.height` are
+     * still 0.
+     */
+    private fun applyTransformMatrix(view: View, transforms: List<Map<*, *>>, density: Float) {
+        view.rotation = 0f
+        view.rotationX = 0f
+        view.rotationY = 0f
+        view.scaleX = 1f
+        view.scaleY = 1f
+        view.translationX = 0f
+        view.translationY = 0f
+        view.cameraDistance = DEFAULT_CAMERA_DISTANCE * density
+
+        view.setTag(TAG_TRANSFORM_LIST, transforms)
+        installTransformMatrixListener(view)
+
+        val matrix = composeTransform2DMatrix(
+            transforms,
+            view.width.toFloat(),
+            view.height.toFloat(),
+            density,
+        )
+        applyStaticMatrix(view, matrix)
+    }
+
+    /**
+     * Compose [transforms] into a single 2D `android.graphics.Matrix`, as a pure
+     * function of the transform list, the view's current pixel size, and the
+     * screen density (used to convert `translateX`/`translateY` dp values to px,
+     * matching the View-property path). Exposed `internal` so it is directly
+     * testable without a real Android View.
+     *
+     * Composition order matches iOS's `composeTransform3D`: each list entry is
+     * pre-concatenated ([Matrix.preConcat]) onto the running result in array
+     * order, so the first entry ends up as the outermost transform (the CSS
+     * `transform` list convention) — equivalent to iOS's
+     * `result = CATransform3DConcat(op, result)`.
+     *
+     * The whole composed chain (including `translateX`/`translateY`) is then
+     * wrapped around a pivot at the view's center — `T(cx,cy) · M · T(-cx,-cy)`
+     * — mirroring how `CALayer.transform` is applied relative to `anchorPoint`
+     * (default: the layer's center) on iOS.
+     */
+    internal fun composeTransform2DMatrix(
+        transforms: List<Map<*, *>>,
+        widthPx: Float,
+        heightPx: Float,
+        density: Float,
+    ): Matrix {
+        val result = Matrix()
+
+        fun applyOp(op: Matrix) {
+            result.preConcat(op)
+        }
+
+        for (dict in transforms) {
+            dict["rotate"]?.let { v ->
+                applyOp(Matrix().apply { setRotate(parseAngle(v.toString())) })
+            }
+            dict["scale"]?.let { v ->
+                val s = toFloat(v, 1f)
+                applyOp(Matrix().apply { setScale(s, s) })
+            }
+            dict["scaleX"]?.let { v ->
+                applyOp(Matrix().apply { setScale(toFloat(v, 1f), 1f) })
+            }
+            dict["scaleY"]?.let { v ->
+                applyOp(Matrix().apply { setScale(1f, toFloat(v, 1f)) })
+            }
+            dict["translateX"]?.let { v ->
+                applyOp(Matrix().apply { setTranslate(toFloat(v, 0f) * density, 0f) })
+            }
+            dict["translateY"]?.let { v ->
+                applyOp(Matrix().apply { setTranslate(0f, toFloat(v, 0f) * density) })
+            }
+            // iOS's composeTransform3D treats `rotateZ` as a "3D" key applied
+            // AFTER translateX/translateY within the same dict (unlike `rotate`,
+            // which both platforms apply early). Keep the same sub-order so a
+            // multi-key entry like {rotateZ, translateX} composes identically.
+            dict["rotateZ"]?.let { v ->
+                applyOp(Matrix().apply { setRotate(parseAngle(v.toString())) })
+            }
+            dict["skewX"]?.let { v ->
+                val kx = tan(parseAngleRadians(v.toString()))
+                applyOp(Matrix().apply { setSkew(kx, 0f) })
+            }
+            dict["skewY"]?.let { v ->
+                val ky = tan(parseAngleRadians(v.toString()))
+                applyOp(Matrix().apply { setSkew(0f, ky) })
+            }
+        }
+
+        val cx = widthPx / 2f
+        val cy = heightPx / 2f
+        result.postTranslate(cx, cy)
+        result.preTranslate(-cx, -cy)
+
+        return result
+    }
+
+    /**
+     * Install a one-time [View.OnLayoutChangeListener] that recomposes and
+     * reapplies the transform Matrix whenever the view's size changes — the
+     * matrix's pivot depends on `width`/`height`, which are frequently still 0
+     * (or stale) the first time [applyTransformMatrix] runs, before layout.
+     * Idempotent, matching the [installAspectRatioListener] precedent.
+     */
+    private fun installTransformMatrixListener(view: View) {
+        if (view.getTag(TAG_TRANSFORM_MATRIX_LISTENER) != null) return
+        val listener = View.OnLayoutChangeListener { v, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom ->
+            val width = right - left
+            val height = bottom - top
+            if (width == oldRight - oldLeft && height == oldBottom - oldTop) return@OnLayoutChangeListener
+            @Suppress("UNCHECKED_CAST")
+            val currentTransforms = v.getTag(TAG_TRANSFORM_LIST) as? List<Map<*, *>> ?: return@OnLayoutChangeListener
+            val currentDensity = v.resources.displayMetrics.density
+            val matrix = composeTransform2DMatrix(currentTransforms, width.toFloat(), height.toFloat(), currentDensity)
+            applyStaticMatrix(v, matrix)
+        }
+        view.setTag(TAG_TRANSFORM_MATRIX_LISTENER, listener)
+        view.addOnLayoutChangeListener(listener)
+    }
+
+    /**
+     * Undo everything [applyTransformMatrix] set up: remove the layout
+     * listener, drop the stored transform list, and clear the applied Matrix
+     * (via [applyStaticMatrix]). Every branch of [applyTransform] that doesn't
+     * end up in the Matrix path calls this first so switching away from a
+     * skewed transform (including `'none'`) always leaves a clean slate.
+     *
+     * Views that were never in Matrix mode return immediately: the common
+     * per-frame property path (drag, parallax, JS-driven animation) must not
+     * pay a `setAnimationMatrix(null)`/`clearAnimation()` call on every
+     * update — the latter would also cancel unrelated view animations.
+     */
+    private fun clearTransformMatrix(view: View) {
+        val listener = view.getTag(TAG_TRANSFORM_MATRIX_LISTENER) as? View.OnLayoutChangeListener
+            ?: return
+        view.removeOnLayoutChangeListener(listener)
+        view.setTag(TAG_TRANSFORM_MATRIX_LISTENER, null)
+        view.setTag(TAG_TRANSFORM_LIST, null)
+        applyStaticMatrix(view, null)
+    }
+
+    /**
+     * Apply (or, with `matrix == null`, clear) a static `Matrix` transform on a
+     * plain `View`, compatible with this module's minSdk (21):
+     *
+     *  - API 29+ (`Build.VERSION_CODES.Q`): `View.setAnimationMatrix` applies
+     *    an arbitrary matrix directly — the modern, direct API.
+     *  - API < 29: no such hook exists, so this falls back to the classic
+     *    trick of a static (`duration = 0`, `fillAfter = true`) `Animation`
+     *    whose `applyTransformation` sets the frame `Matrix` directly. Duration
+     *    0 is intentionally safe here — `Animation` special-cases a 0 duration
+     *    instead of dividing by it, so this never actually "animates".
+     *
+     * Encapsulating both branches here keeps the two call sites
+     * ([applyTransformMatrix] and [clearTransformMatrix]) free of API-level
+     * branching.
+     */
+    private fun applyStaticMatrix(view: View, matrix: Matrix?) {
+        // Bookkeeping tag: the applied matrix is otherwise unobservable
+        // (setAnimationMatrix lives in RenderNode), which tests need.
+        view.setTag(TAG_TRANSFORM_APPLIED_MATRIX, matrix)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            view.setAnimationMatrix(matrix)
+            return
+        }
+        if (matrix == null) {
+            view.clearAnimation()
+            return
+        }
+        val staticTransform = object : Animation() {
+            override fun applyTransformation(interpolatedTime: Float, t: Transformation) {
+                t.matrix.set(matrix)
+            }
+        }
+        staticTransform.duration = 0
+        staticTransform.fillAfter = true
+        view.startAnimation(staticTransform)
     }
 
     // -- Absolute positioning helpers ---------------------------------------------
@@ -1207,6 +1457,15 @@ object StyleEngine {
         }
         // Fallback: treat as degrees if numeric
         return s.toFloatOrNull() ?: 0f
+    }
+
+    /**
+     * Parse an angle string into radians, for the `tan()` skew math in
+     * [composeTransform2DMatrix] — reuses [parseAngle]'s degree parsing (which
+     * already handles "deg"/"rad" suffixes) and converts.
+     */
+    private fun parseAngleRadians(str: String): Float {
+        return Math.toRadians(parseAngle(str).toDouble()).toFloat()
     }
 
     // --- Internal Props ---

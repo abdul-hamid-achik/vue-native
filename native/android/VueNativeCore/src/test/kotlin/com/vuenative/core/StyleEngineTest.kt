@@ -2,9 +2,11 @@ package com.vuenative.core
 
 import android.content.Context
 import android.graphics.Color
+import android.graphics.Matrix
 import android.graphics.drawable.GradientDrawable
 import android.view.View
 import android.view.ViewGroup
+import android.view.animation.AlphaAnimation
 import android.widget.FrameLayout
 import android.widget.TextView
 import androidx.test.core.app.ApplicationProvider
@@ -732,25 +734,185 @@ class StyleEngineTest {
         )
     }
 
+    // -------------------------------------------------------------------------
+    // transform: skewX/skewY (Matrix mode)
+    //
+    // Expected values below are computed against iOS's composeTransform3D
+    // semantics: right-to-left composition (first list entry outermost), pivot
+    // wrapped around the view center, skew entries as tan(angle).
+    // -------------------------------------------------------------------------
+
+    private fun matrixValues(matrix: Matrix): FloatArray {
+        val values = FloatArray(9)
+        matrix.getValues(values)
+        return values
+    }
+
+    /**
+     * The applied matrix is mirrored into a bookkeeping tag because
+     * setAnimationMatrix stores it in the RenderNode, which Robolectric's
+     * legacy graphics mode does not model.
+     */
+    private fun appliedMatrix(view: View): Matrix? =
+        view.getTag(TAG_TRANSFORM_APPLIED_MATRIX) as? Matrix
+
     @Test
-    fun testTransformSkewIsIgnoredWithoutCrashing() {
-        val view = View(context)
-
-        // skew is unsupported on Android View; it must be a no-op, not a crash,
-        // and must not disturb the other transforms in the same batch.
-        StyleEngine.apply(
-            "transform",
-            listOf(mapOf("skewX" to "20deg"), mapOf("rotateY" to "15deg")),
-            view,
+    fun testComposeSkewXAroundCenterPivot() {
+        val matrix = StyleEngine.composeTransform2DMatrix(
+            listOf(mapOf("skewX" to "30deg")),
+            widthPx = 100f,
+            heightPx = 200f,
+            density = 1f,
         )
-
-        assertEquals(15f, view.rotationY, 0.01f)
+        val v = matrixValues(matrix)
+        assertEquals(0.5773503f, v[Matrix.MSKEW_X], 0.0001f)
+        assertEquals(-57.73503f, v[Matrix.MTRANS_X], 0.001f)
+        assertEquals(1f, v[Matrix.MSCALE_X], 0.0001f)
+        assertEquals(1f, v[Matrix.MSCALE_Y], 0.0001f)
+        assertEquals(0f, v[Matrix.MSKEW_Y], 0.0001f)
     }
 
     @Test
-    fun testTransformSkewWarnsOnceEvenAcrossMultipleViewsAndCalls() {
-        // Reset the "logged once per process" flag via reflection so this test
-        // is independent of whatever other tests exercised skew before it.
+    fun testComposeSkewYInRadians() {
+        val matrix = StyleEngine.composeTransform2DMatrix(
+            listOf(mapOf("skewY" to "0.3rad")),
+            widthPx = 100f,
+            heightPx = 200f,
+            density = 1f,
+        )
+        val v = matrixValues(matrix)
+        assertEquals(0.30933625f, v[Matrix.MSKEW_Y], 0.0001f)
+        assertEquals(-15.466812f, v[Matrix.MTRANS_Y], 0.001f)
+    }
+
+    @Test
+    fun testComposeRotateThenSkewMatchesIOSOrdering() {
+        // [{rotate}, {skewX}]: first entry is the OUTERMOST transform, same as
+        // iOS. Values cross-checked numerically against composeTransform3D.
+        val matrix = StyleEngine.composeTransform2DMatrix(
+            listOf(mapOf("rotate" to "30deg"), mapOf("skewX" to "15deg")),
+            widthPx = 100f,
+            heightPx = 200f,
+            density = 1f,
+        )
+        val v = matrixValues(matrix)
+        assertEquals(0.8660254f, v[Matrix.MSCALE_X], 0.0001f)
+        assertEquals(-0.2679492f, v[Matrix.MSKEW_X], 0.0001f)
+        assertEquals(33.493649f, v[Matrix.MTRANS_X], 0.001f)
+        assertEquals(0.5f, v[Matrix.MSKEW_Y], 0.0001f)
+        assertEquals(1.0f, v[Matrix.MSCALE_Y], 0.0001f)
+        assertEquals(-25f, v[Matrix.MTRANS_Y], 0.001f)
+    }
+
+    @Test
+    fun testComposeRotateZAfterTranslateWithinSameEntry() {
+        // iOS applies rotateZ (unlike rotate) AFTER translateX/Y inside one
+        // multi-key entry; the adversarial parity check caught the reverse
+        // ordering producing MTRANS_X=150 instead of 160 for this exact case.
+        val matrix = StyleEngine.composeTransform2DMatrix(
+            listOf(mapOf("rotateZ" to "90deg", "translateX" to 10), mapOf("skewX" to "5deg")),
+            widthPx = 100f,
+            heightPx = 200f,
+            density = 1f,
+        )
+        val v = matrixValues(matrix)
+        assertEquals(0f, v[Matrix.MSCALE_X], 0.0001f)
+        assertEquals(-1f, v[Matrix.MSKEW_X], 0.0001f)
+        assertEquals(160f, v[Matrix.MTRANS_X], 0.001f)
+        assertEquals(1f, v[Matrix.MSKEW_Y], 0.0001f)
+        assertEquals(0.0874886f, v[Matrix.MSCALE_Y], 0.0001f)
+        assertEquals(41.251134f, v[Matrix.MTRANS_Y], 0.001f)
+    }
+
+    @Test
+    fun testComposeTranslateScalesWithDensity() {
+        val matrix = StyleEngine.composeTransform2DMatrix(
+            listOf(mapOf("translateX" to 10), mapOf("skewX" to "0deg")),
+            widthPx = 100f,
+            heightPx = 200f,
+            density = 2.5f,
+        )
+        val v = matrixValues(matrix)
+        assertEquals(25f, v[Matrix.MTRANS_X], 0.001f)
+    }
+
+    @Test
+    fun testPureSkewEntersMatrixModeAndResetsViewProperties() {
+        val view = View(context)
+        view.layout(0, 0, 100, 200)
+        view.rotation = 45f
+
+        StyleEngine.apply("transform", listOf(mapOf("skewX" to "30deg")), view)
+
+        assertEquals(0f, view.rotation, 0.01f)
+        val applied = appliedMatrix(view)
+        assertNotNull("Skew must be applied as a static matrix", applied)
+        val v = matrixValues(applied!!)
+        assertEquals(0.5773503f, v[Matrix.MSKEW_X], 0.0001f)
+        assertEquals(-57.73503f, v[Matrix.MTRANS_X], 0.001f)
+    }
+
+    @Test
+    fun testMatrixPivotRecomputesWhenLayoutArrivesAfterApply() {
+        // First style pass commonly runs before layout, when the view is 0x0.
+        val view = View(context)
+        StyleEngine.apply("transform", listOf(mapOf("skewX" to "30deg")), view)
+
+        view.layout(0, 0, 100, 200)
+
+        val applied = appliedMatrix(view)
+        assertNotNull(applied)
+        val v = matrixValues(applied!!)
+        // Pivot must reflect the real size (cy = 100), not the 0x0 first pass.
+        assertEquals(-57.73503f, v[Matrix.MTRANS_X], 0.001f)
+    }
+
+    @Test
+    fun testPropertyPathDoesNotTouchAnimationState() {
+        // The hot no-skew path (per-frame JS animations, native pan) must not
+        // pay animation-API calls: an unrelated animation set on the view has
+        // to survive a plain property transform.
+        val view = View(context)
+        val unrelated = AlphaAnimation(0f, 1f)
+        view.animation = unrelated
+
+        StyleEngine.apply("transform", listOf(mapOf("rotate" to "45deg")), view)
+
+        assertEquals(45f, view.rotation, 0.01f)
+        assertNull(appliedMatrix(view))
+        assertTrue("Unrelated animations must survive property transforms", view.animation === unrelated)
+    }
+
+    @Test
+    fun testTransformNoneClearsMatrixModeCompletely() {
+        val view = View(context)
+        view.layout(0, 0, 100, 200)
+        StyleEngine.apply("transform", listOf(mapOf("skewX" to "30deg")), view)
+        assertNotNull(appliedMatrix(view))
+
+        StyleEngine.apply("transform", "none", view)
+
+        assertNull(appliedMatrix(view))
+        assertNull(view.getTag(TAG_TRANSFORM_MATRIX_LISTENER))
+        assertNull(view.getTag(TAG_TRANSFORM_LIST))
+    }
+
+    @Test
+    fun testUnexpectedTransformPayloadClearsMatrixMode() {
+        val view = View(context)
+        view.layout(0, 0, 100, 200)
+        StyleEngine.apply("transform", listOf(mapOf("skewY" to "10deg")), view)
+        assertNotNull(appliedMatrix(view))
+
+        StyleEngine.apply("transform", 42, view)
+
+        assertNull("A stale matrix must not survive an unexpected payload", appliedMatrix(view))
+        assertNull(view.getTag(TAG_TRANSFORM_MATRIX_LISTENER))
+    }
+
+    @Test
+    fun testSkewCombinedWith3DRotationFallsBackAndWarnsOnce() {
+        // The one remaining unsupported combo: skew + rotateX/rotateY/perspective.
         val field = StyleEngine::class.java.getDeclaredField("skewWarningLogged")
         field.isAccessible = true
         field.setBoolean(null, false)
@@ -758,12 +920,61 @@ class StyleEngineTest {
 
         val viewOne = View(context)
         val viewTwo = View(context)
-        StyleEngine.apply("transform", listOf(mapOf("skewX" to "20deg")), viewOne)
-        StyleEngine.apply("transform", listOf(mapOf("skewY" to "10deg")), viewOne)
-        StyleEngine.apply("transform", listOf(mapOf("skewX" to "5deg")), viewTwo)
+        StyleEngine.apply(
+            "transform",
+            listOf(mapOf("skewX" to "20deg"), mapOf("rotateY" to "15deg")),
+            viewOne,
+        )
+        StyleEngine.apply(
+            "transform",
+            listOf(mapOf("skewY" to "5deg"), mapOf("rotateX" to "10deg")),
+            viewTwo,
+        )
+
+        // Falls back to the property path: 3D rotation applies, no matrix.
+        assertEquals(15f, viewOne.rotationY, 0.01f)
+        assertNull(appliedMatrix(viewOne))
 
         val skewWarnings = ShadowLog.getLogsForTag("VueNative-StyleEngine")
-            .filter { it.msg.contains("skewX/skewY") }
-        assertEquals("The skew warning must log at most once per process", 1, skewWarnings.size)
+            .filter { it.msg.contains("skew") }
+        assertEquals("The 3D-combo skew warning must log at most once per process", 1, skewWarnings.size)
+    }
+
+    @Test
+    @Config(sdk = [28])
+    fun testStaticAnimationFallbackAppliesMatrixBelowApi29() {
+        // Below API 29 there is no setAnimationMatrix: the matrix rides on a
+        // static fillAfter Animation whose transformation is observable here.
+        val view = View(context)
+        view.layout(0, 0, 100, 200)
+
+        StyleEngine.apply("transform", listOf(mapOf("skewX" to "30deg")), view)
+
+        val animation = view.animation
+        assertNotNull("Pre-29 fallback must install a static animation", animation)
+        val transformation = android.view.animation.Transformation()
+        animation!!.getTransformation(0L, transformation)
+        val v = matrixValues(transformation.matrix)
+        assertEquals(0.5773503f, v[Matrix.MSKEW_X], 0.0001f)
+        assertEquals(-57.73503f, v[Matrix.MTRANS_X], 0.001f)
+
+        StyleEngine.apply("transform", "none", view)
+        assertNull("Clearing must remove the fallback animation", view.animation)
+    }
+
+    @Test
+    fun testPureSkewDoesNotWarn() {
+        val field = StyleEngine::class.java.getDeclaredField("skewWarningLogged")
+        field.isAccessible = true
+        field.setBoolean(null, false)
+        ShadowLog.clear()
+
+        val view = View(context)
+        view.layout(0, 0, 100, 200)
+        StyleEngine.apply("transform", listOf(mapOf("skewX" to "20deg")), view)
+
+        val skewWarnings = ShadowLog.getLogsForTag("VueNative-StyleEngine")
+            .filter { it.msg.contains("skew") }
+        assertEquals("Supported skew must not log the unsupported warning", 0, skewWarnings.size)
     }
 }

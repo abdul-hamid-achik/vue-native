@@ -244,11 +244,19 @@ const styles = createStyleSheet({
 })
 ```
 
-::: warning Platform difference: skew
-`skewX` and `skewY` are supported on iOS and macOS only. On Android the native
-`View` has no skew transform, so the request is logged and ignored (it will not
-crash). Keep skew out of cross-platform styles or guard it with
-[`selectPlatform`](/composables/usePlatform.md#selectplatform).
+::: warning Platform notes: skew on Android
+`skewX` and `skewY` work on all three platforms. On Android, a transform list
+containing skew is composed into a single native matrix that renders
+identically to iOS (same composition order and center pivot), with two
+caveats:
+
+- **Touch mapping** — Android hit-testing does not follow the skewed
+  geometry, so touches land on the view's unskewed bounds. Prefer skew for
+  decorative content rather than skewed touch targets.
+- **Skew + 3D rotation** — combining `skewX`/`skewY` with `rotateX`,
+  `rotateY`, or `perspective` in the same transform list is not supported on
+  Android; that combination falls back to ignoring the skew and logs a
+  one-time warning.
 :::
 
 ## Hairline borders

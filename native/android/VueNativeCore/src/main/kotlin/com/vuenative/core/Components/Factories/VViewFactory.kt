@@ -124,6 +124,13 @@ class VViewFactory : NativeComponentFactory {
                 // will be overwritten for the remainder of that gesture; this is an
                 // accepted edge case (native-driven pans are meant for draggable
                 // views without a competing animated transform).
+                //
+                // Skewed views are the exception: a transform list containing
+                // skewX/skewY lives in a static animation Matrix (see
+                // StyleEngine.applyTransformMatrix), not in translationX/Y, so a
+                // native-driven pan COMPOSES with it — the view keeps its skew
+                // while being dragged — instead of replacing it. That is the
+                // intended behavior for dragging a decorated view.
                 var baseTranslationX = 0f
                 var baseTranslationY = 0f
                 var accumulatedX = 0f
