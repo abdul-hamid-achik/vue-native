@@ -2,6 +2,18 @@
 
 Check and request runtime permissions for device capabilities such as camera, microphone, photo library, location, and notifications.
 
+::: tip Contacts and Calendar use their own flow
+`usePermissions` covers `camera`, `microphone`, `photos`, `location`,
+`locationAlways`, and `notifications` only. [`useContacts`](./useContacts.md)
+and [`useCalendar`](./useCalendar.md) are not wired into this composable --
+each exposes its own `requestAccess(): Promise<boolean>` and `hasAccess:
+Ref<boolean>` instead of the `PermissionStatus` values used here. This is
+intentional for now: contacts/calendar access is boolean (granted or not)
+rather than the richer `granted` / `denied` / `restricted` / `limited` /
+`notDetermined` state model the other permissions need, so they were kept on
+their simpler, purpose-built API rather than forced into this one.
+:::
+
 ## Usage
 
 ```vue

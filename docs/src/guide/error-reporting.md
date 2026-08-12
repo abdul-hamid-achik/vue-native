@@ -354,6 +354,12 @@ In development mode (`__DEV__ === true`), Vue Native's built-in error handler se
 
 The overlay appears automatically. Tap it to dismiss.
 
+On Android, the overlay is gated on the **host app's** debuggability
+(`ApplicationInfo.FLAG_DEBUGGABLE`), not `__DEV__` alone -- a release-signed
+APK/AAB never shows the visual overlay even if it somehow evaluates a
+development bundle. The underlying error is still logged to Logcat first in
+every build, so release diagnostics are never lost, just not shown on screen.
+
 ### Hot Reload for Quick Iteration
 
 The `vue-native dev` command starts a Vite watch-mode build and a WebSocket server on port 8174 (configurable with `--port`). When you save a file:

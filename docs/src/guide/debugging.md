@@ -91,6 +91,15 @@ In development, unhandled errors in components trigger an error overlay on the n
 
 The overlay is managed by `app.config.errorHandler` which serializes errors and sends them to the native error display via `__VN_handleError`.
 
+::: tip Android: overlay only in debuggable builds
+On Android, the visual overlay only appears when the **host app** is
+debuggable (checked via `ApplicationInfo.FLAG_DEBUGGABLE` on the consuming
+app, not this library's own build type -- a library AAR always compiles
+release-style regardless of the host app's build type). A release build never
+shows the overlay, but the error is always logged to Logcat first, so you do
+not lose diagnostics in production. iOS shows the overlay in `DEBUG` builds.
+:::
+
 ## Common Issues
 
 ### "\_\_VN\_flushOperations is not registered"

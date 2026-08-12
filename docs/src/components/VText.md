@@ -55,3 +55,11 @@ VText does not emit any events.
   </VText>
 </VView>
 ```
+
+## Platform Support
+
+| Platform | Support |
+|----------|---------|
+| iOS      | Full (`UILabel`) |
+| Android  | Full (`TextView`) |
+| macOS    | Full (`NSTextField`, configured as a non-editable label) |

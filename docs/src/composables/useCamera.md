@@ -97,9 +97,16 @@ interface QRCodeResult {
 
 | Platform | Support |
 |----------|---------|
-| iOS | Camera uses `UIImagePickerController`. Image library uses `PHPickerViewController` (no permission dialog required for selection). Requires `NSCameraUsageDescription` in `Info.plist` for camera access. |
-| Android | Requires Activity-level integration. The base `CameraModule` is a stub — override your `VueNativeActivity` subclass with `registerForActivityResult` to provide camera and gallery intents. |
+| iOS | Camera uses `UIImagePickerController`. Image library uses `PHPickerViewController` (no permission dialog required for selection). Requires `NSCameraUsageDescription` in `Info.plist` for camera access. `scanQRCode` is supported. |
+| Android | `launchCamera`, `launchImageLibrary`, and `captureVideo` are fully implemented via `ACTION_IMAGE_CAPTURE` / `ACTION_VIDEO_CAPTURE` intents and the system photo picker, with result payloads identical in shape to iOS. `scanQRCode` is **not implemented** -- it returns an actionable error (it would require CameraX + ML Kit or a raw Camera2 session, which this module does not depend on). `stopQRScan` is a no-op. |
 | macOS | Photo capture and image selection are supported. Video capture and QR scanning return an explicit unsupported error. |
+
+### Android specifics
+
+- `launchImageLibrary` is **single-select on Android** -- the `selectionLimit` option has no effect there (it shares `ImagePickerModule`'s picker intent, which only supports picking one image).
+- `captureVideo`'s `quality` option maps to the platform's binary `EXTRA_VIDEO_QUALITY` extra: anything other than `'low'` (including `'medium'` and `'high'`) resolves to the high-quality bucket, since Android only distinguishes low (`0`) from high (`1`).
+- `frontCamera` on Android is best-effort: there is no public, guaranteed API to force the front camera on an implicit `ACTION_VIDEO_CAPTURE` intent. Some stock camera apps honor an undocumented extra; others ignore it and open on the rear camera.
+- Cancellation (back button, no camera app, etc.) resolves the same `{ didCancel: true }` shape as iOS for all three methods.
 
 ## Example
 
@@ -218,8 +225,8 @@ async function startScan() {
 - On iOS, captured images are saved to a temporary directory as JPEG files. These are cleaned up by the OS — copy them to permanent storage if you need to keep them.
 - On iOS, `launchImageLibrary` uses `PHPickerViewController` which does not require photo library permission for read-only selection.
 - On iOS, camera access requires the `NSCameraUsageDescription` key in `Info.plist`.
-- On Android, the default `CameraModule` is a stub that returns an error. You must provide a concrete implementation in your `VueNativeActivity` subclass using `registerForActivityResult`.
-- When the user cancels, the returned `CameraResult` has `didCancel: true` and empty/zero values for `uri`, `width`, and `height`.
+- On Android, `launchCamera` and `captureVideo` write to a private `cacheDir/vuenative-camera` file and grant the camera app write access via a `FileProvider`; the OS/app is responsible for cleaning these up eventually, so copy files you need to keep to permanent storage.
+- When the user cancels, the returned `CameraResult` (or `VideoCaptureResult`) has `didCancel: true` and no `uri`/`width`/`height`/`duration` fields, on both iOS and Android.
 - `captureVideo` returns the recorded video URI and duration. Videos are saved to a temporary directory.
-- QR code scanning uses the rear camera. Call `stopQRScan()` to release the camera when done.
+- QR code scanning uses the rear camera on iOS. Call `stopQRScan()` to release the camera when done. On Android, `scanQRCode` rejects with an actionable error instead -- it is not implemented on that platform.
 - `onQRCodeDetected` can fire multiple times if scanning continues — stop the scan after the first detection if you only need one result.

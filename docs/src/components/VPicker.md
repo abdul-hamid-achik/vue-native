@@ -6,6 +6,14 @@ macOS.
 
 ## Usage
 
+`VPicker` supports `v-model` like every other form component:
+
+```vue
+<VPicker mode="date" v-model="selectedDate" />
+```
+
+The older `:value` + `@change` pair still works as a legacy alias:
+
 ```vue
 <VPicker mode="date" :value="selectedDate" @change="selectedDate = $event.value" />
 ```
@@ -15,7 +23,8 @@ macOS.
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
 | `mode` | `'date' \| 'time' \| 'datetime'` | `'date'` | Picker mode |
-| `value` | `number` | — | Selected date/time as epoch milliseconds |
+| `modelValue` | `number` | — | Selected date/time as epoch milliseconds. Bind with `v-model` |
+| `value` | `number` | — | Legacy alias of `modelValue`. Ignored when `modelValue` is set |
 | `minimumDate` | `number` | — | Earliest selectable date (epoch ms) |
 | `maximumDate` | `number` | — | Latest selectable date (epoch ms) |
 | `minuteInterval` | `number` | `1` | Interval between selectable minutes (e.g. `15` for quarter-hour steps) |
@@ -31,7 +40,8 @@ macOS.
 
 | Event | Payload | Description |
 |-------|---------|-------------|
-| `@change` | `{ value: number }` | Fired when the user selects a new date/time. `value` is epoch milliseconds. |
+| `@update:modelValue` | `number` | Emitted alongside `@change` when the user selects a new date/time. Used by `v-model`. |
+| `@change` | `{ value: number }` | Fired when the user selects a new date/time. `value` is epoch milliseconds. Kept as a legacy alias -- both events fire on every selection. |
 
 ## Example
 
@@ -44,10 +54,6 @@ const selectedDate = ref(Date.now())
 const formatted = computed(() => {
   return new Date(selectedDate.value).toLocaleDateString()
 })
-
-function handleChange(e) {
-  selectedDate.value = e.value
-}
 </script>
 
 <template>
@@ -56,10 +62,9 @@ function handleChange(e) {
 
     <VPicker
       mode="date"
-      :value="selectedDate"
+      v-model="selectedDate"
       :minimumDate="Date.now() - 365 * 24 * 60 * 60 * 1000"
       :maximumDate="Date.now() + 365 * 24 * 60 * 60 * 1000"
-      @change="handleChange"
     />
   </VView>
 </template>
@@ -96,16 +101,24 @@ const selectedTime = ref(Date.now())
 <template>
   <VPicker
     mode="time"
-    :value="selectedTime"
+    v-model="selectedTime"
     :minuteInterval="15"
-    @change="selectedTime = $event.value"
   />
 </template>
+```
+
+### Legacy `:value` / `@change` form
+
+Still supported for existing code -- `value` is ignored once `modelValue` is set, so don't mix the two on the same instance:
+
+```vue
+<VPicker mode="date" :value="selectedDate" @change="selectedDate = $event.value" />
 ```
 
 ## Notes
 
 - All date/time values are in epoch milliseconds (JavaScript `Date.now()` format). Convert with `new Date(value)` for display.
+- `v-model` is the primary binding pattern; `value` / `@change` remain as a legacy alias for backward compatibility. Both `@update:modelValue` and `@change` fire on every selection regardless of which prop you bind.
 - On iOS, the picker uses the compact style (`UIDatePicker.preferredDatePickerStyle = .compact`) on iOS 14+.
 - The `minuteInterval` must be a divisor of 60 (e.g. 1, 2, 3, 4, 5, 6, 10, 12, 15, 20, 30).
 - In Android `time` mode, `minimumDate` and `maximumDate` cannot be enforced because the platform time control has no date selector. Use those bounds with `date` or `datetime` mode.

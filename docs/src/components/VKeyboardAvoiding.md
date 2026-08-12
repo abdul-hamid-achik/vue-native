@@ -104,6 +104,16 @@ On iOS, the view observes `keyboardWillShowNotification` and `keyboardWillHideNo
 
 On Android, keyboard avoidance is handled by the system when the Activity uses `android:windowSoftInputMode="adjustResize"` (the default for Vue Native apps), so the component acts as a standard flex container.
 
+On macOS, on-screen software keyboards don't cover content the way iOS's does, so `VKeyboardAvoiding` is a plain pass-through container there -- it exists for cross-platform API compatibility and never adjusts padding.
+
 ::: tip
 Place `VKeyboardAvoiding` as a wrapper around any screen that contains text inputs. Pair it with `VSafeArea` for full-screen forms.
 :::
+
+## Platform Support
+
+| Platform | Support |
+|----------|---------|
+| iOS      | Full (custom `KeyboardAvoidingView`, a `UIView` subclass) |
+| Android  | Full (system-handled via `adjustResize`; component acts as a plain `FlexboxLayout`) |
+| macOS    | No-op (plain pass-through container -- macOS keyboards don't cover content) |

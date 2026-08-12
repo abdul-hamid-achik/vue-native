@@ -164,6 +164,7 @@ async function removeEvent(eventId: string) {
 ## Notes
 
 - **Permissions:** Always call `requestAccess()` before reading or writing events. On iOS 17+, the framework uses `requestFullAccessToEvents()` for full read/write access.
+- **Not part of `usePermissions`:** `useCalendar` has its own `requestAccess(): Promise<boolean>` / `hasAccess: Ref<boolean>` pair rather than the `PermissionStatus` model used by [`usePermissions`](./usePermissions.md) (which does not cover calendar). This is intentional -- see the note on the `usePermissions` page for why.
 - **Timestamps:** All dates use Unix timestamps in milliseconds (like `Date.now()`).
 - **Default calendar:** When creating events without specifying `calendarId`, the device's default calendar is used.
 - **Time zones:** On Android, events are created in the device's default time zone.

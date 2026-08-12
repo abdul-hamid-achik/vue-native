@@ -66,6 +66,16 @@ On iOS, `VSafeArea` reads `safeAreaInsets` from the system and applies them as Y
 
 On Android, it uses `WindowInsets` listeners to read system bar insets and applies them as view padding.
 
+On macOS, there are no notches or system bars that require inset padding, so `VSafeArea` acts as a plain pass-through container (with gesture support) for cross-platform API compatibility.
+
 ::: tip
 Wrap your root screen content in `VSafeArea` so text and interactive elements never overlap with system UI.
 :::
+
+## Platform Support
+
+| Platform | Support |
+|----------|---------|
+| iOS      | Full (reads `safeAreaInsets`, applies as Yoga padding) |
+| Android  | Full (`WindowInsets` listeners, applies as view padding) |
+| macOS    | No-op (plain pass-through container -- macOS has no notches or system bars requiring insets) |

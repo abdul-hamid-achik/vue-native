@@ -122,6 +122,14 @@ const styles = createStyleSheet({
 </script>
 ```
 
+## Platform Support
+
+| Platform | Support |
+|----------|---------|
+| iOS      | Full (`UIAlertController`, `.actionSheet` style) |
+| Android  | Full (`AlertDialog` with an item list) |
+| macOS    | Partial (`NSMenu` context-menu popup) -- macOS has no native action-sheet UI; a popup menu is the closest equivalent |
+
 ## Notes
 
 - On iPad, the action sheet is presented as a popover centered on the screen.

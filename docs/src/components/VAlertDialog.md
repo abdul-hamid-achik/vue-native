@@ -143,6 +143,14 @@ const styles = createStyleSheet({
 </script>
 ```
 
+## Platform Support
+
+| Platform | Support |
+|----------|---------|
+| iOS      | Full (`UIAlertController`, `.alert` style) |
+| Android  | Full (`AlertDialog.Builder`) |
+| macOS    | Full (`NSAlert`) |
+
 ## Notes
 
 - Set `visible` back to `false` in your event handlers to dismiss the dialog. The native alert closes automatically when a button is pressed, but the `visible` state should be reset to allow re-presenting.

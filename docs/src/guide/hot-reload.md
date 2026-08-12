@@ -57,6 +57,16 @@ class MainActivity : VueNativeActivity() {
 }
 ```
 
+## Reconnection
+
+If the WebSocket connection to the dev server drops (dev server restarted, device
+moved off Wi-Fi, etc.), both `HotReloadManager` implementations reconnect
+automatically using exponential backoff: starting at a 1 second delay, doubling
+on each failed attempt, and capping at 30 seconds between attempts. Reconnection
+retries **indefinitely** while a dev server URL is configured -- it never gives
+up and does not need to be restarted manually. iOS/macOS and Android share the
+same backoff schedule, so reconnection behavior is identical across platforms.
+
 ## Start development
 
 ```bash

@@ -69,6 +69,14 @@ const styles = createStyleSheet({
 </script>
 ```
 
+## Platform Support
+
+| Platform | Support |
+|----------|---------|
+| iOS      | Full (`UIProgressView`) |
+| Android  | Full (horizontal `ProgressBar`) |
+| macOS    | Full (`NSProgressIndicator`, bar style) |
+
 ## Notes
 
 - The `progress` value is clamped between `0` and `1` on the native side.

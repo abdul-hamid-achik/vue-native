@@ -177,6 +177,7 @@ async function removeContact(id: string) {
 ## Notes
 
 - **Permissions:** Always call `requestAccess()` before any read or write operations. The native module checks permissions before executing queries.
+- **Not part of `usePermissions`:** `useContacts` has its own `requestAccess(): Promise<boolean>` / `hasAccess: Ref<boolean>` pair rather than the `PermissionStatus` model used by [`usePermissions`](./usePermissions.md) (which does not cover contacts). This is intentional -- see the note on the `usePermissions` page for why.
 - **Search:** On iOS, the search uses `CNContact.predicateForContacts(matchingName:)` which matches against both first and last name. On Android, it uses a `LIKE` query on the display name.
 - **Contact images:** The `hasImage` field indicates whether a contact has a photo. Fetching the actual image data is not currently supported.
 - **Structured names:** On Android, contact names are split from the display name. For more reliable results on Android, always provide both `givenName` and `familyName` when creating contacts.

@@ -210,21 +210,43 @@ const options = ['Option 1', 'Option 2', 'Option 3']
 
 ## How It Works
 
-Teleport works by creating boundary markers in the Vue component tree and instructing the native side to move the rendered views to a different container.
+Vue's core renderer resolves `<Teleport to="...">` through a `querySelector`
+hook. The Vue Native renderer implements that hook to map a target name
+(`'modal'` or `'root'`) to a cached, JS-only placeholder node -- it is never
+announced to native and never appears in the native view hierarchy.
+
+When Vue inserts the teleported children into that placeholder, the
+renderer's `insert()` recognizes the placeholder and, instead of the normal
+`appendChild` / `insertBefore` bridge calls, sends each child through
+`NativeBridge.teleportTo(target, child.id)`. On the native side, `teleportTo`
+resolves the target name to the real native container (the modal overlay
+view for `'modal'`, the app's root view for `'root'`) and moves the child's
+native view directly into it.
 
 ```
-Vue Component Tree:          Native View Hierarchy:
-┌─────────────────┐          ┌─────────────────┐
-│ Parent View     │          │ Parent View     │
-│  ├─ Button      │          │  ├─ Button      │
-│  └─ Teleport    │ ───────► │  └─ [markers]   │
-│     └─ Modal    │          │                 │
-│                 │          │ ┌─────────────┐ │
-│                 │          │ │ Modal       │ │
-│                 │          │ │ Container   │ │
-│                 │          │ └─────────────┘ │
-└─────────────────┘          └─────────────────┘
+Vue Component Tree:               Native View Hierarchy:
+┌────────────────────┐            ┌────────────────────┐
+│ Parent View        │            │ Parent View        │
+│  ├─ Button          │            │  ├─ Button          │
+│  └─ Teleport        │            │                    │
+│      to="modal"     │            │  Modal container   │
+│      └─ VModal ─────┼──teleportTo─► └─ VModal view     │
+└────────────────────┘            └────────────────────┘
+     querySelector('modal') resolves the target name to a
+     JS-only placeholder; insert() then calls teleportTo()
+     for each child instead of the normal appendChild path.
 ```
+
+Because children are moved with `teleportTo` one at a time as Vue inserts
+them, **anchor/sibling order inside a teleport target is not preserved on the
+native side** -- children land in the target container in whatever order
+`insert()` calls `teleportTo`, not necessarily the order they appear in the
+Vue template. If you teleport multiple sibling nodes into the same target and
+care about stacking order, use `position: 'absolute'` with explicit offsets
+(or z-index-like layering via mount order) rather than relying on document
+order. Comment nodes and the empty text anchors Vue mounts alongside
+teleported content are tracked in the JS-side tree only and are never sent to
+native.
 
 ## Limitations
 
@@ -300,43 +322,69 @@ teleport(node)
 
 ## Native Implementation
 
+Both native bridges implement `teleportTo(target, nodeId)` by resolving the
+target name to a real, pre-existing container view and moving the child view
+into it (`getTeleportTarget` is the switch that maps `'modal'` / `'root'` to
+that container).
+
 ### iOS
 
-The iOS implementation adds teleport support to `NativeBridge.swift`:
+From `NativeBridge.swift`:
 
 ```swift
-func createTeleport(parentId: Int, startId: Int, endId: Int) {
-    // Create teleport container
-    let container = UIView()
-    container.tag = -parentId
-    viewRegistry[parentId]?.addSubview(container)
-    teleportContainers[parentId] = container
+private func getTeleportTarget(_ target: String) -> UIView? {
+    switch target {
+    case "root":
+        return rootView
+    case "modal":
+        installModalContainerIfNeeded()
+        return modalContainer
+    default:
+        return nil
+    }
 }
 
-func teleportTo(target: String, nodeId: Int) {
+private func handleTeleportTo(args: [Any]) {
+    // args: [target: String, nodeId: Int]
     guard let targetView = getTeleportTarget(target) else { return }
     guard let childView = viewRegistry[nodeId] else { return }
+    childView.removeFromSuperview()
     targetView.addSubview(childView)
+    // ...full-size Auto Layout constraints pin the child to targetView
 }
 ```
 
 ### Android
 
-The Android implementation adds teleport support to `NativeBridge.kt`:
+From `NativeBridge.kt`:
 
 ```kotlin
-fun createTeleport(parentId: Int, startId: Int, endId: Int) {
-    val container = FrameLayout(context)
-    viewRegistry[parentId]?.addView(container)
-    teleportContainers[parentId] = container
+private fun getTeleportTarget(target: String): ViewGroup? = when (target) {
+    "root" -> rootView as? ViewGroup
+    "modal" -> {
+        if (modalContainer.parent == null && rootView != null) {
+            (rootView as? ViewGroup)?.addView(modalContainer)
+        }
+        modalContainer
+    }
+    else -> null
 }
 
-fun teleportTo(target: String, nodeId: Int) {
+private fun handleTeleportTo(args: JSONArray) {
+    // args: [target: String, nodeId: Int]
     val targetView = getTeleportTarget(target) ?: return
     val childView = viewRegistry[nodeId] ?: return
     targetView.addView(childView)
 }
 ```
+
+::: tip Unrelated bridge op with a similar name
+The bridge also has a `createTeleport` / `removeTeleport` pair that builds a
+small container view tagged to a parent node. That op backs Vue's
+`insertStaticContent` hook (used for hoisted static content), not the
+`<Teleport>` component -- don't confuse it with the `teleportTo` mechanism
+described above.
+:::
 
 ## Related
 

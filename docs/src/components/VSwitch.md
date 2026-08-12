@@ -74,3 +74,11 @@ const styles = createStyleSheet({
 })
 </script>
 ```
+
+## Platform Support
+
+| Platform | Support |
+|----------|---------|
+| iOS      | Full (`UISwitch`) |
+| Android  | Full (`SwitchCompat`) |
+| macOS    | Full (`NSSwitch`, macOS 10.15+) |

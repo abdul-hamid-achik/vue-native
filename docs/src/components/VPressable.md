@@ -85,6 +85,14 @@ const isPressed = ref(false)
 </template>
 ```
 
+## Platform Support
+
+| Platform | Support |
+|----------|---------|
+| iOS      | Full (custom `TouchableView`, a `UIView` subclass, with opacity animation) |
+| Android  | Full (`TouchableView`, a `FlexboxLayout` subclass) |
+| macOS    | Full (custom `PressableView`, a `ClickableView`/`NSView` subclass) |
+
 ## Notes
 
 - All press callbacks (`onPress`, `onPressIn`, `onPressOut`, `onLongPress`) are disabled when `disabled` is `true`.

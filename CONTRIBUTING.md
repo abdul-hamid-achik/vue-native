@@ -7,7 +7,7 @@ Thank you for your interest in contributing! This guide covers everything you ne
 - [Bun](https://bun.sh) 1.3+
 - [Xcode](https://developer.apple.com/xcode/) 15+ (for iOS work)
 - [Android Studio](https://developer.android.com/studio) Hedgehog+ (for Android work)
-- Node.js 18+ (for CLI and tooling)
+- Node.js 20.19+ (for CLI and tooling; only needed when using npm/npx instead of `bunx`) -- Vite 7+ requires this minimum
 - [asdf](https://asdf-vm.com/) (recommended) — Java 17 is specified in `.tool-versions`
 - [SwiftLint](https://github.com/realm/SwiftLint) (`brew install swiftlint`) — for iOS lint
 

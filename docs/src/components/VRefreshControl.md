@@ -25,6 +25,7 @@ On iOS this attaches a `UIRefreshControl` to the parent `UIScrollView`. On Andro
 | `onRefresh` | `Function` | -- | Callback fired when the user triggers a pull-to-refresh |
 | `tintColor` | `string` | system default | Color of the spinner indicator |
 | `title` | `string` | -- | Title text shown below the spinner (iOS only) |
+| `style` | `ViewStyle` | -- | Declared for API consistency with other components, but currently not forwarded to the native view -- it has no visual effect. Only `tintColor` and `title` affect the control's appearance. |
 
 ## Example
 
@@ -58,6 +59,14 @@ async function handleRefresh() {
   </VScrollView>
 </template>
 ```
+
+## Platform Support
+
+| Platform | Support |
+|----------|---------|
+| iOS      | Full (`UIRefreshControl`) |
+| Android  | Full (`SwipeRefreshLayout`) |
+| macOS    | No-op -- pull-to-refresh is a mobile pattern that doesn't exist on desktop. `VRefreshControl` renders as a hidden, zero-size placeholder for API compatibility; it does not crash or warn. |
 
 ## Notes
 

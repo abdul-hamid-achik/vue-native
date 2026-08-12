@@ -264,7 +264,7 @@ const styles = createStyleSheet({
     </VView>
 
     <!-- Message list -->
-    <VKeyboardAvoiding :style="{ flex: 1 }" behavior="padding">
+    <VKeyboardAvoiding :style="{ flex: 1 }">
       <VScrollView :style="styles.messageList">
         <!-- Empty state -->
         <VView v-if="messages.length === 0" :style="styles.emptyState">

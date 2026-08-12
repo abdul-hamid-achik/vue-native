@@ -6,7 +6,7 @@ Uses VScrollView internally with absolutely-positioned items. The scroll positio
 
 ## Usage
 
-VFlatList uses a `:data` prop and an `#item` slot to render each row. Every item must have a fixed height specified via the `itemHeight` prop.
+VFlatList uses a `:data` prop and an `#item` slot to render each row. For the fastest, no-measurement virtualization math, set a fixed `itemHeight`. If you omit it, VFlatList falls back to a variable-height mode: it renders each item at `estimatedItemHeight` until the native side reports its real measured height via an `itemLayout` event, then repositions using that measurement.
 
 ```vue
 <script setup>
@@ -38,7 +38,8 @@ const items = ref(
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
 | `data` | `Array` | **required** | The array of items to render |
-| `itemHeight` | `number` | **required** | Fixed height (in points) for each item. Required for virtualization math. |
+| `itemHeight` | `number` | — | Fixed height (in points) for each item -- the fast path for virtualization math. Omit for variable-height lists (see `estimatedItemHeight`). |
+| `estimatedItemHeight` | `number` | `44` | Estimated height for items whose real height isn't yet measured, used for variable-height lists (when `itemHeight` is omitted) until native reports each item's actual height via the `itemLayout` event. Ignored when `itemHeight` is set. |
 | `keyExtractor` | `(item: T, index: number) => string \| number` | `item.id ?? item.key ?? index` | Function that returns a unique key for each item |
 | `renderItem` | `(info: { item: T, index: number }) => VNode` | -- | Render function alternative to the `#item` slot |
 | `windowSize` | `number` | `3` | Number of viewport-heights to render above and below the visible area. Higher values reduce blank flashes during fast scrolling but use more memory. |

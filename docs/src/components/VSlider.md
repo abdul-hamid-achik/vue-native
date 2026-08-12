@@ -70,3 +70,11 @@ const styles = createStyleSheet({
 ::: tip
 The default range is `0` to `1`. For integer ranges (e.g., 0--100), set `:min="0"` and `:max="100"`.
 :::
+
+## Platform Support
+
+| Platform | Support |
+|----------|---------|
+| iOS      | Full (`UISlider`) |
+| Android  | Full (`SeekBar`) |
+| macOS    | Full (`NSSlider`, throttled change events at ~60fps) |

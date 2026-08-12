@@ -104,3 +104,11 @@ const styles = createStyleSheet({
 })
 </script>
 ```
+
+## Platform Support
+
+| Platform | Support |
+|----------|---------|
+| iOS      | Full (`UIControl`-based view) |
+| Android  | Full (custom touch delegate) |
+| macOS    | Full (custom `ClickableView`, an `NSView` subclass) |

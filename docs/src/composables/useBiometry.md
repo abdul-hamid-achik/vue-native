@@ -99,6 +99,6 @@ async function handleAuth() {
 ## Notes
 
 - On iOS, add `NSFaceIDUsageDescription` to your `Info.plist` to explain why your app uses Face ID. Without this key, the system will terminate your app when Face ID is triggered.
-- On Android, `getSupportedBiometry` returns `"faceID"` as a generic label when strong biometrics are available (Android does not distinguish between face and fingerprint at the API level). It returns `"biometric"` when hardware is present but not enrolled.
+- On Android, `getSupportedBiometry` always returns `"biometric"` when strong biometry (`BiometricManager.Authenticators.BIOMETRIC_STRONG`) is available or present-but-not-enrolled -- Android never returns `"faceID"`, since `BiometricManager` cannot distinguish face/fingerprint/iris hardware at the API level. It returns `"none"` when no compatible hardware exists.
 - On Android, `authenticate` presents `BiometricPrompt` through the active `VueNativeActivity`. It resolves with `success: false` when authentication is unavailable, cancelled, or fails.
 - This composable has no reactive state and no cleanup. All methods return Promises.

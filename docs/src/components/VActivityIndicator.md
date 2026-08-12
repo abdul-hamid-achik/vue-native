@@ -76,6 +76,14 @@ const styles = createStyleSheet({
 </script>
 ```
 
+## Platform Support
+
+| Platform | Support |
+|----------|---------|
+| iOS      | Full (`UIActivityIndicatorView`) |
+| Android  | Full (circular `ProgressBar`) |
+| macOS    | Full (`NSProgressIndicator`, spinning style) |
+
 ## Notes
 
 - When `hidesWhenStopped` is `true` (the default), the indicator becomes invisible when `animating` is `false`. It still occupies layout space unless you conditionally render it with `v-if`.

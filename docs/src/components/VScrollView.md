@@ -78,3 +78,11 @@ async function onRefresh() {
 |-------|---------|-------------|
 | `scroll` | `{ x, y, contentWidth, contentHeight, layoutWidth, layoutHeight }` | Fired on scroll with current offset and content/layout dimensions |
 | `refresh` | — | Fired when the user pulls to refresh |
+
+## Platform Support
+
+| Platform | Support |
+|----------|---------|
+| iOS      | Full (`UIScrollView`) |
+| Android  | Full (`ScrollView`) |
+| macOS    | Full (`NSScrollView`; children are added to its document view, an `NSClipView`-hosted `FlippedView`) |

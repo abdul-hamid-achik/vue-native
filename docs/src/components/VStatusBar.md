@@ -78,6 +78,14 @@ const styles = createStyleSheet({
 </script>
 ```
 
+## Platform Support
+
+| Platform | Support |
+|----------|---------|
+| iOS      | Full (root view controller `preferredStatusBarStyle` / `prefersStatusBarHidden`) |
+| Android  | Full (`WindowInsetsController`) |
+| macOS    | No-op -- macOS has no app status bar. `VStatusBar` renders as a hidden, zero-size placeholder for cross-platform API compatibility. |
+
 ## Notes
 
 - On iOS, `VStatusBar` posts notifications that the root `VueNativeViewController` observes to update `preferredStatusBarStyle` and `prefersStatusBarHidden`.

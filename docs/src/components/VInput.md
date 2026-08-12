@@ -117,3 +117,11 @@ const styles = createStyleSheet({
 })
 </script>
 ```
+
+## Platform Support
+
+| Platform | Support |
+|----------|---------|
+| iOS      | Full (`UITextField` / `UITextView` for multiline) |
+| Android  | Full (`EditText`) |
+| macOS    | Full (`NSTextField`; secure entry swaps in an `NSSecureTextFieldCell`) |

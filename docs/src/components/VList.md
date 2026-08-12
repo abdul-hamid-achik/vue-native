@@ -39,7 +39,8 @@ const items = ref([
 | `data` | `Array` | **required** | The array of items to render |
 | `keyExtractor` | `(item: T, index: number) => string` | index as string | Function that returns a unique key for each item |
 | `style` | `StyleProp` | -- | Container styles |
-| `estimatedItemHeight` | `number` | `44` | Estimated row height (improves scroll perf) |
+| `estimatedItemHeight` | `number` | `44` | Estimated extent per row along the scroll axis (height for vertical lists, width for horizontal), used to estimate which items fall inside the render window before layout runs |
+| `windowSize` | `number` | `10` | Number of extra items to mount above and below the visible window as a buffer. Higher values reduce blank flashes during fast scrolling but use more memory. Lists with `length <= windowSize * 2` render every item without windowing. |
 | `showsScrollIndicator` | `boolean` | `true` | Show/hide the scroll bar |
 | `bounces` | `boolean` | `true` | Bounce at top/bottom (iOS only) |
 | `horizontal` | `boolean` | `false` | Render the list horizontally |
@@ -59,6 +60,14 @@ const items = ref([
 |-------|---------|-------------|
 | `@scroll` | `{ x: number, y: number }` | Fires as the user scrolls |
 | `@endReached` | -- | Fires when scrolled near the bottom (20% threshold). Use this for infinite scroll / pagination |
+
+## Platform Support
+
+| Platform | Support |
+|----------|---------|
+| iOS      | Full (`UITableView`) |
+| Android  | Full (`RecyclerView`) |
+| macOS    | Full (`NSTableView`, single-column view-based) |
 
 ## Infinite scroll example
 

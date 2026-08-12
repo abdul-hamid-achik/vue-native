@@ -93,3 +93,11 @@ function onAgreedChange(value) {
   </VView>
 </template>
 ```
+
+## Platform Support
+
+| Platform | Support |
+|----------|---------|
+| iOS      | Full (custom checkbox view) |
+| Android  | Full (`CheckBox`) |
+| macOS    | Full (`NSButton`, checkbox style) |

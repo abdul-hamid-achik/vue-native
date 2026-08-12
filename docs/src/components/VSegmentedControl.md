@@ -77,3 +77,11 @@ const styles = createStyleSheet({
 ::: tip
 `VSegmentedControl` does not support `v-model`. Use the `@change` event to update your selected index manually as shown above.
 :::
+
+## Platform Support
+
+| Platform | Support |
+|----------|---------|
+| iOS      | Full (`UISegmentedControl`) |
+| Android  | Full (`RadioGroup` + `RadioButton`) |
+| macOS    | Full (`NSSegmentedControl`) |

@@ -2,6 +2,8 @@
 
 Build native iOS, Android, and macOS apps with Vue 3. Write Vue components, render real native views — no WebView, no compromise.
 
+📖 Full documentation: [docs/src](./docs/src/README.md) (VuePress site -- run `cd docs && bun run dev` to browse it locally).
+
 ## Features
 
 - **Vue 3 First** — Composition API, `<script setup>`, `ref`, `computed`, `watch` — all just work
@@ -301,12 +303,32 @@ const styles = createStyleSheet({
 
 ## Building for Release
 
-```bash
-# Build optimized bundle
-bun run build
+The CLI bundles the JS and drives the native build in one step:
 
+```bash
+# iOS: archives via xcodebuild (release mode by default)
+bunx @thelacanians/vue-native-cli build ios
+
+# Android: assembles a release APK
+bunx @thelacanians/vue-native-cli build android
+
+# Android: builds an .aab for the Play Store instead
+bunx @thelacanians/vue-native-cli build android --aab
+
+# Debug build, custom output directory, specific Xcode scheme
+bunx @thelacanians/vue-native-cli build ios --mode debug --output ./artifacts --scheme MyApp-Staging
+```
+
+`--mode <debug|release>` (default `release`), `--output <path>` (default `./build`), `--scheme <scheme>` (iOS/macOS only), and `--aab` (Android only, builds an App Bundle instead of an APK) are the supported flags.
+
+You can still bundle and build manually:
+
+```bash
+bun run build
 # In Xcode: Product → Archive → Distribute App
 ```
+
+See the [build guide](./docs/src/guide/build.md) for CI pipeline details and the [deployment guide](./docs/src/guide/deployment.md) for the full App Store / Google Play submission walkthrough.
 
 ## Architecture
 

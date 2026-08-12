@@ -11,8 +11,11 @@ Renders Scalable Vector Graphics natively — vector-crisp at any resolution. Ba
 | `source` | `SVGSource` | — | The SVG to render. Provide exactly one of `svg`, `asset`, or `uri` (see below). |
 | `tintColor` | `string` | — | Optional hex color applied as a tint to the rendered SVG. |
 | `style` | `ViewStyle` | `{}` | Layout/visual style. Set `width`/`height` to size the SVG. |
+| `testID` | `string` | — | Test identifier for end-to-end testing. |
 | `accessibilityLabel` | `string` | — | Accessibility label. |
 | `accessibilityRole` | `string` | `'image'` | Accessibility role. |
+| `accessibilityHint` | `string` | — | Additional accessibility context. |
+| `accessibilityState` | `object` | — | Accessibility state (e.g. `{ disabled: true }`). |
 
 ### `SVGSource`
 

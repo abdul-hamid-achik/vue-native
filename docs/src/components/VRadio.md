@@ -91,3 +91,11 @@ function onPriorityChange(value) {
   </VView>
 </template>
 ```
+
+## Platform Support
+
+| Platform | Support |
+|----------|---------|
+| iOS      | Full (custom `UIStackView` with radio circles) |
+| Android  | Full (`RadioGroup` + `RadioButton`) |
+| macOS    | Full (`NSStackView` containing `NSButton` radio items) |

@@ -79,3 +79,11 @@ const styles = createStyleSheet({
   </VView>
 </template>
 ```
+
+## Platform Support
+
+| Platform | Support |
+|----------|---------|
+| iOS      | Full (`UIView`) |
+| Android  | Full (`FlexboxLayout`) |
+| macOS    | Full (custom `FlippedView`, an `NSView` subclass) |

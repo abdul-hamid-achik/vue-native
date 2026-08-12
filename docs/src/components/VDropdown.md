@@ -113,3 +113,11 @@ const summary = computed(() => {
   </VView>
 </template>
 ```
+
+## Platform Support
+
+| Platform | Support |
+|----------|---------|
+| iOS      | Full (`UIMenu` on iOS 14+, `UIPickerView` fallback) |
+| Android  | Full (`Spinner`) |
+| macOS    | Full (`NSPopUpButton`) |

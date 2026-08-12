@@ -107,6 +107,14 @@ const styles = createStyleSheet({
 </script>
 ```
 
+## Platform Support
+
+| Platform | Support |
+|----------|---------|
+| iOS      | Full (key-window overlay `UIView`) |
+| Android  | Full (`Dialog`) |
+| macOS    | Full (`NSPanel`) -- children move into a modal panel or sheet when `visible=true` |
+
 ## Notes
 
 - The overlay has a semi-transparent black background (`rgba(0, 0, 0, 0.5)`) by default on iOS.
