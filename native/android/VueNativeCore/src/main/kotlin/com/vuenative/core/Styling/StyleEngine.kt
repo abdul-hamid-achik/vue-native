@@ -35,6 +35,18 @@ object StyleEngine {
     private const val TAG = "VueNative-StyleEngine"
 
     /**
+     * Guards the skewX/skewY unsupported-transform warning so it logs at most
+     * once per process instead of spamming Logcat on every style pass (a view
+     * with an active skew transform re-applies it on essentially every layout
+     * refresh). `android.view.View` has no public arbitrary-matrix transform
+     * available at this module's minSdk (21) — `setAnimationMatrix` only exists
+     * from API 28 — so faking skew would require restructuring the view
+     * pipeline (e.g. a wrapper compositing layer) rather than a local fix here.
+     * iOS applies skew via its transform matrix; this is a tracked Android gap.
+     */
+    private var skewWarningLogged = false
+
+    /**
      * Android's default View camera distance (in dp) used for 3D transforms.
      * Mirrors the platform default so resetting a `perspective` transform
      * restores the stock rendering instead of an extreme zero-distance camera.
@@ -1134,10 +1146,13 @@ object StyleEngine {
         view.translationX = translateX
         view.translationY = translateY
         view.cameraDistance = cameraDistance
-        if (skewRequested) {
-            // android.view.View has no skew transform; faking it with a Matrix
-            // would fight the View's own render transform, so we warn and skip.
-            Log.w(TAG, "skewX/skewY transform is not supported on Android View; ignoring")
+        if (skewRequested && !skewWarningLogged) {
+            skewWarningLogged = true
+            Log.w(
+                TAG,
+                "skewX/skewY are not supported on Android — the view will render " +
+                    "without skew (iOS renders it). This warning logs once per process.",
+            )
         }
     }
 

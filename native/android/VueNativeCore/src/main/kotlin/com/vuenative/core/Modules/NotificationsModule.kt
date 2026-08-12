@@ -53,6 +53,18 @@ class NotificationsModule : NativeModule {
         @Volatile
         var instance: NotificationsModule? = null
             private set
+
+        /**
+         * Cached FCM token, held at the process/companion level (not per-instance).
+         * Hot reload destroys and recreates the module instance
+         * (`resetDefaultsForHotReload()` -> `destroyAll()` -> `destroy()`), and FCM
+         * does not re-emit `onNewToken()` for a token it already delivered in this
+         * process — an instance-level cache would silently lose the token on every
+         * hot reload. Volatile because `onNewToken()` runs on FCM's background
+         * thread while `getToken()` runs on the module invocation thread.
+         */
+        @Volatile
+        private var fcmToken: String? = null
     }
 
     override fun initialize(context: Context, bridge: NativeBridge) {
@@ -81,11 +93,6 @@ class NotificationsModule : NativeModule {
     // -------------------------------------------------------------------------
     // Push token handling (called from FirebaseMessagingService in host app)
     // -------------------------------------------------------------------------
-
-    /** Cached FCM token. Volatile because onNewToken() is called from FCM background thread
-     *  while getToken() may be called from the module invocation thread. */
-    @Volatile
-    private var fcmToken: String? = null
 
     /**
      * Called by the host app's FirebaseMessagingService.onNewToken().
@@ -259,6 +266,8 @@ class NotificationsModule : NativeModule {
         context = null
         bridge = null
         permissionsModule = null
-        fcmToken = null
+        // fcmToken intentionally survives destroy(): it is cached at the
+        // companion/process level (see the field's doc comment) so a hot
+        // reload does not lose a token FCM will not redeliver in this process.
     }
 }

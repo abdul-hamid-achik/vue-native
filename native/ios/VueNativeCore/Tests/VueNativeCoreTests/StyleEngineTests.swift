@@ -189,6 +189,28 @@ final class StyleEngineTests: XCTestCase {
         XCTAssertTrue(view.clipsToBounds, "clipsToBounds should be true when borderRadius > 0")
     }
 
+    /// Regression test: `applyCornerRadius` used to take `max(current, radius)`,
+    /// so a smaller per-corner radius sent after a larger one was a silent
+    /// no-op — the corner could grow but never shrink.
+    func testApplyCornerRadiusShrinkingReplacesPreviousValue() {
+        StyleEngine.apply(key: "borderTopLeftRadius", value: 20.0, to: view)
+        XCTAssertEqual(view.layer.cornerRadius, 20.0, accuracy: 0.001)
+
+        StyleEngine.apply(key: "borderTopLeftRadius", value: 8.0, to: view)
+        XCTAssertEqual(view.layer.cornerRadius, 8.0, accuracy: 0.001, "a smaller radius sent after a larger one should take effect, not be clamped by max()")
+    }
+
+    /// Regression test: the per-corner radius cases only had an `if let num =`
+    /// branch, so there was no way to reset a corner once set — `nil` (the
+    /// renderer's signal that a style prop was removed) was silently ignored.
+    func testApplyCornerRadiusNilRemovesCornerFromMask() {
+        StyleEngine.apply(key: "borderTopLeftRadius", value: 20.0, to: view)
+        XCTAssertTrue(view.layer.maskedCorners.contains(.layerMinXMinYCorner))
+
+        StyleEngine.apply(key: "borderTopLeftRadius", value: nil, to: view)
+        XCTAssertFalse(view.layer.maskedCorners.contains(.layerMinXMinYCorner), "nil should remove the corner from maskedCorners so it resets to square")
+    }
+
     // MARK: - borderWidth Tests
 
     func testApplyBorderWidth() {

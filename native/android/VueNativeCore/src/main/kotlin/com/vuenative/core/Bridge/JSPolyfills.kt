@@ -390,12 +390,26 @@ object JSPolyfills {
                 builder.method(method, requestBody)
 
                 HttpModule.client().newCall(builder.build()).enqueue(object : Callback {
+                    // OkHttp invokes onFailure/onResponse from its own dispatcher
+                    // thread, asynchronously and possibly well after this request
+                    // was issued. By the time runOnJsThread's block actually runs,
+                    // JSRuntime.release() may already have torn down V8 (Activity
+                    // destroyed, hot reload, navigation away with a fetch in
+                    // flight). Re-read runtime.v8() at execution time rather than
+                    // relying on the `v8` captured above — an already-released V8
+                    // throws on any access, which would otherwise escape uncaught
+                    // on the jsThread HandlerThread and crash the process.
                     override fun onFailure(call: Call, e: IOException) {
                         val errMsg = e.message ?: "Network error"
                         runtime.runOnJsThread {
-                            v8.executeVoidScript(
-                                "__vnFetchReject($requestId,${JSONObject.quote(errMsg)})"
-                            )
+                            val liveV8 = runtime.v8() ?: return@runOnJsThread
+                            try {
+                                liveV8.executeVoidScript(
+                                    "__vnFetchReject($requestId,${JSONObject.quote(errMsg)})"
+                                )
+                            } catch (e: Exception) {
+                                Log.e(TAG, "fetch reject callback error", e)
+                            }
                         }
                     }
                     override fun onResponse(call: Call, response: Response) {
@@ -412,7 +426,12 @@ object JSPolyfills {
                         }
                         val respJson = JSONObject.quote(resp.toString())
                         runtime.runOnJsThread {
-                            v8.executeVoidScript("__vnFetchResolve($requestId,$respJson)")
+                            val liveV8 = runtime.v8() ?: return@runOnJsThread
+                            try {
+                                liveV8.executeVoidScript("__vnFetchResolve($requestId,$respJson)")
+                            } catch (e: Exception) {
+                                Log.e(TAG, "fetch resolve callback error", e)
+                            }
                         }
                     }
                 })

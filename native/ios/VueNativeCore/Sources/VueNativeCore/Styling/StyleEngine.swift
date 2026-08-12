@@ -676,27 +676,19 @@ enum StyleEngine {
             return true
 
         case "borderTopLeftRadius":
-            if let num = yogaValue(value) {
-                applyCornerRadius(view: view, corner: .layerMinXMinYCorner, radius: num)
-            }
+            applyCornerRadius(view: view, corner: .layerMinXMinYCorner, radius: yogaValue(value))
             return true
 
         case "borderTopRightRadius":
-            if let num = yogaValue(value) {
-                applyCornerRadius(view: view, corner: .layerMaxXMinYCorner, radius: num)
-            }
+            applyCornerRadius(view: view, corner: .layerMaxXMinYCorner, radius: yogaValue(value))
             return true
 
         case "borderBottomLeftRadius":
-            if let num = yogaValue(value) {
-                applyCornerRadius(view: view, corner: .layerMinXMaxYCorner, radius: num)
-            }
+            applyCornerRadius(view: view, corner: .layerMinXMaxYCorner, radius: yogaValue(value))
             return true
 
         case "borderBottomRightRadius":
-            if let num = yogaValue(value) {
-                applyCornerRadius(view: view, corner: .layerMaxXMaxYCorner, radius: num)
-            }
+            applyCornerRadius(view: view, corner: .layerMaxXMaxYCorner, radius: yogaValue(value))
             return true
 
         case "borderWidth":
@@ -980,11 +972,27 @@ enum StyleEngine {
 
     // MARK: - Corner radius helpers
 
-    /// Apply a corner radius to a specific corner of the view.
-    private static func applyCornerRadius(view: UIView, corner: CACornerMask, radius: CGFloat) {
+    /// Apply (or reset) a corner radius to a specific corner of the view.
+    ///
+    /// CALayer exposes a single shared `cornerRadius` for every corner
+    /// selected via `maskedCorners` — it has no notion of "this corner's
+    /// radius" independent of the others, so it cannot represent different
+    /// non-zero radii on different corners at the same time. This applies the
+    /// most recently set radius (instead of `max`, which made a smaller
+    /// radius sent after a larger one a permanent no-op) and lets
+    /// `radius == nil` (or `<= 0`) remove that corner from the mask, matching
+    /// how the renderer sends `nil` when a style prop is removed. Per-corner
+    /// combinations that need genuinely independent radii (e.g. a large
+    /// top-left with a small bottom-right at the same time) are not
+    /// representable this way and would need a CAShapeLayer mask instead.
+    private static func applyCornerRadius(view: UIView, corner: CACornerMask, radius: CGFloat?) {
+        guard let radius = radius, radius > 0 else {
+            view.layer.maskedCorners.remove(corner)
+            return
+        }
         view.clipsToBounds = true
         view.layer.maskedCorners.insert(corner)
-        view.layer.cornerRadius = max(view.layer.cornerRadius, radius)
+        view.layer.cornerRadius = radius
     }
 
     // MARK: - Helpers

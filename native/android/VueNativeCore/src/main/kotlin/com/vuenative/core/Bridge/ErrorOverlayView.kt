@@ -2,8 +2,10 @@ package com.vuenative.core
 
 import android.app.Activity
 import android.content.Context
+import android.content.pm.ApplicationInfo
 import android.graphics.Color
 import android.graphics.Typeface
+import android.util.Log
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.ViewGroup
@@ -29,8 +31,18 @@ import org.json.JSONObject
  * buttons. Reload re-triggers the bundle load: it invokes the configurable
  * [onReload] callback when supplied, and otherwise falls back to recreating the
  * host Activity (which reloads the bundle from scratch).
+ *
+ * [show] gates its visual overlay on the *host application's* debuggability
+ * (`ApplicationInfo.FLAG_DEBUGGABLE`), not this library's own `BuildConfig.DEBUG`
+ * — a library AAR is always compiled release-style regardless of the consuming
+ * app's build type, so `BuildConfig.DEBUG` here would never reflect whether the
+ * host app is a debug or release build. The error is always logged to Logcat
+ * first, so a release build does not lose diagnostics even though it never
+ * shows the overlay.
  */
 object ErrorOverlayView {
+
+    private const val TAG = "VueNative-ErrorOverlay"
 
     /** A parsed JS error ready for structured display. */
     data class ParsedError(
@@ -65,6 +77,13 @@ object ErrorOverlayView {
     }
 
     fun show(context: Context, error: String, onReload: (() -> Unit)? = null) {
+        // Diagnostics must survive even when the visual overlay below is
+        // suppressed in a release host app.
+        Log.e(TAG, "[VueNative Error] $error")
+
+        val isHostDebuggable = (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
+        if (!isHostDebuggable) return
+
         val activity = context as? Activity ?: return
         activity.runOnUiThread {
             val decorView = activity.window.decorView as? ViewGroup ?: return@runOnUiThread

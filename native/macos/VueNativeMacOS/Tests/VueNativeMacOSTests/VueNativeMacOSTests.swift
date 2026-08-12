@@ -278,6 +278,27 @@ final class VueNativeMacOSTests: XCTestCase {
         let result = VueNativeWindowController.hotReloadURL(base: base, token: "deadbeef")
         XCTAssertEqual(result.absoluteString, "ws://localhost:8174?foo=bar&token=deadbeef")
     }
+
+    // MARK: - Missing embedded bundle overlay
+
+    /// Regression test: a missing embedded bundle used to only NSLog and
+    /// leave a silent black window (the iOS side shows an error overlay for
+    /// the same case). The dev-server connection here only ever runs after a
+    /// *successful* embedded load, so there is no working fallback on
+    /// failure — the overlay must always show.
+    func testShowsOverlayWhenBundleMissing() {
+        XCTAssertTrue(
+            VueNativeWindowController.shouldShowMissingBundleOverlay(loadSucceeded: false),
+            "a failed embedded load has no working fallback and must surface the overlay"
+        )
+    }
+
+    func testSuppressesOverlayOnSuccessfulLoad() {
+        XCTAssertFalse(
+            VueNativeWindowController.shouldShowMissingBundleOverlay(loadSucceeded: true),
+            "a successful load should never show the missing-bundle overlay"
+        )
+    }
 }
 
 private final class MacLifecycleTestModule: NativeModule {

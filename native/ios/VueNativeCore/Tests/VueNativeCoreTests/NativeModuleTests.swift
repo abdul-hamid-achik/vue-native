@@ -297,6 +297,29 @@ final class NativeModuleTests: XCTestCase {
         waitForExpectations(timeout: 2.0)
     }
 
+    /// Regression test: keyframe "scale" used to map to only
+    /// "transform.scale.x", so a uniform scale keyframe stretched the view on
+    /// the x axis instead of scaling it uniformly. It must drive both axes.
+    func testAnimationModuleKeyframeScaleDrivesBothAxes() {
+        XCTAssertEqual(
+            AnimationModule.keyPaths(forKeyframeProperty: "scale"),
+            ["transform.scale.x", "transform.scale.y"],
+            "a uniform 'scale' keyframe should animate both the x and y scale axes"
+        )
+    }
+
+    func testAnimationModuleKeyframeScaleXIsXAxisOnly() {
+        XCTAssertEqual(AnimationModule.keyPaths(forKeyframeProperty: "scaleX"), ["transform.scale.x"])
+    }
+
+    func testAnimationModuleKeyframeScaleYIsYAxisOnly() {
+        XCTAssertEqual(AnimationModule.keyPaths(forKeyframeProperty: "scaleY"), ["transform.scale.y"])
+    }
+
+    func testAnimationModuleKeyframeUnknownPropertyReturnsNil() {
+        XCTAssertNil(AnimationModule.keyPaths(forKeyframeProperty: "unknownProp"), "an unrecognized keyframe property should not produce an animation")
+    }
+
     // MARK: - NetworkModule Tests
 
     @MainActor

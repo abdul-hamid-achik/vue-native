@@ -21,6 +21,7 @@ final class VScrollViewFactory: NativeComponentFactory {
     static var delegateProxyKey: UInt8 = 1
     static var onRefreshKey: UInt8 = 5
     static var refreshTargetKey: UInt8 = 6
+    static var horizontalKey: UInt8 = 7
 
     // MARK: - NativeComponentFactory
 
@@ -66,6 +67,12 @@ final class VScrollViewFactory: NativeComponentFactory {
             }
             scrollView.alwaysBounceHorizontal = horizontal
             scrollView.alwaysBounceVertical = !horizontal
+            objc_setAssociatedObject(
+                scrollView,
+                &VScrollViewFactory.horizontalKey,
+                horizontal,
+                .OBJC_ASSOCIATION_RETAIN_NONATOMIC
+            )
 
         case "showsVerticalScrollIndicator":
             if let shows = value as? Bool { scrollView.showsVerticalScrollIndicator = shows }
@@ -193,20 +200,37 @@ final class VScrollViewFactory: NativeComponentFactory {
         return objc_getAssociatedObject(scrollView, &contentViewKey) as? UIView
     }
 
+    /// Whether `updateProp` last set `horizontal: true` on this scroll view.
+    /// Defaults to `false` (vertical scrolling) when never set.
+    private static func isHorizontal(_ scrollView: UIScrollView) -> Bool {
+        return objc_getAssociatedObject(scrollView, &horizontalKey) as? Bool ?? false
+    }
+
     /// Recompute the content view's layout and update the scroll view's contentSize.
     /// Call this after the main Yoga layout pass, once the scroll view's frame is set.
     @MainActor
     static func layoutContentView(for scrollView: UIScrollView) {
         guard let contentView = contentView(for: scrollView) else { return }
 
-        let scrollWidth = scrollView.bounds.width
-        guard scrollWidth > 0 else { return }
+        if isHorizontal(scrollView) {
+            let scrollHeight = scrollView.bounds.height
+            guard scrollHeight > 0 else { return }
 
-        // Pin the content view's origin and width
-        contentView.frame = CGRect(x: 0, y: 0, width: scrollWidth, height: 0)
+            // Pin the content view's origin and height; let width grow freely.
+            contentView.frame = CGRect(x: 0, y: 0, width: 0, height: scrollHeight)
 
-        // Compute natural height — adjustHeight mode grows height to fit children
-        contentView.flex.layout(mode: .adjustHeight)
+            // Compute natural width — adjustWidth mode grows width to fit children
+            contentView.flex.layout(mode: .adjustWidth)
+        } else {
+            let scrollWidth = scrollView.bounds.width
+            guard scrollWidth > 0 else { return }
+
+            // Pin the content view's origin and width
+            contentView.frame = CGRect(x: 0, y: 0, width: scrollWidth, height: 0)
+
+            // Compute natural height — adjustHeight mode grows height to fit children
+            contentView.flex.layout(mode: .adjustHeight)
+        }
 
         // Update the scroll view's scrollable content size
         scrollView.contentSize = contentView.frame.size

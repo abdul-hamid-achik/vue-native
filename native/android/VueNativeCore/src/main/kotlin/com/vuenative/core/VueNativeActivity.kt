@@ -104,6 +104,7 @@ abstract class VueNativeActivity : AppCompatActivity() {
         PermissionsModule.setActivity(this)
         BackHandlerModule.setActivity(this)
         ImagePickerModule.setActivity(this)
+        CameraModule.setActivity(this)
 
         // Capture launch intent deep link URL for the LinkingModule
         intent?.data?.toString()?.let { url ->
@@ -266,12 +267,14 @@ abstract class VueNativeActivity : AppCompatActivity() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         ImagePickerModule.onActivityResult(requestCode, resultCode, data)
+        CameraModule.onActivityResult(requestCode, resultCode, data)
     }
 
     override fun onDestroy() {
         PermissionsModule.clearActivity(this)
         BackHandlerModule.clearActivity(this)
         ImagePickerModule.clearActivity(this)
+        CameraModule.clearActivity(this)
         hotReloadManager?.disconnect()
         if (::runtime.isInitialized) {
             runtime.bridge.destroyHost()

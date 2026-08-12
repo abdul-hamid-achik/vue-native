@@ -219,6 +219,15 @@ private class HoverTrackingView: NSView {
 
     func attach(to view: NSView) {
         targetView = view
+        // Must actually be in the view hierarchy for a tracking area to ever
+        // fire mouseEntered/Exited/Moved — a tracking area on a view with no
+        // window never receives events. Inserted behind `view`'s own
+        // subviews so existing/future children stay on top and keep their
+        // own interaction; this view only claims hover where no other
+        // subview does.
+        frame = view.bounds
+        autoresizingMask = [.width, .height]
+        view.addSubview(self, positioned: .below, relativeTo: nil)
         updateTrackingAreas()
     }
 
@@ -278,6 +287,15 @@ private class PressureTrackingView: NSView {
 
     func attach(to view: NSView) {
         targetView = view
+        // Must actually be in the view hierarchy — and opted into trackpad
+        // touch delivery — to receive touchesBegan/Moved/Ended at all.
+        // Inserted behind `view`'s own subviews so existing/future children
+        // stay on top and keep their own interaction; this view only claims
+        // touches where no other subview does.
+        frame = view.bounds
+        autoresizingMask = [.width, .height]
+        allowedTouchTypes = .indirect
+        view.addSubview(self, positioned: .below, relativeTo: nil)
     }
 
     override func touchesBegan(with event: NSEvent) {

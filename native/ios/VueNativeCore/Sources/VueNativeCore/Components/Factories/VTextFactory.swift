@@ -41,6 +41,7 @@ final class VTextFactory: NativeComponentFactory {
     private static var fontWeightKey: UInt8 = 0
     private static var fontFamilyKey: UInt8 = 0
     private static var textChildrenKey: UInt8 = 0
+    private static var attributedStyleKey: UInt8 = 0
 
     // MARK: - NativeComponentFactory
 
@@ -64,6 +65,9 @@ final class VTextFactory: NativeComponentFactory {
             } else {
                 label.text = nil
             }
+            // Setting .text wipes any previously computed .attributedText, so
+            // lineHeight/letterSpacing/textDecorationLine must be reapplied.
+            applyAccumulatedAttributes(on: label)
             label.flex.markDirty()
 
         case "numberOfLines":
@@ -148,6 +152,8 @@ final class VTextFactory: NativeComponentFactory {
                         label.font = UIFont(descriptor: descriptor, size: currentSize)
                     }
                 }
+                // The .font baked into attributedText attributes is now stale.
+                applyAccumulatedAttributes(on: label)
             }
             label.flex.markDirty()
 
@@ -157,30 +163,21 @@ final class VTextFactory: NativeComponentFactory {
                 paragraphStyle.minimumLineHeight = CGFloat(num)
                 paragraphStyle.maximumLineHeight = CGFloat(num)
                 paragraphStyle.alignment = label.textAlignment
-                let text = label.text ?? ""
-                let attrs: [NSAttributedString.Key: Any] = [
-                    .paragraphStyle: paragraphStyle,
-                    .font: label.font as Any
-                ]
-                label.attributedText = NSAttributedString(string: text, attributes: attrs)
+                mergeAttribute(.paragraphStyle, value: paragraphStyle, on: label)
                 label.flex.markDirty()
             }
 
         case "letterSpacing":
             if let num = value as? Double {
-                let text = label.text ?? ""
-                let attrs: [NSAttributedString.Key: Any] = [
-                    .kern: CGFloat(num),
-                    .font: label.font as Any
-                ]
-                label.attributedText = NSAttributedString(string: text, attributes: attrs)
+                mergeAttribute(.kern, value: CGFloat(num), on: label)
                 label.flex.markDirty()
             }
 
         case "textDecorationLine":
             if let str = value as? String {
-                let text = label.text ?? ""
-                var attrs: [NSAttributedString.Key: Any] = [.font: label.font as Any]
+                var attrs = storedAttributes(on: label)
+                attrs[.underlineStyle] = nil
+                attrs[.strikethroughStyle] = nil
                 switch str {
                 case "underline":
                     attrs[.underlineStyle] = NSUnderlineStyle.single.rawValue
@@ -192,7 +189,8 @@ final class VTextFactory: NativeComponentFactory {
                 default:
                     break
                 }
-                label.attributedText = NSAttributedString(string: text, attributes: attrs)
+                storeAttributes(attrs, on: label)
+                applyAccumulatedAttributes(on: label)
                 label.flex.markDirty()
             }
 
@@ -205,6 +203,8 @@ final class VTextFactory: NativeComponentFactory {
                 case "capitalize": label.text = original.capitalized
                 default: break
                 }
+                // Setting .text wipes any previously computed .attributedText.
+                applyAccumulatedAttributes(on: label)
                 label.flex.markDirty()
             }
 
@@ -291,6 +291,43 @@ final class VTextFactory: NativeComponentFactory {
         } else {
             label.font = UIFont.systemFont(ofSize: size, weight: weight)
         }
+
+        // The .font baked into attributedText attributes is now stale.
+        applyAccumulatedAttributes(on: label)
+    }
+
+    // MARK: - Attributed text state (lineHeight / letterSpacing / textDecorationLine)
+
+    /// `lineHeight`, `letterSpacing`, and `textDecorationLine` each rebuild
+    /// `attributedText`, and setting `.text` or the font also invalidates it.
+    /// All of them read/write this accumulated dictionary instead of
+    /// clobbering `attributedText` with only their own attribute, so the
+    /// three props (and text/font changes) can coexist.
+    private func storeAttributes(_ attrs: [NSAttributedString.Key: Any], on view: UIView) {
+        objc_setAssociatedObject(view, &VTextFactory.attributedStyleKey, attrs, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+    }
+
+    private func storedAttributes(on view: UIView) -> [NSAttributedString.Key: Any] {
+        return objc_getAssociatedObject(view, &VTextFactory.attributedStyleKey) as? [NSAttributedString.Key: Any] ?? [:]
+    }
+
+    /// Merge `key: value` into the accumulated attributes and reapply them.
+    private func mergeAttribute(_ key: NSAttributedString.Key, value: Any?, on label: UILabel) {
+        var attrs = storedAttributes(on: label)
+        attrs[key] = value
+        storeAttributes(attrs, on: label)
+        applyAccumulatedAttributes(on: label)
+    }
+
+    /// Rebuild `attributedText` from the accumulated attributes plus the
+    /// label's current font. No-ops when nothing has ever set an attribute,
+    /// leaving `label.text` as the plain (non-attributed) source of truth.
+    private func applyAccumulatedAttributes(on label: UILabel) {
+        let attrs = storedAttributes(on: label)
+        guard !attrs.isEmpty else { return }
+        var merged = attrs
+        merged[.font] = label.font as Any
+        label.attributedText = NSAttributedString(string: label.text ?? "", attributes: merged)
     }
 
     // MARK: - Font state storage via associated objects
@@ -332,6 +369,8 @@ final class VTextFactory: NativeComponentFactory {
             (child as? UILabel)?.text
         }.joined()
         label.text = text.isEmpty ? nil : text
+        // Setting .text wipes any previously computed .attributedText.
+        applyAccumulatedAttributes(on: label)
         label.flex.markDirty()
     }
 }

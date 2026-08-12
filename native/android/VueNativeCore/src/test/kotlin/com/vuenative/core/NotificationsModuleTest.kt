@@ -55,6 +55,9 @@ class NotificationsModuleTest {
         assertTrue(registry.registerAndInitialize(permissions, bridge, activity))
         assertTrue(registry.registerAndInitialize(notifications, bridge, activity))
         PermissionsModule.setActivity(activity)
+        // Companion-level cache — reset for isolation between test methods (see
+        // JSPolyfills.reset() for the same pattern with other process-wide state).
+        setCachedFcmToken(null)
     }
 
     @After
@@ -62,6 +65,13 @@ class NotificationsModuleTest {
         registry.destroyAll()
         PermissionsModule.setActivity(null)
         PermissionsModule.pendingCallbacks.clear()
+        setCachedFcmToken(null)
+    }
+
+    private fun setCachedFcmToken(token: String?) {
+        val field = NotificationsModule::class.java.getDeclaredField("fcmToken")
+        field.isAccessible = true
+        field.set(null, token)
     }
 
     @Test
@@ -215,5 +225,47 @@ class NotificationsModuleTest {
 
         assertEquals("scheduled-reminder", returnedId)
         assertNull(shadowNotifications.getNotification("scheduled-reminder", 1))
+    }
+
+    // -------------------------------------------------------------------------
+    // fcmToken survives hot reload — it is cached at the companion/process
+    // level, not per module instance, because FCM does not re-emit
+    // onNewToken() for a token it already delivered in this process.
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun getTokenReturnsNullWhenNoTokenHasBeenReceived() {
+        var result: Any? = "pending"
+        notifications.invoke("getToken", emptyList(), bridge) { value, _ -> result = value }
+        assertNull(result)
+    }
+
+    @Test
+    fun onNewTokenCachesTokenAndGetTokenReturnsIt() {
+        notifications.onNewToken("fcm-token-abc")
+
+        var result: Any? = null
+        notifications.invoke("getToken", emptyList(), bridge) { value, _ -> result = value }
+        assertEquals("fcm-token-abc", result)
+    }
+
+    @Test
+    fun fcmTokenSurvivesModuleDestroyAcrossHotReload() {
+        notifications.onNewToken("fcm-token-before-reload")
+
+        // Mirrors what a hot reload does: destroy the old module instance and
+        // register a brand new one, exactly like
+        // NativeModuleRegistry.resetDefaultsForHotReload() -> destroyAll() -> destroy().
+        notifications.destroy()
+        val reloaded = NotificationsModule()
+        assertTrue(registry.registerAndInitialize(reloaded, bridge, activity))
+
+        var result: Any? = null
+        reloaded.invoke("getToken", emptyList(), bridge) { value, _ -> result = value }
+        assertEquals(
+            "A hot-reloaded module instance must still see the token FCM already delivered in this process",
+            "fcm-token-before-reload",
+            result,
+        )
     }
 }

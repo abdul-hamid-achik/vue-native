@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Paths exposed by the CameraModule FileProvider (see AndroidManifest.xml).
+  CameraModule writes captured photos/videos under cacheDir/vuenative-camera —
+  scope the grant to exactly that subdirectory rather than the whole cache.
+-->
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <cache-path name="vuenative_camera" path="vuenative-camera/" />
+</paths>

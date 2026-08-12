@@ -463,6 +463,42 @@ class NativeModuleTest {
         assertTrue(resultError?.contains("VueNativeActivity") == true)
     }
 
+    // Android's BiometricManager cannot distinguish face/fingerprint/iris hardware,
+    // so getSupportedBiometry() must report the shared-contract generic "biometric"
+    // value (packages/runtime/src/composables/useBiometry.ts) rather than an
+    // iOS-only value like "faceID".
+    @Test
+    fun testMapBiometricStatusSuccessReturnsGenericBiometricNotFaceID() {
+        assertEquals(
+            "biometric",
+            BiometryModule.mapBiometricStatus(androidx.biometric.BiometricManager.BIOMETRIC_SUCCESS),
+        )
+    }
+
+    @Test
+    fun testMapBiometricStatusNotEnrolledReturnsBiometric() {
+        assertEquals(
+            "biometric",
+            BiometryModule.mapBiometricStatus(androidx.biometric.BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED),
+        )
+    }
+
+    @Test
+    fun testMapBiometricStatusNoHardwareReturnsNone() {
+        assertEquals(
+            "none",
+            BiometryModule.mapBiometricStatus(androidx.biometric.BiometricManager.BIOMETRIC_ERROR_NO_HARDWARE),
+        )
+    }
+
+    @Test
+    fun testMapBiometricStatusHardwareUnavailableReturnsNone() {
+        assertEquals(
+            "none",
+            BiometryModule.mapBiometricStatus(androidx.biometric.BiometricManager.BIOMETRIC_ERROR_HW_UNAVAILABLE),
+        )
+    }
+
     // =========================================================================
     // NativeModule interface defaults
     // =========================================================================

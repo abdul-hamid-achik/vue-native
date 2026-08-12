@@ -19,6 +19,25 @@ class BiometryModule : NativeModule {
     private var prompt: BiometricPrompt? = null
     private var pendingAuthentication: ((Any?, String?) -> Unit)? = null
 
+    companion object {
+        /**
+         * Maps a [BiometricManager.canAuthenticate] status to the `BiometryType`
+         * contract shared with iOS (`packages/runtime/src/composables/useBiometry.ts`
+         * — read-only reference, not part of this build). Android's BiometricManager
+         * cannot distinguish face/fingerprint/iris hardware, so any usable
+         * authenticator maps to the generic "biometric" value rather than an
+         * iOS-only value like "faceID". Extracted as a pure function so the mapping
+         * is directly unit-testable without a real BiometricManager query.
+         */
+        internal fun mapBiometricStatus(status: Int): String = when (status) {
+            BiometricManager.BIOMETRIC_SUCCESS -> "biometric"
+            BiometricManager.BIOMETRIC_ERROR_NO_HARDWARE -> "none"
+            BiometricManager.BIOMETRIC_ERROR_HW_UNAVAILABLE -> "none"
+            BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED -> "biometric" // HW present, not enrolled
+            else -> "none"
+        }
+    }
+
     override fun initialize(context: Context, bridge: NativeBridge) {
         this.context = context.applicationContext
         this.activity = context as? FragmentActivity
@@ -37,16 +56,8 @@ class BiometryModule : NativeModule {
                     return
                 }
                 val biometricManager = BiometricManager.from(ctx)
-                val result = when (biometricManager.canAuthenticate(
-                    BiometricManager.Authenticators.BIOMETRIC_STRONG
-                )) {
-                    BiometricManager.BIOMETRIC_SUCCESS -> "faceID" // Android doesn't distinguish
-                    BiometricManager.BIOMETRIC_ERROR_NO_HARDWARE -> "none"
-                    BiometricManager.BIOMETRIC_ERROR_HW_UNAVAILABLE -> "none"
-                    BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED -> "biometric" // HW present, not enrolled
-                    else -> "none"
-                }
-                callback(result, null)
+                val status = biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG)
+                callback(mapBiometricStatus(status), null)
             }
             "isAvailable" -> {
                 val ctx = context ?: run {

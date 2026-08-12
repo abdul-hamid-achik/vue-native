@@ -46,5 +46,37 @@ final class VueNativeViewControllerHotReloadTests: XCTestCase {
         XCTAssertEqual(components?.host, "192.168.1.10")
         XCTAssertEqual(components?.port, 8174)
     }
+
+    // MARK: - Missing embedded bundle overlay
+
+    /// Regression test: a missing embedded bundle used to only NSLog and
+    /// leave a silent black screen (Android shows an error overlay for the
+    /// same case). With no dev server to fall back to, the overlay must show.
+    func testShowsOverlayWhenBundleMissingAndNoDevServer() {
+        XCTAssertTrue(
+            VueNativeViewController.shouldShowMissingBundleOverlay(loadSucceeded: false, devServerURL: nil),
+            "a failed embedded load with no dev server configured has no fallback and must surface the overlay"
+        )
+    }
+
+    /// When a dev server is configured, the embedded bundle is only used to
+    /// seed the hot-reload token; `loadBundle()` still connects to the dev
+    /// server afterward, so a missing embedded bundle there is not fatal.
+    func testSuppressesOverlayWhenBundleMissingButDevServerConfigured() {
+        XCTAssertFalse(
+            VueNativeViewController.shouldShowMissingBundleOverlay(
+                loadSucceeded: false,
+                devServerURL: URL(string: "ws://localhost:8174")
+            ),
+            "a dev server fallback is still available, so the overlay should not show"
+        )
+    }
+
+    func testSuppressesOverlayOnSuccessfulLoad() {
+        XCTAssertFalse(
+            VueNativeViewController.shouldShowMissingBundleOverlay(loadSucceeded: true, devServerURL: nil),
+            "a successful load should never show the missing-bundle overlay"
+        )
+    }
 }
 #endif

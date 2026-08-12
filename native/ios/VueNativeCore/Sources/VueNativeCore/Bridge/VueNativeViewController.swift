@@ -281,6 +281,17 @@ open class VueNativeViewController: UIViewController {
         }
     }
 
+    /// Whether a failed embedded-bundle load should surface the DEBUG error
+    /// overlay instead of failing silently. When a dev server is configured,
+    /// `loadBundle()` only used the embedded bundle to seed the hot-reload
+    /// token and still connects to the dev server afterward, so a missing
+    /// embedded bundle there is not fatal. Exposed internally (rather than
+    /// inlined) so this decision is unit-testable without touching the JS
+    /// runtime.
+    static func shouldShowMissingBundleOverlay(loadSucceeded: Bool, devServerURL: URL?) -> Bool {
+        return !loadSucceeded && devServerURL == nil
+    }
+
     private func loadEmbeddedBundle(onComplete: (() -> Void)? = nil) {
         runtime.loadBundle(source: .embedded(name: bundleName)) { [weak self] success in
             DispatchQueue.main.async {
@@ -290,6 +301,14 @@ open class VueNativeViewController: UIViewController {
                     self.view.setNeedsLayout()
                     self.view.layoutIfNeeded()
                     self.emitDimensionsIfNeeded()
+                } else {
+                    #if DEBUG
+                    if VueNativeViewController.shouldShowMissingBundleOverlay(loadSucceeded: success, devServerURL: self.devServerURL) {
+                        ErrorOverlayView.show(
+                            error: "Bundle '\(self.bundleName).js' not found — run `vue-native dev` (hot reload) or `vue-native run ios` to build it"
+                        )
+                    }
+                    #endif
                 }
                 onComplete?()
             }

@@ -157,6 +157,16 @@ open class VueNativeWindowController: NSWindowController {
 
     // MARK: - Bundle loading
 
+    /// Whether a failed embedded-bundle load should surface the DEBUG error
+    /// overlay instead of failing silently. Unlike iOS, the dev-server
+    /// connection below only runs after a *successful* embedded load, so
+    /// there is no working fallback when it fails — even with
+    /// `devServerURL` configured. Exposed internally so this decision is
+    /// unit-testable without touching the JS runtime.
+    static func shouldShowMissingBundleOverlay(loadSucceeded: Bool) -> Bool {
+        return !loadSucceeded
+    }
+
     private func loadBundle() {
         loadEmbeddedBundle()
     }
@@ -179,6 +189,16 @@ open class VueNativeWindowController: NSWindowController {
                     #if DEBUG
                     if let wsURL = self.devServerURL {
                         HotReloadManager.shared.connect(to: Self.hotReloadURL(base: wsURL, token: hotReloadToken))
+                    }
+                    #endif
+                } else {
+                    #if DEBUG
+                    if VueNativeWindowController.shouldShowMissingBundleOverlay(loadSucceeded: success) {
+                        ErrorOverlayView.show(
+                            message: "Bundle '\(self.bundleName).js' not found — run `vue-native dev` (hot reload) or `vue-native run macos` to build it",
+                            stack: nil,
+                            componentName: nil
+                        )
                     }
                     #endif
                 }

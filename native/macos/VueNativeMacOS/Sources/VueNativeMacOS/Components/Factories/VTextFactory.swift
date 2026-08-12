@@ -40,6 +40,7 @@ final class VTextFactory: NativeComponentFactory {
     private static var fontWeightKey: UInt8 = 0
     private static var fontFamilyKey: UInt8 = 0
     private static var textChildrenKey: UInt8 = 0
+    private static var attributedStyleKey: UInt8 = 0
 
     // MARK: - NativeComponentFactory
 
@@ -67,6 +68,10 @@ final class VTextFactory: NativeComponentFactory {
             } else {
                 label.stringValue = ""
             }
+            // Setting .stringValue wipes any previously computed
+            // .attributedStringValue, so lineHeight/letterSpacing/
+            // textDecorationLine must be reapplied.
+            applyAccumulatedAttributes(on: label)
             label.layoutNode?.markDirty()
 
         case "numberOfLines":
@@ -151,6 +156,8 @@ final class VTextFactory: NativeComponentFactory {
                     let descriptor = currentFont.fontDescriptor.withSymbolicTraits(traits)
                     label.font = NSFont(descriptor: descriptor, size: currentSize)
                 }
+                // The .font baked into attributedStringValue attributes is now stale.
+                applyAccumulatedAttributes(on: label)
             }
             label.layoutNode?.markDirty()
 
@@ -160,33 +167,21 @@ final class VTextFactory: NativeComponentFactory {
                 paragraphStyle.minimumLineHeight = CGFloat(num)
                 paragraphStyle.maximumLineHeight = CGFloat(num)
                 paragraphStyle.alignment = label.alignment
-                let text = label.stringValue
-                let font = label.font ?? NSFont.systemFont(ofSize: 13)
-                let attrs: [NSAttributedString.Key: Any] = [
-                    .paragraphStyle: paragraphStyle,
-                    .font: font
-                ]
-                label.attributedStringValue = NSAttributedString(string: text, attributes: attrs)
+                mergeAttribute(.paragraphStyle, value: paragraphStyle, on: label)
                 label.layoutNode?.markDirty()
             }
 
         case "letterSpacing":
             if let num = value as? Double {
-                let text = label.stringValue
-                let font = label.font ?? NSFont.systemFont(ofSize: 13)
-                let attrs: [NSAttributedString.Key: Any] = [
-                    .kern: CGFloat(num),
-                    .font: font
-                ]
-                label.attributedStringValue = NSAttributedString(string: text, attributes: attrs)
+                mergeAttribute(.kern, value: CGFloat(num), on: label)
                 label.layoutNode?.markDirty()
             }
 
         case "textDecorationLine":
             if let str = value as? String {
-                let text = label.stringValue
-                let font = label.font ?? NSFont.systemFont(ofSize: 13)
-                var attrs: [NSAttributedString.Key: Any] = [.font: font]
+                var attrs = storedAttributes(on: label)
+                attrs[.underlineStyle] = nil
+                attrs[.strikethroughStyle] = nil
                 switch str {
                 case "underline":
                     attrs[.underlineStyle] = NSUnderlineStyle.single.rawValue
@@ -198,7 +193,8 @@ final class VTextFactory: NativeComponentFactory {
                 default:
                     break
                 }
-                label.attributedStringValue = NSAttributedString(string: text, attributes: attrs)
+                storeAttributes(attrs, on: label)
+                applyAccumulatedAttributes(on: label)
                 label.layoutNode?.markDirty()
             }
 
@@ -211,6 +207,8 @@ final class VTextFactory: NativeComponentFactory {
                 case "capitalize": label.stringValue = original.capitalized
                 default: break
                 }
+                // Setting .stringValue wipes any previously computed .attributedStringValue.
+                applyAccumulatedAttributes(on: label)
                 label.layoutNode?.markDirty()
             }
 
@@ -292,6 +290,43 @@ final class VTextFactory: NativeComponentFactory {
         } else {
             label.font = NSFont.systemFont(ofSize: size, weight: weight)
         }
+
+        // The .font baked into attributedStringValue attributes is now stale.
+        applyAccumulatedAttributes(on: label)
+    }
+
+    // MARK: - Attributed text state (lineHeight / letterSpacing / textDecorationLine)
+
+    /// `lineHeight`, `letterSpacing`, and `textDecorationLine` each rebuild
+    /// `attributedStringValue`, and setting `.stringValue` or the font also
+    /// invalidates it. All of them read/write this accumulated dictionary
+    /// instead of clobbering `attributedStringValue` with only their own
+    /// attribute, so the three props (and text/font changes) can coexist.
+    private func storeAttributes(_ attrs: [NSAttributedString.Key: Any], on view: NSView) {
+        objc_setAssociatedObject(view, &VTextFactory.attributedStyleKey, attrs, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+    }
+
+    private func storedAttributes(on view: NSView) -> [NSAttributedString.Key: Any] {
+        return objc_getAssociatedObject(view, &VTextFactory.attributedStyleKey) as? [NSAttributedString.Key: Any] ?? [:]
+    }
+
+    /// Merge `key: value` into the accumulated attributes and reapply them.
+    private func mergeAttribute(_ key: NSAttributedString.Key, value: Any?, on label: NSTextField) {
+        var attrs = storedAttributes(on: label)
+        attrs[key] = value
+        storeAttributes(attrs, on: label)
+        applyAccumulatedAttributes(on: label)
+    }
+
+    /// Rebuild `attributedStringValue` from the accumulated attributes plus
+    /// the label's current font. No-ops when nothing has ever set an
+    /// attribute, leaving `label.stringValue` as the plain source of truth.
+    private func applyAccumulatedAttributes(on label: NSTextField) {
+        let attrs = storedAttributes(on: label)
+        guard !attrs.isEmpty else { return }
+        var merged = attrs
+        merged[.font] = (label.font ?? NSFont.systemFont(ofSize: 13)) as Any
+        label.attributedStringValue = NSAttributedString(string: label.stringValue, attributes: merged)
     }
 
     // MARK: - Font state storage via associated objects
@@ -333,6 +368,8 @@ final class VTextFactory: NativeComponentFactory {
             (child as? NSTextField)?.stringValue
         }.joined()
         label.stringValue = text
+        // Setting .stringValue wipes any previously computed .attributedStringValue.
+        applyAccumulatedAttributes(on: label)
         label.layoutNode?.markDirty()
     }
 }

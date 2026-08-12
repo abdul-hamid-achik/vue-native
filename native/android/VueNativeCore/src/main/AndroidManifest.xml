@@ -14,4 +14,28 @@
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
     <uses-permission android:name="android.permission.USE_FINGERPRINT" />
 
+    <application>
+        <!--
+          FileProvider for CameraModule (launchCamera / captureVideo). The camera
+          app that handles ACTION_IMAGE_CAPTURE / ACTION_VIDEO_CAPTURE runs in a
+          different process, so it cannot write to this app's private cacheDir
+          via a plain file:// Uri (FileUriExposedException on API 24+) — it needs
+          a content:// Uri with a granted write permission instead.
+
+          `${applicationId}` is resolved by the manifest merger to the *consuming
+          app's* applicationId, so this authority is unique per host app and safe
+          even when multiple apps built on Vue Native are installed on the same
+          device (a fixed, hardcoded authority would collide across such apps).
+        -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.vuenative.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/vuenative_file_paths" />
+        </provider>
+    </application>
+
 </manifest>

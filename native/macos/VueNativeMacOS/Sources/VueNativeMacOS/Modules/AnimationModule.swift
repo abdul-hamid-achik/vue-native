@@ -150,6 +150,23 @@ final class AnimationModule: NativeModule {
 
     // MARK: - keyframe(viewId, keyframes, options)
 
+    /// Maps a keyframe animation property name to the CALayer key path(s) it
+    /// drives. `nil` for an unrecognized property. Exposed (internal, not
+    /// private) so the mapping — in particular that `"scale"` drives both
+    /// axes uniformly instead of stretching the view on the x axis only —
+    /// can be unit tested without spinning up a live view/animation.
+    static func keyPaths(forKeyframeProperty propKey: String) -> [String]? {
+        switch propKey {
+        case "opacity": return ["opacity"]
+        case "translateX": return ["transform.translation.x"]
+        case "translateY": return ["transform.translation.y"]
+        case "scale": return ["transform.scale.x", "transform.scale.y"]
+        case "scaleX": return ["transform.scale.x"]
+        case "scaleY": return ["transform.scale.y"]
+        default: return nil
+        }
+    }
+
     private func animateKeyframes(viewId: Int, keyframes: [[String: Any]], duration: TimeInterval, callback: @escaping (Any?, String?) -> Void) {
         DispatchQueue.main.async { [weak self] in
             guard let view = self?.viewLookup(viewId) else {
@@ -172,56 +189,19 @@ final class AnimationModule: NativeModule {
             for kf in keyframes { propertyKeys.formUnion(kf.keys.filter { $0 != "offset" }) }
 
             for propKey in propertyKeys {
-                let keyPath: String
+                guard let keyPaths = AnimationModule.keyPaths(forKeyframeProperty: propKey) else { continue }
+
                 var values: [Any] = []
                 var keyTimes: [NSNumber] = []
-
-                switch propKey {
-                case "opacity":
-                    keyPath = "opacity"
-                    for kf in keyframes {
-                        if let v = kf[propKey] as? Double {
-                            values.append(v)
-                            keyTimes.append(NSNumber(value: kf["offset"] as? Double ?? 0))
-                        }
+                for kf in keyframes {
+                    if let v = kf[propKey] as? Double {
+                        values.append(v)
+                        keyTimes.append(NSNumber(value: kf["offset"] as? Double ?? 0))
                     }
-                case "translateX":
-                    keyPath = "transform.translation.x"
-                    for kf in keyframes {
-                        if let v = kf[propKey] as? Double {
-                            values.append(v)
-                            keyTimes.append(NSNumber(value: kf["offset"] as? Double ?? 0))
-                        }
-                    }
-                case "translateY":
-                    keyPath = "transform.translation.y"
-                    for kf in keyframes {
-                        if let v = kf[propKey] as? Double {
-                            values.append(v)
-                            keyTimes.append(NSNumber(value: kf["offset"] as? Double ?? 0))
-                        }
-                    }
-                case "scale", "scaleX":
-                    keyPath = "transform.scale.x"
-                    for kf in keyframes {
-                        if let v = kf[propKey] as? Double {
-                            values.append(v)
-                            keyTimes.append(NSNumber(value: kf["offset"] as? Double ?? 0))
-                        }
-                    }
-                case "scaleY":
-                    keyPath = "transform.scale.y"
-                    for kf in keyframes {
-                        if let v = kf[propKey] as? Double {
-                            values.append(v)
-                            keyTimes.append(NSNumber(value: kf["offset"] as? Double ?? 0))
-                        }
-                    }
-                default:
-                    continue
                 }
+                guard !values.isEmpty else { continue }
 
-                if !values.isEmpty {
+                for keyPath in keyPaths {
                     let anim = CAKeyframeAnimation(keyPath: keyPath)
                     anim.values = values
                     anim.keyTimes = keyTimes

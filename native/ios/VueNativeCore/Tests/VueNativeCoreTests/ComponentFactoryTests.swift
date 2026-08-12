@@ -84,6 +84,23 @@ final class ComponentFactoryTests: XCTestCase {
         XCTAssertTrue(tapRecognizers.isEmpty, "Tap gesture recognizer should be removed")
     }
 
+    /// Regression test: `attachForceTouchHandler` used to only store a weak
+    /// reference to the target view and never add the handler to the view
+    /// hierarchy, so `touchesBegan`/`touchesMoved` never fired and force touch
+    /// events never reached JS. The handler must be an actual subview.
+    func testVViewFactoryForceTouchHandlerAttachesToViewHierarchy() {
+        let factory = VViewFactory()
+        let view = factory.createView()
+        view.frame = CGRect(x: 0, y: 0, width: 100, height: 100)
+
+        factory.addEventListener(view: view, event: "forceTouch") { _ in }
+
+        XCTAssertEqual(view.subviews.count, 1, "forceTouch should attach its handler as a subview of the target view")
+        let handlerView = view.subviews[0]
+        XCTAssertTrue(handlerView.isUserInteractionEnabled, "the force-touch overlay must accept touches to receive touchesBegan/Moved")
+        XCTAssertEqual(handlerView.frame, view.bounds, "the force-touch overlay should cover the full bounds of the target view")
+    }
+
     // MARK: - VTextFactory Tests
 
     func testVTextFactoryCreatesUILabel() {
@@ -164,6 +181,43 @@ final class ComponentFactoryTests: XCTestCase {
         factory.updateProp(view: label, key: "text", value: "hello")
         factory.updateProp(view: label, key: "textTransform", value: "uppercase")
         XCTAssertEqual(label.text, "HELLO", "textTransform 'uppercase' should uppercase the text")
+    }
+
+    /// Regression test: lineHeight, letterSpacing, and textDecorationLine each
+    /// used to rebuild `attributedText` from scratch with only their own
+    /// attribute, so setting all three left only the last one applied
+    /// (dictionary iteration order is non-deterministic). They must accumulate.
+    func testVTextFactoryLineHeightLetterSpacingAndDecorationCoexist() {
+        let factory = VTextFactory()
+        let label = factory.createView() as! UILabel
+
+        factory.updateProp(view: label, key: "text", value: "Hello")
+        factory.updateProp(view: label, key: "lineHeight", value: 24.0)
+        factory.updateProp(view: label, key: "letterSpacing", value: 2.0)
+        factory.updateProp(view: label, key: "textDecorationLine", value: "underline")
+
+        let attrs = label.attributedText?.attributes(at: 0, effectiveRange: nil) ?? [:]
+        let paragraphStyle = attrs[.paragraphStyle] as? NSParagraphStyle
+        XCTAssertEqual(paragraphStyle?.minimumLineHeight, 24.0, "lineHeight should survive letterSpacing/textDecorationLine being set afterward")
+        XCTAssertEqual(attrs[.kern] as? CGFloat, 2.0, "letterSpacing should survive textDecorationLine being set afterward")
+        XCTAssertEqual(attrs[.underlineStyle] as? Int, NSUnderlineStyle.single.rawValue, "textDecorationLine should still apply")
+    }
+
+    /// Regression test: setting .text (or changing the font) resets
+    /// attributedText, which used to silently drop lineHeight/letterSpacing/
+    /// textDecorationLine. They must be reapplied from accumulated state.
+    func testVTextFactoryAccumulatedAttributesSurviveTextChange() {
+        let factory = VTextFactory()
+        let label = factory.createView() as! UILabel
+
+        factory.updateProp(view: label, key: "text", value: "Hello")
+        factory.updateProp(view: label, key: "lineHeight", value: 24.0)
+        factory.updateProp(view: label, key: "text", value: "World")
+
+        XCTAssertEqual(label.text, "World", "text prop should still update the label's text")
+        let attrs = label.attributedText?.attributes(at: 0, effectiveRange: nil) ?? [:]
+        let paragraphStyle = attrs[.paragraphStyle] as? NSParagraphStyle
+        XCTAssertEqual(paragraphStyle?.minimumLineHeight, 24.0, "lineHeight should be reapplied after the text prop changes")
     }
 
     // MARK: - VButtonFactory Tests
@@ -734,6 +788,43 @@ final class ComponentFactoryTests: XCTestCase {
 
         factory.updateProp(view: scrollView, key: "pagingEnabled", value: true)
         XCTAssertTrue(scrollView.isPagingEnabled, "pagingEnabled=true should enable paging")
+    }
+
+    func testVScrollViewFactoryVerticalContentSizeGrowsHeight() {
+        let factory = VScrollViewFactory()
+        let scrollView = factory.createView() as! UIScrollView
+        scrollView.frame = CGRect(x: 0, y: 0, width: 100, height: 200)
+
+        let contentView = VScrollViewFactory.contentView(for: scrollView)!
+        let child = UIView()
+        child.flex.width(100).height(500)
+        contentView.flex.addItem(child)
+
+        VScrollViewFactory.layoutContentView(for: scrollView)
+
+        XCTAssertEqual(scrollView.contentSize.width, 100, accuracy: 0.5, "vertical scroll view's contentSize.width should match bounds width")
+        XCTAssertEqual(scrollView.contentSize.height, 500, accuracy: 0.5, "vertical scroll view's contentSize.height should grow to fit a child taller than the scroll view's bounds")
+    }
+
+    /// Regression test for a bug where the "horizontal" prop only toggled
+    /// bounce flags but `layoutContentView` always pinned the content view's
+    /// width to the scroll view's bounds, so `contentSize.width` could never
+    /// exceed the visible width and horizontal scrolling never engaged.
+    func testVScrollViewFactoryHorizontalContentSizeGrowsWidth() {
+        let factory = VScrollViewFactory()
+        let scrollView = factory.createView() as! UIScrollView
+        scrollView.frame = CGRect(x: 0, y: 0, width: 100, height: 200)
+        factory.updateProp(view: scrollView, key: "horizontal", value: true)
+
+        let contentView = VScrollViewFactory.contentView(for: scrollView)!
+        let child = UIView()
+        child.flex.width(300).height(50)
+        contentView.flex.addItem(child)
+
+        VScrollViewFactory.layoutContentView(for: scrollView)
+
+        XCTAssertEqual(scrollView.contentSize.width, 300, accuracy: 0.5, "horizontal scroll view's contentSize.width should grow to fit a child wider than the scroll view's bounds")
+        XCTAssertEqual(scrollView.contentSize.height, 200, accuracy: 0.5, "horizontal scroll view's contentSize.height should match the scroll view's bounds height")
     }
 
     // MARK: - VListFactory Tests

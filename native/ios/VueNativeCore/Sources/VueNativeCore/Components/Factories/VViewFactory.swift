@@ -227,6 +227,16 @@ private class ForceTouchHandlerView: UIView {
 
     func attach(to view: UIView) {
         targetView = view
+        // Must actually be in the view hierarchy to receive touchesBegan/
+        // touchesMoved — inserted behind `view`'s own subviews (index 0) so
+        // existing/future children stay on top and keep their own touch
+        // handling; this view only claims touches that land where no other
+        // subview does.
+        frame = view.bounds
+        autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        isUserInteractionEnabled = true
+        backgroundColor = .clear
+        view.insertSubview(self, at: 0)
     }
 
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {

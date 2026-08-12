@@ -1,6 +1,7 @@
 package com.vuenative.core
 
 import android.content.Context
+import android.content.pm.ApplicationInfo
 import android.graphics.Typeface
 import android.widget.Button
 import android.widget.FrameLayout
@@ -31,10 +32,21 @@ class ErrorOverlayViewTest {
         context = ApplicationProvider.getApplicationContext()
     }
 
-    private fun createActivity(): AppCompatActivity {
+    /**
+     * [debuggable] controls `ApplicationInfo.FLAG_DEBUGGABLE` on the built
+     * activity, since [ErrorOverlayView.show] now gates its overlay on the
+     * host app's debuggability rather than this library's own build type.
+     * Defaults to `true` so existing overlay-rendering tests are unaffected.
+     */
+    private fun createActivity(debuggable: Boolean = true): AppCompatActivity {
         val controller = Robolectric.buildActivity(AppCompatActivity::class.java)
         val activity = controller.get()
         activity.setTheme(androidx.appcompat.R.style.Theme_AppCompat)
+        activity.applicationInfo.flags = if (debuggable) {
+            activity.applicationInfo.flags or ApplicationInfo.FLAG_DEBUGGABLE
+        } else {
+            activity.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE.inv()
+        }
         controller.create().start().resume()
         return activity
     }
@@ -139,6 +151,37 @@ class ErrorOverlayViewTest {
         assertNotNull("decorView should not be null", decorView)
         val overlay = decorView?.findViewWithTag<FrameLayout>("vue_native_error_overlay")
         assertNotNull("Overlay should be added to decorView", overlay)
+    }
+
+    // -------------------------------------------------------------------------
+    // show() is gated on the host app's debuggability, not this library's own
+    // build type (a release host app must never render the overlay).
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun testShowDoesNothingWhenHostIsNotDebuggable() {
+        val activity = createActivity(debuggable = false)
+
+        ErrorOverlayView.show(activity, "Runtime error in a release host app")
+
+        val decorView = activity.window.decorView as android.view.ViewGroup
+        assertNull(
+            "Overlay must not render when the host app is not debuggable (release build)",
+            decorView.findViewWithTag<FrameLayout>("vue_native_error_overlay"),
+        )
+    }
+
+    @Test
+    fun testShowRendersWhenHostIsDebuggable() {
+        val activity = createActivity(debuggable = true)
+
+        ErrorOverlayView.show(activity, "Runtime error in a debug host app")
+
+        val decorView = activity.window.decorView as android.view.ViewGroup
+        assertNotNull(
+            "Overlay should render when the host app is debuggable",
+            decorView.findViewWithTag<FrameLayout>("vue_native_error_overlay"),
+        )
     }
 
     // -------------------------------------------------------------------------

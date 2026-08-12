@@ -27,8 +27,28 @@ class HotReloadManager(
 ) {
     companion object {
         private const val TAG = "VueNative-HotReload"
-        private const val RECONNECT_DELAY_MS = 2000L
-        private const val MAX_RECONNECT_ATTEMPTS = 10
+
+        /** Delay before the first reconnect attempt. */
+        private const val BASE_RECONNECT_DELAY_MS = 1_000L
+
+        /** Upper bound for the exponential backoff between reconnect attempts. */
+        private const val MAX_RECONNECT_DELAY_MS = 30_000L
+
+        /**
+         * Computes the delay before reconnect attempt [attempt] using exponential
+         * backoff: [BASE_RECONNECT_DELAY_MS] doubled per attempt, capped at
+         * [MAX_RECONNECT_DELAY_MS]. Reconnection never gives up while [serverUrl]
+         * is set (an emulator can take far longer to boot than the dev server
+         * takes to start), so the delay simply stays at the cap for large attempt
+         * counts. Mirrors `HotReloadManager.swift`'s `reconnectDelay(forAttempt:)`.
+         */
+        internal fun reconnectDelay(attempt: Int): Long {
+            // Cap the exponent itself (not just the final delay) so the shift
+            // below can never overflow, however large `attempt` gets.
+            val exponent = (attempt - 1).coerceIn(0, 20)
+            val delay = BASE_RECONNECT_DELAY_MS * (1L shl exponent)
+            return delay.coerceAtMost(MAX_RECONNECT_DELAY_MS)
+        }
 
         /**
          * Append the hot-reload auth token as a `token` query parameter when it is
@@ -131,14 +151,8 @@ class HotReloadManager(
     private fun scheduleReconnect() {
         if (disconnected || serverUrl == null) return
         reconnectAttempts += 1
-        if (reconnectAttempts > MAX_RECONNECT_ATTEMPTS) {
-            Log.w(
-                TAG,
-                "Giving up after $MAX_RECONNECT_ATTEMPTS attempts — start `bun run dev` and relaunch the app",
-            )
-            return
-        }
-        Log.d(TAG, "Reconnecting in ${RECONNECT_DELAY_MS}ms (attempt $reconnectAttempts/$MAX_RECONNECT_ATTEMPTS)")
-        mainHandler.postDelayed({ openConnection() }, RECONNECT_DELAY_MS)
+        val delay = reconnectDelay(reconnectAttempts)
+        Log.d(TAG, "Reconnecting in ${delay}ms (attempt $reconnectAttempts)")
+        mainHandler.postDelayed({ openConnection() }, delay)
     }
 }

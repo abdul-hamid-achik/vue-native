@@ -21,6 +21,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowLog
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
@@ -744,5 +745,25 @@ class StyleEngineTest {
         )
 
         assertEquals(15f, view.rotationY, 0.01f)
+    }
+
+    @Test
+    fun testTransformSkewWarnsOnceEvenAcrossMultipleViewsAndCalls() {
+        // Reset the "logged once per process" flag via reflection so this test
+        // is independent of whatever other tests exercised skew before it.
+        val field = StyleEngine::class.java.getDeclaredField("skewWarningLogged")
+        field.isAccessible = true
+        field.setBoolean(null, false)
+        ShadowLog.clear()
+
+        val viewOne = View(context)
+        val viewTwo = View(context)
+        StyleEngine.apply("transform", listOf(mapOf("skewX" to "20deg")), viewOne)
+        StyleEngine.apply("transform", listOf(mapOf("skewY" to "10deg")), viewOne)
+        StyleEngine.apply("transform", listOf(mapOf("skewX" to "5deg")), viewTwo)
+
+        val skewWarnings = ShadowLog.getLogsForTag("VueNative-StyleEngine")
+            .filter { it.msg.contains("skewX/skewY") }
+        assertEquals("The skew warning must log at most once per process", 1, skewWarnings.size)
     }
 }

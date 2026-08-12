@@ -61,6 +61,85 @@ final class ComponentFactoryTests: XCTestCase {
         return window
     }
 
+    // MARK: - VTextFactory Tests
+
+    /// Regression test: lineHeight, letterSpacing, and textDecorationLine each
+    /// used to rebuild `attributedStringValue` from scratch with only their own
+    /// attribute, so setting all three left only the last one applied
+    /// (dictionary iteration order is non-deterministic). They must accumulate.
+    func testVTextFactoryLineHeightLetterSpacingAndDecorationCoexist() {
+        let factory = VTextFactory()
+        let label = factory.createView() as! NSTextField
+
+        factory.updateProp(view: label, key: "text", value: "Hello")
+        factory.updateProp(view: label, key: "lineHeight", value: 24.0)
+        factory.updateProp(view: label, key: "letterSpacing", value: 2.0)
+        factory.updateProp(view: label, key: "textDecorationLine", value: "underline")
+
+        let attrs = label.attributedStringValue.attributes(at: 0, effectiveRange: nil)
+        let paragraphStyle = attrs[.paragraphStyle] as? NSParagraphStyle
+        XCTAssertEqual(paragraphStyle?.minimumLineHeight, 24.0, "lineHeight should survive letterSpacing/textDecorationLine being set afterward")
+        XCTAssertEqual(attrs[.kern] as? CGFloat, 2.0, "letterSpacing should survive textDecorationLine being set afterward")
+        XCTAssertEqual(attrs[.underlineStyle] as? Int, NSUnderlineStyle.single.rawValue, "textDecorationLine should still apply")
+    }
+
+    /// Regression test: setting .stringValue (or changing the font) resets
+    /// attributedStringValue, which used to silently drop lineHeight/
+    /// letterSpacing/textDecorationLine. They must be reapplied from
+    /// accumulated state.
+    func testVTextFactoryAccumulatedAttributesSurviveTextChange() {
+        let factory = VTextFactory()
+        let label = factory.createView() as! NSTextField
+
+        factory.updateProp(view: label, key: "text", value: "Hello")
+        factory.updateProp(view: label, key: "lineHeight", value: 24.0)
+        factory.updateProp(view: label, key: "text", value: "World")
+
+        XCTAssertEqual(label.stringValue, "World", "text prop should still update the label's text")
+        let attrs = label.attributedStringValue.attributes(at: 0, effectiveRange: nil)
+        let paragraphStyle = attrs[.paragraphStyle] as? NSParagraphStyle
+        XCTAssertEqual(paragraphStyle?.minimumLineHeight, 24.0, "lineHeight should be reapplied after the text prop changes")
+    }
+
+    // MARK: - VViewFactory Force Touch Tests
+
+    /// Regression test: `attachPressureHandler` used to only store a weak
+    /// reference to the target view and never add the handler to the view
+    /// hierarchy, so `touchesBegan`/`touchesMoved`/`touchesEnded` never fired
+    /// and force-touch/pressure events never reached JS. The handler must be
+    /// an actual subview.
+    func testVViewFactoryForceTouchHandlerAttachesToViewHierarchy() {
+        let factory = VViewFactory()
+        let view = factory.createView()
+        view.frame = CGRect(x: 0, y: 0, width: 100, height: 100)
+
+        factory.addEventListener(view: view, event: "forceTouch") { _ in }
+
+        XCTAssertEqual(view.subviews.count, 1, "forceTouch should attach its handler as a subview of the target view")
+        let handlerView = view.subviews[0]
+        XCTAssertEqual(handlerView.frame, view.bounds, "the force-touch overlay should cover the full bounds of the target view")
+    }
+
+    // MARK: - VViewFactory Hover Tests
+
+    /// Regression test: `attachHoverHandler` used to only store a weak
+    /// reference to the target view and never add the handler to the view
+    /// hierarchy, so its `NSTrackingArea` was configured on a view with no
+    /// window and `mouseEntered`/`mouseExited`/`mouseMoved` never fired. The
+    /// handler must be an actual subview so the tracking area is live.
+    func testVViewFactoryHoverHandlerAttachesToViewHierarchy() {
+        let factory = VViewFactory()
+        let view = factory.createView()
+        view.frame = CGRect(x: 0, y: 0, width: 100, height: 100)
+
+        factory.addEventListener(view: view, event: "hover") { _ in }
+
+        XCTAssertEqual(view.subviews.count, 1, "hover should attach its handler as a subview of the target view")
+        let handlerView = view.subviews[0]
+        XCTAssertEqual(handlerView.frame, view.bounds, "the hover overlay should cover the full bounds of the target view")
+        XCTAssertFalse(handlerView.trackingAreas.isEmpty, "attaching should configure at least one NSTrackingArea so mouseEntered/Exited/Moved can fire")
+    }
+
     func testVModalStyleTargetsVisibleOverlay() {
         let factory = VModalFactory()
         let placeholder = factory.createView()
