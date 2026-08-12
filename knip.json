@@ -11,12 +11,16 @@
     "examples/native-blocks-demo": {
       "ignore": ["app/**"],
       "ignoreDependencies": ["@thelacanians/vue-native-runtime", "@thelacanians/vue-native-navigation"]
+    },
+    "tools/vscode-extension": {
+      "entry": ["src/**/*.test.ts"],
+      "project": ["src/**/*.ts"],
+      "ignoreBinaries": ["vsce"]
     }
   },
   "ignore": [
     "native/**",
-    "docs/**",
-    "tools/**"
+    "docs/**"
   ],
   "exclude": ["classMembers", "exports", "types", "duplicates"],
   "ignoreBinaries": ["swift"]

@@ -1,48 +1,28 @@
 import * as vscode from 'vscode'
+import { scanForDiagnostics, type DiagnosticSeverityLevel } from './diagnostics'
+
+const SEVERITY_MAP: Record<DiagnosticSeverityLevel, vscode.DiagnosticSeverity> = {
+  error: vscode.DiagnosticSeverity.Error,
+  hint: vscode.DiagnosticSeverity.Hint,
+}
 
 export function activate(context: vscode.ExtensionContext) {
   // Diagnostics: warn on common Vue Native mistakes in .vue files
   const diagnosticCollection = vscode.languages.createDiagnosticCollection('vue-native')
   context.subscriptions.push(diagnosticCollection)
 
-  const DIAGNOSTIC_RULES: Array<{
-    pattern: RegExp
-    message: string
-    severity: vscode.DiagnosticSeverity
-  }> = [
-    {
-      pattern: /\bapp\.mount\s*\(/g,
-      message: 'Vue Native uses app.start() instead of app.mount(). There is no DOM to mount to.',
-      severity: vscode.DiagnosticSeverity.Error,
-    },
-    {
-      pattern: /import\s+.*from\s+['"]vue['"]/g,
-      message: 'In Vue Native, import from "@thelacanians/vue-native-runtime" instead of "vue" for runtime APIs. The Vite plugin aliases "vue" automatically, but explicit imports are clearer.',
-      severity: vscode.DiagnosticSeverity.Hint,
-    },
-  ]
-
   function updateDiagnostics(document: vscode.TextDocument) {
     if (document.languageId !== 'vue') return
 
-    const diagnostics: vscode.Diagnostic[] = []
-    const text = document.getText()
-
-    for (const rule of DIAGNOSTIC_RULES) {
-      rule.pattern.lastIndex = 0
-      let match: RegExpExecArray | null
-      while ((match = rule.pattern.exec(text)) !== null) {
-        const startPos = document.positionAt(match.index)
-        const endPos = document.positionAt(match.index + match[0].length)
-        const diagnostic = new vscode.Diagnostic(
-          new vscode.Range(startPos, endPos),
-          rule.message,
-          rule.severity,
-        )
-        diagnostic.source = 'Vue Native'
-        diagnostics.push(diagnostic)
-      }
-    }
+    const diagnostics = scanForDiagnostics(document.getText()).map((match) => {
+      const diagnostic = new vscode.Diagnostic(
+        new vscode.Range(document.positionAt(match.start), document.positionAt(match.end)),
+        match.message,
+        SEVERITY_MAP[match.severity],
+      )
+      diagnostic.source = 'Vue Native'
+      return diagnostic
+    })
 
     diagnosticCollection.set(document.uri, diagnostics)
   }

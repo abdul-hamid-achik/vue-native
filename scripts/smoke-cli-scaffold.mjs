@@ -70,35 +70,16 @@ function installedCohortResolutions(app, packageName) {
   return [...resolutions.values()]
 }
 
-try {
-  const archives = {}
-  for (const [packageName, packageDir] of Object.entries(packageDirs)) {
-    const manifest = JSON.parse(readFileSync(join(packageDir, 'package.json'), 'utf8'))
-    run('bun', ['pm', 'pack', '--destination', tempRoot], packageDir)
-    const archiveName = `${packageName.replace('@', '').replace('/', '-')}-${manifest.version}.tgz`
-    const archivePath = join(tempRoot, archiveName)
-    if (!existsSync(archivePath)) {
-      throw new Error(`Packed archive was not created at ${archivePath}`)
-    }
-    archives[packageName] = archivePath
-  }
+// Every scaffold template must survive the full pipeline against the packed
+// current packages — a renamed navigation/runtime export used only by the tabs
+// or drawer template would otherwise ship without ever failing CI.
+const templates = ['blank', 'tabs', 'drawer']
 
-  run('bun', ['init', '-y'], tempRoot)
-  const installerManifestPath = join(tempRoot, 'package.json')
-  const installerManifest = JSON.parse(readFileSync(installerManifestPath, 'utf8'))
-  const packedArchive = packageName => `file:./${basename(archives[packageName])}`
-  const packedDependencies = Object.fromEntries(
-    Object.keys(packageDirs).map(packageName => [packageName, packedArchive(packageName)]),
-  )
-  installerManifest.dependencies = packedDependencies
-  installerManifest.overrides = packedDependencies
-  writeFileSync(installerManifestPath, `${JSON.stringify(installerManifest, null, 2)}\n`)
-  run('bun', ['install'], tempRoot)
+function smokeTemplate(template, cli, archives) {
+  const appName = `smoke-app-${template}`
+  run(cli, ['create', appName, '--template', template], tempRoot)
 
-  const cli = join(tempRoot, 'node_modules', '.bin', 'vue-native')
-  run(cli, ['create', 'smoke-app'], tempRoot)
-
-  const app = join(tempRoot, 'smoke-app')
+  const app = join(tempRoot, appName)
   const appManifestPath = join(app, 'package.json')
   const appManifest = JSON.parse(readFileSync(appManifestPath, 'utf8'))
   if (appManifest.dependencies.vue !== expectedVueVersion) {
@@ -175,7 +156,38 @@ try {
     )
   }
 
-  process.stdout.write('Packed CLI fresh-scaffold smoke passed.\n')
+  process.stdout.write(`Packed CLI fresh-scaffold smoke passed for template "${template}".\n`)
+}
+
+try {
+  const archives = {}
+  for (const [packageName, packageDir] of Object.entries(packageDirs)) {
+    const manifest = JSON.parse(readFileSync(join(packageDir, 'package.json'), 'utf8'))
+    run('bun', ['pm', 'pack', '--destination', tempRoot], packageDir)
+    const archiveName = `${packageName.replace('@', '').replace('/', '-')}-${manifest.version}.tgz`
+    const archivePath = join(tempRoot, archiveName)
+    if (!existsSync(archivePath)) {
+      throw new Error(`Packed archive was not created at ${archivePath}`)
+    }
+    archives[packageName] = archivePath
+  }
+
+  run('bun', ['init', '-y'], tempRoot)
+  const installerManifestPath = join(tempRoot, 'package.json')
+  const installerManifest = JSON.parse(readFileSync(installerManifestPath, 'utf8'))
+  const packedArchive = packageName => `file:./${basename(archives[packageName])}`
+  const packedDependencies = Object.fromEntries(
+    Object.keys(packageDirs).map(packageName => [packageName, packedArchive(packageName)]),
+  )
+  installerManifest.dependencies = packedDependencies
+  installerManifest.overrides = packedDependencies
+  writeFileSync(installerManifestPath, `${JSON.stringify(installerManifest, null, 2)}\n`)
+  run('bun', ['install'], tempRoot)
+
+  const cli = join(tempRoot, 'node_modules', '.bin', 'vue-native')
+  for (const template of templates) {
+    smokeTemplate(template, cli, archives)
+  }
 } finally {
   rmSync(tempRoot, { recursive: true, force: true })
 }

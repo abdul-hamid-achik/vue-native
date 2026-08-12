@@ -202,11 +202,14 @@ jobs:
           bun run version:check -- --verbose
 
   # ── TypeScript validation ────────────────────────────────
+  # The release-gate jobs below only run when there are changesets to publish:
+  # ci.yml already validated this exact commit, so a push without changesets
+  # (docs, chores) must not repeat full native builds on macOS runners.
   validate:
     name: Validate
     runs-on: ubuntu-latest
-    needs: release-context
-    if: github.event_name == 'workflow_run'
+    needs: [release-context, changesets]
+    if: github.event_name == 'workflow_run' && needs.changesets.outputs.hasChangesets == 'true'
 
     steps:
       - uses: actions/checkout@v6
@@ -257,8 +260,8 @@ jobs:
   native-builds:
     name: Native Builds
     runs-on: macos-15
-    needs: release-context
-    if: github.event_name == 'workflow_run'
+    needs: [release-context, changesets]
+    if: github.event_name == 'workflow_run' && needs.changesets.outputs.hasChangesets == 'true'
 
     steps:
       - uses: actions/checkout@v6
@@ -343,8 +346,8 @@ jobs:
   android-build:
     name: Android Build
     runs-on: ubuntu-latest
-    needs: release-context
-    if: github.event_name == 'workflow_run'
+    needs: [release-context, changesets]
+    if: github.event_name == 'workflow_run' && needs.changesets.outputs.hasChangesets == 'true'
 
     steps:
       - uses: actions/checkout@v6

@@ -59,6 +59,10 @@ jobs:
       - name: Test
         run: bun run test:ts
 
+      - name: Runtime coverage thresholds
+        run: bun run test:coverage
+        working-directory: packages/runtime
+
       - name: Dead code check
         run: bun run knip
 
@@ -161,8 +165,10 @@ jobs:
           echo "result=$RESULT" >> "$GITHUB_OUTPUT"
 
   # ── Swift / iOS (build & test VueNativeCore) ───────────
+  # Runs on the same image as publish.yml's native-builds gate so a PR is
+  # validated in the exact environment that later gates its release.
   swift-ios:
-    runs-on: macos-14
+    runs-on: macos-15
 
     steps:
       - uses: actions/checkout@v6

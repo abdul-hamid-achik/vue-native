@@ -37,8 +37,7 @@
   },
   "dependencies": {
     "@thelacanians/vue-native-sfc-parser": "^0.6.7",
-    "@thelacanians/vue-native-codegen": "^0.6.6",
-    "fast-glob": "^3.3.2"
+    "@thelacanians/vue-native-codegen": "^0.6.6"
   },
   "peerDependencies": {
     "vite": "^7.0.0 || ^8.0.0",
