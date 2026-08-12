@@ -244,6 +244,47 @@ describe('VFlatList', () => {
     expect(itemLayoutListeners.length).toBeGreaterThan(0)
   })
 
+  it('measured heights follow items across data reordering', async () => {
+    const itemA = { id: 'a' }
+    const itemB = { id: 'b' }
+    const root = renderComponent(
+      createVNode(VFlatList, {
+        data: [itemA, itemB],
+        estimatedItemHeight: 44,
+        renderItem: ({ item }: any) => h('VText', {}, item.id),
+      }),
+    )
+    await nextTick()
+
+    // Native reports item A (index 0) as 100pt tall.
+    const layoutListener = mockBridge.getOpsByType('addEventListener')
+      .find((op: any) => op.args[1] === 'itemLayout')
+    expect(layoutListener).toBeDefined()
+    NativeBridge.handleNativeEvent(layoutListener!.args[0], 'itemLayout', { index: 0, height: 100 })
+    await nextTick()
+    mockBridge.reset()
+
+    // Reorder: A moves to index 1. Its 100pt measurement must move with it,
+    // so B (unmeasured, index 0) sits at 0 and A starts at the 44pt estimate.
+    render(
+      createVNode(VFlatList, {
+        data: [itemB, itemA],
+        estimatedItemHeight: 44,
+        renderItem: ({ item }: any) => h('VText', {}, item.id),
+      }),
+      root,
+    )
+    await nextTick()
+
+    const topUpdates = mockBridge.getOpsByType('updateStyle')
+      .filter((o: any) => o.args[1]?.top !== undefined)
+      .map((o: any) => o.args[1].top)
+    // Under the old index-keyed cache, B would inherit A's 100pt measurement
+    // and A would be placed at top: 100.
+    expect(topUpdates).toContain(44)
+    expect(topUpdates).not.toContain(100)
+  })
+
   it('infers the item type from data (type-level)', () => {
     interface Item { id: number, title: string }
     // Type-level only: this function is never invoked at runtime. If VFlatList

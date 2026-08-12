@@ -1,3 +1,4 @@
+import { getCurrentInstance, onUnmounted } from '@vue/runtime-core'
 import { NativeBridge } from '../bridge'
 import { usePlatform } from './usePlatform'
 
@@ -34,6 +35,15 @@ export interface MenuSection {
  */
 export function useMenu() {
   const { isMacOS } = usePlatform()
+  const cleanups: Array<() => void> = []
+
+  // Registered synchronously during setup so onMenuItemClick subscriptions are
+  // released automatically on unmount, matching the rest of the composable API.
+  if (getCurrentInstance()) {
+    onUnmounted(() => {
+      for (const cleanup of cleanups.splice(0)) cleanup()
+    })
+  }
 
   async function setAppMenu(sections: MenuSection[]): Promise<void> {
     if (!isMacOS) return
@@ -47,9 +57,15 @@ export function useMenu() {
 
   function onMenuItemClick(callback: (id: string, title: string) => void): () => void {
     if (!isMacOS) return () => {}
-    return NativeBridge.onGlobalEvent<{ id?: string, title?: string }>('menu:itemClick', (payload) => {
+    const unsubscribe = NativeBridge.onGlobalEvent<{ id?: string, title?: string }>('menu:itemClick', (payload) => {
       callback(payload.id ?? '', payload.title ?? '')
     })
+    cleanups.push(unsubscribe)
+    return () => {
+      const idx = cleanups.indexOf(unsubscribe)
+      if (idx !== -1) cleanups.splice(idx, 1)
+      unsubscribe()
+    }
   }
 
   return { setAppMenu, showContextMenu, onMenuItemClick }

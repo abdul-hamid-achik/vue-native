@@ -1,4 +1,4 @@
-import { ref, onUnmounted } from '@vue/runtime-core'
+import { getCurrentInstance, ref, onUnmounted } from '@vue/runtime-core'
 import { NativeBridge } from '../bridge'
 
 // ─── Types ────────────────────────────────────────────────────────────────
@@ -139,6 +139,9 @@ export function useBluetooth() {
     return NativeBridge.invokeNativeModule('Bluetooth', 'writeCharacteristic', [deviceId, serviceUUID, charUUID, data])
   }
 
+  /** Native GATT subscriptions still active, keyed for best-effort teardown. */
+  const activeCharacteristicSubscriptions = new Map<string, () => Promise<void>>()
+
   async function subscribe(
     deviceId: string,
     serviceUUID: string,
@@ -156,25 +159,46 @@ export function useBluetooth() {
       }
     })
     cleanups.push(unsubscribe)
-    return async () => {
-      unsubscribe()
+
+    const subscriptionKey = `${deviceId}:${serviceUUID}:${charUUID}`
+    const unsubscribeNative = async () => {
+      activeCharacteristicSubscriptions.delete(subscriptionKey)
       await NativeBridge.invokeNativeModule('Bluetooth', 'unsubscribeFromCharacteristic', [
         deviceId,
         serviceUUID,
         charUUID,
       ])
     }
+    // Track the native subscription so unmount cancels it even when the
+    // caller never invokes the returned function — otherwise the peripheral
+    // keeps notifying (and draining battery) with no JS handler left.
+    activeCharacteristicSubscriptions.set(subscriptionKey, unsubscribeNative)
+
+    return async () => {
+      unsubscribe()
+      await unsubscribeNative()
+    }
   }
 
-  onUnmounted(() => {
-    if (isScanning.value) {
-      NativeBridge.invokeNativeModule('Bluetooth', 'stopScan').catch((err: unknown) => {
-        if (__DEV__) console.warn('[vue-native] Bluetooth.stopScan failed:', err)
-      })
-    }
-    cleanups.forEach(fn => fn())
-    cleanups.length = 0
-  })
+  // Guarded like useGeolocation: when called outside setup() there is no
+  // instance to unmount from, and Vue would warn on onUnmounted.
+  if (getCurrentInstance()) {
+    onUnmounted(() => {
+      if (isScanning.value) {
+        NativeBridge.invokeNativeModule('Bluetooth', 'stopScan').catch((err: unknown) => {
+          if (__DEV__) console.warn('[vue-native] Bluetooth.stopScan failed:', err)
+        })
+      }
+      cleanups.forEach(fn => fn())
+      cleanups.length = 0
+      for (const unsubscribeNative of [...activeCharacteristicSubscriptions.values()]) {
+        unsubscribeNative().catch((err: unknown) => {
+          if (__DEV__) console.warn('[vue-native] Bluetooth.unsubscribeFromCharacteristic failed:', err)
+        })
+      }
+      activeCharacteristicSubscriptions.clear()
+    })
+  }
 
   return {
     scan,

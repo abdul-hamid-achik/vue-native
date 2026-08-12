@@ -17,7 +17,7 @@ const { createNativeNode } = await import('../node')
 const {
   VView, VText, VButton, VInput, VSwitch, VSlider, VImage, VSVG,
   VScrollView, VList, VModal, VActivityIndicator,
-  VKeyboardAvoiding, VSafeArea, VProgressBar, VPicker: _VPicker,
+  VKeyboardAvoiding, VSafeArea, VProgressBar, VPicker,
   VSegmentedControl, VActionSheet: _VActionSheet, VStatusBar, VWebView,
   VRefreshControl, VPressable, VSectionList, VTabBar, VDrawer,
   VDrawerItem, VDrawerSection,
@@ -300,6 +300,43 @@ describe('Components', () => {
       NativeBridge.handleNativeEvent(changeListener!.args[0], 'change', { value: 0.75 })
       expect(updateModelValue).toHaveBeenCalledWith(0.75)
       expect(change).toHaveBeenCalledWith(0.75)
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // VPicker (v-model)
+  // ---------------------------------------------------------------------------
+  describe('VPicker', () => {
+    it('maps modelValue to the native value prop', async () => {
+      renderComponent(createVNode(VPicker, { modelValue: 1700000000000 }))
+      await nextTick()
+      const ops = mockBridge.getOpsByType('updateProp')
+      expect(ops.find(o => o.args[1] === 'value')?.args[2]).toBe(1700000000000)
+    })
+
+    it('keeps the legacy value prop working as an alias', async () => {
+      renderComponent(createVNode(VPicker, { value: 1600000000000 }))
+      await nextTick()
+      const ops = mockBridge.getOpsByType('updateProp')
+      expect(ops.find(o => o.args[1] === 'value')?.args[2]).toBe(1600000000000)
+    })
+
+    it('emits update:modelValue and change on native change', async () => {
+      const updateModelValue = vi.fn()
+      const change = vi.fn()
+      renderComponent(createVNode(VPicker, {
+        'onUpdate:modelValue': updateModelValue,
+        'onChange': change,
+      }))
+      await nextTick()
+
+      const changeListener = mockBridge.getOpsByType('addEventListener')
+        .find(op => op.args[1] === 'change')
+      expect(changeListener).toBeDefined()
+
+      NativeBridge.handleNativeEvent(changeListener!.args[0], 'change', { value: 1800000000000 })
+      expect(updateModelValue).toHaveBeenCalledWith(1800000000000)
+      expect(change).toHaveBeenCalledWith({ value: 1800000000000 })
     })
   })
 

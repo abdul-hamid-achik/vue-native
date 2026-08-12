@@ -1506,6 +1506,32 @@ describe('Composables', () => {
       expect(invokeModuleSpy).toHaveBeenCalledWith('SecureStorage', 'clear', [])
     })
 
+    it('serializes concurrent writes to the same key', async () => {
+      const { useSecureStorage } = await import('../composables/useSecureStorage')
+      const { setItem } = useSecureStorage()
+
+      const resolvers: Array<() => void> = []
+      invokeModuleSpy.mockImplementation(
+        () => new Promise((resolve) => { resolvers.push(() => resolve(undefined)) }) as any,
+      )
+
+      const first = setItem('token', 'stale')
+      const second = setItem('token', 'fresh')
+      await Promise.resolve()
+
+      // The second write must not reach native until the first settles.
+      expect(invokeModuleSpy).toHaveBeenCalledTimes(1)
+      expect(invokeModuleSpy).toHaveBeenLastCalledWith('SecureStorage', 'set', ['token', 'stale'])
+
+      resolvers[0]()
+      await first
+
+      expect(invokeModuleSpy).toHaveBeenCalledTimes(2)
+      expect(invokeModuleSpy).toHaveBeenLastCalledWith('SecureStorage', 'set', ['token', 'fresh'])
+      resolvers[1]()
+      await second
+    })
+
     it('getItem returns null for missing key', async () => {
       invokeModuleSpy.mockResolvedValueOnce(null)
       const { useSecureStorage } = await import('../composables/useSecureStorage')
@@ -2539,6 +2565,29 @@ describe('Composables', () => {
       expect(onGlobalEventSpy).not.toHaveBeenCalled()
       expect(typeof cleanup).toBe('function')
     })
+
+    it('releases onMenuItemClick subscriptions automatically on unmount', async () => {
+      const unsubscribeSpy = vi.fn()
+      onGlobalEventSpy.mockReturnValueOnce(unsubscribeSpy as any)
+
+      const { useMenu } = await import('../composables/useMenu')
+      const { baseCreateApp } = await import('../renderer')
+      const { createNativeNode } = await import('../node')
+
+      let api!: ReturnType<typeof useMenu>
+      const app = baseCreateApp({
+        setup() {
+          api = useMenu()
+          return () => {}
+        },
+      })
+      app.mount(createNativeNode('__ROOT__'))
+      api.onMenuItemClick(vi.fn())
+      expect(unsubscribeSpy).not.toHaveBeenCalled()
+
+      app.unmount()
+      expect(unsubscribeSpy).toHaveBeenCalledTimes(1)
+    })
   })
 
   // ---------------------------------------------------------------------------
@@ -2671,6 +2720,57 @@ describe('Composables', () => {
       expect(typeof cleanup1).toBe('function')
       expect(typeof cleanup2).toBe('function')
       expect(typeof cleanup3).toBe('function')
+    })
+
+    it('releases on* subscriptions automatically on unmount', async () => {
+      const unsubDrop = vi.fn()
+      const unsubEnter = vi.fn()
+      onGlobalEventSpy
+        .mockReturnValueOnce(unsubDrop as any)
+        .mockReturnValueOnce(unsubEnter as any)
+
+      const { useDragDrop } = await import('../composables/useDragDrop')
+      const { baseCreateApp } = await import('../renderer')
+      const { createNativeNode } = await import('../node')
+
+      let api!: ReturnType<typeof useDragDrop>
+      const app = baseCreateApp({
+        setup() {
+          api = useDragDrop()
+          return () => {}
+        },
+      })
+      app.mount(createNativeNode('__ROOT__'))
+      api.onDrop(vi.fn())
+      api.onDragEnter(vi.fn())
+
+      app.unmount()
+      expect(unsubDrop).toHaveBeenCalledTimes(1)
+      expect(unsubEnter).toHaveBeenCalledTimes(1)
+    })
+
+    it('manually invoked cleanup is not re-run on unmount', async () => {
+      const unsubDrop = vi.fn()
+      onGlobalEventSpy.mockReturnValueOnce(unsubDrop as any)
+
+      const { useDragDrop } = await import('../composables/useDragDrop')
+      const { baseCreateApp } = await import('../renderer')
+      const { createNativeNode } = await import('../node')
+
+      let api!: ReturnType<typeof useDragDrop>
+      const app = baseCreateApp({
+        setup() {
+          api = useDragDrop()
+          return () => {}
+        },
+      })
+      app.mount(createNativeNode('__ROOT__'))
+      const cleanup = api.onDrop(vi.fn())
+      cleanup()
+      expect(unsubDrop).toHaveBeenCalledTimes(1)
+
+      app.unmount()
+      expect(unsubDrop).toHaveBeenCalledTimes(1)
     })
   })
 })

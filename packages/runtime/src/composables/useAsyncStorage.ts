@@ -1,21 +1,9 @@
 import { NativeBridge } from '../bridge'
+import { createWriteQueue } from './writeQueue'
 
 // Per-key write queue to prevent concurrent access race conditions.
 // Each key gets its own Promise chain; writes are serialized per key.
-const writeQueues = new Map<string, Promise<void>>()
-
-function queueWrite(key: string, fn: () => Promise<void>): Promise<void> {
-  const prev = writeQueues.get(key) ?? Promise.resolve()
-  const next = prev.then(fn, fn) // Continue chain even on error
-  writeQueues.set(key, next)
-  // Clean up completed chains
-  next.then(() => {
-    if (writeQueues.get(key) === next) {
-      writeQueues.delete(key)
-    }
-  })
-  return next
-}
+const queueWrite = createWriteQueue()
 
 /**
  * Async key-value storage composable backed by UserDefaults.

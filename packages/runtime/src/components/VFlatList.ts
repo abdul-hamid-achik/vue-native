@@ -169,16 +169,23 @@ const VFlatListBase = defineComponent({
     const viewportHeight = ref(0)
     // Bumped whenever a measured height changes, to recompute cumulative offsets.
     const heightsVersion = ref(0)
-    const measuredHeights = new Map<number, number>()
+    // Keyed by keyExtractor output, not array index: when data is reordered,
+    // filtered, or prepended to, measurements must follow the item they belong
+    // to instead of whatever item now occupies the measured position.
+    const measuredHeights = new Map<string | number, number>()
     let endReachedFired = false
 
     const hasHeader = computed(() => !!slots.header)
     const headerOffset = computed(() => (hasHeader.value ? props.headerHeight : 0))
 
+    function keyFor(index: number): string | number {
+      return props.keyExtractor(props.data?.[index], index)
+    }
+
     // Fixed-height fast path (no measurement) vs variable-height (estimated + measured).
     function heightFor(index: number): number {
       if (props.itemHeight != null) return props.itemHeight
-      return measuredHeights.get(index) ?? props.estimatedItemHeight
+      return measuredHeights.get(keyFor(index)) ?? props.estimatedItemHeight
     }
 
     // Cumulative top offsets: offsets[i] = top of item i, offsets[n] = content height.
@@ -226,9 +233,10 @@ const VFlatListBase = defineComponent({
       if (props.itemHeight != null) return // fixed heights need no measurement
       const index = typeof payload?.index === 'number' ? payload.index : -1
       const height = typeof payload?.height === 'number' ? payload.height : -1
-      if (index < 0 || height <= 0) return
-      if (measuredHeights.get(index) !== height) {
-        measuredHeights.set(index, height)
+      if (index < 0 || height <= 0 || index >= (props.data?.length ?? 0)) return
+      const key = keyFor(index)
+      if (measuredHeights.get(key) !== height) {
+        measuredHeights.set(key, height)
         heightsVersion.value++
       }
     }
