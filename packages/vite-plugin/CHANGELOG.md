@@ -1,5 +1,7 @@
 # @thelacanians/vue-native-vite-plugin
 
+## 0.18.1
+
 ## 0.18.0
 
 ## 0.17.0
