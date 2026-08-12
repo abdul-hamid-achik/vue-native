@@ -29,6 +29,10 @@ final class VScrollViewFactoryTests: XCTestCase {
     private func makeScrollView(width: CGFloat, height: CGFloat) -> NSScrollView {
         let factory = VScrollViewFactory()
         let scrollView = factory.createView() as! NSScrollView
+        // Re-pin the overlay style after AppKit's environment checks: legacy
+        // inset scrollers on CI runners shrink the clip view by ~15pt and make
+        // every extent assertion host-dependent.
+        scrollView.scrollerStyle = .overlay
         scrollView.frame = CGRect(x: 0, y: 0, width: width, height: height)
         scrollView.tile()
         return scrollView

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeAll, beforeEach, afterAll, afterEach } from 'vitest'
 import { join, sep } from 'node:path'
 import cliPackage from '../../package.json'
 import type { VueNativeConfig, ResolvedConfig } from '../config'
@@ -156,6 +156,18 @@ vi.mock('picocolors', () => {
       bold: passthrough,
     },
   }
+})
+
+// These tests simulate the darwin toolchain flows (xcodebuild, xcodegen,
+// ./gradlew) regardless of the host OS running the suite — CI's typescript
+// job runs on Linux, where ensureApplePlatformSupported would otherwise
+// reject every iOS/macOS command path before the behavior under test.
+const REAL_PLATFORM = Object.getOwnPropertyDescriptor(process, 'platform')!
+beforeAll(() => {
+  Object.defineProperty(process, 'platform', { value: 'darwin', configurable: true })
+})
+afterAll(() => {
+  Object.defineProperty(process, 'platform', REAL_PLATFORM)
 })
 
 // ═══════════════════════════════════════════════════════════════════════════

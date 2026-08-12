@@ -22,6 +22,12 @@ final class VScrollViewFactory: NativeComponentFactory {
         scrollView.hasHorizontalScroller = false
         scrollView.autohidesScrollers = true
         scrollView.drawsBackground = false
+        // Overlay scrollers, matching the iOS-style indicators the framework
+        // uses everywhere. This also keeps the clip view's bounds equal to the
+        // scroll view's frame on systems where AppKit would otherwise pick
+        // legacy inset scrollers (e.g. a plugged-in mouse, CI runners), which
+        // would reserve ~15pt of content width and change layout per-host.
+        scrollView.scrollerStyle = .overlay
 
         // Create document view (children go here)
         let documentView = FlippedView()

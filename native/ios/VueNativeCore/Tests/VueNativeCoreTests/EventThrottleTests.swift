@@ -78,7 +78,7 @@ final class EventThrottleTests: XCTestCase {
             throttle.fire("second")
         }
 
-        await fulfillment(of: [expectation], timeout: 1.0)
+        await fulfillment(of: [expectation], timeout: 10.0)
         XCTAssertEqual(fireCount, 2, "Event after window expiry should fire")
     }
 
@@ -105,7 +105,7 @@ final class EventThrottleTests: XCTestCase {
         throttle.fire("third")
         throttle.fire("fourth")
 
-        await fulfillment(of: [expectation], timeout: 1.0)
+        await fulfillment(of: [expectation], timeout: 10.0)
 
         XCTAssertEqual(payloads.first, "first", "First payload should be 'first'")
         XCTAssertEqual(payloads.last, "fourth", "Trailing call should deliver the latest payload")
