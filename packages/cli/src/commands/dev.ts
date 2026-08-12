@@ -6,12 +6,14 @@ import { join } from 'node:path'
 import { watch } from 'chokidar'
 import { WebSocketServer, WebSocket } from 'ws'
 import pc from 'picocolors'
+import { ensureBunAvailable } from '../bun-check.js'
 import { ConfigError, loadConfig } from '../config.js'
 import { getHotReloadToken } from '../hot-reload-token.js'
 import { p } from '../ui.js'
 
 const DEFAULT_PORT = 8174
 const BUNDLE_FILE = 'dist/vue-native-bundle.js'
+const BUN_REQUIRED_MESSAGE = 'Bun is required to run the dev server — install it from https://bun.sh and retry.'
 type NativePlatform = 'ios' | 'android' | 'macos'
 
 function isNativePlatform(value: string): value is NativePlatform {
@@ -140,6 +142,10 @@ export const devCommand = new Command('dev')
         `Invalid --port "${options.port}". Expected an integer between 1 and 65535.`,
       )
     }
+    // Fail fast with an actionable message instead of spawning `bun` later
+    // and either logging a cryptic ENOENT or — worse — hanging forever while
+    // the WebSocket server keeps the process alive.
+    ensureBunAvailable(BUN_REQUIRED_MESSAGE)
     const platform = resolveDevPlatform(options)
     const cwd = process.cwd()
     await loadConfig(cwd)
@@ -344,6 +350,17 @@ export const devCommand = new Command('dev')
     })
 
     vite.on('error', (err) => {
+      // The early ensureBunAvailable() check above catches this in the
+      // common case, but PATH can still change between the check and the
+      // spawn. Without this, a missing bun leaves the WebSocket server
+      // running forever, printing "Waiting for app to connect..." while
+      // nothing can ever build a bundle to send.
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+        console.error(pc.red(BUN_REQUIRED_MESSAGE))
+        wss.close()
+        process.exit(1)
+        return
+      }
       console.error(pc.red(`Vite error: ${err.message}`))
     })
 

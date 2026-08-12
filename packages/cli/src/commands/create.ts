@@ -641,6 +641,8 @@ dist/
 DerivedData/
 .build/
 build/
+ios/*.xcodeproj/
+ios/*.xcworkspace/
 .gradle/
 local.properties
 *.apk

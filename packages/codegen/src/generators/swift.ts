@@ -108,11 +108,14 @@ function generateSwiftHeader(block: NativeBlock): string {
 }
 
 /**
- * Extract class name from Swift code
- * Looks for: class ClassName: NativeModule
+ * Extract class name from Swift code.
+ * Looks for `class ClassName: NativeModule`, tolerating other conformances
+ * before or after NativeModule in the list (e.g. `class ClassName: NSObject,
+ * NativeModule` — required whenever the class also subclasses NSObject,
+ * since Swift requires the superclass to come first).
  */
 function extractClassName(content: string, sourceFile: string): string {
-  const match = content.match(/class\s+(\w+)\s*:\s*NativeModule/)
+  const match = content.match(/class\s+(\w+)\s*:\s*[^{]*\bNativeModule\b/)
   if (!match) {
     // Fallback to component name
     const fallback = `${path.basename(sourceFile, '.vue')}Module`

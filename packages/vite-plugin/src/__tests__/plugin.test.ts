@@ -259,6 +259,48 @@ describe('Native codegen cleanup', () => {
     }
   })
 
+  it('ignores .vue files inside nested node_modules directories, not just top-level ones', async () => {
+    const root = await mkdtemp(join(process.cwd(), 'tmp-vue-native-codegen-'))
+
+    try {
+      await mkdir(join(root, 'app'), { recursive: true })
+      await writeFile(
+        join(root, 'app', 'App.vue'),
+        `<template><VView /></template>
+<native platform="ios">
+class AppModule: NativeModule {
+  var moduleName: String { "App" }
+  func invoke(method: String, args: [Any], callback: @escaping (Any?, String?) -> Void) {
+    callback(nil, nil)
+  }
+}
+</native>`,
+      )
+
+      // A .vue file with an intentionally invalid native block, nested two
+      // levels inside node_modules. If the scanner's default excludes only
+      // match at the scan root (as fast-glob's `ignore: ['node_modules']`
+      // does without a `**/` prefix), this file would be picked up and its
+      // broken block would fail validation.
+      const nestedVendorDir = join(root, 'app', 'lib', 'node_modules', 'vendor')
+      await mkdir(nestedVendorDir, { recursive: true })
+      await writeFile(
+        join(nestedVendorDir, 'Broken.vue'),
+        '<template><VView /></template><native platform="ios">not valid swift</native>',
+      )
+
+      const plugin = vueNativePlugin()
+      await plugin.configResolved?.({ root } as any)
+
+      expect(plugin.api.getLastError()).toBeNull()
+      const blocks = plugin.api.getNativeBlocks()
+      expect(blocks).toHaveLength(1)
+      expect(blocks[0].sourceFile).toContain('App.vue')
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   it('watches added, changed, and deleted SFCs for codegen updates', async () => {
     const registeredEvents: string[] = []
     const watcher = {

@@ -1,6 +1,20 @@
 import type { NativeBlock, ParseError } from '@thelacanians/vue-native-sfc-parser'
 
 /**
+ * Matches a class declaration that conforms to NativeModule anywhere in its
+ * conformance/supertype list — not just immediately after the colon. Swift
+ * requires the superclass (if any) to come first, so a class that also
+ * subclasses e.g. NSObject must write `NativeModule` after it:
+ * `class LocationModule: NSObject, NativeModule`. Kotlin has the same
+ * ordering-independent need for `class SensorModule: SensorEventListener,
+ * NativeModule`. `\bNativeModule\b` deliberately does not match
+ * `NativeModuleRegistry` — the trailing `\b` requires a non-word character
+ * (or end of string) right after "NativeModule", and "Registry" continues
+ * with a word character, so the boundary fails there.
+ */
+const NATIVE_MODULE_CONFORMANCE = /class\s+\w+\s*:\s*[^{]*\bNativeModule\b/
+
+/**
  * Validation result with errors and warnings
  */
 export interface ValidationResult {
@@ -61,7 +75,7 @@ function validateSwiftSyntax(block: NativeBlock): ParseError[] {
   const { content, sourceFile } = block
 
   // Check for class declaration
-  if (!content.match(/class\s+\w+\s*:\s*NativeModule/)) {
+  if (!content.match(NATIVE_MODULE_CONFORMANCE)) {
     errors.push({
       file: sourceFile,
       line: block.startLine,
@@ -121,7 +135,7 @@ function validateKotlinSyntax(block: NativeBlock): Pick<ValidationResult, 'error
   const { content, sourceFile } = block
 
   // Check for class declaration
-  if (!content.match(/class\s+\w+\s*:\s*NativeModule/)) {
+  if (!content.match(NATIVE_MODULE_CONFORMANCE)) {
     errors.push({
       file: sourceFile,
       line: block.startLine,
@@ -186,7 +200,7 @@ function validateNativeModuleStructure(block: NativeBlock): ParseError[] {
   const { content, sourceFile } = block
 
   // Check for NativeModule conformance/implementation
-  if (block.language === 'swift' && !content.includes(': NativeModule')) {
+  if (block.language === 'swift' && !NATIVE_MODULE_CONFORMANCE.test(content)) {
     errors.push({
       file: sourceFile,
       line: block.startLine,
@@ -194,7 +208,7 @@ function validateNativeModuleStructure(block: NativeBlock): ParseError[] {
     })
   }
 
-  if (block.language === 'kotlin' && !content.includes(': NativeModule')) {
+  if (block.language === 'kotlin' && !NATIVE_MODULE_CONFORMANCE.test(content)) {
     errors.push({
       file: sourceFile,
       line: block.startLine,

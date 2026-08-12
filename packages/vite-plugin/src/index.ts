@@ -24,7 +24,6 @@
 
 import { parseDirectory, parseSFC, type NativeBlock } from '@thelacanians/vue-native-sfc-parser'
 import { cleanGeneratedFiles, generateCode, hasGeneratedArtifacts, writeGeneratedFiles, type CodegenResult } from '@thelacanians/vue-native-codegen'
-import fg from 'fast-glob'
 import { realpathSync } from 'node:fs'
 import type { ConfigEnv, LibraryFormats, ResolvedConfig, UserConfig, ViteDevServer } from 'vite'
 import { getHotReloadToken } from './hot-reload-token'
@@ -391,19 +390,15 @@ export default function vueNativePlugin(options: VueNativePluginOptions = {}) {
         typescriptOutputDir: nativeOutputDirs?.typescript,
       }
 
-      // Find all SFC files
-      const sfcs = await fg('**/*.vue', {
-        cwd: root,
-        ignore: exclude,
-        absolute: true,
-      })
-
       // Parse SFCs and extract native blocks. A project can legitimately have
       // no SFCs/native blocks after a deletion; that must clear generated
-      // modules instead of leaving stale registries behind.
-      const parseResult = sfcs.length === 0
-        ? { errors: [], allNativeBlocks: [] }
-        : parseDirectory('.', { root, exclude })
+      // modules instead of leaving stale registries behind. parseDirectory
+      // already walks the tree once, checking each directory name against
+      // `exclude` as it recurses — so it correctly skips node_modules (etc.)
+      // at any depth. A prior fast-glob pre-scan here was redundant (and,
+      // because its `ignore` patterns lacked `**/` prefixes, actually
+      // re-descended into every nested node_modules on each hot reload).
+      const parseResult = parseDirectory('.', { root, exclude })
 
       if (parseResult.errors.length > 0) {
         const error = new Error(

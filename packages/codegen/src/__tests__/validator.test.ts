@@ -80,6 +80,126 @@ class TestModule: NativeModule {
       expect(result.warnings.some(warning => warning.message.includes('List<Any?>'))).toBe(true)
     })
 
+    describe('multi-conformance NativeModule declarations', () => {
+      it('accepts a Swift class with a superclass before NativeModule', () => {
+        // Swift requires the superclass to come first when a class also
+        // conforms to protocols, e.g. `class LocationModule: NSObject, NativeModule`
+        // (the pattern used by the repo's own SocialAuthModule.swift).
+        const block: NativeBlock = {
+          platform: 'ios',
+          language: 'swift',
+          content: `
+class LocationModule: NSObject, NativeModule {
+  var moduleName: String { "Location" }
+  func invoke(method: String, args: [Any], callback: @escaping (Any?, String?) -> Void) {
+    callback(nil, nil)
+  }
+}
+          `.trim(),
+          sourceFile: '/test/Location.vue',
+          componentName: 'Location',
+          attributes: {},
+        }
+
+        const result = validateNativeBlocks([block])
+
+        expect(result.isValid).toBe(true)
+        expect(result.errors).toHaveLength(0)
+      })
+
+      it('accepts a Kotlin class with an interface before NativeModule', () => {
+        const block: NativeBlock = {
+          platform: 'android',
+          language: 'kotlin',
+          content: `
+class SensorModule: SensorEventListener, NativeModule {
+  override val moduleName: String = "Sensor"
+  override fun invoke(method: String, args: List<Any?>, bridge: NativeBridge, callback: (Any?, String?) -> Unit) {
+    callback(null, null)
+  }
+}
+          `.trim(),
+          sourceFile: '/test/Sensor.vue',
+          componentName: 'Sensor',
+          attributes: {},
+        }
+
+        const result = validateNativeBlocks([block])
+
+        expect(result.isValid).toBe(true)
+        expect(result.errors).toHaveLength(0)
+      })
+
+      it('still accepts the simple single-conformance case', () => {
+        const block: NativeBlock = {
+          platform: 'ios',
+          language: 'swift',
+          content: `
+class SimpleModule: NativeModule {
+  var moduleName: String { "Simple" }
+  func invoke(method: String, args: [Any], callback: @escaping (Any?, String?) -> Void) {
+    callback(nil, nil)
+  }
+}
+          `.trim(),
+          sourceFile: '/test/Simple.vue',
+          componentName: 'Simple',
+          attributes: {},
+        }
+
+        const result = validateNativeBlocks([block])
+
+        expect(result.isValid).toBe(true)
+        expect(result.errors).toHaveLength(0)
+      })
+
+      it('rejects a class that does not conform to NativeModule at all', () => {
+        const block: NativeBlock = {
+          platform: 'ios',
+          language: 'swift',
+          content: `
+class UnrelatedModule: NSObject {
+  var moduleName: String { "Unrelated" }
+  func invoke(method: String, args: [Any], callback: @escaping (Any?, String?) -> Void) {
+    callback(nil, nil)
+  }
+}
+          `.trim(),
+          sourceFile: '/test/Unrelated.vue',
+          componentName: 'Unrelated',
+          attributes: {},
+        }
+
+        const result = validateNativeBlocks([block])
+
+        expect(result.isValid).toBe(false)
+        expect(result.errors.some(e => e.message.includes('conform to NativeModule'))).toBe(true)
+      })
+
+      it('does not mistake a NativeModuleRegistry reference for NativeModule conformance', () => {
+        const block: NativeBlock = {
+          platform: 'ios',
+          language: 'swift',
+          content: `
+class RegistryHelper: NativeModuleRegistry {
+  var moduleName: String { "RegistryHelper" }
+  func invoke(method: String, args: [Any], callback: @escaping (Any?, String?) -> Void) {
+    callback(nil, nil)
+  }
+}
+          `.trim(),
+          sourceFile: '/test/RegistryHelper.vue',
+          componentName: 'RegistryHelper',
+          attributes: {},
+        }
+
+        const result = validateNativeBlocks([block])
+
+        expect(result.isValid).toBe(false)
+        expect(result.errors.some(e => e.message.includes('conform to NativeModule'))).toBe(true)
+      })
+    })
+
     it('should error when Swift module missing class declaration', () => {
       const block: NativeBlock = {
         platform: 'ios',

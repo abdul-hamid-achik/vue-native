@@ -627,6 +627,20 @@ describe('create command', () => {
       expect(content).toContain('.gradle/')
     })
 
+    it('excludes the XcodeGen-generated project so it never gets committed', async () => {
+      await runCreate('my-app')
+
+      const gitignoreCall = mockWriteFile.mock.calls.find(
+        ([path]: any[]) => path.endsWith('.gitignore'),
+      )
+      const content = gitignoreCall![1] as string
+
+      // ios/project.yml is the source of truth; ensureXcodeProject runs
+      // XcodeGen automatically, so the generated project must not be tracked.
+      expect(content).toContain('ios/*.xcodeproj/')
+      expect(content).toContain('ios/*.xcworkspace/')
+    })
+
     it('includes secrets/environment patterns', async () => {
       await runCreate('my-app')
 
@@ -1075,6 +1089,43 @@ describe('dev command', () => {
       ['run', 'vite', 'build', '--watch', '--mode', 'development'],
       expect.objectContaining({ stdio: 'pipe' }),
     )
+  })
+
+  it('fails fast with an actionable message when bun is not on PATH', async () => {
+    mockExecFileSync.mockImplementation((command: string) => {
+      if (command === 'bun') throw new Error('spawn bun ENOENT')
+      return ''
+    })
+
+    const devCommand = await importDevCommand()
+    await expect(devCommand.parseAsync(['node', 'dev']))
+      .rejects.toThrow(/Bun is required to run the dev server/)
+
+    // Must fail before starting the WebSocket server or spawning anything.
+    expect(capturedWssOptions).toEqual({})
+    expect(mockSpawn).not.toHaveBeenCalled()
+  })
+
+  it('exits instead of hanging forever when the Vite child process cannot be spawned', async () => {
+    const mockExit = vi.spyOn(process, 'exit').mockImplementation((() => {
+      throw new Error('process.exit')
+    }) as () => never)
+    const child = createMockChildProcess(false)
+    mockSpawn.mockReturnValue(child)
+
+    const devCommand = await importDevCommand()
+    await devCommand.parseAsync(['node', 'dev'])
+
+    const enoentError = Object.assign(new Error('spawn bun ENOENT'), { code: 'ENOENT' })
+    expect(() => child.emit('error', enoentError)).toThrow('process.exit')
+
+    expect(mockWssClose).toHaveBeenCalled()
+    const errOutput = (console.error as ReturnType<typeof vi.fn>).mock.calls
+      .map(([msg]: any[]) => String(msg))
+      .join('\n')
+    expect(errOutput).toContain('Bun is required to run the dev server')
+
+    mockExit.mockRestore()
   })
 
   it('leaves the target unset for direct Vite fallback when no selector is provided', async () => {

@@ -105,11 +105,13 @@ function generateKotlinHeader(block: NativeBlock): string {
 }
 
 /**
- * Extract class name from Kotlin code
- * Looks for: class ClassName: NativeModule
+ * Extract class name from Kotlin code.
+ * Looks for `class ClassName: NativeModule`, tolerating other interfaces
+ * before or after NativeModule in the supertype list (e.g. `class
+ * ClassName: SensorEventListener, NativeModule`).
  */
 function extractClassName(content: string, sourceFile: string): string {
-  const match = content.match(/class\s+(\w+)\s*:\s*NativeModule/)
+  const match = content.match(/class\s+(\w+)\s*:\s*[^{]*\bNativeModule\b/)
   if (!match) {
     // Fallback to component name
     const fallback = `${path.basename(sourceFile, '.vue')}Module`

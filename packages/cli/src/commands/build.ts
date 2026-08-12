@@ -3,10 +3,22 @@ import { execSync } from 'node:child_process'
 import { existsSync, readdirSync, mkdirSync, copyFileSync } from 'node:fs'
 import { join, basename } from 'node:path'
 import pc from 'picocolors'
+import { ensureBunAvailable } from '../bun-check.js'
 import { ConfigError, loadConfig } from '../config.js'
 import { runManagedProcess } from '../managed-process.js'
-import { ensureXcodeProject, findXcodeProject, formatGradleFailure, installAndroidBundle } from '../native-project.js'
+import {
+  ensureApplePlatformSupported,
+  ensureXcodeProject,
+  findAndroidConfigDrift,
+  findIOSConfigDrift,
+  findXcodeProject,
+  formatGradleFailure,
+  installAndroidBundle,
+  resolveGradleWrapper,
+} from '../native-project.js'
 import { p, resolvePlatform } from '../ui.js'
+
+const BUN_REQUIRED_MESSAGE = 'Bun is required to build the JS bundle — install it from https://bun.sh and retry.'
 
 type BuildMode = 'debug' | 'release'
 
@@ -61,6 +73,7 @@ export const buildCommand = new Command('build')
     if (options.mode !== 'debug' && options.mode !== 'release') {
       throw new ConfigError('Build mode must be "debug" or "release"')
     }
+    ensureApplePlatformSupported(platform)
 
     const cwd = process.cwd()
     const config = await loadConfig(cwd)
@@ -75,7 +88,23 @@ export const buildCommand = new Command('build')
     const platformLabel = platform === 'ios' ? 'iOS' : platform === 'android' ? 'Android' : 'macOS'
     const modeLabel = options.mode.charAt(0).toUpperCase() + options.mode.slice(1)
     p.intro(pc.cyan(`Vue Native — ${modeLabel} Build (${platformLabel})`))
+
+    // vue-native.config.ts's android/ios settings only apply at scaffold
+    // time; warn (but don't auto-sync) when they've since drifted from the
+    // native project files, which are authoritative after `create`.
+    if (config) {
+      const driftWarnings = platform === 'android'
+        ? findAndroidConfigDrift(join(cwd, 'android'), config.android)
+        : platform === 'ios'
+          ? findIOSConfigDrift(join(cwd, 'ios'), config.ios)
+          : []
+      for (const warning of driftWarnings) {
+        p.log.warn(warning)
+      }
+    }
+
     p.log.step('Building JS bundle for production...')
+    ensureBunAvailable(BUN_REQUIRED_MESSAGE)
     try {
       execSync('bun run vite build --mode production', {
         cwd,
@@ -195,11 +224,13 @@ async function buildAndroid(
     return
   }
 
-  // Find gradlew
-  const gradlew = join(androidDir, 'gradlew')
-  if (!existsSync(gradlew)) {
+  // Find the platform-appropriate Gradle wrapper (gradlew.bat on Windows,
+  // ./gradlew everywhere else).
+  const gradleWrapper = resolveGradleWrapper()
+  const gradlewPath = join(androidDir, gradleWrapper.fileName)
+  if (!existsSync(gradlewPath)) {
     throw new ConfigError(
-      'gradlew not found in android/ directory. Make sure your Android project has the Gradle wrapper.',
+      `${gradleWrapper.fileName} not found in android/ directory. Make sure your Android project has the Gradle wrapper.`,
     )
   }
 
@@ -220,9 +251,10 @@ async function buildAndroid(
 
   let result
   try {
-    result = await runManagedProcess('./gradlew', [gradleTask], {
+    result = await runManagedProcess(gradleWrapper.command, [gradleTask], {
       cwd: androidDir,
       stdio: 'pipe',
+      shell: gradleWrapper.shell,
       env: { ...process.env },
     }, {
       stdout: (data) => {

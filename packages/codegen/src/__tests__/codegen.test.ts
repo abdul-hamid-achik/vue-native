@@ -107,6 +107,26 @@ class HapticsModule: NativeModule {
       const file = generateSwiftFile(block)
       expect(file.content).toContain('class TestComponentModule: NativeModule')
     })
+
+    it('extracts the class name when NativeModule follows a superclass', () => {
+      // Swift requires the superclass to come first, e.g.
+      // `class LocationModule: NSObject, NativeModule` (SocialAuthModule.swift
+      // uses this exact pattern).
+      const block: NativeBlock = {
+        ...mockSwiftBlock,
+        content: `
+class LocationModule: NSObject, NativeModule {
+  var moduleName: String { "Location" }
+  func invoke(method: String, args: [Any], callback: @escaping (Any?, String?) -> Void) {
+    callback(nil, nil)
+  }
+}
+        `.trim(),
+      }
+
+      const file = generateSwiftFile(block)
+      expect(file.outputPath).toContain(join('GeneratedModules', 'LocationModule.swift'))
+    })
   })
 
   describe('generateKotlinFile', () => {
@@ -130,6 +150,23 @@ class HapticsModule: NativeModule {
       })
 
       expect(file.outputPath).toContain(join('custom', 'android', 'output', 'HapticsModule.kt'))
+    })
+
+    it('extracts the class name when NativeModule follows an interface', () => {
+      const block: NativeBlock = {
+        ...mockKotlinBlock,
+        content: `
+class SensorModule: SensorEventListener, NativeModule {
+  override val moduleName: String = "Sensor"
+  override fun invoke(method: String, args: List<Any?>, bridge: NativeBridge, callback: (Any?, String?) -> Unit) {
+    callback(null, null)
+  }
+}
+        `.trim(),
+      }
+
+      const file = generateKotlinFile(block)
+      expect(file.outputPath).toContain(join('GeneratedModules', 'SensorModule.kt'))
     })
   })
 
