@@ -1,5 +1,20 @@
 # @thelacanians/vue-native-cli
 
+## 0.20.0
+
+### Minor Changes
+
+- 03aff46: `vue-native generate` treats parse errors as failures and commits generated files atomically (write, then prune stale output). `vue-native doctor [--json]` reports toolchain and native-project health. Scaffolded apps no longer enable DOM libs, pin Gradle 8.6 to match the bundled wrapper, and include a `macos` config section.
+- 03aff46: Add `vue-native inspect [--json]` (project snapshot) and `vue-native capabilities [--json]` (framework component/module/limitation manifest). VSectionList `stickySectionHeaders` now applies at runtime on iOS and Android, matching macOS.
+
+### Patch Changes
+
+- 03aff46: `bun run smoke:app-shell` now probes simulators and physical devices, runs the iOS host-boot fixture on an available Simulator, and records skip reasons when phones are paired but disconnected. `NotificationsModule` no longer crashes XCTest by touching `UNUserNotificationCenter` in the xctest agent. `bun run ios:ensure-simulator` downloads the iOS runtime when it is missing.
+- 03aff46: Add a committed app-shell fixture and host-boot smoke. `vue-native` hosts can load `fixtures/app-shell/vue-native-bundle.js` and expose stable accessibility ids (`app-shell-root`, `app-shell-label`). `bun run smoke:app-shell` writes `artifacts/app-shell-smoke.json` with per-platform pass/skip reasons. Physical-device evidence stays separate.
+- 03aff46: `vue-native build` and `vue-native run` now fail when the native project or the produced `.app` / APK / AAB / xcarchive is missing, instead of exiting 0 after only the JS bundle. Pass `--bundle-only` to stop after `dist/vue-native-bundle.js`. Apple product lookup is shared, newest-DerivedData-first, and scheme-scoped on iOS and macOS.
+- Updated dependencies [03aff46]
+  - @thelacanians/vue-native-codegen@0.6.8
+
 ## 0.19.0
 
 ### Minor Changes

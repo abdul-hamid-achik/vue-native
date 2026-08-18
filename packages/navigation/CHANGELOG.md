@@ -1,5 +1,16 @@
 # @thelacanians/vue-native-navigation
 
+## 0.20.0
+
+### Minor Changes
+
+- 03aff46: Serialize navigation transitions so concurrent pushes cannot drop a route; keep replace/reset/goBack guard redirects on the same stack operation; disable pointer events on inactive RouterView screens. Flatten array styles, fix concurrent useDatabase opens, and clear Teleport targets on hot-reload teardown. Android certificate pins now merge like Apple, and OTA/FileSystem/image loads use the pin-aware HTTP client. Android VScrollView honors `horizontal` and `scrollEnabled`.
+
+### Patch Changes
+
+- Updated dependencies [03aff46]
+  - @thelacanians/vue-native-runtime@0.20.0
+
 ## 0.19.0
 
 ### Patch Changes

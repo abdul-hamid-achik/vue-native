@@ -1,5 +1,11 @@
 # @thelacanians/vue-native-codegen
 
+## 0.6.8
+
+### Patch Changes
+
+- 03aff46: `vue-native generate` treats parse errors as failures and commits generated files atomically (write, then prune stale output). `vue-native doctor [--json]` reports toolchain and native-project health. Scaffolded apps no longer enable DOM libs, pin Gradle 8.6 to match the bundled wrapper, and include a `macos` config section.
+
 ## 0.6.7
 
 ### Patch Changes

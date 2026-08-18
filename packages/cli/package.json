@@ -1,6 +1,6 @@
 {
   "name": "@thelacanians/vue-native-cli",
-  "version": "0.19.0",
+  "version": "0.20.0",
   "description": "CLI for creating and running Vue Native apps",
   "license": "MIT",
   "author": "Vue Native Contributors",
@@ -41,7 +41,7 @@
   },
   "dependencies": {
     "@clack/prompts": "^1.7.0",
-    "@thelacanians/vue-native-codegen": "^0.6.7",
+    "@thelacanians/vue-native-codegen": "^0.6.8",
     "@thelacanians/vue-native-sfc-parser": "^0.6.7",
     "chokidar": "^3.6.0",
     "commander": "^12.1.0",
