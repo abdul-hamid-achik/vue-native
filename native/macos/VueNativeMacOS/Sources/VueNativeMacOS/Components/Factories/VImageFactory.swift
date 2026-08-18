@@ -1,5 +1,6 @@
 import AppKit
 import ObjectiveC
+import VueNativeShared
 
 /// Factory for VImage — async image loading component.
 /// Maps to NSImageView with URL-based async loading via URLSession,
@@ -8,7 +9,7 @@ final class VImageFactory: NativeComponentFactory {
 
     private let urlSession: URLSession
 
-    init(urlSession: URLSession = .shared) {
+    init(urlSession: URLSession = CertificatePinning.shared.requestSession) {
         self.urlSession = urlSession
     }
 

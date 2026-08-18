@@ -297,6 +297,64 @@ export function writeGeneratedFiles(
 }
 
 /**
+ * Write new generated files first, then delete generator-owned files that
+ * are no longer in the result. A write failure leaves existing output in place.
+ */
+export function commitGeneratedFiles(
+  result: CodegenResult,
+  rootDir: string = process.cwd(),
+  options: CodegenOptions = {},
+): { written: number, errors: ParseError[] } {
+  const writeResult = writeGeneratedFiles(result, rootDir)
+  if (writeResult.errors.length > 0) {
+    return writeResult
+  }
+
+  const keep = new Set(result.files.map(file => path.resolve(rootDir, file.outputPath)))
+  for (const existing of listGeneratedOwnedFiles(options, rootDir)) {
+    if (!keep.has(existing)) {
+      removeGeneratedFile(existing)
+    }
+  }
+
+  return writeResult
+}
+
+function listGeneratedOwnedFiles(
+  options: CodegenOptions,
+  rootDir: string,
+): string[] {
+  const owned: string[] = []
+  const dirs: Array<{ path: string, extensions: string[] }> = [
+    { path: generatedModuleDirectory('ios', options), extensions: ['.swift'] },
+    { path: generatedModuleDirectory('android', options), extensions: ['.kt'] },
+    { path: generatedModuleDirectory('macos', options), extensions: ['.swift'] },
+    { path: options.typescriptOutputDir || 'packages/runtime/src/generated', extensions: ['.ts'] },
+  ]
+
+  for (const dir of dirs) {
+    const absoluteDir = path.resolve(rootDir, dir.path)
+    if (!fs.existsSync(absoluteDir)) continue
+    for (const file of fs.readdirSync(absoluteDir)) {
+      if (!dir.extensions.some(extension => file.endsWith(extension))) continue
+      const filePath = path.join(absoluteDir, file)
+      if (isGeneratedArtifact(filePath)) {
+        owned.push(filePath)
+      }
+    }
+  }
+
+  for (const platform of ['ios', 'android', 'macos'] as const) {
+    const registry = path.resolve(rootDir, registrationOutputPath(platform, options))
+    if (isGeneratedArtifact(registry)) {
+      owned.push(registry)
+    }
+  }
+
+  return owned
+}
+
+/**
  * Clean generated files
  *
  * @param options - Codegen options

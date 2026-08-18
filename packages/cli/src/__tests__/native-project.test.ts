@@ -10,6 +10,7 @@ import { join } from 'node:path'
 import {
   ensureApplePlatformSupported,
   findAndroidConfigDrift,
+  findAppleAppBundle,
   findIOSConfigDrift,
   formatGradleFailure,
   resolveGradleWrapper,
@@ -232,5 +233,71 @@ describe('config drift detection', () => {
       const warnings = findIOSConfigDrift(iosDir, { deploymentTarget: '16.0' })
       expect(warnings).toEqual([])
     })
+  })
+})
+
+describe('findAppleAppBundle', () => {
+  let root: string
+
+  afterEach(async () => {
+    if (root) await rm(root, { recursive: true, force: true })
+  })
+
+  async function writeApp(derivedData: string, project: string, productsSubdir: string, appName: string) {
+    const productsDir = join(derivedData, project, 'Build/Products', productsSubdir)
+    await mkdir(join(productsDir, appName), { recursive: true })
+    return join(productsDir, appName)
+  }
+
+  it('returns null when DerivedData does not exist', async () => {
+    root = await mkdtemp(join(tmpdir(), 'vue-native-dd-'))
+    expect(findAppleAppBundle({
+      productsSubdir: 'Debug-iphonesimulator',
+      derivedDataBase: join(root, 'missing'),
+    })).toBeNull()
+  })
+
+  it('prefers the most recently modified DerivedData project', async () => {
+    root = await mkdtemp(join(tmpdir(), 'vue-native-dd-'))
+    const older = await writeApp(root, 'OtherApp-aaa', 'Debug-iphonesimulator', 'OtherApp.app')
+    const newer = await writeApp(root, 'MyApp-bbb', 'Debug-iphonesimulator', 'MyApp.app')
+    const { utimes } = await import('node:fs/promises')
+    await utimes(join(root, 'OtherApp-aaa'), new Date('2020-01-01'), new Date('2020-01-01'))
+    await utimes(join(root, 'MyApp-bbb'), new Date('2026-01-01'), new Date('2026-01-01'))
+
+    expect(findAppleAppBundle({
+      productsSubdir: 'Debug-iphonesimulator',
+      derivedDataBase: root,
+    })).toBe(newer)
+    expect(findAppleAppBundle({
+      productsSubdir: 'Debug-iphonesimulator',
+      derivedDataBase: root,
+    })).not.toBe(older)
+  })
+
+  it('selects the scheme-named .app even when another project is newer', async () => {
+    root = await mkdtemp(join(tmpdir(), 'vue-native-dd-'))
+    const matching = await writeApp(root, 'OtherApp-aaa', 'Debug', 'OtherApp.app')
+    await writeApp(root, 'MyApp-bbb', 'Debug', 'MyApp.app')
+    const { utimes } = await import('node:fs/promises')
+    await utimes(join(root, 'OtherApp-aaa'), new Date('2020-01-01'), new Date('2020-01-01'))
+    await utimes(join(root, 'MyApp-bbb'), new Date('2026-01-01'), new Date('2026-01-01'))
+
+    expect(findAppleAppBundle({
+      productsSubdir: 'Debug',
+      scheme: 'OtherApp',
+      derivedDataBase: root,
+    })).toBe(matching)
+  })
+
+  it('returns null when the requested scheme is not in DerivedData', async () => {
+    root = await mkdtemp(join(tmpdir(), 'vue-native-dd-'))
+    await writeApp(root, 'MyApp-bbb', 'Debug', 'MyApp.app')
+
+    expect(findAppleAppBundle({
+      productsSubdir: 'Debug',
+      scheme: 'MissingScheme',
+      derivedDataBase: root,
+    })).toBeNull()
   })
 })

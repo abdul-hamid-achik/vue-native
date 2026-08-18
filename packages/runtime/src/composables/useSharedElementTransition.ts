@@ -19,12 +19,11 @@ export interface SharedElementRegistration {
 const sharedElementRegistry = new Map<string, number>()
 
 /**
- * Register a native view as a shared element for transitions.
+ * Register a native view id for a future shared-element transition.
  *
- * Call this composable with a unique identifier. When navigating with
- * `router.push('Detail', { sharedElements: ['hero-image'] })`, elements
- * registered with the same id on both source and destination screens
- * will animate their position and size between the two locations.
+ * This is a **registry only**. Navigation copies `sharedElements` onto the
+ * route entry; no measurement or native animation runs yet. Treat the API
+ * as experimental until a real transition path exists.
  *
  * @example
  * const { register, unregister } = useSharedElementTransition('hero-image')

@@ -63,13 +63,17 @@ export default defineConfig({
     minSdk: 21,
     targetSdk: 35,
   },
+  macos: {
+    deploymentTarget: '15.0',
+  },
 })
 ```
 
-The CLI validates this file on `dev`, `run`, and `build`. `bundleId`,
-`ios.scheme`, and `android.packageName` provide launch/build defaults. Native
-deployment targets are written into the generated Xcode/Gradle files at
-scaffold time; if you change those values later, update the native project too.
+The CLI validates this file on `dev`, `run`, `build`, `inspect`, and `doctor`.
+`bundleId`, `ios.scheme`, `macos.scheme`, and `android.packageName` provide
+launch/build defaults. Native deployment targets are written into the generated
+Xcode/Gradle files at scaffold time; if you change those values later, update
+the native project too.
 
 ### Configuration Reference
 
@@ -83,6 +87,8 @@ scaffold time; if you change those values later, update the native project too.
 | `android.minSdk` | `number` | No | Minimum Android SDK (default: `21`) |
 | `android.targetSdk` | `number` | No | Target Android SDK (default: `35`) |
 | `android.packageName` | `string` | No | Android package (defaults to `bundleId`) |
+| `macos.deploymentTarget` | `string` | No | Minimum macOS version (default: `"15.0"`) |
+| `macos.scheme` | `string` | No | Xcode scheme name (defaults to sanitized `name`) |
 | `plugins` | `string[]` | No | Reserved metadata for future plugin automation; plugins are not installed automatically |
 
 ## Development Server
@@ -152,6 +158,7 @@ vue-native run ios --device
 | `--bundle-id <id>` | App bundle identifier |
 | `--package <name>` | Android package (default: `com.vuenative.app`) |
 | `--activity <name>` | Android activity (default: `.MainActivity`) |
+| `--bundle-only` | Stop after the JavaScript bundle. Missing native projects or `.app` / APK / AAB products otherwise fail the command. |
 
 ## Project Structure
 
@@ -191,5 +198,37 @@ my-app/
 2. **Install** dependencies: `cd my-app && bun install`
 3. **Develop** with hot reload: `vue-native dev --ios`
 4. **Edit** Vue components in `app/` -- changes appear instantly
-5. **Build** for testing: `vue-native run ios` or `vue-native run android`
-6. **Release** via Xcode (iOS) or Gradle (Android)
+5. **Diagnose** the project: `vue-native doctor` then `vue-native inspect --json`
+6. **Build** for testing: `vue-native run ios` or `vue-native run android`
+7. **Release** via Xcode (iOS) or Gradle (Android)
+
+## Diagnostic commands
+
+Every command below accepts `--json` with `schemaVersion: 1` for agents and CI.
+
+```bash
+vue-native doctor --json
+vue-native inspect --json
+vue-native capabilities --json
+```
+
+| Command | What it reports | Exit |
+|---------|-----------------|------|
+| `doctor` | Toolchain and native-project health (`bun`, config, `ios/` / `android/` / `macos/`, `xcodebuild`, Java, Android SDK). | `1` when a check at level `error` fails |
+| `inspect` | Snapshot of the current project: resolved config, native hosts, `dist/vue-native-bundle.js`, generated-module dirs. | `0` (informational) |
+| `capabilities` | Framework contract: Vue cohort, 40 built-in components, native modules with per-platform `full` / `unsupported`, and known limitations. | `0` (informational) |
+
+`inspect` looks for config as `vue-native.config.{ts,js,mjs}`. A missing config is reported as `config.found: false`; a parse/validation error is `config.error`.
+
+`capabilities` is a first manifest, not a codegen source of truth. Platform omissions match the native-module contract checker (for example `Http` is Android-only; `Menu` / `Window` / `FileDialog` / `DragDrop` are macOS-only).
+
+Host-boot and device smoke for this repository live in [Testing](./testing.md#host-boot-and-device-smoke).
+
+### `vue-native generate`
+
+Regenerates Swift / Kotlin / TypeScript from `<native>` blocks. Parse and validation errors fail the command (`ConfigError`). Files are written, then stale generated output is pruned — last-known-good files are not deleted before the new write succeeds.
+
+```bash
+vue-native generate
+vue-native generate --watch
+```

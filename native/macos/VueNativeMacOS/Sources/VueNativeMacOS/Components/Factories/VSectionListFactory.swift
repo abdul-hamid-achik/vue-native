@@ -139,13 +139,13 @@ final class VSectionListFactory: NativeComponentFactory {
         guard let container = parent as? VSectionListContainerView else { return }
         child.ensureLayoutNode()
 
-        if let anchor = anchor, let idx = container.allChildren.firstIndex(where: { $0 === anchor }) {
-            container.allChildren.insert(child, at: idx)
-        } else {
-            container.allChildren.append(child)
+        container.applyChildMutation {
+            if let anchor = anchor, let idx = container.allChildren.firstIndex(where: { $0 === anchor }) {
+                container.allChildren.insert(child, at: idx)
+            } else {
+                container.allChildren.append(child)
+            }
         }
-        container.rebuildSections()
-        container.tableView.reloadData()
     }
 
     func removeChild(_ child: NSView, from parent: NSView) {
@@ -154,10 +154,10 @@ final class VSectionListFactory: NativeComponentFactory {
             return
         }
 
-        container.allChildren.removeAll { $0 === child }
-        child.removeFromSuperview()
-        container.rebuildSections()
-        container.tableView.reloadData()
+        container.applyChildMutation {
+            container.allChildren.removeAll { $0 === child }
+            child.removeFromSuperview()
+        }
     }
 }
 
@@ -240,6 +240,24 @@ final class VSectionListContainerView: FlippedView, NSTableViewDataSource, NSTab
     override func layout() {
         super.layout()
         scrollView.frame = bounds
+    }
+
+    func applyChildMutation(_ mutate: () -> Void) {
+        let oldCount = flatRows.count
+        mutate()
+        rebuildSections()
+        let newCount = flatRows.count
+        if newCount == oldCount {
+            tableView.reloadData()
+            return
+        }
+        tableView.beginUpdates()
+        if newCount > oldCount {
+            tableView.insertRows(at: IndexSet(integersIn: oldCount..<newCount), withAnimation: [])
+        } else {
+            tableView.removeRows(at: IndexSet(integersIn: newCount..<oldCount), withAnimation: [])
+        }
+        tableView.endUpdates()
     }
 
     func rebuildSections() {

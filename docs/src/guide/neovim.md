@@ -143,9 +143,10 @@ The plugin uses `vim.diagnostic` to show real-time warnings for common Vue Nativ
 | Pattern | Severity | Message |
 |---------|----------|---------|
 | `app.mount()` | Error | Use `app.start()` instead |
-| `@press` | Warning | Use `:onPress` prop binding |
 | `v-for` in VList | Warning | Use `:data` and `#item` slot |
 | `import from 'vue'` | Hint | Import from `@thelacanians/vue-native-runtime` |
+
+Both `@press="handler"` and `:onPress="handler"` are valid. The plugin does not warn on `@press`.
 
 Diagnostics appear inline and in the diagnostics list (`:lua vim.diagnostic.setloclist()`).
 

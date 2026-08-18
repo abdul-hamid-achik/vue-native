@@ -7,6 +7,7 @@ import { ensureBunAvailable } from '../bun-check.js'
 import { ConfigError, loadConfig } from '../config.js'
 import { runManagedProcess } from '../managed-process.js'
 import {
+  bundleOnlyHint,
   ensureApplePlatformSupported,
   ensureXcodeProject,
   findAndroidConfigDrift,
@@ -61,13 +62,15 @@ export const buildCommand = new Command('build')
   .argument('[platform]', 'platform to build for (ios, android, macos)')
   .option('--mode <mode>', 'build mode', 'release')
   .option('--output <path>', 'output directory for the build artifact', './build')
-  .option('--scheme <scheme>', 'Xcode scheme to build (iOS only)')
+  .option('--scheme <scheme>', 'Xcode scheme to build (iOS and macOS)')
   .option('--aab', 'build Android App Bundle (.aab) instead of APK')
+  .option('--bundle-only', 'stop after the JS bundle; do not require a native project or artifact')
   .action(async (platformArg: string | undefined, options: {
     mode: string
     output: string
     scheme?: string
     aab?: boolean
+    bundleOnly?: boolean
   }) => {
     const platform = await resolvePlatform(platformArg)
     if (options.mode !== 'debug' && options.mode !== 'release') {
@@ -80,7 +83,7 @@ export const buildCommand = new Command('build')
     const resolvedOptions = {
       ...options,
       mode: options.mode as BuildMode,
-      scheme: options.scheme ?? config?.ios.scheme,
+      scheme: options.scheme ?? (platform === 'macos' ? config?.macos.scheme : config?.ios.scheme),
     }
     const outputDir = join(cwd, options.output)
 
@@ -116,6 +119,12 @@ export const buildCommand = new Command('build')
       throw new ConfigError('Bundle build failed')
     }
 
+    if (options.bundleOnly) {
+      p.log.success('Bundle-only build complete (dist/vue-native-bundle.js)')
+      p.outro(pc.dim('Skipped the native project. Omit --bundle-only to produce an .app / APK / AAB.'))
+      return
+    }
+
     if (platform === 'ios') {
       await buildIOS(cwd, outputDir, resolvedOptions)
     } else if (platform === 'android') {
@@ -137,10 +146,9 @@ async function buildIOS(
   const project = ensureXcodeProject(iosDir)
 
   if (!project) {
-    console.log(pc.yellow('  No Xcode project found in ./ios/'))
-    console.log(pc.dim('  Add ios/project.yml or an .xcodeproj/.xcworkspace, then retry.'))
-    console.log(pc.dim('  Bundle has been built to dist/vue-native-bundle.js\n'))
-    return
+    throw new ConfigError(bundleOnlyHint(
+      'No Xcode project found in ./ios/. Add ios/project.yml or an .xcodeproj/.xcworkspace, then retry.',
+    ))
   }
 
   const projectFlag = project.isWorkspace ? '-workspace' : '-project'
@@ -198,13 +206,15 @@ async function buildIOS(
 
   console.log(pc.green('  ✓ Archive successful\n'))
 
-  if (existsSync(archivePath)) {
-    console.log(pc.green(`  Archive: ${archivePath}`))
-    console.log(pc.dim('  To export an IPA, open the archive in Xcode Organizer or run:'))
-    console.log(pc.dim(`  xcodebuild -exportArchive -archivePath "${archivePath}" -exportOptionsPlist ExportOptions.plist -exportPath "${outputDir}"\n`))
-  } else {
-    console.log(pc.yellow('  Archive path not found. Check Xcode build settings.\n'))
+  if (!existsSync(archivePath)) {
+    throw new ConfigError(
+      `Archive path not found at ${archivePath}. The archive step reported success but produced no native artifact.`,
+    )
   }
+
+  console.log(pc.green(`  Archive: ${archivePath}`))
+  console.log(pc.dim('  To export an IPA, open the archive in Xcode Organizer or run:'))
+  console.log(pc.dim(`  xcodebuild -exportArchive -archivePath "${archivePath}" -exportOptionsPlist ExportOptions.plist -exportPath "${outputDir}"\n`))
 }
 
 async function buildAndroid(
@@ -218,10 +228,9 @@ async function buildAndroid(
   const androidDir = join(cwd, 'android')
 
   if (!existsSync(androidDir)) {
-    console.log(pc.yellow('  No android/ directory found.'))
-    console.log(pc.dim('  To add Android support, create an Android project in the android/ directory.'))
-    console.log(pc.dim('  Bundle has been built to dist/vue-native-bundle.js\n'))
-    return
+    throw new ConfigError(bundleOnlyHint(
+      'No android/ directory found. To add Android support, create an Android project in the android/ directory.',
+    ))
   }
 
   // Find the platform-appropriate Gradle wrapper (gradlew.bat on Windows,
@@ -303,26 +312,26 @@ async function buildAndroid(
   // Find and copy the artifact to the output directory
   if (options.aab) {
     const aabPath = findAndroidAab(androidDir, options.mode)
-    if (aabPath) {
-      const destPath = join(outputDir, basename(aabPath))
-      copyFileSync(aabPath, destPath)
-      console.log(pc.green(`  AAB copied to: ${destPath}`))
-      console.log(pc.dim('  Upload this file to the Google Play Console.\n'))
-    } else {
-      console.log(pc.yellow(`  Could not locate ${options.mode} AAB.`))
-      console.log(pc.dim(`  Expected at android/app/build/outputs/bundle/${options.mode}/\n`))
+    if (!aabPath) {
+      throw new ConfigError(
+        `Could not locate ${options.mode} AAB. Expected at android/app/build/outputs/bundle/${options.mode}/.`,
+      )
     }
+    const destPath = join(outputDir, basename(aabPath))
+    copyFileSync(aabPath, destPath)
+    console.log(pc.green(`  AAB copied to: ${destPath}`))
+    console.log(pc.dim('  Upload this file to the Google Play Console.\n'))
   } else {
     const apkPath = findAndroidApk(androidDir, options.mode)
-    if (apkPath) {
-      const destPath = join(outputDir, basename(apkPath))
-      copyFileSync(apkPath, destPath)
-      console.log(pc.green(`  APK copied to: ${destPath}`))
-      console.log(pc.dim('  Install with: adb install -r "' + destPath + '"\n'))
-    } else {
-      console.log(pc.yellow(`  Could not locate ${options.mode} APK.`))
-      console.log(pc.dim(`  Expected at android/app/build/outputs/apk/${options.mode}/\n`))
+    if (!apkPath) {
+      throw new ConfigError(
+        `Could not locate ${options.mode} APK. Expected at android/app/build/outputs/apk/${options.mode}/.`,
+      )
     }
+    const destPath = join(outputDir, basename(apkPath))
+    copyFileSync(apkPath, destPath)
+    console.log(pc.green(`  APK copied to: ${destPath}`))
+    console.log(pc.dim('  Install with: adb install -r "' + destPath + '"\n'))
   }
 }
 
@@ -338,10 +347,9 @@ async function buildMacOS(
   const project = findXcodeProject(macosDir)
 
   if (!project) {
-    console.log(pc.yellow('  No Xcode project found in ./macos/'))
-    console.log(pc.dim('  To add macOS support, create an Xcode project in the macos/ directory.'))
-    console.log(pc.dim('  Bundle has been built to dist/vue-native-bundle.js\n'))
-    return
+    throw new ConfigError(bundleOnlyHint(
+      'No Xcode project found in ./macos/. To add macOS support, create an Xcode project in the macos/ directory.',
+    ))
   }
 
   const projectFlag = project.isWorkspace ? '-workspace' : '-project'
@@ -399,11 +407,13 @@ async function buildMacOS(
 
   console.log(pc.green('  ✓ Archive successful\n'))
 
-  if (existsSync(archivePath)) {
-    console.log(pc.green(`  Archive: ${archivePath}`))
-    console.log(pc.dim('  To export a .app or .pkg, open the archive in Xcode Organizer or run:'))
-    console.log(pc.dim(`  xcodebuild -exportArchive -archivePath "${archivePath}" -exportOptionsPlist ExportOptions.plist -exportPath "${outputDir}"\n`))
-  } else {
-    console.log(pc.yellow('  Archive path not found. Check Xcode build settings.\n'))
+  if (!existsSync(archivePath)) {
+    throw new ConfigError(
+      `Archive path not found at ${archivePath}. The archive step reported success but produced no native artifact.`,
+    )
   }
+
+  console.log(pc.green(`  Archive: ${archivePath}`))
+  console.log(pc.dim('  To export a .app or .pkg, open the archive in Xcode Organizer or run:'))
+  console.log(pc.dim(`  xcodebuild -exportArchive -archivePath "${archivePath}" -exportOptionsPlist ExportOptions.plist -exportPath "${outputDir}"\n`))
 }

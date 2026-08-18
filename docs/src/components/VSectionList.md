@@ -30,7 +30,7 @@ Use named slots to render section headers, items, and footers. Like `VList`, row
 | `sections` | `Section[]` | **(required)** | Array of section objects containing a title and data array |
 | `keyExtractor` | `Function` | index-based | `(item, index) => string` — unique key for each item |
 | `estimatedItemHeight` | `Number` | `44` | Estimated row height in points, used for scroll calculations |
-| `stickySectionHeaders` | `Boolean` | `true` | Whether section headers stick to the top while scrolling. Currently implemented on Apple platforms |
+| `stickySectionHeaders` | `Boolean` | `true` | Whether section headers stick to the top while scrolling. Applies at runtime on all three hosts: iOS recreates the table as `.plain` (sticky) or `.grouped` (not sticky); macOS toggles `floatsGroupRows`; Android installs a sticky `ItemDecoration`. |
 | `showsScrollIndicator` | `Boolean` | `true` | Shows the vertical scroll indicator |
 | `bounces` | `Boolean` | `true` | Enables bounce effect at scroll edges on Apple platforms |
 | `style` | `Object` | `{}` | Layout + appearance styles for the outer container |

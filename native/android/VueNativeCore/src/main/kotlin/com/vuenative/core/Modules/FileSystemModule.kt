@@ -4,7 +4,6 @@ import android.content.Context
 import android.util.Base64
 import java.io.File
 import java.io.IOException
-import java.util.concurrent.TimeUnit
 import okhttp3.OkHttpClient
 import okhttp3.Request
 
@@ -12,10 +11,7 @@ class FileSystemModule : NativeModule {
     override val moduleName = "FileSystem"
     private var appContext: Context? = null
 
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
-        .build()
+    private fun httpClient(): OkHttpClient = HttpModule.client()
 
     override fun initialize(context: Context, bridge: NativeBridge) {
         appContext = context
@@ -132,7 +128,7 @@ class FileSystemModule : NativeModule {
                         return
                     }
                 val request = Request.Builder().url(url).build()
-                client.newCall(request).enqueue(object : okhttp3.Callback {
+                httpClient().newCall(request).enqueue(object : okhttp3.Callback {
                     override fun onFailure(call: okhttp3.Call, e: IOException) {
                         callback(null, "downloadFile: ${e.message}")
                     }

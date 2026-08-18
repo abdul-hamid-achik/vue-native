@@ -394,6 +394,50 @@ Unit tests cover your JavaScript logic. Native unit tests verify the bridge and 
 
 E2E tests verify that the native side correctly interprets bridge operations. They are slower and best reserved for critical user flows (onboarding, checkout, authentication).
 
+## Host-boot and device smoke
+
+This repository ships a committed host-boot fixture at `fixtures/app-shell/vue-native-bundle.js`. It is a standalone `__VN_flushOperations` IIFE (no Vue, no Vite) that mounts a `VView` + `VText` tree with stable labels:
+
+| Label | Meaning |
+|-------|---------|
+| `app-shell-root` | Root view attached by `setRootView` |
+| `app-shell-label` | Child text, content `app-shell-ok` |
+
+```bash
+bun run smoke:app-shell
+bun run ios:ensure-simulator   # only if `xcrun simctl list runtimes` is empty
+```
+
+`smoke:app-shell` writes `artifacts/app-shell-smoke.json` (`schemaVersion: 1`) with `probes` and `gates`. A skipped gate is not a failure.
+
+| Gate | What it proves |
+|------|----------------|
+| `fixture` | The IIFE declares the stable labels and calls `__VN_flushOperations` |
+| `android.host` | Robolectric `VueNativeActivity` evaluates the IIFE (Rhino on the JVM; J2V8's Android AAR cannot create a V8 isolate here) |
+| `macos.host` | `VueNativeWindowController` evaluates the file through JavaScriptCore |
+| `ios.simulator` | `VueNativeViewController` evaluates the file on an available iPhone Simulator |
+| `ios.device` | Same XCTest on a **reachable** physical iPhone/iPad |
+| `android.device` | Reserved until `adb` reports a ready device |
+
+Xcode's iOS SDK does **not** include a Simulator runtime. After a fresh Xcode install:
+
+```bash
+xcrun simctl list runtimes          # empty until you download one
+bun run ios:ensure-simulator        # xcodebuild -downloadPlatform iOS
+```
+
+Or use **Xcode > Settings > Components > iOS**. `AGENTS.md` and CI target `iPhone 17` on the latest installed runtime.
+
+Physical iOS devices must be paired, Developer Mode enabled, and the CoreDevice tunnel connected:
+
+```bash
+xcrun devicectl list devices
+```
+
+A phone that is paired but `tunnel=disconnected` is recorded as a skip, not a pass. Unlock the device, keep it on the same network or USB, and rerun `bun run smoke:app-shell`. Android device smoke needs `adb` on `PATH` or `ANDROID_HOME`.
+
+That receipt is host-boot evidence. It is not a substitute for launching a signed app on an unlocked phone.
+
 ## Best Practices
 
 1. **Mock the bridge, not the composable.** Spy on `NativeBridge.invokeNativeModule` rather than mocking `useAsyncStorage` itself. This ensures you test the composable's actual logic -- argument mapping, error handling, reactive state updates.

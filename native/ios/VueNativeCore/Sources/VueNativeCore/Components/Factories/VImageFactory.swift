@@ -10,7 +10,7 @@ final class VImageFactory: NativeComponentFactory {
 
     private let urlSession: URLSession
 
-    init(urlSession: URLSession = .shared) {
+    init(urlSession: URLSession = CertificatePinning.shared.requestSession) {
         self.urlSession = urlSession
     }
 

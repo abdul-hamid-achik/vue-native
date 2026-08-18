@@ -210,6 +210,7 @@ describe('config', () => {
         version: '2.0.0',
         ios: { deploymentTarget: '17.0', scheme: 'CustomScheme' },
         android: { minSdk: 24, targetSdk: 34, packageName: 'com.test.app' },
+        macos: { deploymentTarget: '15.0', scheme: 'MacApp' },
         plugins: ['plugin-a', 'plugin-b'],
       }
       const result = defineConfig(config)
@@ -490,7 +491,8 @@ describe('create command', () => {
       expect(tsconfig.compilerOptions.target).toBe('ES2020')
       expect(tsconfig.compilerOptions.strict).toBe(true)
       expect(tsconfig.compilerOptions.module).toBe('ESNext')
-      expect(tsconfig.compilerOptions.lib).toEqual(['ES2020', 'DOM', 'DOM.Iterable'])
+      expect(tsconfig.compilerOptions.lib).toEqual(['ES2020'])
+      expect(tsconfig.compilerOptions.skipLibCheck).toBe(true)
       expect(tsconfig.include).toContain('app/**/*')
     })
 
@@ -855,7 +857,7 @@ describe('create command', () => {
         ([path]: any[]) => path.endsWith('gradle-wrapper.properties'),
       )
       expect(wrapperCall).toBeDefined()
-      expect((wrapperCall![1] as string)).toContain('gradle-8.11.1-bin.zip')
+      expect((wrapperCall![1] as string)).toContain('gradle-8.6-bin.zip')
     })
 
     it('uses compileSdk 35 and targetSdk 35', async () => {
@@ -901,6 +903,8 @@ describe('create command', () => {
       expect(content).toContain('name: \'my-app\'')
       expect(content).toContain('bundleId: \'com.vuenative.myapp\'')
       expect(content).toContain('version: \'1.0.0\'')
+      expect(content).toContain('macos:')
+      expect(content).toContain('deploymentTarget: \'15.0\'')
     })
   })
 
@@ -1367,7 +1371,9 @@ describe('run command', () => {
       process.env.VUE_NATIVE_PLATFORM = platform === 'android' ? 'ios' : 'android'
       try {
         const runCmd = await importRunCommand()
-        await runCmd.parseAsync(['node', 'run', platform])
+        await expect(runCmd.parseAsync(['node', 'run', platform])).rejects.toThrow(
+          /No (Xcode project|android\/ directory|macos\/ directory)/,
+        )
 
         expect(mockExecSync).toHaveBeenCalledWith(
           'bun run vite build',
@@ -1404,19 +1410,28 @@ describe('run command', () => {
       mockExit.mockRestore()
     })
 
-    it('reports missing Xcode project gracefully', async () => {
-      // Simulate: bundle build succeeds, but no ios/ directory
+    it('fails when the Xcode project is missing instead of exiting 0', async () => {
       mockExecSync.mockImplementation(() => '')
       mockExistsSync.mockReturnValue(false)
 
       const runCmd = await importRunCommand()
-      await runCmd.parseAsync(['node', 'run', 'ios'])
+      await expect(runCmd.parseAsync(['node', 'run', 'ios'])).rejects.toThrow(
+        /No Xcode project found in \.\/ios\/[\s\S]*--bundle-only/,
+      )
+    })
 
-      // Should log a warning about missing Xcode project
-      const logCalls = (console.log as ReturnType<typeof vi.fn>).mock.calls
-        .map(([msg]: any[]) => msg)
-        .join(' ')
-      expect(logCalls).toContain('No Xcode project')
+    it('stops after the JS bundle when --bundle-only is set', async () => {
+      mockExecSync.mockImplementation(() => '')
+      mockExistsSync.mockReturnValue(false)
+
+      const runCmd = await importRunCommand()
+      await runCmd.parseAsync(['node', 'run', 'ios', '--bundle-only'])
+
+      expect(mockExecSync).toHaveBeenCalledWith(
+        'bun run vite build',
+        expect.objectContaining({ stdio: 'inherit' }),
+      )
+      expect(mockSpawn).not.toHaveBeenCalled()
     })
 
     it('generates a scaffolded project.yml with XcodeGen before building', async () => {
@@ -1432,7 +1447,9 @@ describe('run command', () => {
       })
 
       const runCmd = await importRunCommand()
-      await runCmd.parseAsync(['node', 'run', 'ios'])
+      await expect(runCmd.parseAsync(['node', 'run', 'ios'])).rejects.toThrow(
+        /Could not locate \.app bundle/,
+      )
 
       expect(mockExecSync).toHaveBeenCalledWith(
         'xcodegen --version',
@@ -1475,7 +1492,9 @@ describe('run command', () => {
       mockReaddirSync.mockReturnValue(['MyApp.xcworkspace'])
 
       const runCmd = await importRunCommand()
-      await runCmd.parseAsync(['node', 'run', 'ios'])
+      await expect(runCmd.parseAsync(['node', 'run', 'ios'])).rejects.toThrow(
+        /Could not locate \.app bundle/,
+      )
 
       expect(mockSpawn).toHaveBeenCalledWith(
         'xcodebuild',
@@ -1493,7 +1512,9 @@ describe('run command', () => {
       mockReaddirSync.mockReturnValue(['MyApp.xcodeproj'])
 
       const runCmd = await importRunCommand()
-      await runCmd.parseAsync(['node', 'run', 'ios'])
+      await expect(runCmd.parseAsync(['node', 'run', 'ios'])).rejects.toThrow(
+        /Could not locate \.app bundle/,
+      )
 
       expect(mockSpawn).toHaveBeenCalledWith(
         'xcodebuild',
@@ -1511,7 +1532,8 @@ describe('run command', () => {
       mockReaddirSync.mockReturnValue(['MyApp.xcodeproj'])
 
       const runCmd = await importRunCommand()
-      await runCmd.parseAsync(['node', 'run', 'ios', '--simulator', 'iPhone 15 Pro'])
+      await expect(runCmd.parseAsync(['node', 'run', 'ios', '--simulator', 'iPhone 15 Pro']))
+        .rejects.toThrow(/Could not locate \.app bundle/)
 
       const spawnArgs = mockSpawn.mock.calls[0][1] as string[]
       const destIndex = spawnArgs.indexOf('-destination')
@@ -1530,7 +1552,8 @@ describe('run command', () => {
       mockReaddirSync.mockReturnValue(['MyApp.xcodeproj'])
 
       const runCmd = await importRunCommand()
-      await runCmd.parseAsync(['node', 'run', 'ios', '--simulator', simulatorName])
+      await expect(runCmd.parseAsync(['node', 'run', 'ios', '--simulator', simulatorName]))
+        .rejects.toThrow(/Could not locate \.app bundle/)
 
       expect(mockExecFileSync).toHaveBeenCalledWith(
         'xcrun',
@@ -1572,8 +1595,6 @@ describe('run command', () => {
         return false
       })
       mockReaddirSync.mockReturnValue(['MyApp.xcodeproj'])
-      // Report one connected device so the --device flow resolves a target and
-      // returns gracefully (no DerivedData here, so it stops before install).
       mockReadFileSync.mockImplementation((path: string) => {
         if (typeof path === 'string' && path.endsWith('.json')) {
           return JSON.stringify({ result: { devices: [{ hardwareProperties: { udid: 'TEST-UDID' }, connectionProperties: { transportType: 'wired' } }] } })
@@ -1583,7 +1604,8 @@ describe('run command', () => {
 
       try {
         const runCmd = await importRunCommand()
-        await runCmd.parseAsync(['node', 'run', 'ios', '--device'])
+        await expect(runCmd.parseAsync(['node', 'run', 'ios', '--device']))
+          .rejects.toThrow(/Could not locate the device \.app bundle/)
 
         expect(mockSpawn.mock.calls[0][2]).toEqual(expect.objectContaining({
           env: expect.objectContaining({
@@ -1606,8 +1628,6 @@ describe('run command', () => {
         return false
       })
       mockReaddirSync.mockReturnValue(['MyApp.xcodeproj'])
-      // Report one connected device so the --device flow resolves a target and
-      // returns gracefully (no DerivedData here, so it stops before install).
       mockReadFileSync.mockImplementation((path: string) => {
         if (typeof path === 'string' && path.endsWith('.json')) {
           return JSON.stringify({ result: { devices: [{ hardwareProperties: { udid: 'TEST-UDID' }, connectionProperties: { transportType: 'wired' } }] } })
@@ -1616,7 +1636,8 @@ describe('run command', () => {
       })
 
       const runCmd = await importRunCommand()
-      await runCmd.parseAsync(['node', 'run', 'ios', '--device'])
+      await expect(runCmd.parseAsync(['node', 'run', 'ios', '--device']))
+        .rejects.toThrow(/Could not locate the device \.app bundle/)
 
       const spawnArgs = mockSpawn.mock.calls[0][1] as string[]
       const destIndex = spawnArgs.indexOf('-destination')
@@ -1774,17 +1795,14 @@ describe('run command', () => {
   })
 
   describe('Android platform', () => {
-    it('reports missing android directory gracefully', async () => {
+    it('fails when the android directory is missing instead of exiting 0', async () => {
       mockExecSync.mockImplementation(() => '')
       mockExistsSync.mockReturnValue(false)
 
       const runCmd = await importRunCommand()
-      await runCmd.parseAsync(['node', 'run', 'android'])
-
-      const logCalls = (console.log as ReturnType<typeof vi.fn>).mock.calls
-        .map(([msg]: any[]) => msg)
-        .join(' ')
-      expect(logCalls).toContain('No android/ directory')
+      await expect(runCmd.parseAsync(['node', 'run', 'android'])).rejects.toThrow(
+        /No android\/ directory found[\s\S]*--bundle-only/,
+      )
     })
 
     it('exits with error when gradlew is not found', async () => {
@@ -1815,7 +1833,9 @@ describe('run command', () => {
       })
 
       const runCmd = await importRunCommand()
-      await runCmd.parseAsync(['node', 'run', 'android'])
+      await expect(runCmd.parseAsync(['node', 'run', 'android'])).rejects.toThrow(
+        /Could not locate debug APK/,
+      )
 
       expect(mockSpawn).toHaveBeenCalledWith(
         './gradlew',
@@ -1843,7 +1863,9 @@ describe('run command', () => {
       })
 
       const runCmd = await importRunCommand()
-      await runCmd.parseAsync(['node', 'run', 'android'])
+      await expect(runCmd.parseAsync(['node', 'run', 'android'])).rejects.toThrow(
+        /Could not locate debug APK/,
+      )
 
       const registeredEvents = processOnSpy.mock.calls.map(([event]: any[]) => event)
       expect(registeredEvents).toContain('exit')
@@ -1865,7 +1887,9 @@ describe('run command', () => {
       })
 
       const runCmd = await importRunCommand()
-      await runCmd.parseAsync(['node', 'run', 'android'])
+      await expect(runCmd.parseAsync(['node', 'run', 'android'])).rejects.toThrow(
+        /Could not locate debug APK/,
+      )
 
       expect(mockMkdirSync).toHaveBeenCalledWith(
         expect.stringMatching(/android\/app\/src\/main\/assets$/),
@@ -2077,6 +2101,18 @@ describe('run command', () => {
       expect(child.kill).toHaveBeenCalled()
     })
   })
+
+  describe('macOS platform', () => {
+    it('fails when the macos directory is missing instead of exiting 0', async () => {
+      mockExecSync.mockImplementation(() => '')
+      mockExistsSync.mockReturnValue(false)
+
+      const runCmd = await importRunCommand()
+      await expect(runCmd.parseAsync(['node', 'run', 'macos'])).rejects.toThrow(
+        /No macos\/ directory found[\s\S]*--bundle-only/,
+      )
+    })
+  })
 })
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -2089,10 +2125,14 @@ describe('cli entry point', () => {
     const { createCommand } = await import('../commands/create')
     const { devCommand } = await import('../commands/dev')
     const { runCommand } = await import('../commands/run')
+    const { inspectCommand } = await import('../commands/inspect')
+    const { capabilitiesCommand } = await import('../commands/capabilities')
 
     expect(createCommand.name()).toBe('create')
     expect(devCommand.name()).toBe('dev')
     expect(runCommand.name()).toBe('run')
+    expect(inspectCommand.name()).toBe('inspect')
+    expect(capabilitiesCommand.name()).toBe('capabilities')
   })
 
   it('create command accepts an optional name argument (prompted when omitted)', async () => {
@@ -2167,6 +2207,102 @@ describe('cli entry point', () => {
     const aabOpt = buildCommand.options.find(o => o.long === '--aab')
     expect(aabOpt).toBeDefined()
   })
+
+  it('exports doctor command', async () => {
+    const { doctorCommand, collectDoctorReport } = await import('../commands/doctor')
+    expect(doctorCommand.name()).toBe('doctor')
+    expect(doctorCommand.options.find(o => o.long === '--json')).toBeDefined()
+
+    const report = await collectDoctorReport('/tmp/vue-native-missing-project', {}, 'linux')
+    expect(report.schemaVersion).toBe(1)
+    expect(report.checks.some(check => check.id === 'native.macos')).toBe(true)
+    expect(report.checks.find(check => check.id === 'xcode')?.message).toContain('linux')
+  })
+
+  it('exports inspect command and reports missing project surfaces', async () => {
+    mockExistsSync.mockReturnValue(false)
+    const { inspectCommand, collectInspectReport } = await import('../commands/inspect')
+    expect(inspectCommand.name()).toBe('inspect')
+    expect(inspectCommand.options.find(o => o.long === '--json')).toBeDefined()
+
+    const report = await collectInspectReport('/tmp/vue-native-empty-app')
+    expect(report.schemaVersion).toBe(1)
+    expect(report.cwd).toBe('/tmp/vue-native-empty-app')
+    expect(report.config.found).toBe(false)
+    expect(report.config.path).toBeNull()
+    expect(report.native.ios.present).toBe(false)
+    expect(report.native.android.present).toBe(false)
+    expect(report.native.macos.present).toBe(false)
+    expect(report.bundle.js.present).toBe(false)
+    expect(report.generated.ios.present).toBe(false)
+    expect(report.generated.typescript.path).toContain('app/generated')
+  })
+
+  it('collectInspectReport marks present native hosts and the JS bundle', async () => {
+    mockExistsSync.mockImplementation((path: unknown) => {
+      const value = String(path)
+      return value.endsWith(`${sep}ios`)
+        || value.endsWith(`${sep}android`)
+        || value.endsWith('vue-native-bundle.js')
+        || value.includes(`${sep}app${sep}generated`)
+    })
+
+    const { collectInspectReport } = await import('../commands/inspect')
+    const report = await collectInspectReport('/tmp/vue-native-ready-app')
+    expect(report.native.ios.present).toBe(true)
+    expect(report.native.android.present).toBe(true)
+    expect(report.native.macos.present).toBe(false)
+    expect(report.bundle.js.present).toBe(true)
+    expect(report.bundle.js.path).toContain('dist/vue-native-bundle.js')
+    expect(report.generated.typescript.present).toBe(true)
+  })
+
+  it('exports capabilities --json with a versioned framework contract', async () => {
+    const { capabilitiesCommand, collectCapabilitiesReport } = await import('../commands/capabilities')
+    expect(capabilitiesCommand.name()).toBe('capabilities')
+    expect(capabilitiesCommand.options.find(o => o.long === '--json')).toBeDefined()
+
+    const report = collectCapabilitiesReport()
+    expect(report.schemaVersion).toBe(1)
+    expect(report.framework.name).toBe('vue-native')
+    expect(report.framework.vueVersion).toBe(cliPackage.vueNative.vueVersion)
+    expect(report.components.map(component => component.name)).toEqual(expect.arrayContaining([
+      'VView',
+      'VSectionList',
+      'VSuspense',
+      'KeepAlive',
+    ]))
+    expect(report.components).toHaveLength(40)
+
+    const backHandler = report.modules.find(module => module.name === 'BackHandler')
+    expect(backHandler?.platforms).toEqual({
+      ios: 'unsupported',
+      android: 'full',
+      macos: 'unsupported',
+    })
+
+    const http = report.modules.find(module => module.name === 'Http')
+    expect(http?.platforms.android).toBe('full')
+    expect(http?.platforms.ios).toBe('unsupported')
+    expect(http?.platforms.macos).toBe('unsupported')
+
+    const menu = report.modules.find(module => module.name === 'Menu')
+    expect(menu?.platforms).toEqual({
+      ios: 'unsupported',
+      android: 'unsupported',
+      macos: 'full',
+    })
+
+    expect(report.limitations.some(item => item.id === 'navigation.jsStack')).toBe(true)
+    expect(report.limitations.some(item => item.id === 'sharedElement.registryOnly')).toBe(true)
+  })
+
+  it('build and run commands expose --bundle-only', async () => {
+    const { buildCommand } = await import('../commands/build')
+    const { runCommand } = await import('../commands/run')
+    expect(buildCommand.options.find(o => o.long === '--bundle-only')).toBeDefined()
+    expect(runCommand.options.find(o => o.long === '--bundle-only')).toBeDefined()
+  })
 })
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -2209,7 +2345,9 @@ describe('build command', () => {
       process.env.VUE_NATIVE_PLATFORM = platform === 'android' ? 'ios' : 'android'
       try {
         const buildCmd = await importBuildCommand()
-        await buildCmd.parseAsync(['node', 'build', platform])
+        await expect(buildCmd.parseAsync(['node', 'build', platform])).rejects.toThrow(
+          /No (Xcode project|android\/ directory|macos\/ directory)/,
+        )
 
         expect(mockExecSync).toHaveBeenCalledWith(
           'bun run vite build --mode production',
@@ -2254,23 +2392,34 @@ describe('build command', () => {
       mockExit.mockRestore()
     })
 
-    it('reports missing Xcode project gracefully', async () => {
+    it('fails when the Xcode project is missing instead of exiting 0', async () => {
       mockExecSync.mockImplementation(() => '')
       mockExistsSync.mockReturnValue(false)
 
       const buildCmd = await importBuildCommand()
-      await buildCmd.parseAsync(['node', 'build', 'ios'])
+      await expect(buildCmd.parseAsync(['node', 'build', 'ios'])).rejects.toThrow(
+        /No Xcode project found in \.\/ios\/[\s\S]*--bundle-only/,
+      )
+    })
 
-      const logCalls = (console.log as ReturnType<typeof vi.fn>).mock.calls
-        .map(([msg]: any[]) => msg)
-        .join(' ')
-      expect(logCalls).toContain('No Xcode project')
+    it('stops after the JS bundle when --bundle-only is set', async () => {
+      mockExecSync.mockImplementation(() => '')
+      mockExistsSync.mockReturnValue(false)
+
+      const buildCmd = await importBuildCommand()
+      await buildCmd.parseAsync(['node', 'build', 'ios', '--bundle-only'])
+
+      expect(mockExecSync).toHaveBeenCalledWith(
+        'bun run vite build --mode production',
+        expect.objectContaining({ stdio: 'inherit' }),
+      )
+      expect(mockSpawn).not.toHaveBeenCalled()
     })
 
     it('finds .xcworkspace project file', async () => {
       mockExecSync.mockImplementation(() => '')
       mockExistsSync.mockImplementation((path: string) => {
-        if (typeof path === 'string' && path.endsWith('/ios')) return true
+        if (typeof path === 'string' && (path.endsWith('/ios') || path.endsWith('.xcarchive'))) return true
         return false
       })
       mockReaddirSync.mockReturnValue(['MyApp.xcworkspace'])
@@ -2288,7 +2437,7 @@ describe('build command', () => {
     it('finds .xcodeproj project file', async () => {
       mockExecSync.mockImplementation(() => '')
       mockExistsSync.mockImplementation((path: string) => {
-        if (typeof path === 'string' && path.endsWith('/ios')) return true
+        if (typeof path === 'string' && (path.endsWith('/ios') || path.endsWith('.xcarchive'))) return true
         return false
       })
       mockReaddirSync.mockReturnValue(['MyApp.xcodeproj'])
@@ -2306,7 +2455,7 @@ describe('build command', () => {
     it('uses Release configuration by default', async () => {
       mockExecSync.mockImplementation(() => '')
       mockExistsSync.mockImplementation((path: string) => {
-        if (typeof path === 'string' && path.endsWith('/ios')) return true
+        if (typeof path === 'string' && (path.endsWith('/ios') || path.endsWith('.xcarchive'))) return true
         return false
       })
       mockReaddirSync.mockReturnValue(['MyApp.xcodeproj'])
@@ -2323,7 +2472,7 @@ describe('build command', () => {
     it('uses Debug configuration when requested', async () => {
       mockExecSync.mockImplementation(() => '')
       mockExistsSync.mockImplementation((path: string) => {
-        if (typeof path === 'string' && path.endsWith('/ios')) return true
+        if (typeof path === 'string' && (path.endsWith('/ios') || path.endsWith('.xcarchive'))) return true
         return false
       })
       mockReaddirSync.mockReturnValue(['MyApp.xcodeproj'])
@@ -2339,7 +2488,7 @@ describe('build command', () => {
     it('uses --scheme option when provided', async () => {
       mockExecSync.mockImplementation(() => '')
       mockExistsSync.mockImplementation((path: string) => {
-        if (typeof path === 'string' && path.endsWith('/ios')) return true
+        if (typeof path === 'string' && (path.endsWith('/ios') || path.endsWith('.xcarchive'))) return true
         return false
       })
       mockReaddirSync.mockReturnValue(['MyApp.xcodeproj'])
@@ -2356,7 +2505,7 @@ describe('build command', () => {
     it('passes generic/platform=iOS destination for archive', async () => {
       mockExecSync.mockImplementation(() => '')
       mockExistsSync.mockImplementation((path: string) => {
-        if (typeof path === 'string' && path.endsWith('/ios')) return true
+        if (typeof path === 'string' && (path.endsWith('/ios') || path.endsWith('.xcarchive'))) return true
         return false
       })
       mockReaddirSync.mockReturnValue(['MyApp.xcodeproj'])
@@ -2375,7 +2524,7 @@ describe('build command', () => {
       process.env.DEVELOPER_DIR = '/opt/custom/Xcode.app/Contents/Developer'
       mockExecSync.mockImplementation(() => '')
       mockExistsSync.mockImplementation((path: string) => {
-        if (typeof path === 'string' && path.endsWith('/ios')) return true
+        if (typeof path === 'string' && (path.endsWith('/ios') || path.endsWith('.xcarchive'))) return true
         return false
       })
       mockReaddirSync.mockReturnValue(['MyApp.xcodeproj'])
@@ -2400,17 +2549,14 @@ describe('build command', () => {
   })
 
   describe('Android build', () => {
-    it('reports missing android directory gracefully', async () => {
+    it('fails when the android directory is missing instead of exiting 0', async () => {
       mockExecSync.mockImplementation(() => '')
       mockExistsSync.mockReturnValue(false)
 
       const buildCmd = await importBuildCommand()
-      await buildCmd.parseAsync(['node', 'build', 'android'])
-
-      const logCalls = (console.log as ReturnType<typeof vi.fn>).mock.calls
-        .map(([msg]: any[]) => msg)
-        .join(' ')
-      expect(logCalls).toContain('No android/ directory')
+      await expect(buildCmd.parseAsync(['node', 'build', 'android'])).rejects.toThrow(
+        /No android\/ directory found[\s\S]*--bundle-only/,
+      )
     })
 
     it('exits with error when gradlew is not found', async () => {
@@ -2438,7 +2584,9 @@ describe('build command', () => {
       })
 
       const buildCmd = await importBuildCommand()
-      await buildCmd.parseAsync(['node', 'build', 'android'])
+      await expect(buildCmd.parseAsync(['node', 'build', 'android'])).rejects.toThrow(
+        /Could not locate release APK/,
+      )
 
       expect(mockSpawn).toHaveBeenCalledWith(
         './gradlew',
@@ -2461,7 +2609,9 @@ describe('build command', () => {
       })
 
       const buildCmd = await importBuildCommand()
-      await buildCmd.parseAsync(['node', 'build', 'android', '--aab'])
+      await expect(buildCmd.parseAsync(['node', 'build', 'android', '--aab'])).rejects.toThrow(
+        /Could not locate release AAB/,
+      )
 
       expect(mockSpawn).toHaveBeenCalledWith(
         './gradlew',
@@ -2507,7 +2657,9 @@ describe('build command', () => {
       })
 
       const buildCmd = await importBuildCommand()
-      await buildCmd.parseAsync(['node', 'build', 'android'])
+      await expect(buildCmd.parseAsync(['node', 'build', 'android'])).rejects.toThrow(
+        /Could not locate release APK/,
+      )
 
       expect(mockCopyFileSync).toHaveBeenCalledWith(
         expect.stringMatching(/dist\/vue-native-bundle\.js$/),

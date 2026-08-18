@@ -5,6 +5,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
 import androidx.core.content.ContextCompat
+import coil.ImageLoader
 import coil.load
 import coil.request.CachePolicy
 import org.json.JSONObject
@@ -53,7 +54,10 @@ class VImageFactory : NativeComponentFactory {
                     iv.setImageDrawable(null)
                     return
                 }
-                iv.load(uri) {
+                val loader = ImageLoader.Builder(iv.context)
+                    .okHttpClient(HttpModule.client())
+                    .build()
+                iv.load(uri, loader) {
                     memoryCachePolicy(CachePolicy.ENABLED)
                     diskCachePolicy(CachePolicy.ENABLED)
                     listener(

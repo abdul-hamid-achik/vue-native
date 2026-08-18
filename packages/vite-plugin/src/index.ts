@@ -23,7 +23,7 @@
  */
 
 import { parseDirectory, parseSFC, type NativeBlock } from '@thelacanians/vue-native-sfc-parser'
-import { cleanGeneratedFiles, generateCode, hasGeneratedArtifacts, writeGeneratedFiles, type CodegenResult } from '@thelacanians/vue-native-codegen'
+import { commitGeneratedFiles, generateCode, hasGeneratedArtifacts, type CodegenResult } from '@thelacanians/vue-native-codegen'
 import { realpathSync } from 'node:fs'
 import type { ConfigEnv, LibraryFormats, ResolvedConfig, UserConfig, ViteDevServer } from 'vite'
 import { getHotReloadToken } from './hot-reload-token'
@@ -454,10 +454,7 @@ export default function vueNativePlugin(options: VueNativePluginOptions = {}) {
         return null
       }
 
-      // Prune only files carrying the generator marker, then write the full
-      // current set. This handles both deleted blocks and deleted final blocks.
-      cleanGeneratedFiles(codegenOptions, root)
-      const writeResult = writeGeneratedFiles(codegenResult, root)
+      const writeResult = commitGeneratedFiles(codegenResult, root, codegenOptions)
 
       if (writeResult.errors.length > 0) {
         const error = new Error(

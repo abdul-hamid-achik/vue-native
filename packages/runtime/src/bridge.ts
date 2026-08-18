@@ -37,6 +37,7 @@ if (typeof __HOT_RELOAD_TOKEN__ !== 'undefined') {
  * state and node IDs are reset.
  */
 const appTeardowns = new Set<() => void>()
+const stateResets = new Set<() => void>()
 
 /**
  * Register a mounted Vue app for native-triggered teardown.
@@ -50,6 +51,14 @@ export function registerAppTeardown(teardown: () => void): () => void {
 
   return () => {
     appTeardowns.delete(teardown)
+  }
+}
+
+/** Reset renderer caches that must not survive `__VN_teardown` / hot reload. */
+export function registerBridgeStateReset(reset: () => void): () => void {
+  stateResets.add(reset)
+  return () => {
+    stateResets.delete(reset)
   }
 }
 
@@ -649,6 +658,13 @@ bridgeGlobals.__VN_handleGlobalEvent = NativeBridge.handleGlobalEvent.bind(Nativ
 // Teardown function called by native before hot reload to reset all JS state
 bridgeGlobals.__VN_teardown = () => {
   teardownMountedApps()
+  for (const reset of stateResets) {
+    try {
+      reset()
+    } catch (err) {
+      console.error('[VueNative] Error resetting renderer state during teardown:', err)
+    }
+  }
   NativeBridge.reset()
   resetNodeId()
 }

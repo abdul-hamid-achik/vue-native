@@ -22,6 +22,7 @@ final class PerformanceModule: NSObject, NativeModule {
 
     // Bridge operation count
     private var bridgeOpsCount: Int = 0
+    private static weak var activeInstance: PerformanceModule?
 
     init(bridge: NativeBridge) {
         self.bridge = bridge
@@ -51,6 +52,7 @@ final class PerformanceModule: NSObject, NativeModule {
         lastTimestamp = 0
         currentFPS = 0
         bridgeOpsCount = 0
+        Self.activeInstance = self
 
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
@@ -72,6 +74,9 @@ final class PerformanceModule: NSObject, NativeModule {
     private func stopProfiling(callback: @escaping (Any?, String?) -> Void) {
         guard isProfiling else { callback(true, nil); return }
         isProfiling = false
+        if Self.activeInstance === self {
+            Self.activeInstance = nil
+        }
 
         DispatchQueue.main.async { [weak self] in
             self?.displayLink?.invalidate()
@@ -115,7 +120,6 @@ final class PerformanceModule: NSObject, NativeModule {
 
     private func dispatchMetrics() {
         guard isProfiling else { return }
-        bridgeOpsCount += 1 // Count the metrics dispatch itself
         let metrics = collectMetrics()
         DispatchQueue.main.async { [weak self] in
             self?.bridge?.dispatchGlobalEvent("perf:metrics", payload: metrics)
@@ -138,7 +142,14 @@ final class PerformanceModule: NSObject, NativeModule {
         return 0
     }
 
+    static func recordBridgeOperations(_ count: Int) {
+        activeInstance?.bridgeOpsCount += count
+    }
+
     func destroy() {
+        if Self.activeInstance === self {
+            Self.activeInstance = nil
+        }
         let cleanup = {
             self.isProfiling = false
             self.displayLink?.invalidate()

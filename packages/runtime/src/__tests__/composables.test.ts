@@ -671,6 +671,20 @@ describe('Composables', () => {
       await dbB.close()
       expect(invokeModuleSpy).toHaveBeenCalledWith('Database', 'close', ['shared'])
     })
+
+    it('does not double-count a single instance that opens concurrently', async () => {
+      const { useDatabase } = await import('../composables/useDatabase')
+      const db = await withSetup(() => useDatabase('race'))
+      await Promise.all([db.execute('SELECT 1'), db.query('SELECT 2')])
+
+      const openCalls = invokeModuleSpy.mock.calls.filter(
+        (call: unknown[]) => call[0] === 'Database' && call[1] === 'open',
+      )
+      expect(openCalls).toHaveLength(1)
+
+      await db.close()
+      expect(invokeModuleSpy).toHaveBeenCalledWith('Database', 'close', ['race'])
+    })
   })
 
   // ---------------------------------------------------------------------------

@@ -7,6 +7,8 @@ import Foundation
 public enum BundleSource {
     /// Load from an embedded resource in the app bundle.
     case embedded(name: String)
+    /// Load a previously verified bundle or test fixture from disk.
+    case file(url: URL)
     /// Load from a development server URL (for live reload).
     case devServer(url: URL)
 }
@@ -218,6 +220,8 @@ public final class JSRuntime: @unchecked Sendable {
             switch source {
             case .embedded(let name):
                 self.loadEmbeddedBundle(name: name, completion: completion)
+            case .file(let url):
+                self.loadFileBundle(url: url, displayName: url.lastPathComponent, completion: completion)
             case .devServer(let url):
                 self.loadDevServerBundle(url: url, completion: completion)
             }
@@ -257,15 +261,24 @@ public final class JSRuntime: @unchecked Sendable {
             return
         }
 
+        loadFileBundle(url: url, displayName: name, completion: completion)
+    }
+
+    private func loadFileBundle(url: URL, displayName: String, completion: ((Bool) -> Void)?) {
         do {
             let script = try String(contentsOf: url, encoding: .utf8)
-            NSLog("[VueNative macOS] Loading bundle: \(name) (\(script.count) bytes)")
+            guard !script.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                NSLog("[VueNative macOS] Error loading bundle '\(displayName)': file is empty")
+                completion?(false)
+                return
+            }
+            NSLog("[VueNative macOS] Loading bundle: \(displayName) (\(script.count) bytes)")
             self.context.evaluateScript(script, withSourceURL: url)
             self.context.evaluateScript("void 0;")
             NSLog("[VueNative macOS] Bundle loaded successfully")
             completion?(true)
         } catch {
-            NSLog("[VueNative macOS] Error loading bundle '\(name)': \(error.localizedDescription)")
+            NSLog("[VueNative macOS] Error loading bundle '\(displayName)': \(error.localizedDescription)")
             completion?(false)
         }
     }

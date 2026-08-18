@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import pc from 'picocolors'
 import { p } from '../ui.js'
 import { parseDirectory } from '@thelacanians/vue-native-sfc-parser'
-import { generateCode, writeGeneratedFiles, cleanGeneratedFiles, validateNativeBlocks, formatValidationErrors } from '@thelacanians/vue-native-codegen'
+import { generateCode, commitGeneratedFiles, validateNativeBlocks, formatValidationErrors } from '@thelacanians/vue-native-codegen'
 import type { CodegenOptions } from '@thelacanians/vue-native-codegen'
 import { ConfigError } from '../config.js'
 
@@ -78,7 +78,10 @@ export const generateCommand = new Command('generate')
         })
 
         if (parseResult.errors.length > 0) {
-          p.log.warn(`Parse warnings:\n${parseResult.errors.map(err => `  - ${err.file}:${err.line || '?'} ${err.message}`).join('\n')}`)
+          const details = parseResult.errors
+            .map(err => `  - ${err.file}:${err.line || '?'} ${err.message}`)
+            .join('\n')
+          throw new ConfigError(`Native block parse failed:\n${details}`)
         }
 
         const blockCount = parseResult.allNativeBlocks.length
@@ -133,16 +136,11 @@ export const generateCommand = new Command('generate')
         // This prunes modules removed from an SFC and guarantees the registry
         // cannot retain references to a deleted generated class.
         if (options.clean) {
-          p.log.step('Cleaning generated files...')
-        }
-        cleanGeneratedFiles(codegenOptions, cwd)
-        if (options.clean) {
-          p.log.success('Cleaned')
+          p.log.info('Stale generated files will be pruned after a successful write.')
         }
 
-        // Write files
         p.log.step('Writing files...')
-        const writeResult = writeGeneratedFiles(codegenResult, cwd)
+        const writeResult = commitGeneratedFiles(codegenResult, cwd, codegenOptions)
 
         if (writeResult.errors.length > 0) {
           p.log.error(`Write errors:\n${writeResult.errors.map(err => `  - ${err.message}`).join('\n')}`)

@@ -24,9 +24,7 @@ final class VSectionListFactory: NativeComponentFactory {
         case "estimatedItemHeight":
             container.estimatedItemHeight = CGFloat(value as? Double ?? 44)
         case "stickySectionHeaders":
-            // plain style = sticky headers (default), grouped = non-sticky
-            // This is set at creation time; we store the preference for reference
-            container.stickySectionHeaders = value as? Bool ?? true
+            container.applyStickySectionHeaders(value as? Bool ?? true)
         case "showsScrollIndicator":
             container.tableView.showsVerticalScrollIndicator = value as? Bool ?? true
         case "bounces":
@@ -68,13 +66,13 @@ final class VSectionListFactory: NativeComponentFactory {
             }
             return
         }
-        if let anchor, let index = container.allChildren.firstIndex(where: { $0 === anchor }) {
-            container.allChildren.insert(child, at: index)
-        } else {
-            container.allChildren.append(child)
+        container.applyChildMutation {
+            if let anchor, let index = container.allChildren.firstIndex(where: { $0 === anchor }) {
+                container.allChildren.insert(child, at: index)
+            } else {
+                container.allChildren.append(child)
+            }
         }
-        container.rebuildSections()
-        container.tableView.reloadData()
     }
 
     func removeChild(_ child: UIView, from parent: UIView) {
@@ -82,10 +80,10 @@ final class VSectionListFactory: NativeComponentFactory {
             child.removeFromSuperview()
             return
         }
-        container.allChildren.removeAll { $0 === child }
-        child.removeFromSuperview()
-        container.rebuildSections()
-        container.tableView.reloadData()
+        container.applyChildMutation {
+            container.allChildren.removeAll { $0 === child }
+            child.removeFromSuperview()
+        }
     }
 }
 
@@ -102,7 +100,7 @@ private struct SectionData {
 /// Container view that hosts a UITableView with section support.
 final class VSectionListContainerView: UIView {
 
-    let tableView: UITableView
+    private(set) var tableView: UITableView
     var allChildren: [UIView] = []
     var estimatedItemHeight: CGFloat = 44
     var stickySectionHeaders: Bool = true
@@ -115,39 +113,109 @@ final class VSectionListContainerView: UIView {
     init() {
         tableView = UITableView(frame: .zero, style: .plain)
         super.init(frame: .zero)
-        tableView.separatorStyle = .none
-        tableView.tableFooterView = UIView()
-        tableView.dataSource = internalDelegate
-        tableView.delegate = internalDelegate
-        tableView.register(VListCell.self, forCellReuseIdentifier: "VListCell")
+        configureTableView(tableView)
         super.addSubview(tableView)
+    }
+
+    func applyStickySectionHeaders(_ sticky: Bool) {
+        guard stickySectionHeaders != sticky else { return }
+        stickySectionHeaders = sticky
+        recreateTableView(style: sticky ? .plain : .grouped)
+    }
+
+    private func configureTableView(_ table: UITableView) {
+        table.separatorStyle = .none
+        table.tableFooterView = UIView()
+        table.backgroundColor = .clear
+        table.backgroundView = nil
+        table.dataSource = internalDelegate
+        table.delegate = internalDelegate
+        table.register(VListCell.self, forCellReuseIdentifier: "VListCell")
+        if #available(iOS 15.0, *) {
+            table.sectionHeaderTopPadding = 0
+        }
+    }
+
+    private func recreateTableView(style: UITableView.Style) {
+        guard tableView.style != style else { return }
+        let showsIndicator = tableView.showsVerticalScrollIndicator
+        let bounces = tableView.bounces
+        let offset = tableView.contentOffset
+        tableView.removeFromSuperview()
+        tableView = UITableView(frame: bounds, style: style)
+        configureTableView(tableView)
+        tableView.showsVerticalScrollIndicator = showsIndicator
+        tableView.bounces = bounces
+        addSubview(tableView)
+        tableView.reloadData()
+        tableView.setContentOffset(offset, animated: false)
+        setNeedsLayout()
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
+    func applyChildMutation(_ mutate: () -> Void) {
+        let oldSections = sections
+        mutate()
+        let newSections = makeSections(from: allChildren)
+
+        // UITableView snapshots the data source before performBatchUpdates.
+        // Keep `sections` as the old snapshot until we are inside the batch,
+        // otherwise insert/delete row counts disagree with the data source.
+        // Off-screen tables and section-count changes use a full reload.
+        if tableView.window == nil || oldSections.count != newSections.count {
+            sections = newSections
+            tableView.reloadData()
+            return
+        }
+
+        tableView.performBatchUpdates({
+            self.sections = newSections
+            for section in 0..<newSections.count {
+                let oldItems = oldSections[section].itemViews
+                let newItems = newSections[section].itemViews
+                let deletes = oldItems.enumerated().compactMap { index, view -> IndexPath? in
+                    newItems.contains(where: { $0 === view }) ? nil : IndexPath(row: index, section: section)
+                }
+                let inserts = newItems.enumerated().compactMap { index, view -> IndexPath? in
+                    oldItems.contains(where: { $0 === view }) ? nil : IndexPath(row: index, section: section)
+                }
+                if !deletes.isEmpty {
+                    tableView.deleteRows(at: deletes, with: .none)
+                }
+                if !inserts.isEmpty {
+                    tableView.insertRows(at: inserts, with: .none)
+                }
+            }
+        }, completion: nil)
+    }
+
     /// Rebuild section data from the flat allChildren array.
     /// Children that had the `__sectionHeader: true` prop set via the bridge start a new section.
     func rebuildSections() {
-        sections = []
+        sections = makeSections(from: allChildren)
+    }
+
+    private func makeSections(from children: [UIView]) -> [SectionData] {
+        var next: [SectionData] = []
         var currentSection = SectionData(headerView: nil, itemViews: [])
 
-        for child in allChildren {
+        for child in children {
             let isSectionHeader = StyleEngine.getInternalProp("__sectionHeader", from: child) as? Bool ?? false
             if isSectionHeader {
-                // Finalize previous section if it has items or a header
                 if currentSection.headerView != nil || !currentSection.itemViews.isEmpty {
-                    sections.append(currentSection)
+                    next.append(currentSection)
                 }
                 currentSection = SectionData(headerView: child, itemViews: [])
             } else {
                 currentSection.itemViews.append(child)
             }
         }
-        // Finalize last section
         if currentSection.headerView != nil || !currentSection.itemViews.isEmpty {
-            sections.append(currentSection)
+            next.append(currentSection)
         }
+        return next
     }
 
     override func layoutSubviews() {

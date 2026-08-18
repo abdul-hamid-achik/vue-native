@@ -138,6 +138,9 @@ dependencies {
     testImplementation("androidx.test.ext:junit:1.1.5")
     testImplementation("io.mockk:mockk:1.13.9")
     testImplementation("com.google.truth:truth:1.1.5")
+    // Host-boot tests evaluate the committed JS fixture on the JVM. J2V8's
+    // Android AAR cannot create a V8 isolate here.
+    testImplementation("org.mozilla:rhino:1.7.15")
 }
 
 ktlint {

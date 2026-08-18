@@ -73,6 +73,8 @@ emulator -avd Pixel8 &
 vue-native run android
 ```
 
+Device smoke in this repository (`bun run smoke:app-shell`) also uses `adb devices`. If `ANDROID_HOME` is unset and `adb` is not on `PATH`, the `android.device` gate is skipped.
+
 `vue-native run android` does all of the following automatically:
 1. Runs `vite build` to produce `dist/vue-native-bundle.js`
 2. Copies the bundle to `android/app/src/main/assets/`

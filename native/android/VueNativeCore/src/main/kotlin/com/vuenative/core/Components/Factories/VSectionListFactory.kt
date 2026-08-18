@@ -17,6 +17,7 @@ class VSectionListFactory : NativeComponentFactory {
     private val endReachedHandlers = mutableMapOf<RecyclerView, (Any?) -> Unit>()
     private val scrollListeners = mutableMapOf<RecyclerView, RecyclerView.OnScrollListener>()
     private val firedEndReached = mutableMapOf<RecyclerView, Boolean>()
+    private val stickyDecorations = mutableMapOf<RecyclerView, StickySectionHeaderDecoration>()
 
     override fun createView(context: Context): View {
         val rv = RecyclerView(context).apply {
@@ -29,6 +30,9 @@ class VSectionListFactory : NativeComponentFactory {
         val items = mutableListOf<View>()
         childViews[rv] = items
         firedEndReached[rv] = false
+        val decoration = StickySectionHeaderDecoration(items)
+        stickyDecorations[rv] = decoration
+        rv.addItemDecoration(decoration)
         rv.adapter = VSectionListAdapter(items)
         return rv
     }
@@ -48,8 +52,14 @@ class VSectionListFactory : NativeComponentFactory {
                 rv.isVerticalScrollBarEnabled = show
             }
             "stickySectionHeaders" -> {
-                // RecyclerView sticky headers would require an ItemDecoration;
-                // for now we store the preference but don't implement sticky behavior
+                val enabled = value != false && value != "false"
+                val decoration = stickyDecorations.getOrPut(rv) {
+                    StickySectionHeaderDecoration(childViews[rv] ?: mutableListOf()).also {
+                        rv.addItemDecoration(it)
+                    }
+                }
+                decoration.enabled = enabled
+                rv.invalidateItemDecorations()
             }
             "estimatedItemHeight" -> { /* Used for initial sizing hints */ }
             else -> StyleEngine.apply(key, value, view)
@@ -141,11 +151,95 @@ class VSectionListFactory : NativeComponentFactory {
     override fun destroyView(view: View) {
         val rv = view as? RecyclerView ?: return
         scrollListeners.remove(rv)?.let { rv.removeOnScrollListener(it) }
+        stickyDecorations.remove(rv)?.let { rv.removeItemDecoration(it) }
         scrollHandlers.remove(rv)
         endReachedHandlers.remove(rv)
         firedEndReached.remove(rv)
         childViews.remove(rv)
         rv.adapter = null
+    }
+}
+
+internal class StickySectionHeaderDecoration(
+    private val items: List<View>,
+    var enabled: Boolean = true,
+) : RecyclerView.ItemDecoration() {
+
+    fun isSectionHeader(index: Int): Boolean {
+        val view = items.getOrNull(index) ?: return false
+        return StyleEngine.getInternalProp("__sectionHeader", view) == true
+    }
+
+    fun headerIndexAtOrBefore(position: Int): Int? {
+        if (position < 0) return null
+        for (index in position downTo 0) {
+            if (isSectionHeader(index)) return index
+        }
+        return null
+    }
+
+    fun nextHeaderIndexAfter(headerIndex: Int): Int? {
+        for (index in (headerIndex + 1) until items.size) {
+            if (isSectionHeader(index)) return index
+        }
+        return null
+    }
+
+    override fun onDrawOver(canvas: android.graphics.Canvas, parent: RecyclerView, state: RecyclerView.State) {
+        if (!enabled) return
+        val layoutManager = parent.layoutManager as? LinearLayoutManager ?: return
+        val firstVisible = layoutManager.findFirstVisibleItemPosition()
+        if (firstVisible == RecyclerView.NO_POSITION) return
+        val headerIndex = headerIndexAtOrBefore(firstVisible) ?: return
+        val headerView = items.getOrNull(headerIndex) ?: return
+
+        val headerHeight = measuredHeaderHeight(headerView, parent)
+        var top = 0
+        nextHeaderIndexAfter(headerIndex)?.let { nextHeader ->
+            childForAdapterPosition(parent, nextHeader)?.let { nextChild ->
+                if (nextChild.top < headerHeight) {
+                    top = nextChild.top - headerHeight
+                }
+            }
+        }
+
+        if (headerIndex == firstVisible) {
+            val current = childForAdapterPosition(parent, headerIndex)
+            if (current != null && current.top >= 0 && top == 0) {
+                return
+            }
+        }
+
+        val width = parent.width.coerceAtLeast(1)
+        if (headerView.parent == null) {
+            headerView.measure(
+                View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
+            )
+            headerView.layout(0, 0, width, headerHeight)
+        }
+
+        canvas.save()
+        canvas.translate(0f, top.toFloat())
+        headerView.draw(canvas)
+        canvas.restore()
+    }
+
+    private fun measuredHeaderHeight(headerView: View, parent: RecyclerView): Int {
+        if (headerView.height > 0) return headerView.height
+        headerView.measure(
+            View.MeasureSpec.makeMeasureSpec(parent.width.coerceAtLeast(1), View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
+        )
+        return headerView.measuredHeight.coerceAtLeast(1)
+    }
+
+    private fun childForAdapterPosition(parent: RecyclerView, position: Int): View? {
+        for (index in 0 until parent.childCount) {
+            val child = parent.getChildAt(index)
+            if (parent.getChildAdapterPosition(child) == position) return child
+        }
+        return null
     }
 }
 
@@ -178,6 +272,18 @@ private class VSectionListAdapter(private val items: List<View>) : RecyclerView.
 
     override fun getItemCount(): Int = items.size
 
-    // Item views are rebound into containers, so all rows can safely recycle.
-    override fun getItemViewType(position: Int): Int = 0
+    // Regular rows share one type. Each section header keeps a unique type so
+    // RecyclerView cannot rebind a sticky header view onto another row.
+    override fun getItemViewType(position: Int): Int {
+        val item = items.getOrNull(position) ?: return 0
+        return if (StyleEngine.getInternalProp("__sectionHeader", item) == true) {
+            HEADER_VIEW_TYPE_BASE + position
+        } else {
+            0
+        }
+    }
+
+    companion object {
+        private const val HEADER_VIEW_TYPE_BASE = 1000
+    }
 }

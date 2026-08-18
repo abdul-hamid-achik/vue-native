@@ -67,14 +67,26 @@ function releaseInstance(name: string): boolean {
 export function useDatabase(name: string = 'default') {
   const isOpen = ref(false)
   let opened = false
+  let openPromise: Promise<void> | null = null
 
   async function ensureOpen(): Promise<void> {
     if (opened) return
-    await NativeBridge.invokeNativeModule('Database', 'open', [name])
-    if (!opened) {
-      opened = true
-      isOpen.value = true
-      openInstanceCounts.set(name, (openInstanceCounts.get(name) ?? 0) + 1)
+    if (!openPromise) {
+      openPromise = (async () => {
+        await NativeBridge.invokeNativeModule('Database', 'open', [name])
+        if (!opened) {
+          opened = true
+          isOpen.value = true
+          openInstanceCounts.set(name, (openInstanceCounts.get(name) ?? 0) + 1)
+        }
+      })()
+    }
+    try {
+      await openPromise
+    } finally {
+      if (opened) {
+        openPromise = null
+      }
     }
   }
 

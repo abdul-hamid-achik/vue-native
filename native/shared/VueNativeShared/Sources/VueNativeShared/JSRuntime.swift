@@ -304,7 +304,7 @@ public final class JSRuntime: @unchecked Sendable {
 
     private func loadDevServerBundle(url: URL, completion: ((Bool) -> Void)?) {
         // Fetch from dev server on a background queue, then evaluate on JS queue
-        let task = URLSession.shared.dataTask(with: url) { [weak self] data, response, error in
+        let task = CertificatePinning.shared.requestSession.dataTask(with: url) { [weak self] data, response, error in
             guard let self = self else {
                 completion?(false)
                 return

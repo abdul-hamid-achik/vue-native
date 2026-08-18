@@ -1,6 +1,8 @@
 # useSharedElementTransition
 
-Register native views as shared elements for cross-screen transitions. When navigating between screens, elements with the same shared ID on the source and destination screens animate smoothly in position and size, creating a seamless visual connection between views.
+Register native view IDs for a future shared-element transition.
+
+This API is **experimental and registry-only**. Navigation copies `sharedElements` onto the route entry. No measurement or native animation runs yet.
 
 ## Usage
 

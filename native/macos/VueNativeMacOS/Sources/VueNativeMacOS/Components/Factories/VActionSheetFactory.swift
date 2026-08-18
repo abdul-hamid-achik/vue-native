@@ -13,6 +13,7 @@ final class VActionSheetFactory: NativeComponentFactory {
     nonisolated(unsafe) static var onActionKey: UInt8 = 2
     nonisolated(unsafe) static var onCancelKey: UInt8 = 3
     private static var menuDelegateKey: UInt8 = 4
+    private static var presentedMenuKey: UInt8 = 5
 
     // MARK: - NativeComponentFactory
 
@@ -31,6 +32,8 @@ final class VActionSheetFactory: NativeComponentFactory {
             let visible = (value as? Bool) ?? ((value as? Int).map { $0 != 0 } ?? false)
             if visible {
                 showMenu(for: view)
+            } else {
+                dismissMenu(for: view, notify: false)
             }
 
         case "title":
@@ -122,10 +125,46 @@ final class VActionSheetFactory: NativeComponentFactory {
             menu.addItem(cancelItem)
         }
 
-        // Pop up the menu at the view's location (use superview if placeholder is hidden)
+        objc_setAssociatedObject(
+            view, &VActionSheetFactory.presentedMenuKey,
+            menu, .OBJC_ASSOCIATION_RETAIN_NONATOMIC
+        )
+
         let targetView = view.superview ?? view
         let location = NSPoint(x: 0, y: 0)
-        menu.popUp(positioning: nil, at: location, in: targetView)
+        let selected = menu.popUp(positioning: nil, at: location, in: targetView)
+        objc_setAssociatedObject(
+            view, &VActionSheetFactory.presentedMenuKey,
+            nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC
+        )
+        if !selected {
+            fireCancel(for: view)
+        }
+    }
+
+    private func dismissMenu(for view: NSView, notify: Bool) {
+        if let menu = objc_getAssociatedObject(view, &VActionSheetFactory.presentedMenuKey) as? NSMenu {
+            menu.cancelTracking()
+            objc_setAssociatedObject(
+                view, &VActionSheetFactory.presentedMenuKey,
+                nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC
+            )
+        }
+        if notify {
+            fireCancel(for: view)
+        }
+    }
+
+    private func fireCancel(for view: NSView) {
+        if let handler = objc_getAssociatedObject(view, &VActionSheetFactory.onCancelKey) as? ((Any?) -> Void) {
+            handler(nil)
+        }
+    }
+
+    func destroyView(view: NSView) {
+        dismissMenu(for: view, notify: false)
+        removeEventListener(view: view, event: "action")
+        removeEventListener(view: view, event: "cancel")
     }
 }
 

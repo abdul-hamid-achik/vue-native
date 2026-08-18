@@ -139,6 +139,7 @@ class NativeBridge(private val context: Context) {
             for (op in ops) {
                 try {
                     val opName = op.optString("op")
+                    PerformanceModule.recordBridgeOperations(1)
                     if (!needsLayout && opName in treeMutationOps) {
                         needsLayout = true
                     }

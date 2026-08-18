@@ -4,7 +4,7 @@ This guide covers performance best practices for Vue Native apps and how to use 
 
 ## Performance Profiler
 
-Vue Native includes a native performance profiler that tracks FPS, memory usage, and bridge operation counts in real time.
+Vue Native includes a native performance profiler that tracks FPS, memory usage, and **bridge operations processed while profiling is on**. `bridgeOps` resets when you call `startProfiling`.
 
 ### Quick Start
 
@@ -26,7 +26,7 @@ const { startProfiling, stopProfiling, fps, memoryMB, bridgeOps, isProfiling } =
         FPS: {{ fps }}
       </VText>
       <VText :style="{ color: '#ecf0f1', fontSize: 14 }">Memory: {{ memoryMB.toFixed(1) }} MB</VText>
-      <VText :style="{ color: '#ecf0f1', fontSize: 14 }">Bridge Ops: {{ bridgeOps }}</VText>
+      <VText :style="{ color: '#ecf0f1', fontSize: 14 }">Bridge ops: {{ bridgeOps }}</VText>
     </VView>
   </VView>
 </template>

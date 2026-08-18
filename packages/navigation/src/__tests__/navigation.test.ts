@@ -1117,6 +1117,86 @@ describe('Navigation — createRouter', () => {
       expect(router.currentRoute.value.config.name).toBe('profile')
       expect(router.currentRoute.value.params.userId).toBe('456')
     })
+
+    it('replace redirect does not grow the stack', async () => {
+      const createRouter = await getRouter()
+      const router = createRouter([
+        { name: 'home', component: HomeScreen },
+        { name: 'about', component: AboutScreen },
+        { name: 'profile', component: ProfileScreen },
+      ])
+
+      router.beforeEach((to: any, _from: any, next: any) => {
+        if (to.config.name === 'about') next('profile')
+        else next()
+      })
+
+      await router.replace('about')
+      await nextTick()
+
+      expect(router.stack.value.map(entry => entry.config.name)).toEqual(['profile'])
+    })
+
+    it('reset redirect replaces the whole stack', async () => {
+      const createRouter = await getRouter()
+      const router = createRouter([
+        { name: 'home', component: HomeScreen },
+        { name: 'about', component: AboutScreen },
+        { name: 'profile', component: ProfileScreen },
+      ])
+
+      await router.push('about')
+      router.beforeEach((to: any, _from: any, next: any) => {
+        if (to.config.name === 'about') next('profile')
+        else next()
+      })
+
+      await router.reset('about')
+      await nextTick()
+
+      expect(router.stack.value.map(entry => entry.config.name)).toEqual(['profile'])
+    })
+
+    it('goBack redirect replaces the leaving screen instead of pushing', async () => {
+      const createRouter = await getRouter()
+      const router = createRouter([
+        { name: 'home', component: HomeScreen },
+        { name: 'about', component: AboutScreen },
+        { name: 'profile', component: ProfileScreen },
+      ])
+
+      await router.push('about')
+      router.beforeEach((to: any, _from: any, next: any) => {
+        if (to.config.name === 'home') next('profile')
+        else next()
+      })
+
+      await router.goBack()
+      await nextTick()
+
+      expect(router.stack.value.map(entry => entry.config.name)).toEqual(['home', 'profile'])
+      expect(router.currentRoute.value.config.name).toBe('profile')
+    })
+  })
+
+  describe('serialized transitions', () => {
+    it('serializes concurrent pushes so both routes land', async () => {
+      const createRouter = await getRouter()
+      const router = createRouter([
+        { name: 'home', component: HomeScreen },
+        { name: 'about', component: AboutScreen },
+        { name: 'profile', component: ProfileScreen },
+      ])
+
+      await Promise.all([router.push('about'), router.push('profile')])
+      await nextTick()
+
+      expect(router.stack.value.map(entry => entry.config.name)).toEqual([
+        'home',
+        'about',
+        'profile',
+      ])
+    })
   })
 
   // ---------------------------------------------------------------------------
@@ -1242,6 +1322,35 @@ describe('Navigation — createRouter', () => {
 
       // Both screens should be mounted (for instant back navigation)
       expect(router.stack.value).toHaveLength(2)
+    })
+
+    it('disables pointer events on inactive stack screens', async () => {
+      const { createRouter, RouterView } = await import('../index')
+      const { createApp, createNativeNode } = await import('@thelacanians/vue-native-runtime')
+
+      const router = createRouter([
+        { name: 'home', component: HomeScreen },
+        { name: 'about', component: AboutScreen },
+      ])
+
+      const root = createNativeNode('__ROOT__')
+      NativeBridge.createNode(root.id, '__ROOT__')
+      const app = createApp({
+        setup() {
+          return () => h(RouterView)
+        },
+      })
+      app.use(router as any)
+      app.mount(root as any)
+      await router.push('about')
+      await nextTick()
+
+      const styleOps = mockBridge.getOpsByType('updateStyle')
+      const pointerValues = styleOps
+        .map(op => op.args[1]?.pointerEvents)
+        .filter((value: unknown) => value === 'none' || value === 'auto')
+      expect(pointerValues).toContain('none')
+      expect(pointerValues).toContain('auto')
     })
   })
 

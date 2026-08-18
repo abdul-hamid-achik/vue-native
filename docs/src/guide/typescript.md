@@ -14,7 +14,8 @@ This is the `tsconfig.json` that `vue-native create` generates (recommended):
     "moduleResolution": "bundler",
     "strict": true,
     "jsx": "preserve",
-    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "lib": ["ES2020"],
+    "skipLibCheck": true,
     "types": [],
     "paths": {
       "vue": ["./node_modules/@thelacanians/vue-native-runtime/dist/index.d.ts"]
@@ -33,6 +34,8 @@ Key settings explained:
 | `moduleResolution`  | `bundler`   | Matches Vite's resolution strategy for imports.              |
 | `strict`            | `true`      | Enables all strict type-checking options.                    |
 | `jsx`               | `preserve`  | Allows Vue SFC `<script setup lang="ts">` to work correctly. |
+| `lib`               | `["ES2020"]` | Matches JavaScriptCore/V8. Do not add `DOM` — there is no browser. |
+| `skipLibCheck`      | `true`      | Vue and Vite ship `.d.ts` files that mention `Element`/`WebSocket`. Skip those, do not add DOM libs. |
 | `types`             | `[]`        | Avoids pulling in ambient `@types` packages; project ambient declarations live in `env.d.ts`. |
 | `paths.vue`         | See above   | Resolves `vue` imports to the native runtime so the Composition API types come from the custom-renderer build. |
 

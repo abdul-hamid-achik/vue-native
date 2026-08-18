@@ -545,6 +545,44 @@ class ComponentFactoryTest {
         assertFalse("Should not be refreshing", view.isRefreshing)
     }
 
+    @Test
+    fun testVScrollViewFactoryHorizontalSwapsInnerScroller() {
+        val factory = VScrollViewFactory()
+        val view = factory.createView(context) as SwipeRefreshLayout
+        factory.updateProp(view, "horizontal", true)
+
+        val statesField = VScrollViewFactory::class.java.getDeclaredField("states")
+        statesField.isAccessible = true
+        @Suppress("UNCHECKED_CAST")
+        val states = statesField.get(factory) as Map<SwipeRefreshLayout, Any>
+        val scrollState = states[view]!!
+        val horizontalField = scrollState::class.java.getDeclaredField("horizontal")
+        horizontalField.isAccessible = true
+        assertTrue("horizontal prop should be stored", horizontalField.get(scrollState) as Boolean)
+        val scrollField = scrollState::class.java.getDeclaredField("scrollView")
+        scrollField.isAccessible = true
+        assertTrue(
+            "inner scroller should become a HorizontalScrollView",
+            scrollField.get(scrollState) is android.widget.HorizontalScrollView,
+        )
+    }
+
+    @Test
+    fun testVScrollViewFactoryScrollEnabledIsStored() {
+        val factory = VScrollViewFactory()
+        val view = factory.createView(context) as SwipeRefreshLayout
+        factory.updateProp(view, "scrollEnabled", false)
+
+        val statesField = VScrollViewFactory::class.java.getDeclaredField("states")
+        statesField.isAccessible = true
+        @Suppress("UNCHECKED_CAST")
+        val states = statesField.get(factory) as Map<SwipeRefreshLayout, Any>
+        val scrollState = states[view]!!
+        val enabledField = scrollState::class.java.getDeclaredField("scrollEnabled")
+        enabledField.isAccessible = true
+        assertFalse(enabledField.get(scrollState) as Boolean)
+    }
+
     // =========================================================================
     // VSliderFactory
     // =========================================================================

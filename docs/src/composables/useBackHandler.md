@@ -13,10 +13,10 @@ const hasUnsavedChanges = ref(false)
 
 useBackHandler(() => {
   if (hasUnsavedChanges.value) {
-    // Show discard dialog, prevent default back navigation
+    // Show discard dialog; do not call BackHandler.exitApp
     return true
   }
-  // Allow default back navigation
+  // This listener did not handle the press — useBackHandler calls exitApp
   return false
 })
 </script>
@@ -32,7 +32,7 @@ useBackHandler(handler: () => boolean): void
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `handler` | `() => boolean` | Called on hardware back press. Return `true` to prevent default behavior, `false` to allow it. |
+| `handler` | `() => boolean` | Called on hardware back press. Return `true` if this listener handled the press (`useBackHandler` will not call `exitApp`). Return `false` to let this composable exit the app. |
 
 ## Platform Support
 
@@ -44,6 +44,6 @@ useBackHandler(handler: () => boolean): void
 ## Notes
 
 - The handler is automatically registered on `onMounted` and cleaned up on `onUnmounted`.
-- If no handler is registered, Android performs the default back action and finishes the current Activity.
-- If multiple components register handlers, each mounted handler receives the event. Prefer one owner for modal or navigation back behavior to avoid conflicting actions.
-- Useful for preventing accidental navigation when the user has unsaved changes, or for closing modals/drawers before navigating back.
+- Returning `true` only skips `exitApp` from **this** composable. The bridge still delivers `hardware:backPress` to every subscriber, including a router created with `handleBackButton: true`. Do not combine the two on the same screen.
+- If no handler is registered and `handleBackButton` is off, Android finishes the current Activity.
+- If multiple components register handlers, each mounted handler receives the event. Prefer one owner for modal or navigation back behavior.

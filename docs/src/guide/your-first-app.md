@@ -5,8 +5,8 @@ This guide walks you through building a complete Vue Native app from scratch —
 ## Prerequisites
 
 - [Bun](https://bun.sh) 1.3+ (Node.js 20.19+ is also needed only if you choose npm/npx commands)
-- **iOS:** Xcode 15+, iOS 16+ Simulator
-- **Android:** Android Studio, API 21+ emulator
+- **iOS:** Xcode 15+, iOS 16+ Simulator **runtime** (`xcrun simctl list runtimes` must list iOS; see [iOS Setup](/ios/setup.md))
+- **Android:** Android Studio, API 21+ emulator, `adb` on `PATH` or `ANDROID_HOME`
 - **macOS:** Xcode 16+, macOS 15.0+
 
 ## Part 1: Project Setup & Your First Screen
@@ -16,6 +16,8 @@ This guide walks you through building a complete Vue Native app from scratch —
 ```bash
 npx @thelacanians/vue-native-cli create my-contacts
 cd my-contacts
+bun install
+vue-native doctor
 ```
 
 This scaffolds the project structure:
@@ -385,7 +387,7 @@ const styles = createStyleSheet({
 You've built an app with components, navigation, and data fetching. Here's where to go next:
 
 - **[Styling Guide](/guide/styling.md)** — Units, colors, Flexbox patterns, dark mode
-- **[Components](/components/)** — All 28+ built-in components with examples
+- **[Components](/components/)** — All 40 built-in components with examples
 - **[Composables](/composables/)** — 37+ native API wrappers (camera, storage, sensors, etc.)
 - **[Navigation](/navigation/)** — Tabs, drawer, guards, deep linking, state persistence
 - **[Deployment](/guide/deployment.md)** — Ship to App Store and Play Store

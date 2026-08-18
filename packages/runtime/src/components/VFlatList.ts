@@ -1,4 +1,4 @@
-import { defineComponent, h, ref, computed, type PropType, type VNode } from '@vue/runtime-core'
+import { defineComponent, h, ref, computed, watch, type PropType, type VNode } from '@vue/runtime-core'
 import type { ViewStyle } from '../types/styles'
 
 interface KeyedItem {
@@ -174,6 +174,20 @@ const VFlatListBase = defineComponent({
     // to instead of whatever item now occupies the measured position.
     const measuredHeights = new Map<string | number, number>()
     let endReachedFired = false
+
+    watch(() => props.data, (data) => {
+      const live = new Set(
+        (data ?? []).map((item, index) => props.keyExtractor(item, index)),
+      )
+      let pruned = false
+      for (const key of [...measuredHeights.keys()]) {
+        if (!live.has(key)) {
+          measuredHeights.delete(key)
+          pruned = true
+        }
+      }
+      if (pruned) heightsVersion.value++
+    })
 
     const hasHeader = computed(() => !!slots.header)
     const headerOffset = computed(() => (hasHeader.value ? props.headerHeight : 0))

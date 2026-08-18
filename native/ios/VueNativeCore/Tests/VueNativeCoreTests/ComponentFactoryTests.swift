@@ -908,6 +908,36 @@ final class ComponentFactoryTests: XCTestCase {
         XCTAssertTrue(container.allChildren[2] === second)
     }
 
+    func testVSectionListStickyHeadersUsePlainStyleByDefault() {
+        let factory = VSectionListFactory()
+        let container = factory.createView() as! VSectionListContainerView
+        XCTAssertTrue(container.stickySectionHeaders)
+        XCTAssertEqual(container.tableView.style, .plain)
+    }
+
+    func testVSectionListRecreatesTableWhenStickyHeadersChange() {
+        let factory = VSectionListFactory()
+        let container = factory.createView() as! VSectionListContainerView
+        let original = container.tableView
+
+        factory.updateProp(view: container, key: "stickySectionHeaders", value: false)
+        XCTAssertFalse(container.stickySectionHeaders)
+        XCTAssertEqual(container.tableView.style, .grouped)
+        XCTAssertFalse(container.tableView === original)
+        XCTAssertNotNil(container.tableView.dataSource)
+        XCTAssertNotNil(container.tableView.delegate)
+
+        let grouped = container.tableView
+        factory.updateProp(view: container, key: "stickySectionHeaders", value: true)
+        XCTAssertTrue(container.stickySectionHeaders)
+        XCTAssertEqual(container.tableView.style, .plain)
+        XCTAssertFalse(container.tableView === grouped)
+
+        let plain = container.tableView
+        factory.updateProp(view: container, key: "stickySectionHeaders", value: true)
+        XCTAssertTrue(container.tableView === plain)
+    }
+
     // MARK: - VSliderFactory Tests
 
     func testVSliderFactoryCreatesUISlider() {

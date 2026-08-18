@@ -25,6 +25,14 @@ class PerformanceModule : NativeModule {
     // Bridge operation count
     private var bridgeOpsCount = 0
 
+    companion object {
+        @Volatile private var active: PerformanceModule? = null
+
+        fun recordBridgeOperations(count: Int) {
+            active?.bridgeOpsCount = (active?.bridgeOpsCount ?: 0) + count
+        }
+    }
+
     // Metrics timer
     private var metricsRunnable: Runnable? = null
 
@@ -61,6 +69,7 @@ class PerformanceModule : NativeModule {
         lastFrameTimeNanos = 0
         currentFPS = 0.0
         bridgeOpsCount = 0
+        active = this
 
         mainHandler.post {
             // Choreographer for FPS measurement
@@ -111,6 +120,7 @@ class PerformanceModule : NativeModule {
             return
         }
         isProfiling = false
+        if (active === this) active = null
 
         mainHandler.post {
             frameCallback?.let { Choreographer.getInstance().removeFrameCallback(it) }
@@ -138,13 +148,13 @@ class PerformanceModule : NativeModule {
 
     private fun dispatchMetrics() {
         if (!isProfiling) return
-        bridgeOpsCount++
         val metrics = collectMetrics()
         bridge?.dispatchGlobalEvent("perf:metrics", metrics)
     }
 
     override fun destroy() {
         isProfiling = false
+        if (active === this) active = null
         mainHandler.post {
             frameCallback?.let { Choreographer.getInstance().removeFrameCallback(it) }
             frameCallback = null

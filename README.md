@@ -9,7 +9,7 @@ Build native iOS, Android, and macOS apps with Vue 3. Write Vue components, rend
 - **Vue 3 First** — Composition API, `<script setup>`, `ref`, `computed`, `watch` — all just work
 - **Real Native UI** — Every component maps to native UIKit (iOS), Android Views, or AppKit (macOS). No DOM, no WebView
 - **Cross-Platform** — Same Vue code targets iOS, Android, and macOS from a single codebase
-- **28+ Built-in Components** — VView, VText, VButton, VInput, VScrollView, VImage, VList, VModal, and more
+- **40 Built-in Components** — VView, VText, VButton, VInput, VScrollView, VImage, VList, VModal, and more
 - **Native Modules** — Haptics, AsyncStorage, Clipboard, Network, Camera, Geolocation, and more
 - **Navigation** — Stack navigation via `@thelacanians/vue-native-navigation`
 - **Flexbox Layout** — Yoga (iOS) and FlexboxLayout (Android) for consistent cross-platform layouts
@@ -61,6 +61,7 @@ Component and module support is documented on each API page. Check platform note
 bunx @thelacanians/vue-native-cli create my-app
 cd my-app
 bun install
+vue-native doctor
 ```
 
 ### Project structure

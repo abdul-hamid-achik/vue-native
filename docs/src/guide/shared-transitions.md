@@ -1,6 +1,6 @@
 # Shared Element Transitions
 
-Shared element transitions animate views between screens during navigation. When an image on a list screen and the same image on a detail screen share an identifier, the framework animates position and size between them for a seamless visual transition.
+Shared element IDs can be registered and passed through navigation. **The animation itself is not implemented yet** — `useSharedElementTransition` only stores view IDs, and `router.push(..., { sharedElements })` only copies those IDs onto the route entry. Treat this as an experimental registry until a native transition path exists.
 
 ## Setup
 

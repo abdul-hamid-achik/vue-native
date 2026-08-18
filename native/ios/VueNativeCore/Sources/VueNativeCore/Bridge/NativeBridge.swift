@@ -287,6 +287,8 @@ public final class NativeBridge {
                 }
             }
 
+            PerformanceModule.recordBridgeOperations(1)
+
             switch op {
             case "create":
                 handleCreate(args: args)

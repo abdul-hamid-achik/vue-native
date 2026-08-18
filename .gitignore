@@ -33,6 +33,9 @@ Thumbs.db
 # Test coverage
 coverage/
 
+# Generated verification receipts
+artifacts/
+
 # Codegen output
 **/generated/
 test-output/

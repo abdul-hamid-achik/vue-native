@@ -27,7 +27,7 @@ The JavaScript engine runs your Vue app:
 - **Vue 3 Composition API** — `ref`, `computed`, `watch`, `<script setup>` all work as expected
 - **Real native UI** — No DOM, no WebView, no HTML
 - **Cross-platform** — One Vue codebase, iOS, Android, and macOS
-- **30+ built-in components** — VView, VText, VButton, VInput, VList, and more
+- **40 built-in components** — VView, VText, VButton, VInput, VList, and more
 - **Native modules** — Haptics, AsyncStorage, Camera, Geolocation, and more
 - **Custom native code** — Write Swift/Kotlin directly in Vue SFCs with [`<native>` blocks](./native-blocks.md)
 - **Navigation** — Stack navigation via `@thelacanians/vue-native-navigation`

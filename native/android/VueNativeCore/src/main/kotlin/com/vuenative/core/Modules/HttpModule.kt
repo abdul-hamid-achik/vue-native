@@ -26,14 +26,48 @@ class HttpModule : NativeModule {
             .writeTimeout(30, TimeUnit.SECONDS)
             .build()
 
+        private val pinLock = Any()
+        private val pinMap = linkedMapOf<String, List<String>>()
+
         /** Client with certificate pinning — rebuilt when pins are configured. */
         @Volatile private var pinnedClient: OkHttpClient? = null
 
         fun client(): OkHttpClient = pinnedClient ?: defaultClient
 
+        /**
+         * Merge pin lists into the process-wide map (Apple semantics).
+         * An empty list for a host removes that host. Rebuilds the shared client.
+         */
         fun configurePins(pinsMap: Map<String, List<String>>) {
+            synchronized(pinLock) {
+                for ((domain, pins) in pinsMap) {
+                    val host = domain.lowercase()
+                    if (pins.isEmpty()) {
+                        pinMap.remove(host)
+                    } else {
+                        pinMap[host] = pins
+                    }
+                }
+                rebuildPinnedClient()
+            }
+        }
+
+        internal fun pinnedHosts(): Set<String> = synchronized(pinLock) { pinMap.keys.toSet() }
+
+        internal fun resetPins() {
+            synchronized(pinLock) {
+                pinMap.clear()
+                pinnedClient = null
+            }
+        }
+
+        private fun rebuildPinnedClient() {
+            if (pinMap.isEmpty()) {
+                pinnedClient = null
+                return
+            }
             val builder = CertificatePinner.Builder()
-            for ((domain, pins) in pinsMap) {
+            for ((domain, pins) in pinMap) {
                 for (pin in pins) {
                     builder.add(domain, pin)
                 }

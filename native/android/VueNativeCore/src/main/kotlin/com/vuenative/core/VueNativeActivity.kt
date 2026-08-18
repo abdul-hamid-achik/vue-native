@@ -33,6 +33,14 @@ abstract class VueNativeActivity : AppCompatActivity() {
     /** Return the asset path for the JS bundle (e.g., "vue-native-bundle.js"). */
     abstract fun getBundleAssetPath(): String
 
+    /**
+     * Read the embedded JS bundle. Production hosts load [getBundleAssetPath]
+     * from APK assets. Tests may override this to supply the committed
+     * app-shell fixture without packaging an asset.
+     */
+    protected open fun readEmbeddedBundle(): String =
+        assets.open(getBundleAssetPath()).bufferedReader().readText()
+
     /** Return WebSocket URL of the Vite dev server for hot reload, or null to disable. */
     open fun getDevServerUrl(): String? = null
 
@@ -239,7 +247,7 @@ abstract class VueNativeActivity : AppCompatActivity() {
 
     private fun loadFromAssets(onComplete: ((Boolean, String?) -> Unit)? = null) {
         try {
-            val bundleCode = assets.open(getBundleAssetPath()).bufferedReader().readText()
+            val bundleCode = readEmbeddedBundle()
             runtime.loadBundle(bundleCode, onComplete)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to load bundle from assets: ${e.message}")

@@ -6,8 +6,10 @@ declare const __PLATFORM__: string
 /**
  * useBackHandler — intercept the hardware back button press (Android).
  *
- * The callback should return `true` if the back press was handled
- * (preventing default behavior), or `false` to allow default navigation.
+ * The callback should return `true` if this listener handled the press
+ * (`useBackHandler` will not call `BackHandler.exitApp`), or `false` to
+ * let this composable exit the app. Returning `true` does not stop other
+ * `hardware:backPress` subscribers such as `createRouter({ handleBackButton: true })`.
  *
  * On iOS this is a no-op since there is no hardware back button,
  * but the event can still be dispatched programmatically.

@@ -20,7 +20,7 @@ This runs the Vite build with `@thelacanians/vue-native-vite-plugin`, which:
 - Produces a single `dist/vue-native-bundle.js` file in IIFE format
 
 ::: tip
-The plugin targets ES2020 for compatibility with iOS 16+ JavaScriptCore. Dynamic imports are inlined (`inlineDynamicImports: true`) since native JS engines do not support ESM.
+The plugin targets ES2020 for compatibility with iOS 16+ JavaScriptCore. The output is a single IIFE file. The plugin leaves Rollup's `inlineDynamicImports` unset (setting it explicitly warns on Vite 8 / Rolldown). Do not use `import()` or top-level `await` — native JS engines load that one IIFE, not ESM chunks.
 :::
 
 ### Verifying Bundle Size

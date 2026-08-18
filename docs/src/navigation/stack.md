@@ -113,12 +113,11 @@ When enabled, navigating from `home → detail → settings` will unmount the `h
 
 ## Back Navigation
 
-Vue Native does **not** provide an automatic back gesture. The iOS swipe-from-edge gesture is **not currently supported** (there is no interactive pop transition), and on Android the hardware back button/gesture does **nothing** by default. You drive back navigation yourself with one of:
+The stack is JavaScript-managed. Nothing pops automatically unless you opt in.
 
-- The router's `handleBackButton` option (recommended for the Android hardware back button)
-- A back button you render in your header, e.g. `<VButton @back="router.pop()">` or any control wired to `router.pop()`
-- The [`useBackHandler`](/composables/useBackHandler.md) composable (for custom back behavior)
-- A programmatic `router.pop()` / `router.goBack()` call
+- **iOS swipe-back** is opt-in. Pass `swipeBack: true` to `createRouter`. The native host then reports a completed edge-pan as `gesture:swipeBack` and the router pops. There is no interactive pop transition — the screen changes when the gesture completes.
+- **Android hardware/gesture back** is opt-in. Pass `handleBackButton: true` (pops, then exits at the root) or use [`useBackHandler`](/composables/useBackHandler.md). Do not enable both for the same screen.
+- You can always drive back yourself with a header control wired to `router.pop()` / `router.goBack()`.
 
 ### Recommended: `handleBackButton`
 

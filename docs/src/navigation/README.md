@@ -56,7 +56,7 @@ const router = useRouter()
 
 ## Route options
 
-Routes can specify display options:
+Routes can carry display metadata for your own header or tab chrome (`currentRoute.value.config.options`). The router stores these values. It does **not** render a native navigation bar, transitions, or tab bar from them:
 
 ```ts
 const router = createRouter([
@@ -67,11 +67,13 @@ const router = createRouter([
     options: {
       title: 'Detail',
       headerShown: true,
-      animation: 'push', // 'push' | 'modal' | 'fade' | 'none'
+      animation: 'push', // stored only — not applied by RouterView
     },
   },
 ])
 ```
+
+System back is opt-in on `createRouter`: `handleBackButton` (Android) and `swipeBack` (iOS edge-pan). See [Stack navigation](./stack.md#back-navigation).
 
 ## Navigation guards
 

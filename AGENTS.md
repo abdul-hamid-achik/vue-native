@@ -99,10 +99,10 @@ These notes are for agents and maintainers continuing the same branch. They shou
 
 ### Current local notes
 
-- `~/notes/projects/vue-native/progress-2026-07-10.md`
-- `~/notes/projects/vue-native/handoff-2026-07-10.md`
-- `~/notes/projects/vue-native/CHANGELOG-draft-2026-07-10.md`
-- Historical notes: `~/notes/projects/vue-native/archive/2026-05-26/` and `~/notes/projects/vue-native/archive/2026-07-09/`
+- `~/notes/projects/vue-native/progress-2026-08-17.md` (authoritative audit + implementation trail)
+- `~/notes/projects/vue-native/open-backlog.md` (still-true findings only)
+- `~/notes/projects/vue-native/CHANGELOG-draft-2026-08-17.md`
+- Historical notes: `~/notes/projects/vue-native/archive/`
 
 ### When to create or update notes
 
@@ -163,10 +163,11 @@ Do not commit files from `~/notes`; they are local working notes, not repository
 
 ### Current review objectives and open risks
 
-The active review tracks broad uncommitted cross-platform hardening: runtime
-lifecycle and event behavior, native bridge cleanup, Android layout and module
-ownership, Apple certificate pinning, macOS exports, generated native-module
-registration, release automation, documentation, and examples.
+Local `main` is origin `0.19.0` plus uncommitted work. The 2026-08-17
+audit plus this session's implementation trail live in
+`progress-2026-08-17.md`. Still-true work is in `open-backlog.md`. Remaining
+risks are physical-device proof, live TLS pinning, and the deferred package
+split. Host-boot smoke exists (`bun run smoke:app-shell`).
 
 Primary objectives:
 
@@ -397,6 +398,10 @@ swift test --package-path native/macos/VueNativeMacOS  # Run macOS tests
 bun run test:macos                                     # Shortcut from root
 
 # ── All platforms ───────────────────────────────────────────
+
+# ── App-shell smoke ─────────────────────────────────────────
+bun run smoke:app-shell            # Host-boot fixture + receipt (skips missing simulators/devices)
+bun run ios:ensure-simulator       # Download iOS runtime + create an iPhone Simulator
 
 # ── CLI ─────────────────────────────────────────────────────
 vue-native create <name>           # Scaffold a new project

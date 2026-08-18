@@ -126,7 +126,7 @@ final class FileSystemModule: NativeModule {
                     callback(nil, "downloadFile: invalid URL")
                     return
                 }
-                let task = URLSession.shared.dataTask(with: url) { data, _, error in
+                let task = CertificatePinning.shared.requestSession.dataTask(with: url) { data, _, error in
                     if let error = error {
                         callback(nil, "downloadFile: \(error.localizedDescription)")
                         return

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { cleanGeneratedFiles, generateCode, hasGeneratedArtifacts, writeGeneratedFiles } from '../codegen'
+import { cleanGeneratedFiles, commitGeneratedFiles, generateCode, hasGeneratedArtifacts } from '../codegen'
 import { generateSwiftFile, generateSwiftRegistration } from '../generators/swift'
 import { generateKotlinFile, generateKotlinRegistration } from '../generators/kotlin'
 import { generateTypeScriptFile } from '../generators/typescript'
@@ -405,8 +405,29 @@ class CameraModule: NativeModule {
         expect(readFileSync(handwrittenFile, 'utf-8')).toContain('Handwritten')
 
         const result = generateCode([], options)
-        writeGeneratedFiles(result, root)
+        commitGeneratedFiles(result, root, options)
         expect(readFileSync(oldRegistration, 'utf-8')).toContain('registerGeneratedModules')
+      } finally {
+        rmSync(root, { recursive: true, force: true })
+      }
+    })
+
+    it('writes new files before pruning stale generated output', () => {
+      const root = mkdtempSync(join(tmpdir(), 'vue-native-codegen-'))
+      const iosOutputDir = 'ios/GeneratedModules'
+      const options = { iosOutputDir, generateTypeScript: false, generateKotlin: false }
+
+      try {
+        const generatedDir = join(root, iosOutputDir)
+        mkdirSync(generatedDir, { recursive: true })
+        const stale = join(generatedDir, 'StaleModule.swift')
+        writeFileSync(stale, '// Auto-Generated Code\nfinal class StaleModule {}\n')
+
+        const result = generateCode([], options)
+        const write = commitGeneratedFiles(result, root, options)
+        expect(write.errors).toEqual([])
+        expect(existsSync(stale)).toBe(false)
+        expect(existsSync(join(root, iosOutputDir, 'GeneratedModuleRegistry.swift'))).toBe(true)
       } finally {
         rmSync(root, { recursive: true, force: true })
       }

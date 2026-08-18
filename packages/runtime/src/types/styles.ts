@@ -114,6 +114,11 @@ export interface ViewStyle {
   direction?: Direction
   display?: Display
   overflow?: Overflow
+  /**
+   * `'none'` disables hit-testing on this view (and typically its children).
+   * Used by RouterView so inactive stack screens cannot steal taps.
+   */
+  pointerEvents?: 'auto' | 'none'
   zIndex?: number
   aspectRatio?: number
   /** Android-only shadow depth. No-op on iOS/macOS. Required for Android shadows to render. */

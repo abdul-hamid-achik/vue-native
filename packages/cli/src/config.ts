@@ -29,6 +29,13 @@ export interface VueNativeConfig {
     /** Android package name (defaults to bundleId). */
     packageName?: string
   }
+  /** macOS-specific configuration. */
+  macos?: {
+    /** Minimum macOS deployment target. Default: "15.0". */
+    deploymentTarget?: string
+    /** Xcode scheme name (auto-derived from name if omitted). */
+    scheme?: string
+  }
   /** Reserved plugin metadata. Plugins are not installed automatically. */
   plugins?: string[]
 }
@@ -42,6 +49,10 @@ export interface ResolvedConfig extends VueNativeConfig {
     minSdk: number
     targetSdk: number
     packageName: string
+  }
+  macos: {
+    deploymentTarget: string
+    scheme: string
   }
   plugins: string[]
 }
@@ -154,6 +165,10 @@ export async function loadConfig(cwd: string): Promise<ResolvedConfig | null> {
         minSdk: config.android?.minSdk ?? 21,
         targetSdk: config.android?.targetSdk ?? 35,
         packageName: config.android?.packageName ?? config.bundleId,
+      },
+      macos: {
+        deploymentTarget: config.macos?.deploymentTarget ?? '15.0',
+        scheme: config.macos?.scheme ?? safeName,
       },
       plugins: config.plugins ?? [],
     }

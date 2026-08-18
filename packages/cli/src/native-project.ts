@@ -5,6 +5,7 @@ import {
   mkdirSync,
   readFileSync,
   readdirSync,
+  statSync,
 } from 'node:fs'
 import { join } from 'node:path'
 import { ConfigError, type ResolvedConfig } from './config.js'
@@ -83,6 +84,73 @@ export function findXcodeProject(iosDir: string): XcodeProject | null {
 
   return null
 }
+
+export interface FindAppleAppOptions {
+  productsSubdir: string
+  scheme?: string
+  derivedDataBase?: string
+}
+
+/**
+ * Locate a built .app in Xcode DerivedData.
+ *
+ * Projects are sorted by modification time (newest first) so a just-built
+ * app wins over leftover products from other checkouts. When `scheme` is
+ * set, only `{scheme}.app` is accepted — otherwise the newest products
+ * directory's first .app is used.
+ */
+export function findAppleAppBundle(options: FindAppleAppOptions): string | null {
+  const derivedDataBase = options.derivedDataBase
+    ?? join(process.env.HOME || '~', 'Library/Developer/Xcode/DerivedData')
+
+  if (!existsSync(derivedDataBase)) return null
+
+  try {
+    const projects = readdirSync(derivedDataBase)
+      .map((name) => {
+        try {
+          return { name, mtime: statSync(join(derivedDataBase, name)).mtimeMs }
+        } catch {
+          return { name, mtime: 0 }
+        }
+      })
+      .sort((a, b) => b.mtime - a.mtime)
+
+    const expectedApp = options.scheme ? `${options.scheme}.app` : null
+
+    for (const { name: project } of projects) {
+      const productsDir = join(
+        derivedDataBase,
+        project,
+        'Build/Products',
+        options.productsSubdir,
+      )
+      if (!existsSync(productsDir)) continue
+
+      const apps = readdirSync(productsDir).filter(entry => entry.endsWith('.app'))
+      if (apps.length === 0) continue
+
+      if (expectedApp) {
+        if (apps.includes(expectedApp)) {
+          return join(productsDir, expectedApp)
+        }
+        continue
+      }
+
+      return join(productsDir, apps[0])
+    }
+  } catch {
+    return null
+  }
+
+  return null
+}
+
+/** Suffix for native-input errors so agents know JS-only success is explicit. */
+export function bundleOnlyHint(detail: string): string {
+  return `${detail} The JS bundle is at dist/vue-native-bundle.js. Pass --bundle-only to stop after the JS bundle.`
+}
+
 /**
  * Return an Xcode project, generating the scaffolded project.yml with XcodeGen
  * when necessary.

@@ -200,7 +200,8 @@ export default defineConfig({
           moduleResolution: 'bundler',
           strict: true,
           jsx: 'preserve',
-          lib: ['ES2020', 'DOM', 'DOM.Iterable'],
+          lib: ['ES2020'],
+          skipLibCheck: true,
           types: [],
           paths: {
             vue: ['./node_modules/@thelacanians/vue-native-runtime/dist/index.d.ts'],
@@ -575,7 +576,7 @@ android.nonTransitiveRClass=true
       // android/gradle/wrapper/gradle-wrapper.properties
       await writeFile(join(androidGradleWrapperDir, 'gradle-wrapper.properties'), `distributionBase=GRADLE_USER_HOME
 distributionPath=wrapper/dists
-distributionUrl=https\\://services.gradle.org/distributions/gradle-8.11.1-bin.zip
+distributionUrl=https\\://services.gradle.org/distributions/gradle-8.6-bin.zip
 networkTimeout=10000
 zipStoreBase=GRADLE_USER_HOME
 zipStorePath=wrapper/dists
@@ -618,6 +619,9 @@ export default defineConfig({
   android: {
     minSdk: 21,
     targetSdk: 35,
+  },
+  macos: {
+    deploymentTarget: '15.0',
   },
 })
 `)

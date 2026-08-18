@@ -198,6 +198,24 @@ final class ComponentFactoryTests: XCTestCase {
         XCTAssertFalse(container.tableView(container.tableView, isGroupRow: 1))
     }
 
+    func testVSectionListStickyHeadersToggleFloatsGroupRows() {
+        let factory = VSectionListFactory()
+        guard let container = factory.createView() as? VSectionListContainerView else {
+            return XCTFail("Expected VSectionListContainerView")
+        }
+
+        XCTAssertTrue(container.stickySectionHeaders)
+        XCTAssertTrue(container.tableView.floatsGroupRows)
+
+        factory.updateProp(view: container, key: "stickySectionHeaders", value: false)
+        XCTAssertFalse(container.stickySectionHeaders)
+        XCTAssertFalse(container.tableView.floatsGroupRows)
+
+        factory.updateProp(view: container, key: "stickySectionHeaders", value: true)
+        XCTAssertTrue(container.stickySectionHeaders)
+        XCTAssertTrue(container.tableView.floatsGroupRows)
+    }
+
     func testVSectionListFactoryEmitsFlatScrollPayload() {
         let factory = VSectionListFactory()
         guard let container = factory.createView() as? VSectionListContainerView else {

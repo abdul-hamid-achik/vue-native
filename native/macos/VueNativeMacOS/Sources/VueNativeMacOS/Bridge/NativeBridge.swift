@@ -220,6 +220,8 @@ public final class NativeBridge: @preconcurrency NativeEventDispatcher {
                 continue
             }
 
+            PerformanceModule.recordBridgeOperations(1)
+
             if !needsLayout && NativeBridge.treeMutationOps.contains(op) {
                 needsLayout = true
             }

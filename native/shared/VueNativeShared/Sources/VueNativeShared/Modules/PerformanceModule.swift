@@ -20,6 +20,7 @@ public final class PerformanceModule: NSObject, NativeModule {
 
     // Bridge operation count
     private var bridgeOpsCount: Int = 0
+    private static weak var activeInstance: PerformanceModule?
 
     /// Optional FPS provider. Platform-specific code sets this to a closure
     /// that returns the current FPS reading (e.g., from CADisplayLink).
@@ -50,6 +51,7 @@ public final class PerformanceModule: NSObject, NativeModule {
         guard !isProfiling else { callback(true, nil); return }
         isProfiling = true
         bridgeOpsCount = 0
+        Self.activeInstance = self
 
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
@@ -66,6 +68,9 @@ public final class PerformanceModule: NSObject, NativeModule {
     private func stopProfiling(callback: @escaping (Any?, String?) -> Void) {
         guard isProfiling else { callback(true, nil); return }
         isProfiling = false
+        if Self.activeInstance === self {
+            Self.activeInstance = nil
+        }
 
         DispatchQueue.main.async { [weak self] in
             self?.metricsTimer?.invalidate()
@@ -75,6 +80,10 @@ public final class PerformanceModule: NSObject, NativeModule {
     }
 
     // MARK: - Metrics collection
+
+    public static func recordBridgeOperations(_ count: Int) {
+        activeInstance?.bridgeOpsCount += count
+    }
 
     private func collectMetrics() -> [String: Any] {
         let fps = fpsProvider?() ?? 0
@@ -88,7 +97,6 @@ public final class PerformanceModule: NSObject, NativeModule {
 
     private func dispatchMetrics() {
         guard isProfiling else { return }
-        bridgeOpsCount += 1 // Count the metrics dispatch itself
         let metrics = collectMetrics()
         DispatchQueue.main.async { [weak self] in
             self?.eventDispatcher?.dispatchGlobalEvent("perf:metrics", payload: metrics)

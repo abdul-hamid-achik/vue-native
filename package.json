@@ -44,6 +44,8 @@
     "package-metadata:sync": "bun scripts/sync-package-metadata.mjs --write",
     "vue:cohort:set": "bun scripts/set-vue-cohort.mjs",
     "smoke:cli": "bun scripts/smoke-cli-scaffold.mjs",
+    "smoke:app-shell": "bun scripts/smoke-app-shell.mjs",
+    "ios:ensure-simulator": "bun scripts/ensure-ios-simulator.mjs",
     "hooks:validate": "lefthook validate",
     "check:ts": "bun run lint && bun run typecheck && bun run contracts:check && bun run check:vue-cohort && bun run check:package-metadata && bun run build && bun run smoke:cli && bun run test:ts && bun run knip && bun run hooks:validate",
     "prepare": "lefthook install",

@@ -187,6 +187,20 @@ describe('NativeRenderer (nodeOps)', () => {
       expect(removedOp?.args[1].backgroundColor).toBeNull()
     })
 
+    it('flattens array styles before sending them to native', async () => {
+      const el = nodeOps.createElement('VView')
+      await nextTick()
+      mockBridge.reset()
+
+      nodeOps.patchProp(el, 'style', null, [{ padding: 8 }, { backgroundColor: '#111' }])
+      await nextTick()
+
+      const ops = mockBridge.getOpsByType('updateStyle')
+      expect(ops).toHaveLength(1)
+      expect(ops[0].args[1]).toEqual({ padding: 8, backgroundColor: '#111' })
+      expect(ops[0].args[1]['0']).toBeUndefined()
+    })
+
     it('skips style properties that have not changed', async () => {
       const el = nodeOps.createElement('VView')
       nodeOps.patchProp(el, 'style', null, { opacity: 1 })

@@ -144,11 +144,9 @@ class OTAModule : NativeModule {
     private var bridgeRef: NativeBridge? = null
     private var prefs: SharedPreferences? = null
 
-    // OTA only ever talks to HTTPS endpoints (enforced in checkForUpdate /
-    // downloadUpdate). Certificate pinning can be layered on by routing these
-    // calls through HttpModule.client() once pins are configured; it is not wired
-    // here to avoid sharing/tearing down the HttpModule client's dispatcher.
-    private val client = OkHttpClient()
+    // OTA is code loading: use the shared pin-aware client. Do not own or
+    // shut down that client's dispatcher — other modules share it.
+    private fun httpClient(): OkHttpClient = HttpModule.client()
     @Volatile private var destroyed = false
 
     // Optional ECDSA P-256 publisher key. When set, every downloaded bundle must
@@ -258,7 +256,7 @@ class OTAModule : NativeModule {
             .get()
             .build()
 
-        client.newCall(request).enqueue(object : Callback {
+        httpClient().newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
                 if (!destroyed) callback(null, "Network error: ${e.message}")
             }
@@ -326,7 +324,7 @@ class OTAModule : NativeModule {
 
         cleanupPendingBundle(prefs, removeFile = true)
         val request = Request.Builder().url(downloadUrl).build()
-        client.newCall(request).enqueue(object : Callback {
+        httpClient().newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
                 if (!destroyed) callback(null, "Download failed: ${e.message}")
             }
@@ -666,9 +664,6 @@ class OTAModule : NativeModule {
     override fun destroy() {
         if (destroyed) return
         destroyed = true
-        client.dispatcher.cancelAll()
-        client.connectionPool.evictAll()
-        client.dispatcher.executorService.shutdown()
         bridgeRef = null
         verifyKey = null
         appContext?.let { context ->

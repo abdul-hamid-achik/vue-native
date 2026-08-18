@@ -12,8 +12,9 @@ export interface PerformanceMetrics {
  * Performance profiler composable.
  *
  * Starts/stops native performance profiling (FPS via CADisplayLink/Choreographer,
- * memory via task_info/Runtime, bridge operation count). While profiling is active,
- * reactive refs are updated every second via `perf:metrics` global events.
+ * memory via task_info/Runtime). While profiling is active, `bridgeOps` counts
+ * native bridge operations processed since `startProfiling`. Reactive refs
+ * update every second via `perf:metrics` global events.
  *
  * @example
  * const { startProfiling, stopProfiling, fps, memoryMB, isProfiling } = usePerformance()

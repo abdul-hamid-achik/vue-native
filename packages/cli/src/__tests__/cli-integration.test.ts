@@ -164,7 +164,7 @@ describe('CLI Command Tests', () => {
         stdio: 'pipe',
       })
 
-      expect(output).toContain('Cleaning generated files')
+      expect(output).toContain('Stale generated files will be pruned after a successful write.')
       expect(output).toContain('Generation complete')
     })
 

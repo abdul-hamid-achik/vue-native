@@ -1,6 +1,6 @@
 # Components
 
-Vue Native provides 30+ built-in components that map directly to native views on iOS, Android, and macOS.
+Vue Native provides 40 built-in components that map directly to native views on iOS, Android, and macOS.
 
 See the [Components guide](../guide/components.md) for a full comparison table.
 

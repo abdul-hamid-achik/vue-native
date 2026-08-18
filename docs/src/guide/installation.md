@@ -56,7 +56,7 @@ The CLI scaffolds a full project with:
 
 macOS support is available through the native `VueNativeMacOS` package, but `vue-native create` does not scaffold a macOS app shell yet. Follow the [macOS Setup](/macos/setup.md) guide to add a macOS target manually.
 
-See the [Managed Workflow](./managed-workflow.md) guide for the full configuration reference and available CLI commands.
+See the [Managed Workflow](./managed-workflow.md) guide for the full configuration reference and available CLI commands (`doctor`, `inspect`, `capabilities`, `run`, `build`, `generate`). After scaffolding, `vue-native doctor` checks that Bun, Xcode, and the Android SDK are visible.
 
 ## Manual setup
 

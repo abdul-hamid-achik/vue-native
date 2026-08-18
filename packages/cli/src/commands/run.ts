@@ -1,6 +1,6 @@
 import { Command } from 'commander'
 import { execFileSync, execSync } from 'node:child_process'
-import { existsSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import pc from 'picocolors'
@@ -8,9 +8,11 @@ import { ensureBunAvailable } from '../bun-check.js'
 import { ConfigError, loadConfig } from '../config.js'
 import { runManagedProcess } from '../managed-process.js'
 import {
+  bundleOnlyHint,
   ensureApplePlatformSupported,
   ensureXcodeProject,
   findAndroidConfigDrift,
+  findAppleAppBundle,
   findIOSConfigDrift,
   formatGradleFailure,
   installAndroidBundle,
@@ -44,51 +46,6 @@ function validateAndroidComponent(applicationId: string, activity: string): void
       'Invalid Android activity name. Use a class name such as .MainActivity or com.example.MainActivity.',
     )
   }
-}
-
-function findAppPath(productsSubdir: string): string | null {
-  // Look for .app bundle in DerivedData or build directory. `productsSubdir`
-  // selects the SDK-specific products folder, e.g. "Debug-iphonesimulator" for
-  // simulator builds or "Debug-iphoneos" for physical-device builds.
-  const derivedDataBase = join(
-    process.env.HOME || '~',
-    'Library/Developer/Xcode/DerivedData',
-  )
-
-  if (existsSync(derivedDataBase)) {
-    try {
-      // Sort DerivedData projects by modification time (most recent first) so we
-      // pick the app that was just built — readdirSync returns filesystem order
-      // (roughly alphabetical), which could select an unrelated project's .app.
-      const projects = readdirSync(derivedDataBase)
-        .map((name) => {
-          try {
-            return { name, mtime: statSync(join(derivedDataBase, name)).mtimeMs }
-          } catch {
-            return { name, mtime: 0 }
-          }
-        })
-        .sort((a, b) => b.mtime - a.mtime)
-
-      for (const { name: project } of projects) {
-        const productsDir = join(
-          derivedDataBase,
-          project,
-          'Build/Products',
-          productsSubdir,
-        )
-        if (existsSync(productsDir)) {
-          const entries = readdirSync(productsDir)
-          const app = entries.find(e => e.endsWith('.app'))
-          if (app) {
-            return join(productsDir, app)
-          }
-        }
-      }
-    } catch {}
-  }
-
-  return null
 }
 
 function readBundleId(iosDir: string): string {
@@ -132,6 +89,7 @@ export const runCommand = new Command('run')
   .option('--bundle-id <id>', 'app bundle identifier')
   .option('--package <name>', 'Android package name (auto-detected from app/build.gradle when omitted)')
   .option('--activity <name>', 'Android activity name', '.MainActivity')
+  .option('--bundle-only', 'stop after the JS bundle; do not require a native project or artifact')
   .action(async (platformArg: string | undefined, options: {
     device?: boolean
     deviceId?: string
@@ -140,6 +98,7 @@ export const runCommand = new Command('run')
     bundleId?: string
     package?: string
     activity: string
+    bundleOnly?: boolean
   }) => {
     const platform = await resolvePlatform(platformArg)
     ensureApplePlatformSupported(platform)
@@ -148,7 +107,7 @@ export const runCommand = new Command('run')
     const config = await loadConfig(cwd)
     const resolvedOptions = {
       ...options,
-      scheme: options.scheme ?? config?.ios.scheme,
+      scheme: options.scheme ?? (platform === 'macos' ? config?.macos.scheme : config?.ios.scheme),
       bundleId: options.bundleId ?? config?.bundleId,
       package: options.package ?? config?.android.packageName,
     }
@@ -182,6 +141,12 @@ export const runCommand = new Command('run')
       p.log.success('Bundle built')
     } catch {
       throw new ConfigError('Bundle build failed')
+    }
+
+    if (options.bundleOnly) {
+      p.log.success('Bundle-only run complete (dist/vue-native-bundle.js)')
+      p.outro(pc.dim('Skipped the native project. Omit --bundle-only to install and launch the app.'))
+      return
     }
 
     if (platform === 'ios') {
@@ -357,10 +322,9 @@ async function runIOS(
   const project = ensureXcodeProject(iosDir)
 
   if (!project) {
-    console.log(pc.yellow('  No Xcode project found in ./ios/'))
-    console.log(pc.dim('  Add ios/project.yml or an .xcodeproj/.xcworkspace, then retry.'))
-    console.log(pc.dim('  Bundle has been built to dist/vue-native-bundle.js\n'))
-    return
+    throw new ConfigError(bundleOnlyHint(
+      'No Xcode project found in ./ios/. Add ios/project.yml or an .xcodeproj/.xcworkspace, then retry.',
+    ))
   }
 
   // Build with xcodebuild
@@ -423,11 +387,14 @@ async function runIOS(
     // clear error before we go looking for build artifacts.
     const device = selectPhysicalDevice(options.deviceId)
 
-    const appPath = findAppPath('Debug-iphoneos')
+    const appPath = findAppleAppBundle({
+      productsSubdir: 'Debug-iphoneos',
+      scheme,
+    })
     if (!appPath) {
-      console.log(pc.yellow('  Could not locate the device .app bundle in DerivedData.'))
-      console.log(pc.dim('  The build succeeded — install the app from Xcode directly.\n'))
-      return
+      throw new ConfigError(
+        `Could not locate the device .app bundle in DerivedData (Debug-iphoneos) for scheme "${scheme}".`,
+      )
     }
 
     console.log(pc.white(`  Installing app on ${device.name}...`))
@@ -479,29 +446,32 @@ async function runIOS(
     execFileSync('open', ['-a', 'Simulator'], { stdio: 'pipe' })
   } catch {}
 
-  // Find and install the .app
-  const appPath = findAppPath('Debug-iphonesimulator')
-  if (appPath) {
-    console.log(pc.white(`  Installing app on simulator...`))
-    try {
-      execFileSync('xcrun', ['simctl', 'install', 'booted', appPath], { stdio: 'pipe' })
-      console.log(pc.green('  ✓ App installed'))
-    } catch (err) {
-      console.error(pc.red(`  ✗ Failed to install app: ${(err as Error).message}`))
-      throw new ConfigError(`iOS app install failed: ${(err as Error).message}`)
-    }
+  const appPath = findAppleAppBundle({
+    productsSubdir: 'Debug-iphonesimulator',
+    scheme,
+  })
+  if (!appPath) {
+    throw new ConfigError(
+      `Could not locate .app bundle in DerivedData (Debug-iphonesimulator) for scheme "${scheme}".`,
+    )
+  }
 
-    console.log(pc.white(`  Launching ${bundleId}...`))
-    try {
-      execFileSync('xcrun', ['simctl', 'launch', 'booted', bundleId], { stdio: 'pipe' })
-      console.log(pc.green(`  ✓ App launched on ${simulatorName}\n`))
-    } catch (err) {
-      console.error(pc.red(`  ✗ Failed to launch app: ${(err as Error).message}`))
-      throw new ConfigError(`iOS app launch failed: ${(err as Error).message}`)
-    }
-  } else {
-    console.log(pc.yellow('  Could not locate .app bundle in DerivedData.'))
-    console.log(pc.dim('  Try running the app from Xcode directly.\n'))
+  console.log(pc.white(`  Installing app on simulator...`))
+  try {
+    execFileSync('xcrun', ['simctl', 'install', 'booted', appPath], { stdio: 'pipe' })
+    console.log(pc.green('  ✓ App installed'))
+  } catch (err) {
+    console.error(pc.red(`  ✗ Failed to install app: ${(err as Error).message}`))
+    throw new ConfigError(`iOS app install failed: ${(err as Error).message}`)
+  }
+
+  console.log(pc.white(`  Launching ${bundleId}...`))
+  try {
+    execFileSync('xcrun', ['simctl', 'launch', 'booted', bundleId], { stdio: 'pipe' })
+    console.log(pc.green(`  ✓ App launched on ${simulatorName}\n`))
+  } catch (err) {
+    console.error(pc.red(`  ✗ Failed to launch app: ${(err as Error).message}`))
+    throw new ConfigError(`iOS app launch failed: ${(err as Error).message}`)
   }
 }
 
@@ -515,10 +485,9 @@ async function runAndroid(
   const androidDir = join(cwd, 'android')
 
   if (!existsSync(androidDir)) {
-    console.log(pc.yellow('  No android/ directory found.'))
-    console.log(pc.dim('  To add Android support, create an Android project in the android/ directory.'))
-    console.log(pc.dim('  Bundle has been built to dist/vue-native-bundle.js\n'))
-    return
+    throw new ConfigError(bundleOnlyHint(
+      'No android/ directory found. To add Android support, create an Android project in the android/ directory.',
+    ))
   }
 
   // Find the platform-appropriate Gradle wrapper (gradlew.bat on Windows,
@@ -603,9 +572,9 @@ async function runAndroid(
   // Find APK
   const apkPath = findApkPath(androidDir)
   if (!apkPath) {
-    console.log(pc.yellow('  Could not locate debug APK.'))
-    console.log(pc.dim('  Expected at android/app/build/outputs/apk/debug/\n'))
-    return
+    throw new ConfigError(
+      'Could not locate debug APK. Expected at android/app/build/outputs/apk/debug/.',
+    )
   }
 
   // Install APK
@@ -640,10 +609,9 @@ async function runMacOS(
   const macosDir = join(cwd, 'macos')
 
   if (!existsSync(macosDir)) {
-    console.log(pc.yellow('  No macos/ directory found.'))
-    console.log(pc.dim('  To add macOS support, create an Xcode project in the macos/ directory.'))
-    console.log(pc.dim('  Bundle has been built to dist/vue-native-bundle.js\n'))
-    return
+    throw new ConfigError(bundleOnlyHint(
+      'No macos/ directory found. To add macOS support, create an Xcode project in the macos/ directory.',
+    ))
   }
 
   // Find Xcode project in macos/ directory
@@ -660,8 +628,9 @@ async function runMacOS(
   }
 
   if (!xcodeProject) {
-    console.log(pc.yellow('  No Xcode project found in ./macos/'))
-    return
+    throw new ConfigError(bundleOnlyHint(
+      'No Xcode project found in ./macos/. To add macOS support, create an Xcode project in the macos/ directory.',
+    ))
   }
 
   const isWorkspace = xcodeProject.endsWith('.xcworkspace')
@@ -708,38 +677,22 @@ async function runMacOS(
 
   console.log(pc.green('  ✓ Build successful\n'))
 
-  // Find and launch the macOS app
-  const derivedDataBase = join(process.env.HOME || '~', 'Library/Developer/Xcode/DerivedData')
-  let appPath: string | null = null
-
-  if (existsSync(derivedDataBase)) {
-    try {
-      const projects = readdirSync(derivedDataBase)
-      for (const project of projects.reverse()) {
-        const productsDir = join(derivedDataBase, project, 'Build/Products/Debug')
-        if (existsSync(productsDir)) {
-          const entries = readdirSync(productsDir)
-          const app = entries.find(e => e.endsWith('.app'))
-          if (app) {
-            appPath = join(productsDir, app)
-            break
-          }
-        }
-      }
-    } catch {}
+  const appPath = findAppleAppBundle({
+    productsSubdir: 'Debug',
+    scheme,
+  })
+  if (!appPath) {
+    throw new ConfigError(
+      `Could not locate .app bundle in DerivedData (Debug) for scheme "${scheme}".`,
+    )
   }
 
-  if (appPath) {
-    console.log(pc.white(`  Launching ${appPath}...`))
-    try {
-      execFileSync('open', [appPath], { stdio: 'pipe' })
-      console.log(pc.green(`  ✓ App launched\n`))
-    } catch (err) {
-      console.error(pc.red(`  ✗ Failed to launch app: ${(err as Error).message}`))
-      throw new ConfigError(`macOS app launch failed: ${(err as Error).message}`)
-    }
-  } else {
-    console.log(pc.yellow('  Could not locate .app bundle in DerivedData.'))
-    console.log(pc.dim('  Try running the app from Xcode directly.\n'))
+  console.log(pc.white(`  Launching ${appPath}...`))
+  try {
+    execFileSync('open', [appPath], { stdio: 'pipe' })
+    console.log(pc.green(`  ✓ App launched\n`))
+  } catch (err) {
+    console.error(pc.red(`  ✗ Failed to launch app: ${(err as Error).message}`))
+    throw new ConfigError(`macOS app launch failed: ${(err as Error).message}`)
   }
 }

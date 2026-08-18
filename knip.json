@@ -20,7 +20,8 @@
   },
   "ignore": [
     "native/**",
-    "docs/**"
+    "docs/**",
+    "fixtures/**"
   ],
   "exclude": ["classMembers", "exports", "types", "duplicates"],
   "ignoreBinaries": ["swift"]

@@ -23,6 +23,7 @@ vue-native build android --aab
 | `--output <path>` | Output directory for the build artifact (default: `./build`) |
 | `--scheme <scheme>` | Xcode scheme to build (iOS and macOS) |
 | `--aab` | Build Android App Bundle instead of APK (Android only) |
+| `--bundle-only` | Stop after the JavaScript bundle. Missing native projects or `.app` / APK / AAB / xcarchive products otherwise fail the command. |
 
 ### Examples
 
@@ -43,7 +44,12 @@ vue-native build ios --scheme MyApp-Staging
 vue-native build android --aab --output ./release
 ```
 
-The CLI auto-bundles the JS before running the native build — you do not need to run `bun run build` separately.
+The CLI auto-bundles the JS before running the native build — you do not need to run `bun run build` separately. If the native project is missing or the build does not produce an artifact, the command exits nonzero. Use `--bundle-only` for a JS-only run.
+
+```bash
+vue-native build ios --bundle-only
+vue-native doctor --json
+```
 
 ## Manual Build
 

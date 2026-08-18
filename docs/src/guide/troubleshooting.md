@@ -2,6 +2,38 @@
 
 This page covers common problems you may encounter when building with Vue Native, organized by category. For error handling APIs and reporting integrations, see the [Error Handling](./error-handling.md) and [Error Reporting & Monitoring](./error-reporting.md) guides.
 
+## CLI diagnostics
+
+Run these from the app root before digging into Xcode or Gradle logs:
+
+```bash
+vue-native doctor --json
+vue-native inspect --json
+```
+
+`doctor` exits `1` when a blocking toolchain check fails (missing `bun` or, on macOS, missing `xcodebuild`). `inspect` is informational: it reports whether `vue-native.config.*`, `ios/`, `android/`, `macos/`, and `dist/vue-native-bundle.js` exist.
+
+**`build` / `run` fail with "Could not locate" an `.app`, APK, or AAB**
+
+That is intentional. A successful native build must produce an artifact. Pass `--bundle-only` if you only wanted the JavaScript bundle.
+
+**`xcrun simctl list runtimes` is empty / "Unable to find a destination matching iPhone 17"**
+
+Xcode's iOS SDK is installed, but the Simulator *runtime* is not. Download it:
+
+```bash
+bun run ios:ensure-simulator
+# or: xcodebuild -downloadPlatform iOS
+```
+
+Then `xcrun simctl list devices available` should list an iPhone.
+
+**`ios.device` / physical-device smoke skipped**
+
+`xcrun devicectl list devices` must show `tunnelState: connected` and Developer Mode enabled. A paired iPhone with `tunnel=disconnected` is offline (unlock it, plug it in or join the same network). Android device smoke needs `adb` on `PATH` or `ANDROID_HOME`.
+
+See [Host-boot and device smoke](./testing.md#host-boot-and-device-smoke).
+
 ## Build Issues
 
 ### Xcode Build Fails
@@ -121,7 +153,7 @@ export default defineConfig({
 
 **"Top-level await is not available" or "Dynamic import is not supported"**
 
-JavaScriptCore and V8 (via J2V8) load IIFE bundles, which cannot use top-level await or dynamic imports. The Vite plugin sets `inlineDynamicImports: true` automatically, but your code must not use top-level await:
+JavaScriptCore and V8 (via J2V8) load a single IIFE bundle, which cannot use top-level await or `import()`. The Vite plugin produces one file and leaves `inlineDynamicImports` unset (setting it explicitly warns on Vite 8). Your code must not use top-level await:
 
 ```ts
 // Wrong -- top-level await

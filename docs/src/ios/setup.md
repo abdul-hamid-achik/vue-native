@@ -10,20 +10,27 @@ This guide walks through every step to get a Vue Native app building and running
 | **Xcode Command Line Tools** | (bundled) | `xcode-select --install` |
 | **XcodeGen** | 2.38+ | `brew install xcodegen` |
 | **Bun** | 1.3+ | `curl -fsSL https://bun.sh/install \| bash` |
-| **iOS Simulator** | (bundled) | Included with Xcode |
+| **iOS Simulator runtime** | matching the Xcode SDK | Not bundled. Download separately (see below). |
 
 Verify your environment:
 
 ```bash
-xcode-select -p          # /Applications/Xcode.app/Contents/Developer
-swift --version           # Apple Swift version 5.9+
-xcodegen --version        # XcodeGen 2.38+
-bun --version             # 1.3+
-xcrun simctl list devices # lists available simulators
+xcode-select -p            # /Applications/Xcode.app/Contents/Developer
+swift --version             # Apple Swift version 5.9+
+xcodegen --version          # XcodeGen 2.38+
+bun --version               # 1.3+
+xcrun simctl list runtimes  # must list an iOS runtime (not just the SDK)
+xcrun simctl list devices available
 ```
 
 ::: tip First-time Xcode install
-After installing Xcode, open it once and accept the license. Then install the iOS Simulator runtime: **Xcode > Settings > Platforms > iOS > Download**.
+After installing Xcode, open it once and accept the license. The iOS SDK is not a Simulator. Install a runtime with **Xcode > Settings > Components > iOS**, or from this repo:
+
+```bash
+bun run ios:ensure-simulator   # xcodebuild -downloadPlatform iOS + create an iPhone
+```
+
+`vue-native run ios` and `bun run test:ios` fail with "Unable to find a destination" until a runtime exists. Current CI / `AGENTS.md` use `iPhone 17` on the latest installed OS.
 :::
 
 ## Quick start (CLI)
@@ -44,8 +51,10 @@ vue-native run ios
 1. Runs `vite build` to produce `dist/vue-native-bundle.js`
 2. Generates the Xcode project from `ios/project.yml` via XcodeGen
 3. Builds the app with `xcodebuild`
-4. Boots the iOS Simulator
+4. Boots the iOS Simulator (requires a downloaded iOS Simulator runtime)
 5. Installs and launches the app
+
+For a physical device, `vue-native run ios --device` needs the phone paired, Developer Mode enabled, and the CoreDevice tunnel connected (`xcrun devicectl list devices`). A paired device with `tunnel=disconnected` is not reachable.
 
 If you want to understand what happens under the hood (or run steps manually), read on.
 

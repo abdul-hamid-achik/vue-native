@@ -788,6 +788,12 @@ enum StyleEngine {
             view.isHidden = (value as? Bool) ?? false
             return true
 
+        case "pointerEvents":
+            if let mode = value as? String, let flipped = view as? FlippedView {
+                flipped.ignoresPointerEvents = mode == "none"
+            }
+            return true
+
         case "isHidden":
             if let hidden = value as? Bool {
                 view.isHidden = hidden

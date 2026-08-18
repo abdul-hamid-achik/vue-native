@@ -127,11 +127,15 @@ export function createTheme<T extends Record<string, unknown>>(definition: Theme
         : 'vue-native-color-scheme'
 
       // Sync with the system appearance when followSystem is enabled.
+      let followSystemActive = Boolean(props.followSystem)
+
       if (props.followSystem) {
         const system = useColorScheme()
         colorScheme.value = system.colorScheme.value
         watch(system.colorScheme, (scheme) => {
-          colorScheme.value = scheme
+          if (followSystemActive) {
+            colorScheme.value = scheme
+          }
         })
       }
 
@@ -142,6 +146,7 @@ export function createTheme<T extends Record<string, unknown>>(definition: Theme
           NativeBridge.invokeNativeModule<string | null>('AsyncStorage', 'getItem', [storageKey])
             .then((stored) => {
               if (stored === 'light' || stored === 'dark') {
+                followSystemActive = false
                 colorScheme.value = stored
               }
             })
@@ -164,11 +169,13 @@ export function createTheme<T extends Record<string, unknown>>(definition: Theme
         theme,
         colorScheme,
         toggleColorScheme: () => {
+          followSystemActive = false
           const next = colorScheme.value === 'light' ? 'dark' : 'light'
           colorScheme.value = next
           persistScheme(next)
         },
         setColorScheme: (scheme: ColorScheme) => {
+          followSystemActive = false
           colorScheme.value = scheme
           persistScheme(scheme)
         },

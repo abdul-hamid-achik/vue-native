@@ -1,6 +1,6 @@
 # Known Limitations & Platform Differences
 
-Vue Native renders to **native UIKit views** (iOS) and **Android Views** (Android), not to a WebView. JavaScript runs inside JavaScriptCore (iOS) and J2V8/V8 (Android) -- environments that provide no browser APIs. This page documents what is available, what is not, and where the two platforms diverge.
+Vue Native renders to **native UIKit views** (iOS), **Android Views** (Android), and **AppKit views** (macOS), not to a WebView. JavaScript runs inside JavaScriptCore (iOS/macOS) and J2V8/V8 (Android) -- environments that provide no browser APIs. This page documents what is available, what is not, and where the platforms diverge.
 
 ## No DOM
 
@@ -155,8 +155,9 @@ While Vue Native abstracts most platform details, certain behaviors differ betwe
 
 ### Back Navigation
 
-- **iOS:** Swipe-from-left-edge gesture is handled automatically by the stack navigator.
-- **Android:** Hardware/gesture back button must be intercepted with `useBackHandler`. The stack navigator handles this by default, but custom back logic requires explicit handling.
+- **iOS:** The host can dispatch `gesture:swipeBack` from an edge-pan. The JS stack does **not** handle it unless you pass `swipeBack: true` to `createRouter`. There is no interactive pop transition.
+- **Android:** Hardware/gesture back does nothing unless you pass `handleBackButton: true` to `createRouter` or register `useBackHandler`. Do not enable both for the same screen.
+- **macOS:** There is no system back gesture. Drive `router.pop()` from a control.
 
 ### Shadows
 
@@ -182,12 +183,12 @@ Vue Native is designed for typical mobile app workloads. Be aware of these pract
 | Images | High-resolution images consume significant memory. Size images appropriately and avoid loading dozens of full-resolution images simultaneously. |
 
 ::: tip
-Use `usePerformance` to profile your app. Watch for FPS drops below 55, steadily growing memory, or bridge operation spikes. See the [Performance guide](./performance.md) for details.
+Use `usePerformance` to profile your app. Watch for FPS drops below 55, steadily growing memory, or a climbing `bridgeOps` count while profiling. See the [Performance guide](./performance.md) for details.
 :::
 
 ## Navigation Limitations
 
-Vue Native navigation is a **native stack** managed in JavaScript -- not browser history.
+Vue Native navigation is a **JavaScript-managed stack** rendered with native views -- not `UINavigationController` / Android Navigation Component, and not browser history.
 
 - There is no URL bar, no `<a>` tags, and no `window.history`.
 - Use `useRouter().push()`, `pop()`, `replace()`, and `reset()` for all navigation.

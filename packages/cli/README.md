@@ -83,7 +83,12 @@ vue-native run ios --device
 
 # Android
 vue-native run android
+
+# JS bundle only (no native project required)
+vue-native run ios --bundle-only
 ```
+
+Missing native projects or build products are errors. Pass `--bundle-only` if you intentionally want just `dist/vue-native-bundle.js`.
 
 #### iOS options
 
@@ -93,6 +98,7 @@ vue-native run android
 | `--device` | `false` | Build for physical device |
 | `--scheme <name>` | auto-detect | Xcode scheme |
 | `--bundle-id <id>` | auto-detect | App bundle identifier |
+| `--bundle-only` | `false` | Stop after the JS bundle |
 
 #### Android options
 
@@ -104,6 +110,42 @@ vue-native run android
 Before an Android run or native build, the CLI copies
 `dist/vue-native-bundle.js` into the app's assets directory automatically.
 The command also supplies its platform to Vite as `VUE_NATIVE_PLATFORM`.
+
+### `vue-native doctor`
+
+Print toolchain and project health. `--json` emits `{ schemaVersion, ok, cwd, checks }`.
+
+```bash
+vue-native doctor
+vue-native doctor --json
+```
+
+### `vue-native inspect`
+
+Print a project snapshot: config, native hosts, JS bundle, and generated-module directories. `--json` emits `{ schemaVersion, cwd, config, native, bundle, generated }`.
+
+```bash
+vue-native inspect
+vue-native inspect --json
+```
+
+### `vue-native capabilities`
+
+Print the framework capability manifest: built-in components, native modules with per-platform status, and known limitations. `--json` emits `{ schemaVersion, framework, platforms, components, modules, limitations }`.
+
+```bash
+vue-native capabilities
+vue-native capabilities --json
+```
+
+### `vue-native generate`
+
+Generate Swift, Kotlin, and TypeScript from `<native>` blocks. Parse errors fail the command. Generated files are committed atomically (write, then prune stale output).
+
+```bash
+vue-native generate
+vue-native generate --watch
+```
 
 ### `vue-native build <platform>`
 
@@ -118,7 +160,9 @@ vue-native build android --mode debug
 
 `--mode` accepts `debug` or `release` (the default). Use `--output` to choose
 the artifact directory, `--scheme` for an iOS or macOS Xcode scheme, and
-`--aab` to create an Android App Bundle instead of an APK.
+`--aab` to create an Android App Bundle instead of an APK. Missing native
+projects or missing `.app` / APK / AAB / xcarchive products fail the command.
+Pass `--bundle-only` to stop after the JavaScript bundle.
 
 `run` and `build` propagate their platform to Vite automatically. Their target
 takes precedence over an explicit `vueNative({ platform: '...' })` option, so

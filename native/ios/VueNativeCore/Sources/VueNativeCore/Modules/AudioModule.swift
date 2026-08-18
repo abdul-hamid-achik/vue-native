@@ -116,7 +116,7 @@ final class AudioModule: NSObject, NativeModule {
     }
 
     private func downloadAndPlay(url: URL, options: [String: Any], callback: @escaping (Any?, String?) -> Void) {
-        URLSession.shared.dataTask(with: url) { [weak self] data, _, error in
+        CertificatePinning.shared.requestSession.dataTask(with: url) { [weak self] data, _, error in
             DispatchQueue.main.async {
                 guard let self = self else { return }
                 if let error = error {

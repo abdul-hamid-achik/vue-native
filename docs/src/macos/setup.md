@@ -36,7 +36,7 @@ bun install
 vue-native run macos
 ```
 
-`vue-native create` does not scaffold a macOS app shell yet. Once you add a `macos/` Xcode project, `vue-native run macos` does the following:
+`vue-native create` does not scaffold a macOS app shell yet. `vue-native.config.ts` may still declare a `macos` section (`deploymentTarget`, `scheme`) so `inspect` / `run macos` / `build macos` have a scheme name. Once you add a `macos/` Xcode project, `vue-native run macos` does the following:
 
 1. Runs `vite build` to produce `dist/vue-native-bundle.js`
 2. Builds the existing macOS project with `xcodebuild`

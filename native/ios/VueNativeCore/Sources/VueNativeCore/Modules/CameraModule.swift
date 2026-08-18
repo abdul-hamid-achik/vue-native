@@ -18,6 +18,7 @@ final class CameraModule: NativeModule {
     private var qrSession: AVCaptureSession?
     private var qrDelegate: QRScanDelegate?
     private var qrPreviewLayer: AVCaptureVideoPreviewLayer?
+    private weak var qrScannerVC: QRScannerViewController?
     private weak var bridge: NativeBridge?
     private let qrQueue = DispatchQueue(label: "com.vuenative.camera.qr")
 
@@ -159,7 +160,19 @@ final class CameraModule: NativeModule {
             self.bridge = bridge
         }
 
-        // Start on background queue to avoid blocking main thread
+        guard let rootVC = topViewController() else {
+            stopQRScan()
+            callback(nil, "No root view controller found")
+            return
+        }
+
+        let scanner = QRScannerViewController(session: session)
+        scanner.onClose = { [weak self] in
+            self?.stopQRScan()
+        }
+        qrScannerVC = scanner
+        rootVC.present(scanner, animated: true)
+
         qrQueue.async {
             session.startRunning()
         }
@@ -175,11 +188,23 @@ final class CameraModule: NativeModule {
             self.qrPreviewLayer = nil
             return session
         }
+        let scanner = qrScannerVC
+        qrScannerVC = nil
+        if scanner != nil {
+            DispatchQueue.main.async {
+                scanner?.dismiss(animated: true)
+            }
+        }
         if let session = sessionToStop, session.isRunning {
             qrQueue.async {
                 session.stopRunning()
             }
         }
+    }
+
+    func destroy() {
+        stopQRScan()
+        bridge = nil
     }
 
     // MARK: - Helpers

@@ -3,6 +3,8 @@ package com.vuenative.core
 import android.content.Context
 import android.view.View
 import android.view.ViewGroup
+import android.widget.FrameLayout
+import android.widget.HorizontalScrollView
 import android.widget.ScrollView
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.google.android.flexbox.FlexDirection
@@ -10,8 +12,13 @@ import com.google.android.flexbox.FlexboxLayout
 
 class VScrollViewFactory : NativeComponentFactory {
 
-    // Tracks the inner ScrollView and content FlexboxLayout per SwipeRefreshLayout root
-    private data class ScrollState(val scrollView: ScrollView, val content: FlexboxLayout)
+    // Tracks the inner scroll container and content FlexboxLayout per SwipeRefreshLayout root
+    private data class ScrollState(
+        var scrollView: FrameLayout,
+        val content: FlexboxLayout,
+        var horizontal: Boolean = false,
+        var scrollEnabled: Boolean = true,
+    )
     private val states = mutableMapOf<SwipeRefreshLayout, ScrollState>()
 
     override fun createView(context: Context): View {
@@ -58,9 +65,63 @@ class VScrollViewFactory : NativeComponentFactory {
                 scroll?.isHorizontalScrollBarEnabled = value != false && value != "false"
             }
             "scrollEnabled" -> {
-                // ScrollView doesn't expose a direct enable toggle; no-op
+                val enabled = value != false && value != "false"
+                states[srf]?.scrollEnabled = enabled
+                applyScrollEnabled(scroll, enabled)
+            }
+            "horizontal" -> {
+                val horizontal = value == true || value == "true"
+                applyHorizontal(srf, horizontal)
             }
             else -> scroll?.let { StyleEngine.apply(key, value, it) }
+        }
+    }
+
+    private fun applyScrollEnabled(scroll: FrameLayout?, enabled: Boolean) {
+        scroll ?: return
+        if (enabled) {
+            scroll.setOnTouchListener(null)
+        } else {
+            scroll.setOnTouchListener { _, _ -> true }
+        }
+    }
+
+    private fun applyHorizontal(srf: SwipeRefreshLayout, horizontal: Boolean) {
+        val state = states[srf] ?: return
+        if (state.horizontal == horizontal) return
+        val old = state.scrollView
+        old.removeView(state.content)
+        srf.removeView(old)
+
+        val context = srf.context
+        val replacement: FrameLayout = if (horizontal) {
+            HorizontalScrollView(context).apply {
+                isFillViewport = true
+                layoutParams = ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                )
+            }
+        } else {
+            ScrollView(context).apply {
+                isFillViewport = true
+                layoutParams = ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                )
+            }
+        }
+        replacement.addView(state.content)
+        srf.addView(replacement, 0)
+        state.scrollView = replacement
+        state.horizontal = horizontal
+        applyScrollEnabled(replacement, state.scrollEnabled)
+
+        scrollListeners[srf]?.let { listener ->
+            old.viewTreeObserver.let { observer ->
+                if (observer.isAlive) observer.removeOnScrollChangedListener(listener)
+            }
+            replacement.viewTreeObserver.addOnScrollChangedListener(listener)
         }
     }
 

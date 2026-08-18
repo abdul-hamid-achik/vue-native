@@ -23,6 +23,10 @@ open class VueNativeWindowController: NSWindowController {
     /// Name of the JS bundle resource (without extension) bundled in your app target.
     open var bundleName: String { "vue-native-bundle" }
 
+    /// Test hook: load this file instead of the embedded app resource.
+    /// Production hosts leave this `nil`.
+    open var fixtureBundleURL: URL? { nil }
+
     /// WebSocket URL of the Vite dev server for hot reload.
     /// Return `nil` (the default) to disable hot reload and load only from the bundle.
     open var devServerURL: URL? { nil }
@@ -51,6 +55,7 @@ open class VueNativeWindowController: NSWindowController {
     private var resizeObserver: NSObjectProtocol?
     private var lastDimensions: (width: CGFloat, height: CGFloat, scale: CGFloat)?
     private var hasLoadedBundle = false
+    private var didStartHost = false
     #if DEBUG
     /// Bottom-right connection-status badge, installed only when a dev server
     /// is configured. `nil` otherwise (production apps never allocate it).
@@ -77,14 +82,23 @@ open class VueNativeWindowController: NSWindowController {
         window.contentView = flippedContent
 
         self.init(window: window)
+        // Assigning a window in init does not invoke windowDidLoad.
+        startHostIfNeeded()
     }
 
     // MARK: - Lifecycle
 
     override open func windowDidLoad() {
         super.windowDidLoad()
+        startHostIfNeeded()
+    }
 
-        guard let contentView = window?.contentView else { return }
+    /// Start the JS host exactly once. Programmatic `init(window:)` skips
+    /// `windowDidLoad`, so the convenience initializer also calls this.
+    private func startHostIfNeeded() {
+        guard !didStartHost, let contentView = window?.contentView else { return }
+        didStartHost = true
+
         contentView.wantsLayer = true
         contentView.layer?.backgroundColor = NSColor.black.cgColor
 
@@ -205,7 +219,13 @@ open class VueNativeWindowController: NSWindowController {
     }
 
     private func loadEmbeddedBundle() {
-        runtime.loadBundle(source: .embedded(name: bundleName)) { [weak self] success in
+        let source: BundleSource = {
+            if let fixtureBundleURL {
+                return .file(url: fixtureBundleURL)
+            }
+            return .embedded(name: bundleName)
+        }()
+        runtime.loadBundle(source: source) { [weak self] success in
             // This closure runs on jsQueue — read the hot-reload token here (best-effort)
             // before hopping to the main thread.
             #if DEBUG

@@ -8,7 +8,7 @@
 
 import { createRenderer, type RendererOptions } from '@vue/runtime-core'
 import { type NativeNode, createNativeNode, createTextNode, createCommentNode, releaseNodeId } from './node'
-import { NativeBridge } from './bridge'
+import { NativeBridge, registerBridgeStateReset } from './bridge'
 
 /**
  * Normalize an event name from Vue's "onXxx" convention.
@@ -53,14 +53,29 @@ function getEventHandler(value: unknown): EventHandler | null {
  *
  * Errors are caught to prevent breaking the Vue render loop.
  */
+function flattenStyle(style: unknown): Record<string, unknown> {
+  if (style == null || style === false) return {}
+  if (Array.isArray(style)) {
+    const merged: Record<string, unknown> = {}
+    for (const entry of style) {
+      Object.assign(merged, flattenStyle(entry))
+    }
+    return merged
+  }
+  if (typeof style === 'object') {
+    return style as Record<string, unknown>
+  }
+  return {}
+}
+
 function patchStyle(
   nodeId: number,
   prevStyle: unknown,
   nextStyle: unknown,
 ): void {
   try {
-    const prev = typeof prevStyle === 'object' && prevStyle !== null ? prevStyle as Record<string, unknown> : {}
-    const next = typeof nextStyle === 'object' && nextStyle !== null ? nextStyle as Record<string, unknown> : {}
+    const prev = flattenStyle(prevStyle)
+    const next = flattenStyle(nextStyle)
     const changes: Record<string, unknown> = {}
     let hasChanges = false
 
@@ -121,6 +136,10 @@ const registeredHandlers = new WeakMap<NativeNode, Map<string, EventHandler>>()
  */
 const TELEPORT_TARGET_TYPE = '__TELEPORT_TARGET__'
 const teleportTargets = new Map<string, NativeNode>()
+
+registerBridgeStateReset(() => {
+  teleportTargets.clear()
+})
 
 function isTeleportTarget(node: NativeNode): boolean {
   return node.type === TELEPORT_TARGET_TYPE

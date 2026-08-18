@@ -41,6 +41,10 @@ open class VueNativeViewController: UIViewController {
     /// Defaults to `"vue-native-bundle"`.
     open var bundleName: String { "vue-native-bundle" }
 
+    /// Test hook: load this file instead of the embedded app resource.
+    /// Production hosts leave this `nil`.
+    open var fixtureBundleURL: URL? { nil }
+
     /// WebSocket URL of the Vite dev server for hot reload.
     /// Return `nil` (the default) to disable hot reload and load only from the bundle.
     ///
@@ -301,7 +305,13 @@ open class VueNativeViewController: UIViewController {
     }
 
     private func loadEmbeddedBundle(onComplete: (() -> Void)? = nil) {
-        runtime.loadBundle(source: .embedded(name: bundleName)) { [weak self] success in
+        let source: BundleSource = {
+            if let fixtureBundleURL {
+                return .file(url: fixtureBundleURL)
+            }
+            return .embedded(name: bundleName)
+        }()
+        runtime.loadBundle(source: source) { [weak self] success in
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.hasLoadedBundle = success

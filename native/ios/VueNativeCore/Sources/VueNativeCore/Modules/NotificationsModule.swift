@@ -36,7 +36,17 @@ final class NotificationsModule: NativeModule {
         setupForegroundHandler()
     }
 
+    /// `UNUserNotificationCenter.current()` crashes the xctest agent because
+    /// there is no app bundle proxy. Skip host wiring in that process.
+    static var canUseUserNotifications: Bool {
+        guard let identifier = Bundle.main.bundleIdentifier, !identifier.isEmpty else {
+            return false
+        }
+        return !Bundle.main.bundleURL.path.contains("Xcode/Agents")
+    }
+
     private func setupForegroundHandler() {
+        guard Self.canUseUserNotifications else { return }
         UNUserNotificationCenter.current().delegate = NotificationCenterDelegate.shared
         // Capture bridge weakly; dispatch to main actor because dispatchGlobalEvent is @MainActor.
         let weakBridge = bridge
@@ -53,6 +63,10 @@ final class NotificationsModule: NativeModule {
     }
 
     func invoke(method: String, args: [Any], callback: @escaping (Any?, String?) -> Void) {
+        if method != "getToken", !Self.canUseUserNotifications {
+            callback(nil, "NotificationsModule: UserNotifications is unavailable in this process")
+            return
+        }
         switch method {
         case "requestPermission":
             UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound]) { granted, error in
@@ -155,6 +169,7 @@ final class NotificationsModule: NativeModule {
         let delegate = NotificationCenterDelegate.shared
         delegate.onNotification = nil
         delegate.onPushReceived = nil
+        guard Self.canUseUserNotifications else { return }
         let center = UNUserNotificationCenter.current()
         if center.delegate === delegate {
             center.delegate = nil

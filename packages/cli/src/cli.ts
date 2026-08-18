@@ -8,6 +8,9 @@ import { createCommand } from './commands/create.js'
 import { devCommand } from './commands/dev.js'
 import { runCommand } from './commands/run.js'
 import { generateCommand } from './commands/generate.js'
+import { doctorCommand } from './commands/doctor.js'
+import { inspectCommand } from './commands/inspect.js'
+import { capabilitiesCommand } from './commands/capabilities.js'
 import { ConfigError } from './config.js'
 
 const cliDir = dirname(fileURLToPath(import.meta.url))
@@ -15,7 +18,7 @@ const pkg = JSON.parse(readFileSync(join(cliDir, '..', 'package.json'), 'utf8'))
 
 program
   .name('vue-native')
-  .description('Vue Native — build native iOS and Android apps with Vue.js')
+  .description('Vue Native — build native iOS, Android, and macOS apps with Vue.js')
   .version(pkg.version)
 
 program.addCommand(buildCommand)
@@ -23,6 +26,9 @@ program.addCommand(createCommand)
 program.addCommand(devCommand)
 program.addCommand(runCommand)
 program.addCommand(generateCommand)
+program.addCommand(doctorCommand)
+program.addCommand(inspectCommand)
+program.addCommand(capabilitiesCommand)
 
 program.parseAsync(process.argv).catch((err) => {
   if (err instanceof ConfigError) {

@@ -361,9 +361,49 @@ export function createRouter(optionsOrRoutes: RouterOptions | RouteConfig[]): Ro
 
   // ── Navigation methods ─────────────────────────────────────────────────────
 
-  async function navigate(name: string, params: RouteParams = {}, options?: NavigateOptions, _redirectDepth = 0): Promise<void> {
-    if (_redirectDepth > 20) {
+  type TransitionMode = 'push' | 'replace' | 'reset' | 'pop'
+
+  let transitionQueue: Promise<void> = Promise.resolve()
+
+  function enqueueTransition(work: () => Promise<void>): Promise<void> {
+    const run = transitionQueue.then(work, work)
+    transitionQueue = run.then(() => undefined, () => undefined)
+    return run
+  }
+
+  async function commitTransition(
+    name: string,
+    params: RouteParams,
+    options: NavigateOptions | undefined,
+    mode: TransitionMode,
+    depth: number,
+  ): Promise<void> {
+    if (depth > 20) {
       console.warn('[vue-native/navigation] Circular redirect detected (depth > 20), aborting navigation')
+      return
+    }
+
+    if (mode === 'pop') {
+      if (stack.value.length <= 1) return
+      const newStack = stack.value.slice(0, -1)
+      const to = newStack[newStack.length - 1]
+      const from = currentRoute.value
+
+      const beforeResult = await runGuards(beforeGuards, to, from)
+      if (beforeResult === false) return
+      if (typeof beforeResult === 'string') {
+        return commitTransition(beforeResult, params, undefined, 'replace', depth + 1)
+      }
+
+      const resolveResult = await runGuards(resolveGuards, to, from)
+      if (resolveResult === false) return
+      if (typeof resolveResult === 'string') {
+        return commitTransition(resolveResult, params, undefined, 'replace', depth + 1)
+      }
+
+      stack.value = newStack
+      currentRoute.value = to
+      afterGuards.forEach(guard => guard(to, from))
       return
     }
 
@@ -380,117 +420,43 @@ export function createRouter(optionsOrRoutes: RouterOptions | RouteConfig[]): Ro
     }
     const from = currentRoute.value
 
-    // Run beforeEach guards
     const beforeResult = await runGuards(beforeGuards, to, from)
     if (beforeResult === false) return
     if (typeof beforeResult === 'string') {
-      return navigate(beforeResult, params, undefined, _redirectDepth + 1)
+      return commitTransition(beforeResult, params, undefined, mode, depth + 1)
     }
 
-    // Run beforeResolve guards
     const resolveResult = await runGuards(resolveGuards, to, from)
     if (resolveResult === false) return
     if (typeof resolveResult === 'string') {
-      return navigate(resolveResult, params, undefined, _redirectDepth + 1)
+      return commitTransition(resolveResult, params, undefined, mode, depth + 1)
     }
 
-    // Commit navigation
-    stack.value = [...stack.value, to]
+    if (mode === 'push') {
+      stack.value = [...stack.value, to]
+    } else if (mode === 'replace') {
+      stack.value = [...stack.value.slice(0, -1), to]
+    } else {
+      stack.value = [to]
+    }
     currentRoute.value = to
-
-    // Run afterEach hooks
     afterGuards.forEach(guard => guard(to, from))
   }
 
-  async function goBack(): Promise<void> {
-    if (stack.value.length <= 1) return
-    const newStack = stack.value.slice(0, -1)
-    const to = newStack[newStack.length - 1]
-    const from = currentRoute.value
-
-    // Run beforeEach guards
-    const beforeResult = await runGuards(beforeGuards, to, from)
-    if (beforeResult === false) return
-    if (typeof beforeResult === 'string') {
-      return navigate(beforeResult)
-    }
-
-    // Run beforeResolve guards
-    const resolveResult = await runGuards(resolveGuards, to, from)
-    if (resolveResult === false) return
-    if (typeof resolveResult === 'string') {
-      return navigate(resolveResult)
-    }
-
-    stack.value = newStack
-    currentRoute.value = to
-
-    // Run afterEach hooks
-    afterGuards.forEach(guard => guard(to, from))
+  function navigate(name: string, params: RouteParams = {}, options?: NavigateOptions, _redirectDepth = 0): Promise<void> {
+    return enqueueTransition(() => commitTransition(name, params, options, 'push', _redirectDepth))
   }
 
-  async function replace(name: string, params: RouteParams = {}, _redirectDepth = 0): Promise<void> {
-    if (_redirectDepth > 20) {
-      console.warn('[vue-native/navigation] Circular redirect detected (depth > 20), aborting navigation')
-      return
-    }
-
-    const config = routeMap.get(name)
-    if (!config) {
-      console.warn(`[vue-native/navigation] Route "${name}" not found`)
-      return
-    }
-    const to: RouteEntry = { config, params, key: keyCounter++ }
-    const from = currentRoute.value
-
-    const beforeResult = await runGuards(beforeGuards, to, from)
-    if (beforeResult === false) return
-    if (typeof beforeResult === 'string') {
-      return navigate(beforeResult, params, undefined, _redirectDepth + 1)
-    }
-
-    const resolveResult = await runGuards(resolveGuards, to, from)
-    if (resolveResult === false) return
-    if (typeof resolveResult === 'string') {
-      return navigate(resolveResult, params, undefined, _redirectDepth + 1)
-    }
-
-    stack.value = [...stack.value.slice(0, -1), to]
-    currentRoute.value = to
-
-    afterGuards.forEach(guard => guard(to, from))
+  function goBack(): Promise<void> {
+    return enqueueTransition(() => commitTransition('', {}, undefined, 'pop', 0))
   }
 
-  async function reset(name: string, params: RouteParams = {}, _redirectDepth = 0): Promise<void> {
-    if (_redirectDepth > 20) {
-      console.warn('[vue-native/navigation] Circular redirect detected (depth > 20), aborting navigation')
-      return
-    }
+  function replace(name: string, params: RouteParams = {}, _redirectDepth = 0): Promise<void> {
+    return enqueueTransition(() => commitTransition(name, params, undefined, 'replace', _redirectDepth))
+  }
 
-    const config = routeMap.get(name)
-    if (!config) {
-      console.warn(`[vue-native/navigation] Route "${name}" not found`)
-      return
-    }
-    const to: RouteEntry = { config, params, key: keyCounter++ }
-    const from = currentRoute.value
-
-    const beforeResult = await runGuards(beforeGuards, to, from)
-    if (beforeResult === false) return
-    if (typeof beforeResult === 'string') {
-      return navigate(beforeResult, params, undefined, _redirectDepth + 1)
-    }
-
-    const resolveResult = await runGuards(resolveGuards, to, from)
-    if (resolveResult === false) return
-    if (typeof resolveResult === 'string') {
-      return navigate(resolveResult, params, undefined, _redirectDepth + 1)
-    }
-
-    stack.value = [to]
-    currentRoute.value = to
-
-    afterGuards.forEach(guard => guard(to, from))
+  function reset(name: string, params: RouteParams = {}, _redirectDepth = 0): Promise<void> {
+    return enqueueTransition(() => commitTransition(name, params, undefined, 'reset', _redirectDepth))
   }
 
   // ── Deep Linking ───────────────────────────────────────────────────────────
@@ -941,9 +907,8 @@ export const RouterView = defineComponent({
                 right: 0,
                 bottom: 0,
                 transform: isTop ? [] : [{ translateX: -50 }],
-                // Hide off-screen screens from the accessibility tree and
-                // prevent touch events from reaching them.
                 opacity: isTop ? 1 : 0,
+                pointerEvents: isTop ? 'auto' : 'none',
               },
             },
             [

@@ -127,7 +127,7 @@ All snippets use the `vn-` prefix. Type `vn-` in a `.vue` file to see all availa
 The extension highlights common mistakes in `.vue` files:
 
 - **`app.mount()`** -- Vue Native uses `app.start()`, not `app.mount()`. There is no DOM.
-- **`@press`** -- Buttons use `:onPress` (prop binding), not `@press` (event listener).
+- **Press handlers** -- Both `@press="handler"` (event) and `:onPress="handler"` (prop) are valid. Snippets use `:onPress`.
 - **Import hints** -- Suggests using `@thelacanians/vue-native-runtime` for explicit imports.
 
 ## Recommended Extensions
