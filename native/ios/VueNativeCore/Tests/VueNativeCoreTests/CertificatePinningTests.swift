@@ -141,9 +141,24 @@ final class CertificatePinningTests: XCTestCase {
 
     // MARK: - URLSessionDelegate Conformance
 
-    func testConformsToURLSessionDelegate() {
-        XCTAssertTrue(pinning is URLSessionDelegate,
-                      "CertificatePinning should conform to URLSessionDelegate")
+    /// `pinning is URLSessionDelegate` would compile-check the conformance but
+    /// always succeed at runtime for any non-nil value — Swift warns about
+    /// exactly that. What actually matters is that the session handed to
+    /// callers uses this object as its delegate, because that is the only thing
+    /// that makes URLSession deliver the TLS trust challenge to the pinning
+    /// logic. A session built without the delegate validates nothing.
+    func testRequestSessionUsesPinningAsItsDelegate() {
+        pinning.configurePins(["delegate.example": ["sha256/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="]])
+        defer { pinning.clearPins() }
+
+        XCTAssertTrue(
+            pinning.session.delegate === pinning,
+            "The delegate session must use CertificatePinning as its URLSessionDelegate"
+        )
+        XCTAssertTrue(
+            pinning.requestSession === pinning.session,
+            "With pins configured every request must start on the delegate-backed session"
+        )
     }
 
     // MARK: - Empty Pins Allows Default Handling
