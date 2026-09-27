@@ -311,9 +311,8 @@ export const devCommand = new Command('dev')
           `  Another \`vue-native dev\` is probably already running. Stop it, or use a\n`
           + `  different port:\n\n`
           + `    vue-native dev --port ${port + 1}\n\n`
-          + `  Note that the native host has the dev-server URL baked in at scaffold\n`
-          + `  time (ws://localhost:${port} on iOS, ws://10.0.2.2:${port} on Android), so a\n`
-          + `  non-default port also needs that URL updated in the host app.`,
+          + `  The native host learns the port from the build that installed it, so run\n`
+          + `  the app with the same one: vue-native run <platform> --port ${port + 1}`,
         ))
       } else {
         console.error(pc.red(`Hot-reload server failed to start: ${err.message}`))

@@ -365,13 +365,14 @@ export default function vueNativePlugin(options: VueNativePluginOptions = {}) {
 
   if (options.hotReloadPort !== undefined) {
     // The define this option fed was removed because nothing consumed it: the
-    // WebSocket client is the NATIVE host (HotReloadManager), which dials the
-    // URL baked into the scaffolded project, not anything in the JS bundle.
-    // Accepting the option silently made it look configurable when it was not.
+    // WebSocket client is the NATIVE host (HotReloadManager), which dials a URL
+    // injected at build time (Info.plist VueNativeDevServerURL on Apple,
+    // BuildConfig.DEV_SERVER_URL on Android). JavaScript never learns the port.
     console.warn(
-      '[vue-native] hotReloadPort has no effect: the dev-server URL is compiled '
-      + 'into the native host at scaffold time (ws://localhost:8174 on iOS, '
-      + 'ws://10.0.2.2:8174 on Android). Change it in the host project, not here.',
+      '[vue-native] hotReloadPort has no effect on the bundle. Pass the port to '
+      + 'the CLI instead: `vue-native dev --port N` and '
+      + '`vue-native run <platform> --port N` inject it into the native host at '
+      + 'build time.',
     )
   }
 

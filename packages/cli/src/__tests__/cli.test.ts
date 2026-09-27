@@ -854,7 +854,14 @@ describe('create command', () => {
       expect(plist).toContain('<key>NSLocationUsageDescription</key>')
 
       // Regression guard: no usage description may be hidden in a comment.
-      expect(raw!).not.toMatch(/<!--[\s\S]*UsageDescription/)
+      // Scoped per comment block — a blanket `<!--[\s\S]*UsageDescription`
+      // would also flag an unrelated comment that merely precedes a live key,
+      // which is exactly what the dev-server URL comment does.
+      const commentBlocks = raw!.match(/<!--[\s\S]*?-->/g) ?? []
+      for (const block of commentBlocks) {
+        expect(block, 'a usage description must not be commented out').not.toMatch(/UsageDescription/)
+      }
+      expect(commentBlocks.length).toBeGreaterThan(0)
       // The dev server is ws://localhost, which ATS blocks without this.
       expect(plist).toContain('<key>NSAllowsLocalNetworking</key>')
     })
@@ -2223,11 +2230,44 @@ describe('run command', () => {
 
       expect(mockSpawn).toHaveBeenCalledWith(
         './gradlew',
-        ['assembleDebug'],
+        // The dev-server URL rides as a project property so --port reaches the
+        // host's BuildConfig without editing any project file.
+        ['assembleDebug', '-PdevServerUrl=ws://10.0.2.2:8174'],
         expect.objectContaining({
           stdio: 'pipe',
         }),
       )
+    })
+
+    it('injects a custom dev-server port as a build property, not a file edit', async () => {
+      mockExistsSync.mockImplementation((path: string) => {
+        const target = String(path)
+        return target.endsWith('/android')
+          || target.endsWith('/gradlew')
+          || target.endsWith('/dist/vue-native-bundle.js')
+      })
+      mockSpawn.mockImplementation(() => createMockChildProcess())
+
+      const runCmd = await importRunCommand()
+      // Installation needs a real APK on disk, which the mocked fs cannot
+      // provide; the assertion below is about the Gradle invocation that
+      // happens before that point.
+      await expect(
+        runCmd.parseAsync(['node', 'run', 'android', '--port', '9123', '--package', 'com.example.app']),
+      ).rejects.toThrow(/Could not locate debug APK/)
+
+      const gradleCall = mockSpawn.mock.calls.find(([command]: any[]) => String(command).includes('gradlew'))
+      expect(gradleCall?.[1]).toContain('-PdevServerUrl=ws://10.0.2.2:9123')
+    })
+
+    it('rejects a non-numeric or out-of-range --port', async () => {
+      mockExistsSync.mockReturnValue(false)
+
+      const runCmd = await importRunCommand()
+      await expect(runCmd.parseAsync(['node', 'run', 'ios', '--port', 'abc']))
+        .rejects.toThrow(/--port must be a number between 1 and 65535/)
+      await expect(runCmd.parseAsync(['node', 'run', 'ios', '--port', '70000']))
+        .rejects.toThrow(/--port must be a number between 1 and 65535/)
     })
 
     it('registers process cleanup handlers for Gradle', async () => {

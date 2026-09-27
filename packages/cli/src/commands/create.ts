@@ -263,6 +263,10 @@ targets:
         INFOPLIST_FILE: Sources/Info.plist
         SWIFT_VERSION: "5.9"
         GENERATE_INFOPLIST_FILE: false
+        # Expanded into Info.plist's VueNativeDevServerURL. Overridable per
+        # build: \`xcodebuild DEV_SERVER_URL=ws://localhost:9000 ...\`, which is
+        # what \`vue-native run ios --port 9000\` passes.
+        DEV_SERVER_URL: "ws://localhost:8174"
 `)
 
       // ios/Sources/Info.plist
@@ -340,6 +344,13 @@ targets:
   <key>NSCalendarsUsageDescription</key><string>This app reads and writes calendar events when you choose to.</string>
   <key>NSBluetoothAlwaysUsageDescription</key><string>This app connects to Bluetooth devices when you choose to pair one.</string>
   <key>NSFaceIDUsageDescription</key><string>This app uses Face ID or Touch ID when you choose to authenticate.</string>
+  <!--
+    Dev-server URL for hot reload, expanded from the DEV_SERVER_URL build
+    setting at build time so \`vue-native run ios --port N\` can redirect the
+    host without editing any project file. Only read in DEBUG builds.
+  -->
+  <key>VueNativeDevServerURL</key>
+  <string>$(DEV_SERVER_URL)</string>
 </dict>
 </plist>
 `)
@@ -395,7 +406,19 @@ class AppViewController: VueNativeViewController {
     override var bundleName: String { "vue-native-bundle" }
 
     #if DEBUG
-    override var devServerURL: URL? { URL(string: "ws://localhost:8174") }
+    /// Injected at build time from the DEV_SERVER_URL build setting, which
+    /// \`vue-native run ios --port\` overrides on the xcodebuild command line.
+    /// The Info.plist value is \`$(DEV_SERVER_URL)\`, so it expands to whatever
+    /// the build was given; the literal fallback keeps hand-written hosts and
+    /// projects scaffolded before this setting existed working.
+    override var devServerURL: URL? {
+        if let configured = Bundle.main.object(forInfoDictionaryKey: "VueNativeDevServerURL") as? String,
+           !configured.isEmpty,
+           let url = URL(string: configured) {
+            return url
+        }
+        return URL(string: "ws://localhost:8174")
+    }
     #endif
 }
 `)
@@ -466,6 +489,15 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "1.0"
+        // Hot-reload endpoint for debug builds. Overridable per invocation:
+        // \`./gradlew -PdevServerUrl=ws://10.0.2.2:9000 ...\`, which is what
+        // \`vue-native run android --port 9000\` passes. 10.0.2.2 is the
+        // emulator's alias for the host machine's loopback.
+        buildConfigField(
+            "String",
+            "DEV_SERVER_URL",
+            "\\"" + (project.findProperty("devServerUrl") as String? ?: "ws://10.0.2.2:8174") + "\\"",
+        )
     }
 
     buildTypes {
@@ -584,7 +616,7 @@ class MainActivity : VueNativeActivity() {
     }
 
     override fun getDevServerUrl(): String? {
-        return if (BuildConfig.DEBUG) "ws://10.0.2.2:8174" else null
+        return if (BuildConfig.DEBUG) BuildConfig.DEV_SERVER_URL else null
     }
 }
 `)
@@ -728,6 +760,10 @@ targets:
         CODE_SIGN_ENTITLEMENTS: Sources/App.entitlements
         GENERATE_INFOPLIST_FILE: false
         MACOSX_DEPLOYMENT_TARGET: "${MACOS_DEPLOYMENT_TARGET}"
+        # Expanded into Info.plist's VueNativeDevServerURL. Overridable per
+        # build: \`xcodebuild DEV_SERVER_URL=ws://localhost:9000 ...\`, which is
+        # what \`vue-native run macos --port 9000\` passes.
+        DEV_SERVER_URL: "ws://localhost:8174"
         SWIFT_VERSION: "5.9"
         # Xcode's macOS app template sets this and XcodeGen does not. Today the
         # SPM products link statically (a verified build emits no
@@ -795,6 +831,13 @@ targets:
     <key>NSAllowsLocalNetworking</key>
     <true/>
   </dict>
+  <!--
+    Dev-server URL for hot reload, expanded from the DEV_SERVER_URL build
+    setting at build time so \`vue-native run macos --port N\` can redirect the
+    host without editing any project file. Only read in DEBUG builds.
+  -->
+  <key>VueNativeDevServerURL</key>
+  <string>$(DEV_SERVER_URL)</string>
   <key>NSCameraUsageDescription</key>
   <string>${name} uses the camera to capture photos and video.</string>
   <key>NSMicrophoneUsageDescription</key>
@@ -885,7 +928,18 @@ final class MainWindowController: VueNativeWindowController {
     #if DEBUG
     /// \`vue-native dev --platform macos\` serves the rebuilt bundle here.
     /// A production build skips the connection entirely.
-    override var devServerURL: URL? { URL(string: "ws://localhost:8174") }
+    ///
+    /// Injected at build time from the DEV_SERVER_URL build setting, which
+    /// \`vue-native run macos --port\` overrides on the xcodebuild command line;
+    /// the literal fallback keeps hand-written hosts working.
+    override var devServerURL: URL? {
+        if let configured = Bundle.main.object(forInfoDictionaryKey: "VueNativeDevServerURL") as? String,
+           !configured.isEmpty,
+           let url = URL(string: configured) {
+            return url
+        }
+        return URL(string: "ws://localhost:8174")
+    }
     #endif
 }
 `)

@@ -91,6 +91,11 @@ export const runCommand = new Command('run')
   .option('--bundle-id <id>', 'app bundle identifier')
   .option('--package <name>', 'Android package name (auto-detected from app/build.gradle when omitted)')
   .option('--activity <name>', 'Android activity name', '.MainActivity')
+  .option(
+    '--port <port>',
+    'Hot-reload dev-server port to bake into this build (must match `vue-native dev --port`)',
+    '8174',
+  )
   .option('--mode <mode>', 'Vite mode for the JS bundle (development, production)', 'development')
   .option('--bundle-only', 'stop after the JS bundle; do not require a native project or artifact')
   .action(async (platformArg: string | undefined, options: {
@@ -102,6 +107,7 @@ export const runCommand = new Command('run')
     package?: string
     activity: string
     mode: string
+    port: string
     bundleOnly?: boolean
   }) => {
     const platform = await resolvePlatform(platformArg)
@@ -112,11 +118,21 @@ export const runCommand = new Command('run')
     if (options.mode !== 'development' && options.mode !== 'production') {
       throw new ConfigError('--mode must be "development" or "production"')
     }
+    if (!/^\d+$/.test(options.port) || Number(options.port) < 1 || Number(options.port) > 65535) {
+      throw new ConfigError(`--port must be a number between 1 and 65535, got "${options.port}"`)
+    }
     const resolvedOptions = {
       ...options,
       scheme: options.scheme ?? (platform === 'macos' ? config?.macos.scheme : config?.ios.scheme),
       bundleId: options.bundleId ?? config?.bundleId,
       package: options.package ?? config?.android.packageName,
+      // The host dials this at launch; it is injected as a build setting
+      // (DEV_SERVER_URL / -PdevServerUrl) rather than edited into project
+      // files, so switching ports never mutates the user's repository.
+      // Android's emulator reaches the host machine through 10.0.2.2.
+      devServerUrl: platform === 'android'
+        ? `ws://10.0.2.2:${options.port}`
+        : `ws://localhost:${options.port}`,
     }
 
     // Step 1: Build the JS bundle
@@ -373,6 +389,7 @@ async function runIOS(
     scheme?: string
     simulator?: string
     bundleId?: string
+    devServerUrl: string
   },
 ): Promise<void> {
   const iosDir = join(cwd, 'ios')
@@ -407,6 +424,9 @@ async function runIOS(
       scheme,
       '-destination',
       destination,
+      // Expands into Info.plist's VueNativeDevServerURL; the DEBUG host reads
+      // it at launch. A build setting, not a file edit, so --port is reversible.
+      `DEV_SERVER_URL=${options.devServerUrl}`,
       'build',
     ], {
       cwd,
@@ -537,6 +557,7 @@ async function runAndroid(
   options: {
     package?: string
     activity: string
+    devServerUrl: string
   },
 ): Promise<void> {
   const androidDir = join(cwd, 'android')
@@ -577,7 +598,12 @@ async function runAndroid(
 
   let result
   try {
-    result = await runManagedProcess(gradleWrapper.command, ['assembleDebug'], {
+    result = await runManagedProcess(gradleWrapper.command, [
+      'assembleDebug',
+      // Becomes BuildConfig.DEV_SERVER_URL, which the DEBUG host returns from
+      // getDevServerUrl(). A project property, not a file edit.
+      `-PdevServerUrl=${options.devServerUrl}`,
+    ], {
       cwd: androidDir,
       stdio: 'pipe',
       shell: gradleWrapper.shell,
@@ -661,6 +687,7 @@ async function runMacOS(
   cwd: string,
   options: {
     scheme?: string
+    devServerUrl: string
   },
 ): Promise<void> {
   const macosDir = join(cwd, 'macos')
@@ -694,6 +721,8 @@ async function runMacOS(
       scheme,
       '-destination',
       'platform=macOS',
+      // Expands into Info.plist's VueNativeDevServerURL; see the iOS path.
+      `DEV_SERVER_URL=${options.devServerUrl}`,
       'build',
     ], {
       cwd,
