@@ -12,6 +12,7 @@ import {
   ensureXcodeProject,
   findAndroidConfigDrift,
   findIOSConfigDrift,
+  findMacOSConfigDrift,
   formatGradleFailure,
   installAndroidBundle,
   macosHostMissingHint,
@@ -100,7 +101,9 @@ export const buildCommand = new Command('build')
         ? findAndroidConfigDrift(join(cwd, 'android'), config.android)
         : platform === 'ios'
           ? findIOSConfigDrift(join(cwd, 'ios'), config.ios)
-          : []
+          : platform === 'macos'
+            ? findMacOSConfigDrift(join(cwd, 'macos'), config.macos)
+            : []
       for (const warning of driftWarnings) {
         p.log.warn(warning)
       }

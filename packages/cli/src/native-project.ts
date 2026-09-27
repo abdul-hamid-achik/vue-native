@@ -359,3 +359,35 @@ export function findIOSConfigDrift(
     `vue-native.config.ts sets ios.deploymentTarget=${config.deploymentTarget} but ios/project.yml uses ${actual} — ${CONFIG_DRIFT_SUFFIX}`,
   ]
 }
+
+/**
+ * Same drift check as the iOS one, for the macOS host that `create` scaffolds.
+ * Without it `vue-native.config.ts`'s `macos.deploymentTarget` and
+ * `macos/project.yml` can silently disagree, and project.yml is what XcodeGen
+ * generates from — so the value the user edited would do nothing while still
+ * looking authoritative.
+ */
+export function findMacOSConfigDrift(
+  macosDir: string,
+  config: Pick<ResolvedConfig['macos'], 'deploymentTarget'>,
+): string[] {
+  const specPath = join(macosDir, 'project.yml')
+  if (!existsSync(specPath)) return []
+
+  let content: string
+  try {
+    content = readFileSync(specPath, 'utf8')
+  } catch {
+    return []
+  }
+
+  const match = content.match(/deploymentTarget:\s*macOS:\s*["']([^"']+)["']/)
+  if (!match) return []
+
+  const actual = match[1]
+  if (actual === config.deploymentTarget) return []
+
+  return [
+    `vue-native.config.ts sets macos.deploymentTarget=${config.deploymentTarget} but macos/project.yml uses ${actual} — ${CONFIG_DRIFT_SUFFIX}`,
+  ]
+}
