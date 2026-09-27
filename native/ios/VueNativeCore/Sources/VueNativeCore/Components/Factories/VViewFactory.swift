@@ -166,8 +166,13 @@ final class VViewFactory: NativeComponentFactory {
                 if let tap = recognizer as? UITapGestureRecognizer, tap.numberOfTapsRequired == 1 {
                     view.removeGestureRecognizer(recognizer)
                 }
-            case "longPress", "longpress"  where recognizer is UILongPressGestureRecognizer:
-                view.removeGestureRecognizer(recognizer)
+            // A `where` clause on a multi-pattern case binds only the LAST
+            // pattern, so the type guard lives in the body instead — otherwise
+            // "longPress" would match recognizers of any type.
+            case "longPress", "longpress":
+                if recognizer is UILongPressGestureRecognizer {
+                    view.removeGestureRecognizer(recognizer)
+                }
             case "pan"        where recognizer is UIPanGestureRecognizer:
                 view.removeGestureRecognizer(recognizer)
             case "swipeLeft"   where recognizer is UISwipeGestureRecognizer:
