@@ -357,12 +357,23 @@ export default function vueNativePlugin(options: VueNativePluginOptions = {}) {
     platform: explicitPlatform,
     globalName = 'VueNativeApp',
     hotReload = true,
-    hotReloadPort = 8174,
     nativeCodegen = true,
     nativeOutputDirs,
     exclude = ['node_modules', 'dist', '.git', '.turbo'],
   } = options
   const platform = resolvePlatform(explicitPlatform)
+
+  if (options.hotReloadPort !== undefined) {
+    // The define this option fed was removed because nothing consumed it: the
+    // WebSocket client is the NATIVE host (HotReloadManager), which dials the
+    // URL baked into the scaffolded project, not anything in the JS bundle.
+    // Accepting the option silently made it look configurable when it was not.
+    console.warn(
+      '[vue-native] hotReloadPort has no effect: the dev-server URL is compiled '
+      + 'into the native host at scaffold time (ws://localhost:8174 on iOS, '
+      + 'ws://10.0.2.2:8174 on Android). Change it in the host project, not here.',
+    )
+  }
 
   const state: CodegenState = {
     lastResult: null,
@@ -524,7 +535,6 @@ export default function vueNativePlugin(options: VueNativePluginOptions = {}) {
           '__PLATFORM__': JSON.stringify(platform),
           // Hot reload configuration available at compile time
           '__HOT_RELOAD__': JSON.stringify(hotReload && isDev),
-          '__HOT_RELOAD_PORT__': JSON.stringify(hotReloadPort),
           // Hot reload auth token (read by the native runtime to authenticate
           // to a network-exposed dev server). Empty when not in dev hot reload.
           '__HOT_RELOAD_TOKEN__': JSON.stringify(hotReloadToken),
