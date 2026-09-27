@@ -1,5 +1,5 @@
 import { defineComponent, h, type PropType } from '@vue/runtime-core'
-import type { ViewStyle } from '../types/styles'
+import type { StyleProp, ViewStyle } from '../types/styles'
 
 declare const __PLATFORM__: string
 
@@ -18,7 +18,7 @@ export const VToolbar = defineComponent({
       default: 'iconAndLabel',
     },
     showsBaselineSeparator: { type: Boolean, default: true },
-    style: Object as PropType<ViewStyle>,
+    style: [Object, Array] as PropType<StyleProp<ViewStyle>>,
   },
   emits: ['itemClick'],
   setup(props, { emit }) {

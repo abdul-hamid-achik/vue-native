@@ -1,5 +1,5 @@
 import { defineComponent, h, type PropType } from '@vue/runtime-core'
-import type { ViewStyle } from '../types/styles'
+import type { StyleProp, ViewStyle } from '../types/styles'
 
 function getSliderValue(payload: unknown): number | null {
   const value = typeof payload === 'object' && payload !== null && 'value' in payload
@@ -15,7 +15,7 @@ export const VSlider = defineComponent({
     modelValue: { type: Number, default: 0 },
     min: { type: Number, default: 0 },
     max: { type: Number, default: 1 },
-    style: { type: Object as PropType<ViewStyle>, default: () => ({}) },
+    style: { type: [Object, Array] as PropType<StyleProp<ViewStyle>>, default: () => ({}) },
     accessibilityLabel: String,
     accessibilityRole: String,
     accessibilityHint: String,

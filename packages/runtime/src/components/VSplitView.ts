@@ -1,5 +1,5 @@
 import { defineComponent, h, type PropType } from '@vue/runtime-core'
-import type { ViewStyle } from '../types/styles'
+import type { StyleProp, ViewStyle } from '../types/styles'
 
 declare const __PLATFORM__: string
 
@@ -16,7 +16,7 @@ export const VSplitView = defineComponent({
     },
     dividerColor: String,
     dividerPosition: Number,
-    style: Object as PropType<ViewStyle>,
+    style: [Object, Array] as PropType<StyleProp<ViewStyle>>,
   },
   emits: ['resize'],
   setup(props, { emit, slots }) {

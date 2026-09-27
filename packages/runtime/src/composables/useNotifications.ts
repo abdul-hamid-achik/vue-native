@@ -54,7 +54,8 @@ export function useNotifications() {
   const pushToken = ref<string | null>(null)
 
   async function requestPermission(): Promise<boolean> {
-    const granted: boolean = await NativeBridge.invokeNativeModule('Notifications', 'requestPermission')
+    // timeoutMs=0: the system prompt is human-gated.
+    const granted: boolean = await NativeBridge.invokeNativeModule('Notifications', 'requestPermission', [], 0)
     isGranted.value = granted
     return granted
   }

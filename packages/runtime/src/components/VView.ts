@@ -1,5 +1,5 @@
 import { defineComponent, h, type PropType } from '@vue/runtime-core'
-import type { ViewStyle } from '../types/styles'
+import type { StyleProp, ViewStyle } from '../types/styles'
 
 /**
  * VView — the fundamental container component in Vue Native.
@@ -17,7 +17,7 @@ import type { ViewStyle } from '../types/styles'
 export const VView = defineComponent({
   name: 'VView',
   props: {
-    style: Object as PropType<ViewStyle>,
+    style: [Object, Array] as PropType<StyleProp<ViewStyle>>,
     testID: String,
     accessibilityLabel: String,
     accessibilityRole: String,

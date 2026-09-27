@@ -85,7 +85,7 @@ describe('Social Auth', () => {
       const { signIn, user, isAuthenticated } = await withSetup(() => useAppleSignIn())
       const result = await signIn()
 
-      expect(invokeModuleSpy).toHaveBeenCalledWith('SocialAuth', 'signInWithApple')
+      expect(invokeModuleSpy).toHaveBeenCalledWith('SocialAuth', 'signInWithApple', [], 0)
       expect(result.success).toBe(true)
       expect(result.user).toEqual({ ...mockUser, provider: 'apple' })
       expect(user.value).toEqual({ ...mockUser, provider: 'apple' })
@@ -191,7 +191,7 @@ describe('Social Auth', () => {
       const { signIn, user, isAuthenticated } = await withSetup(() => useGoogleSignIn(CLIENT_ID))
       const result = await signIn()
 
-      expect(invokeModuleSpy).toHaveBeenCalledWith('SocialAuth', 'signInWithGoogle', [CLIENT_ID])
+      expect(invokeModuleSpy).toHaveBeenCalledWith('SocialAuth', 'signInWithGoogle', [CLIENT_ID], 0)
       expect(result.success).toBe(true)
       expect(result.user).toEqual({ ...mockUser, provider: 'google' })
       expect(user.value).toEqual({ ...mockUser, provider: 'google' })

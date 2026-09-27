@@ -1,5 +1,6 @@
 import { defineComponent, h, ref, computed, watch, type PropType, type VNode } from '@vue/runtime-core'
-import type { ViewStyle } from '../types/styles'
+import type { StyleProp, ViewStyle } from '../types/styles'
+import { flattenStyle } from '../stylesheet'
 
 interface KeyedItem {
   id?: string | number
@@ -23,8 +24,8 @@ function getDefaultItemKey(item: unknown, index: number): string | number {
   return index
 }
 
-function resolveFlexValue(style?: ViewStyle): number {
-  return typeof style?.flex === 'number' ? style.flex : 1
+function resolveFlexValue(style: Record<string, unknown>): number {
+  return typeof style.flex === 'number' ? style.flex : 1
 }
 
 /**
@@ -134,7 +135,10 @@ const VFlatListBase = defineComponent({
     },
     /** Style for the outer scroll container. */
     style: {
-      type: Object as PropType<ViewStyle>,
+      // [Object, Array] so a style array passes Vue's runtime prop validation;
+      // StyleProp<ViewStyle> so it also passes the type checker. renderer.ts
+      // flattenStyle() has always merged arrays at runtime.
+      type: [Object, Array] as PropType<StyleProp<ViewStyle>>,
       default: () => ({}),
     },
     /** Show vertical scroll indicator. Default: true */
@@ -322,11 +326,17 @@ const VFlatListBase = defineComponent({
         )
       }
 
+      // `props.style` may be an array (`:style="[base, cond && other]"`).
+      // Spreading an array into an object literal yields `{ 0: …, 1: … }` index
+      // keys instead of merged styles, so flatten first — the same helper the
+      // renderer's style-diffing path uses.
+      const flatStyle = flattenStyle(props.style)
+
       if (items.length === 0 && slots.empty) {
         return h(
           'VScrollView',
           {
-            style: { ...props.style, flex: resolveFlexValue(props.style) },
+            style: { ...flatStyle, flex: resolveFlexValue(flatStyle) },
             showsVerticalScrollIndicator: props.showsScrollIndicator,
             bounces: props.bounces,
           },
@@ -349,7 +359,7 @@ const VFlatListBase = defineComponent({
       return h(
         'VScrollView',
         {
-          style: { ...props.style, flex: resolveFlexValue(props.style) },
+          style: { ...flatStyle, flex: resolveFlexValue(flatStyle) },
           showsVerticalScrollIndicator: props.showsScrollIndicator,
           bounces: props.bounces,
           onScroll,

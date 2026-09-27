@@ -122,7 +122,8 @@ export function useBluetooth() {
 
   async function connect(deviceId: string): Promise<BLEDevice> {
     error.value = null
-    const result: BLEDevice = await NativeBridge.invokeNativeModule('Bluetooth', 'connect', [deviceId])
+    // timeoutMs=0: GATT connection and any pairing dialog are not bounded by 30s.
+    const result: BLEDevice = await NativeBridge.invokeNativeModule('Bluetooth', 'connect', [deviceId], 0)
     return result
   }
 

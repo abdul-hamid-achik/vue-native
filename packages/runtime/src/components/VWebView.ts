@@ -1,5 +1,5 @@
 import { computed, defineComponent, h, type PropType } from '@vue/runtime-core'
-import type { ViewStyle } from '../types/styles'
+import type { StyleProp, ViewStyle } from '../types/styles'
 
 export interface WebViewSource {
   uri?: string
@@ -19,7 +19,7 @@ export const VWebView = defineComponent({
   name: 'VWebView',
   props: {
     source: { type: Object as () => WebViewSource, required: true },
-    style: { type: Object as PropType<ViewStyle>, default: () => ({}) },
+    style: { type: [Object, Array] as PropType<StyleProp<ViewStyle>>, default: () => ({}) },
     javaScriptEnabled: { type: Boolean, default: true },
   },
   emits: ['load', 'error', 'message'],

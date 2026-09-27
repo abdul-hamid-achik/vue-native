@@ -1,5 +1,5 @@
 import { defineComponent, h, type PropType } from '@vue/runtime-core'
-import type { ViewStyle } from '../types/styles'
+import type { StyleProp, ViewStyle } from '../types/styles'
 
 /**
  * Source for a `VSVG` image. Provide exactly one of:
@@ -40,7 +40,7 @@ export const VSVG = defineComponent({
     source: Object as PropType<SVGSource>,
     /** Optional tint applied to the rendered SVG (hex color string). */
     tintColor: String,
-    style: Object as PropType<ViewStyle>,
+    style: [Object, Array] as PropType<StyleProp<ViewStyle>>,
     testID: String,
     accessibilityLabel: String,
     accessibilityRole: {

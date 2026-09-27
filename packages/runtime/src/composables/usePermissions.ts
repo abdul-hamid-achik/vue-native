@@ -33,7 +33,9 @@ export type PermissionStatus =
  */
 export function usePermissions() {
   async function request(permission: Permission): Promise<PermissionStatus> {
-    return NativeBridge.invokeNativeModule('Permissions', 'request', [permission])
+    // timeoutMs=0: the system permission prompt is human-gated with no natural
+    // time limit; a slow decision must not surface as a failure.
+    return NativeBridge.invokeNativeModule('Permissions', 'request', [permission], 0)
   }
 
   async function check(permission: Permission): Promise<PermissionStatus> {

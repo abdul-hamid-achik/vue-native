@@ -1,5 +1,5 @@
 import { defineComponent, h, type PropType } from '@vue/runtime-core'
-import type { TextStyle, ViewStyle } from '../types/styles'
+import type { StyleProp, TextStyle, ViewStyle } from '../types/styles'
 import { VText } from './VText'
 
 /**
@@ -27,7 +27,7 @@ export const VButton = defineComponent({
     title: String,
     /** Text styling for the title shorthand. */
     titleStyle: Object as PropType<TextStyle>,
-    style: Object as PropType<ViewStyle>,
+    style: [Object, Array] as PropType<StyleProp<ViewStyle>>,
     disabled: {
       type: Boolean,
       default: false,

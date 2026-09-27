@@ -120,11 +120,45 @@ export const validStyleProperties: ReadonlySet<string> = new Set([
 ])
 
 /**
- * A single style declaration — a flat object of style properties.
- * Can be a ViewStyle, TextStyle, or ImageStyle from the typed interfaces,
- * or a plain record for backwards compatibility.
+ * Everything assignable to a component's `style` prop: a single style object, or
+ * a (possibly nested) array of them where later entries win and falsy entries
+ * are skipped.
+ *
+ * Re-exported from `./types/styles` so the historical
+ * `import { type StyleProp } from '.../stylesheet'` keeps working; the
+ * definition lives with the other style types because that is where components
+ * already import from.
  */
-export type StyleProp = Record<string, unknown>
+export type { StyleProp, StyleArray } from './types/styles'
+
+/**
+ * Merge a `StyleProp` into a single flat object.
+ *
+ * Arrays are merged left to right so later entries override earlier ones, and
+ * `false` / `null` / `undefined` entries are skipped — which is what makes
+ * `:style="[styles.row, isActive && styles.active]"` work. Anything that is not
+ * an object or an array flattens to `{}` rather than throwing, because this runs
+ * inside the Vue render loop.
+ *
+ * This is the single implementation: the renderer's style-diffing path and any
+ * component that needs to read its own `style` prop both call it. Components
+ * that spread `props.style` directly instead produce `{ 0: …, 1: … }` index keys
+ * when handed an array, which silently renders nothing.
+ */
+export function flattenStyle(style: unknown): Record<string, unknown> {
+  if (style == null || style === false) return {}
+  if (Array.isArray(style)) {
+    const merged: Record<string, unknown> = {}
+    for (const entry of style) {
+      Object.assign(merged, flattenStyle(entry))
+    }
+    return merged
+  }
+  if (typeof style === 'object') {
+    return style as Record<string, unknown>
+  }
+  return {}
+}
 
 /**
  * The result type of createStyleSheet — keys are the same as the input,

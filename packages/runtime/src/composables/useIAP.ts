@@ -94,7 +94,11 @@ export function useIAP() {
   async function purchase(sku: string): Promise<Purchase | null> {
     error.value = null
     try {
-      return await NativeBridge.invokeNativeModule('IAP', 'purchase', [sku])
+      // timeoutMs=0: the store sheet is human-gated and can stay open for
+      // minutes (password, 2FA, ask-to-buy). A 30s rejection is swallowed into
+      // `null` below, which callers read as "user cancelled" — so the purchase
+      // could complete natively while the app reports it abandoned.
+      return await NativeBridge.invokeNativeModule('IAP', 'purchase', [sku], 0)
     } catch (err: unknown) {
       error.value = getErrorMessage(err)
       return null
@@ -104,7 +108,9 @@ export function useIAP() {
   async function restorePurchases(): Promise<Purchase[]> {
     error.value = null
     try {
-      return await NativeBridge.invokeNativeModule('IAP', 'restorePurchases')
+      // timeoutMs=0: restore walks the store account over the network and may
+      // prompt. An empty array must mean "nothing to restore", not "timed out".
+      return await NativeBridge.invokeNativeModule('IAP', 'restorePurchases', [], 0)
     } catch (err: unknown) {
       error.value = getErrorMessage(err)
       return []

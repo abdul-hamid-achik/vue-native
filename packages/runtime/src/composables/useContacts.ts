@@ -57,7 +57,9 @@ export function useContacts() {
 
   async function requestAccess(): Promise<boolean> {
     try {
-      const result: { granted: boolean } = await NativeBridge.invokeNativeModule('Contacts', 'requestAccess')
+      // timeoutMs=0: the system prompt is human-gated, and the catch below maps
+      // any failure to `false` — the same value that means "user denied".
+      const result: { granted: boolean } = await NativeBridge.invokeNativeModule('Contacts', 'requestAccess', [], 0)
       hasAccess.value = result.granted
       return result.granted
     } catch (e: unknown) {

@@ -67,20 +67,23 @@ export interface QRCodeResult {
 export function useCamera() {
   const qrCleanups: Array<() => void> = []
 
+  // timeoutMs=0 on the four user-facing capture flows below: the camera UI,
+  // photo library, video recorder and QR scanner all stay open until the user
+  // finishes, which routinely exceeds the default 30s bridge timeout.
   async function launchCamera(options: CameraOptions = {}): Promise<CameraResult> {
-    return NativeBridge.invokeNativeModule('Camera', 'launchCamera', [options])
+    return NativeBridge.invokeNativeModule('Camera', 'launchCamera', [options], 0)
   }
 
   async function launchImageLibrary(options: CameraOptions = {}): Promise<CameraResult> {
-    return NativeBridge.invokeNativeModule('Camera', 'launchImageLibrary', [options])
+    return NativeBridge.invokeNativeModule('Camera', 'launchImageLibrary', [options], 0)
   }
 
   async function captureVideo(options: VideoCaptureOptions = {}): Promise<VideoCaptureResult> {
-    return NativeBridge.invokeNativeModule('Camera', 'captureVideo', [options])
+    return NativeBridge.invokeNativeModule('Camera', 'captureVideo', [options], 0)
   }
 
   async function scanQRCode(): Promise<void> {
-    return NativeBridge.invokeNativeModule('Camera', 'scanQRCode')
+    return NativeBridge.invokeNativeModule('Camera', 'scanQRCode', [], 0)
   }
 
   async function stopQRScan(): Promise<void> {

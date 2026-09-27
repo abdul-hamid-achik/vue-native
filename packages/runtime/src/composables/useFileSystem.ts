@@ -69,7 +69,9 @@ export function useFileSystem() {
    * @returns The destination path on success
    */
   function downloadFile(url: string, destPath: string): Promise<string> {
-    return NativeBridge.invokeNativeModule('FileSystem', 'downloadFile', [url, destPath])
+    // timeoutMs=0: transfer duration scales with file size and network, so no
+    // fixed default is safe for a large download.
+    return NativeBridge.invokeNativeModule('FileSystem', 'downloadFile', [url, destPath], 0)
   }
 
   /**

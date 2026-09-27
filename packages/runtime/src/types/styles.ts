@@ -190,3 +190,26 @@ export interface ImageStyle extends ViewStyle {
   resizeMode?: ResizeMode
   tintColor?: string
 }
+
+// ---------------------------------------------------------------------------
+// StyleProp — a style value the runtime actually accepts
+// ---------------------------------------------------------------------------
+
+/**
+ * A (possibly nested) array of style objects.
+ *
+ * Entries are merged left to right so later ones win, and falsy entries are
+ * skipped, which is what makes the idiomatic conditional form work:
+ * `:style="[styles.row, isActive && styles.active]"`.
+ */
+export type StyleArray<T> = ReadonlyArray<T | StyleArray<T> | false | null | undefined>
+
+/**
+ * Anything assignable to a component's `style` prop.
+ *
+ * `renderer.ts` `flattenStyle()` already merges arrays at runtime; without this
+ * type every array binding failed to type-check even though it worked. The
+ * default parameter keeps the pre-existing non-generic `StyleProp` spelling
+ * (exported from `stylesheet.ts`) source-compatible.
+ */
+export type StyleProp<T = Record<string, unknown>> = T | StyleArray<T>

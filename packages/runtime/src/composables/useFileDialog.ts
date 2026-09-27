@@ -28,19 +28,21 @@ export interface SaveFileOptions {
 export function useFileDialog() {
   const { isMacOS } = usePlatform()
 
+  // timeoutMs=0 on all three: an NSOpenPanel/NSSavePanel stays open until the
+  // user dismisses it, which can be far longer than the default 30s.
   async function openFile(options?: OpenFileOptions): Promise<string[] | null> {
     if (!isMacOS) return null
-    return await NativeBridge.invokeNativeModule('FileDialog', 'openFile', [options || {}]) as string[] | null
+    return await NativeBridge.invokeNativeModule('FileDialog', 'openFile', [options || {}], 0) as string[] | null
   }
 
   async function openDirectory(options?: { title?: string }): Promise<string | null> {
     if (!isMacOS) return null
-    return await NativeBridge.invokeNativeModule('FileDialog', 'openDirectory', [options || {}]) as string | null
+    return await NativeBridge.invokeNativeModule('FileDialog', 'openDirectory', [options || {}], 0) as string | null
   }
 
   async function saveFile(options?: SaveFileOptions): Promise<string | null> {
     if (!isMacOS) return null
-    return await NativeBridge.invokeNativeModule('FileDialog', 'saveFile', [options || {}]) as string | null
+    return await NativeBridge.invokeNativeModule('FileDialog', 'saveFile', [options || {}], 0) as string | null
   }
 
   return { openFile, openDirectory, saveFile }

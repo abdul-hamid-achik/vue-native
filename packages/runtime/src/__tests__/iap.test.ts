@@ -103,7 +103,7 @@ describe('useIAP', () => {
     const { useIAP } = await import('../composables/useIAP')
     const { purchase } = await withSetup(() => useIAP())
     const result = await purchase('com.app.premium')
-    expect(invokeModuleSpy).toHaveBeenCalledWith('IAP', 'purchase', ['com.app.premium'])
+    expect(invokeModuleSpy).toHaveBeenCalledWith('IAP', 'purchase', ['com.app.premium'], 0)
     expect(result).toEqual(mockPurchase)
   })
 
@@ -130,7 +130,7 @@ describe('useIAP', () => {
     const { useIAP } = await import('../composables/useIAP')
     const { restorePurchases } = await withSetup(() => useIAP())
     const result = await restorePurchases()
-    expect(invokeModuleSpy).toHaveBeenCalledWith('IAP', 'restorePurchases')
+    expect(invokeModuleSpy).toHaveBeenCalledWith('IAP', 'restorePurchases', [], 0)
     expect(result).toEqual(restored)
   })
 

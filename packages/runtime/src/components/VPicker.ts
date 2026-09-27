@@ -1,5 +1,5 @@
 import { defineComponent, h, type PropType } from '@vue/runtime-core'
-import type { ViewStyle } from '../types/styles'
+import type { StyleProp, ViewStyle } from '../types/styles'
 
 /**
  * Date/time picker component.
@@ -20,7 +20,7 @@ export const VPicker = defineComponent({
     minimumDate: { type: Number, default: undefined },
     maximumDate: { type: Number, default: undefined },
     minuteInterval: { type: Number, default: 1 },
-    style: { type: Object as PropType<ViewStyle>, default: () => ({}) },
+    style: { type: [Object, Array] as PropType<StyleProp<ViewStyle>>, default: () => ({}) },
   },
   emits: ['update:modelValue', 'change'],
   setup(props, { emit }) {

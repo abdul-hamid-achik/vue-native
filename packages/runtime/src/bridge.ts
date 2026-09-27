@@ -18,6 +18,13 @@ interface PendingCallback {
   reject: (error: unknown) => void
   /** Undefined when the caller opted out of the timeout (timeoutMs <= 0). */
   timeoutId: ReturnType<typeof setTimeout> | undefined
+  /**
+   * Marks the caller's promise as handled before a reset() rejection, so that
+   * tearing the bridge down does not surface as an unhandled rejection in code
+   * that legitimately fire-and-forgot the call. Only reset() calls this; real
+   * failures (timeout, native error) must still warn.
+   */
+  quiet?: () => void
 }
 
 const bridgeGlobals = globalThis as typeof globalThis & NativeBridgeGlobals
@@ -102,6 +109,39 @@ export interface BridgeOperation {
   args: unknown[]
 }
 
+/**
+ * Best-effort description of an operation's arguments for error messages.
+ *
+ * Only called on the serialization-failure path, so the arguments are known to
+ * contain a value `JSON.stringify` cannot handle. This must never throw, or it
+ * would replace a recoverable dropped op with a fatal one.
+ */
+function describeOpArgs(args: unknown[]): string {
+  const described = args.map((arg, index) => {
+    const label = `arg${index}`
+    if (arg === null) return `${label}=null`
+    switch (typeof arg) {
+      case 'bigint':
+        return `${label}=BigInt(${String(arg)})`
+      case 'symbol':
+        return `${label}=${String(arg)}`
+      case 'function':
+        return `${label}=function ${arg.name || '(anonymous)'}`
+      case 'object': {
+        try {
+          const ctor = Object.getPrototypeOf(arg)?.constructor?.name
+          return `${label}=${ctor ?? 'Object'}`
+        } catch {
+          return `${label}=Object`
+        }
+      }
+      default:
+        return `${label}=${typeof arg}`
+    }
+  })
+  return `Arguments: ${described.join(', ')}.`
+}
+
 class NativeBridgeImpl {
   /** Pending operations waiting to be flushed to native */
   private pendingOps: BridgeOperation[] = []
@@ -156,15 +196,8 @@ class NativeBridgeImpl {
     const ops = this.pendingOps
     this.pendingOps = []
 
-    const json = JSON.stringify(ops)
     const flushFn = bridgeGlobals.__VN_flushOperations
-    if (typeof flushFn === 'function') {
-      try {
-        flushFn(json)
-      } catch (err) {
-        console.error('[VueNative] Error in __VN_flushOperations:', err)
-      }
-    } else {
+    if (typeof flushFn !== 'function') {
       // The native runtime is not connected: every queued operation is dropped
       // and the UI will not update. Surface this loudly (throttled) and emit a
       // 'bridge:error' global event so apps can react instead of showing a
@@ -173,6 +206,66 @@ class NativeBridgeImpl {
         '[VueNative] __VN_flushOperations is not registered — '
         + `${ops.length} operation(s) dropped. `
         + 'Make sure the native runtime has been initialized.',
+      )
+      return
+    }
+
+    let json: string
+    try {
+      json = JSON.stringify(ops)
+    } catch (err) {
+      // One unserializable argument (BigInt, circular value, Symbol) must not
+      // discard the whole batch: pendingOps is already detached and the JS tree
+      // has already mutated, so losing every op desyncs JS from native with no
+      // visible symptom. Fall back to per-op serialization and drop only the
+      // offender.
+      this.flushIndividually(ops, flushFn, err)
+      return
+    }
+
+    try {
+      flushFn(json)
+    } catch (err) {
+      console.error('[VueNative] Error in __VN_flushOperations:', err)
+    }
+  }
+
+  /**
+   * Recovery path used when the batch as a whole cannot be serialized. Sends
+   * each operation separately so a single bad argument costs one op instead of
+   * the frame, and names the offender so it can be found.
+   */
+  private flushIndividually(
+    ops: BridgeOperation[],
+    flushFn: (json: string) => void,
+    cause: unknown,
+  ): void {
+    let dropped = 0
+    ops.forEach((op, index) => {
+      let json: string
+      try {
+        json = JSON.stringify([op])
+      } catch {
+        dropped++
+        this.emitBridgeError(
+          `[VueNative] Dropped unserializable '${op.op}' operation (index ${index} of `
+          + `${ops.length}). ${describeOpArgs(op.args)} `
+          + `Serialization failed with: ${String(cause)}`,
+        )
+        return
+      }
+      try {
+        flushFn(json)
+      } catch (err) {
+        console.error('[VueNative] Error in __VN_flushOperations:', err)
+      }
+    })
+    if (dropped > 0) {
+      this.emitBridgeError(
+        `[VueNative] ${dropped} of ${ops.length} operation(s) could not be serialized `
+        + 'and were dropped. The native view tree is now out of sync with Vue for '
+        + 'those nodes. Only JSON-safe values (no BigInt, Symbol, or circular '
+        + 'references) can cross the bridge.',
       )
     }
   }
@@ -452,7 +545,7 @@ class NativeBridgeImpl {
     args: unknown[] = [],
     timeoutMs = 30_000,
   ): Promise<T> {
-    return new Promise<T>((resolve, reject) => {
+    const promise = new Promise<T>((resolve, reject) => {
       // Wraparound safety: if the id is already in use, reject the orphaned
       // callback before overwriting to prevent ID collision and leaked promises.
       if (this.pendingCallbacks.has(this.nextCallbackId)) {
@@ -490,16 +583,42 @@ class NativeBridgeImpl {
           }, timeoutMs)
         : undefined
 
-      // Evict oldest callback if queue is at capacity to prevent unbounded growth
+      // Evict the oldest *timed* callback when at capacity to prevent unbounded
+      // growth. Untimed callbacks (timeoutMs <= 0) are deliberately exempt: they
+      // belong to long-running operations such as IAP purchases, video capture
+      // and large downloads, which sit at the head of the insertion-ordered map
+      // for the longest time. Evicting oldest-first without that exemption
+      // killed exactly the calls the opt-out exists to protect, and the loss was
+      // invisible — a purchase could complete natively while the app saw a
+      // rejection it interpreted as a user cancel.
       if (this.pendingCallbacks.size >= NativeBridgeImpl.MAX_PENDING_CALLBACKS) {
-        const oldestKey = this.pendingCallbacks.keys().next().value
-        if (oldestKey !== undefined) {
-          const oldest = this.pendingCallbacks.get(oldestKey)
-          if (oldest) {
-            clearTimeout(oldest.timeoutId)
-            oldest.reject(new Error('Callback queue full, evicting oldest pending callback'))
-            this.pendingCallbacks.delete(oldestKey)
+        let evictKey: number | undefined
+        for (const [key, entry] of this.pendingCallbacks) {
+          if (entry.timeoutId !== undefined) {
+            evictKey = key
+            break
           }
+        }
+
+        if (evictKey === undefined) {
+          // Every slot is a long-running opt-out. Refuse the new call instead of
+          // discarding real in-flight work.
+          clearTimeout(timeoutId)
+          reject(new Error(
+            `[VueNative] Callback queue full (${NativeBridgeImpl.MAX_PENDING_CALLBACKS} `
+            + 'concurrent long-running operations) — refusing to start '
+            + `${moduleName}.${methodName}. Await or cancel an in-flight operation first.`,
+          ))
+          return
+        }
+
+        const evicted = this.pendingCallbacks.get(evictKey)
+        if (evicted) {
+          clearTimeout(evicted.timeoutId)
+          evicted.reject(new Error(
+            '[VueNative] Callback queue full, evicting oldest timed pending callback',
+          ))
+          this.pendingCallbacks.delete(evictKey)
         }
       }
 
@@ -507,9 +626,14 @@ class NativeBridgeImpl {
         resolve: result => resolve(result as T),
         reject: error => reject(error),
         timeoutId,
+        // Referencing `promise` inside its own executor is safe here: this
+        // closure only runs during reset(), long after the constructor returns.
+        quiet: () => { promise.catch(() => {}) },
       })
       this.enqueue('invokeNativeModule', [moduleName, methodName, args, callbackId])
     })
+
+    return promise
   }
 
   /**
@@ -628,9 +752,21 @@ class NativeBridgeImpl {
     this.pendingOps = []
     this.flushScheduled = false
     this.eventHandlers.clear()
-    // Clear pending callback timeouts before discarding the map
+    // Settle every in-flight module call before discarding the map. Dropping the
+    // entries silently left each awaiting closure suspended forever, which is
+    // worse than an error: a hot reload or teardown would strand any
+    // `await invokeNativeModule(...)` still running in a surviving scope.
     for (const pending of this.pendingCallbacks.values()) {
       clearTimeout(pending.timeoutId)
+      // Pre-mark as handled so a teardown is not reported as an unhandled
+      // rejection by callers that legitimately fire-and-forgot the call. The
+      // awaiting caller still sees the error.
+      pending.quiet?.()
+      pending.reject(new Error(
+        '[VueNative] Native bridge was reset while this call was in flight '
+        + '(hot reload or app teardown). Retry the operation once the bridge is '
+        + 're-established.',
+      ))
     }
     this.pendingCallbacks.clear()
     this.nextCallbackId = 1

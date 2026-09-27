@@ -9,6 +9,7 @@
 import { createRenderer, type RendererOptions } from '@vue/runtime-core'
 import { type NativeNode, createNativeNode, createTextNode, createCommentNode, releaseNodeId } from './node'
 import { NativeBridge, registerBridgeStateReset } from './bridge'
+import { flattenStyle } from './stylesheet'
 
 /**
  * Normalize an event name from Vue's "onXxx" convention.
@@ -53,21 +54,6 @@ function getEventHandler(value: unknown): EventHandler | null {
  *
  * Errors are caught to prevent breaking the Vue render loop.
  */
-function flattenStyle(style: unknown): Record<string, unknown> {
-  if (style == null || style === false) return {}
-  if (Array.isArray(style)) {
-    const merged: Record<string, unknown> = {}
-    for (const entry of style) {
-      Object.assign(merged, flattenStyle(entry))
-    }
-    return merged
-  }
-  if (typeof style === 'object') {
-    return style as Record<string, unknown>
-  }
-  return {}
-}
-
 function patchStyle(
   nodeId: number,
   prevStyle: unknown,

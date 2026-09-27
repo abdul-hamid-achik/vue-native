@@ -1,5 +1,5 @@
 import { defineComponent, h, ref, watch, onUnmounted, type PropType } from '@vue/runtime-core'
-import type { ViewStyle } from '../types/styles'
+import type { StyleProp, ViewStyle } from '../types/styles'
 
 /**
  * Window-level modal overlay component.
@@ -19,7 +19,10 @@ export const VModal = defineComponent({
       default: false,
     },
     style: {
-      type: Object as PropType<ViewStyle>,
+      // [Object, Array] so a style array passes Vue's runtime prop validation;
+      // StyleProp<ViewStyle> so it also passes the type checker. renderer.ts
+      // flattenStyle() has always merged arrays at runtime.
+      type: [Object, Array] as PropType<StyleProp<ViewStyle>>,
       default: () => ({}),
     },
   },

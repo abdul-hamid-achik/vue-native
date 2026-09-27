@@ -66,7 +66,8 @@ export function useGoogleSignIn(clientId: string) {
   async function signIn(): Promise<AuthResult> {
     error.value = null
     try {
-      const result = await NativeBridge.invokeNativeModule('SocialAuth', 'signInWithGoogle', [clientId])
+      // timeoutMs=0: the Google web auth flow is human-gated.
+      const result = await NativeBridge.invokeNativeModule('SocialAuth', 'signInWithGoogle', [clientId], 0)
       const socialUser = normalizeSocialUser(result)
       if (!socialUser) {
         throw new Error('Invalid Google Sign In response.')

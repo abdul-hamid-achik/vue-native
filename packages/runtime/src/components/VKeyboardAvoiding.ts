@@ -1,5 +1,5 @@
 import { defineComponent, h, type PropType } from '@vue/runtime-core'
-import type { ViewStyle } from '../types/styles'
+import type { StyleProp, ViewStyle } from '../types/styles'
 
 /**
  * VKeyboardAvoiding — a container that adjusts its bottom padding when
@@ -18,7 +18,7 @@ import type { ViewStyle } from '../types/styles'
 export const VKeyboardAvoiding = defineComponent({
   name: 'VKeyboardAvoiding',
   props: {
-    style: Object as PropType<ViewStyle>,
+    style: [Object, Array] as PropType<StyleProp<ViewStyle>>,
     testID: String,
   },
   setup(props, { slots }) {

@@ -6,7 +6,7 @@
  * or building abstractions on top of the built-in components.
  */
 
-import type { ViewStyle, TextStyle, ImageStyle, ResizeMode } from './styles'
+import type { ViewStyle, TextStyle, ImageStyle, ResizeMode, StyleProp } from './styles'
 
 // ---------------------------------------------------------------------------
 // Shared prop types
@@ -24,12 +24,12 @@ export interface AccessibilityProps {
 // ---------------------------------------------------------------------------
 
 export interface VViewProps extends AccessibilityProps {
-  style?: ViewStyle
+  style?: StyleProp<ViewStyle>
   testID?: string
 }
 
 export interface VTextProps extends AccessibilityProps {
-  style?: TextStyle
+  style?: StyleProp<TextStyle>
   numberOfLines?: number
   selectable?: boolean
 }
@@ -37,7 +37,7 @@ export interface VTextProps extends AccessibilityProps {
 export interface VButtonProps extends AccessibilityProps {
   title?: string
   titleStyle?: TextStyle
-  style?: ViewStyle
+  style?: StyleProp<ViewStyle>
   disabled?: boolean
   activeOpacity?: number
   onPress?: () => void
@@ -54,7 +54,7 @@ export interface VInputProps extends AccessibilityProps {
   autoCorrect?: boolean
   maxLength?: number
   multiline?: boolean
-  style?: TextStyle
+  style?: StyleProp<TextStyle>
 }
 
 export interface VSwitchProps extends AccessibilityProps {
@@ -62,13 +62,13 @@ export interface VSwitchProps extends AccessibilityProps {
   disabled?: boolean
   onTintColor?: string
   thumbTintColor?: string
-  style?: ViewStyle
+  style?: StyleProp<ViewStyle>
 }
 
 export interface VImageProps extends AccessibilityProps {
   source: { uri: string }
   resizeMode?: ResizeMode
-  style?: ImageStyle
+  style?: StyleProp<ImageStyle>
   testID?: string
 }
 
@@ -81,7 +81,7 @@ export interface VScrollViewProps extends AccessibilityProps {
   pagingEnabled?: boolean
   contentContainerStyle?: ViewStyle
   refreshing?: boolean
-  style?: ViewStyle
+  style?: StyleProp<ViewStyle>
 }
 
 export interface VActivityIndicatorProps {
@@ -89,14 +89,14 @@ export interface VActivityIndicatorProps {
   color?: string
   size?: 'small' | 'medium' | 'large'
   hidesWhenStopped?: boolean
-  style?: ViewStyle
+  style?: StyleProp<ViewStyle>
 }
 
 export interface VSliderProps extends AccessibilityProps {
   modelValue?: number
   min?: number
   max?: number
-  style?: ViewStyle
+  style?: StyleProp<ViewStyle>
 }
 
 export interface VListProps<T = unknown> {
@@ -106,12 +106,12 @@ export interface VListProps<T = unknown> {
   showsScrollIndicator?: boolean
   bounces?: boolean
   horizontal?: boolean
-  style?: ViewStyle
+  style?: StyleProp<ViewStyle>
 }
 
 export interface VModalProps {
   visible?: boolean
-  style?: ViewStyle
+  style?: StyleProp<ViewStyle>
 }
 
 export interface VAlertDialogProps {
@@ -136,7 +136,7 @@ export interface VStatusBarProps {
 
 export interface VWebViewProps {
   source: { uri?: string, html?: string }
-  style?: ViewStyle
+  style?: StyleProp<ViewStyle>
   javaScriptEnabled?: boolean
 }
 
@@ -145,7 +145,7 @@ export interface VProgressBarProps {
   progressTintColor?: string
   trackTintColor?: string
   animated?: boolean
-  style?: ViewStyle
+  style?: StyleProp<ViewStyle>
 }
 
 export interface VPickerProps {
@@ -154,7 +154,7 @@ export interface VPickerProps {
   minimumDate?: number
   maximumDate?: number
   minuteInterval?: number
-  style?: ViewStyle
+  style?: StyleProp<ViewStyle>
 }
 
 export interface VSegmentedControlProps {
@@ -162,7 +162,7 @@ export interface VSegmentedControlProps {
   selectedIndex?: number
   tintColor?: string
   enabled?: boolean
-  style?: ViewStyle
+  style?: StyleProp<ViewStyle>
 }
 
 export interface VActionSheetProps {
@@ -176,12 +176,12 @@ export interface VActionSheetProps {
 }
 
 export interface VKeyboardAvoidingProps {
-  style?: ViewStyle
+  style?: StyleProp<ViewStyle>
   testID?: string
 }
 
 export interface VSafeAreaProps {
-  style?: ViewStyle
+  style?: StyleProp<ViewStyle>
 }
 
 export interface VRefreshControlProps {
@@ -189,11 +189,11 @@ export interface VRefreshControlProps {
   onRefresh?: () => void
   tintColor?: string
   title?: string
-  style?: ViewStyle
+  style?: StyleProp<ViewStyle>
 }
 
 export interface VPressableProps extends AccessibilityProps {
-  style?: ViewStyle
+  style?: StyleProp<ViewStyle>
   disabled?: boolean
   activeOpacity?: number
   onPress?: () => void
@@ -208,7 +208,7 @@ export interface VCheckboxProps extends AccessibilityProps {
   label?: string
   checkColor?: string
   tintColor?: string
-  style?: ViewStyle
+  style?: StyleProp<ViewStyle>
 }
 
 export interface VRadioProps extends AccessibilityProps {
@@ -216,7 +216,7 @@ export interface VRadioProps extends AccessibilityProps {
   options: Array<{ label: string, value: string }>
   disabled?: boolean
   tintColor?: string
-  style?: ViewStyle
+  style?: StyleProp<ViewStyle>
 }
 
 export interface VDropdownProps extends AccessibilityProps {
@@ -225,7 +225,7 @@ export interface VDropdownProps extends AccessibilityProps {
   placeholder?: string
   disabled?: boolean
   tintColor?: string
-  style?: ViewStyle
+  style?: StyleProp<ViewStyle>
 }
 
 export interface VVideoProps extends AccessibilityProps {
@@ -240,7 +240,7 @@ export interface VVideoProps extends AccessibilityProps {
   resizeMode?: 'cover' | 'contain' | 'stretch' | 'center'
   /** Reserved for native poster rendering; currently has no effect. */
   poster?: string
-  style?: ViewStyle
+  style?: StyleProp<ViewStyle>
   testID?: string
 }
 
@@ -256,7 +256,7 @@ export interface VSectionListProps<T = unknown> {
   stickySectionHeaders?: boolean
   showsScrollIndicator?: boolean
   bounces?: boolean
-  style?: ViewStyle
+  style?: StyleProp<ViewStyle>
 }
 
 export interface VFlatListProps<T = unknown, TRendered = unknown> {
@@ -265,7 +265,7 @@ export interface VFlatListProps<T = unknown, TRendered = unknown> {
   keyExtractor?: (item: T, index: number) => string | number
   itemHeight: number
   windowSize?: number
-  style?: ViewStyle
+  style?: StyleProp<ViewStyle>
   showsScrollIndicator?: boolean
   bounces?: boolean
   headerHeight?: number
@@ -297,7 +297,7 @@ export interface VToolbarProps {
   }>
   displayMode?: 'iconOnly' | 'labelOnly' | 'iconAndLabel'
   showsBaselineSeparator?: boolean
-  style?: ViewStyle
+  style?: StyleProp<ViewStyle>
 }
 
 export interface VSplitViewProps {
@@ -305,7 +305,7 @@ export interface VSplitViewProps {
   dividerStyle?: 'thin' | 'thick' | 'paneSplitter'
   dividerColor?: string
   dividerPosition?: number
-  style?: ViewStyle
+  style?: StyleProp<ViewStyle>
 }
 
 export interface VOutlineNode {
@@ -318,7 +318,7 @@ export interface VOutlineViewProps {
   data: VOutlineNode[]
   expandAll?: boolean
   selectionMode?: 'single' | 'multiple' | 'none'
-  style?: ViewStyle
+  style?: StyleProp<ViewStyle>
 }
 
 export interface VDrawerProps {

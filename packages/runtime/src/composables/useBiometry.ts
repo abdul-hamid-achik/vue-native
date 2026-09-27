@@ -17,7 +17,8 @@ export interface BiometryResult {
  */
 export function useBiometry() {
   async function authenticate(reason = 'Authenticate'): Promise<BiometryResult> {
-    return NativeBridge.invokeNativeModule('Biometry', 'authenticate', [reason])
+    // timeoutMs=0: the Face ID / Touch ID prompt is human-gated.
+    return NativeBridge.invokeNativeModule('Biometry', 'authenticate', [reason], 0)
   }
 
   async function getSupportedBiometry(): Promise<BiometryType> {

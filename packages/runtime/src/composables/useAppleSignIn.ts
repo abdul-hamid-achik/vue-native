@@ -86,7 +86,8 @@ export function useAppleSignIn() {
   async function signIn(): Promise<AuthResult> {
     error.value = null
     try {
-      const result = await NativeBridge.invokeNativeModule('SocialAuth', 'signInWithApple')
+      // timeoutMs=0: the Apple sheet plus its web auth flow is human-gated.
+      const result = await NativeBridge.invokeNativeModule('SocialAuth', 'signInWithApple', [], 0)
       const socialUser = normalizeSocialUser(result, 'apple')
       if (!socialUser) {
         throw new Error('Invalid Apple Sign In response.')

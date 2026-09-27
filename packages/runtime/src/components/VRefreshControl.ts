@@ -1,5 +1,5 @@
 import { defineComponent, h, type PropType } from '@vue/runtime-core'
-import type { ViewStyle } from '../types/styles'
+import type { StyleProp, ViewStyle } from '../types/styles'
 
 /**
  * VRefreshControl — a pull-to-refresh indicator component.
@@ -33,7 +33,7 @@ export const VRefreshControl = defineComponent({
     onRefresh: Function as PropType<() => void>,
     tintColor: String,
     title: String,
-    style: Object as PropType<ViewStyle>,
+    style: [Object, Array] as PropType<StyleProp<ViewStyle>>,
   },
   setup(props) {
     return () =>

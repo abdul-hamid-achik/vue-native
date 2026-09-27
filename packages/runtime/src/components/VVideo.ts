@@ -1,5 +1,5 @@
 import { defineComponent, h, type PropType } from '@vue/runtime-core'
-import type { ViewStyle } from '../types/styles'
+import type { StyleProp, ViewStyle } from '../types/styles'
 
 /**
  * VVideo — the video playback component in Vue Native.
@@ -39,7 +39,7 @@ export const VVideo = defineComponent({
     },
     /** Reserved for native poster rendering; currently has no effect. */
     poster: String,
-    style: Object as PropType<ViewStyle>,
+    style: [Object, Array] as PropType<StyleProp<ViewStyle>>,
     testID: String,
     accessibilityLabel: String,
   },

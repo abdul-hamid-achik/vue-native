@@ -1,5 +1,5 @@
 import { defineComponent, h, ref, watch, type PropType } from '@vue/runtime-core'
-import type { ImageStyle } from '../types/styles'
+import type { ImageStyle, StyleProp } from '../types/styles'
 
 /**
  * Image source. Provide `uri` for a remote/absolute URL, or `asset` to load a
@@ -43,7 +43,7 @@ export const VImage = defineComponent({
       type: String as () => 'cover' | 'contain' | 'stretch' | 'center',
       default: 'cover',
     },
-    style: Object as PropType<ImageStyle>,
+    style: [Object, Array] as PropType<StyleProp<ImageStyle>>,
     testID: String,
     accessibilityLabel: String,
     accessibilityRole: String,

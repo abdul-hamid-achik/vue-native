@@ -1,5 +1,5 @@
 import { defineComponent, h, type PropType } from '@vue/runtime-core'
-import type { ViewStyle } from '../types/styles'
+import type { StyleProp, ViewStyle } from '../types/styles'
 
 /**
  * VActivityIndicator — a loading spinner component.
@@ -28,7 +28,7 @@ export const VActivityIndicator = defineComponent({
       type: Boolean,
       default: true,
     },
-    style: Object as PropType<ViewStyle>,
+    style: [Object, Array] as PropType<StyleProp<ViewStyle>>,
   },
   setup(props) {
     return () =>

@@ -1,5 +1,5 @@
 import { defineComponent, h, type PropType } from '@vue/runtime-core'
-import type { ViewStyle } from '../types/styles'
+import type { StyleProp, ViewStyle } from '../types/styles'
 
 /**
  * VPressable — a generic pressable container component.
@@ -29,7 +29,7 @@ import type { ViewStyle } from '../types/styles'
 export const VPressable = defineComponent({
   name: 'VPressable',
   props: {
-    style: Object as PropType<ViewStyle>,
+    style: [Object, Array] as PropType<StyleProp<ViewStyle>>,
     disabled: {
       type: Boolean,
       default: false,

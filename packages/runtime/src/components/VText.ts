@@ -1,5 +1,5 @@
 import { defineComponent, h, type PropType } from '@vue/runtime-core'
-import type { TextStyle } from '../types/styles'
+import type { StyleProp, TextStyle } from '../types/styles'
 
 /**
  * VText — component for displaying text content.
@@ -20,7 +20,7 @@ import type { TextStyle } from '../types/styles'
 export const VText = defineComponent({
   name: 'VText',
   props: {
-    style: Object as PropType<TextStyle>,
+    style: [Object, Array] as PropType<StyleProp<TextStyle>>,
     numberOfLines: Number,
     selectable: {
       type: Boolean,

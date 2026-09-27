@@ -1,5 +1,5 @@
 import { defineComponent, h, type PropType } from '@vue/runtime-core'
-import type { ViewStyle } from '../types/styles'
+import type { StyleProp, ViewStyle } from '../types/styles'
 
 /**
  * VScrollView — a scrollable container component.
@@ -55,7 +55,7 @@ export const VScrollView = defineComponent({
       type: Boolean,
       default: false,
     },
-    style: Object as PropType<ViewStyle>,
+    style: [Object, Array] as PropType<StyleProp<ViewStyle>>,
     accessibilityLabel: String,
     accessibilityRole: String,
     accessibilityHint: String,

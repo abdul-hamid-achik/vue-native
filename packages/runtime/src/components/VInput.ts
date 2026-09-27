@@ -1,5 +1,5 @@
 import { defineComponent, h, ref, type PropType } from '@vue/runtime-core'
-import type { TextStyle } from '../types/styles'
+import type { StyleProp, TextStyle } from '../types/styles'
 
 interface TextPayload {
   text?: string
@@ -84,7 +84,17 @@ export const VInput = defineComponent({
       type: Boolean,
       default: false,
     },
-    style: Object as PropType<TextStyle>,
+    /**
+     * Focus the field automatically once it is attached to a window.
+     *
+     * Currently implemented on macOS only; iOS and Android ignore it. Tracked in
+     * the `baselinedComponentGaps` list of scripts/check-native-contracts.mjs.
+     */
+    autoFocus: {
+      type: Boolean,
+      default: false,
+    },
+    style: [Object, Array] as PropType<StyleProp<TextStyle>>,
     accessibilityLabel: String,
     accessibilityRole: String,
     accessibilityHint: String,
@@ -134,6 +144,7 @@ export const VInput = defineComponent({
         autoCorrect: props.autoCorrect,
         maxLength: props.maxLength,
         multiline: props.multiline,
+        autoFocus: props.autoFocus,
         style: props.style,
         accessibilityLabel: props.accessibilityLabel,
         accessibilityRole: props.accessibilityRole,

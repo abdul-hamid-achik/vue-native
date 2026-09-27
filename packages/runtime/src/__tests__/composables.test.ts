@@ -251,7 +251,7 @@ describe('Composables', () => {
       const { useImagePicker } = await import('../composables/useImagePicker')
       const { pickImage } = useImagePicker()
       const result = await pickImage()
-      expect(invokeModuleSpy).toHaveBeenCalledWith('ImagePicker', 'pickImage', [{}])
+      expect(invokeModuleSpy).toHaveBeenCalledWith('ImagePicker', 'pickImage', [{}], 0)
       expect(result).toEqual(photo)
     })
 
@@ -1137,7 +1137,7 @@ describe('Composables', () => {
       const { useBluetooth } = await import('../composables/useBluetooth')
       const { connect } = await withSetup(() => useBluetooth())
       const result = await connect('dev1')
-      expect(invokeModuleSpy).toHaveBeenCalledWith('Bluetooth', 'connect', ['dev1'])
+      expect(invokeModuleSpy).toHaveBeenCalledWith('Bluetooth', 'connect', ['dev1'], 0)
       expect(result.id).toBe('dev1')
     })
 
@@ -1217,7 +1217,7 @@ describe('Composables', () => {
       const { useCalendar } = await import('../composables/useCalendar')
       const { requestAccess, hasAccess } = useCalendar()
       const result = await requestAccess()
-      expect(invokeModuleSpy).toHaveBeenCalledWith('Calendar', 'requestAccess')
+      expect(invokeModuleSpy).toHaveBeenCalledWith('Calendar', 'requestAccess', [], 0)
       expect(result).toBe(true)
       expect(hasAccess.value).toBe(true)
     })
@@ -1295,7 +1295,7 @@ describe('Composables', () => {
       const { useContacts } = await import('../composables/useContacts')
       const { requestAccess, hasAccess } = useContacts()
       const result = await requestAccess()
-      expect(invokeModuleSpy).toHaveBeenCalledWith('Contacts', 'requestAccess')
+      expect(invokeModuleSpy).toHaveBeenCalledWith('Contacts', 'requestAccess', [], 0)
       expect(result).toBe(true)
       expect(hasAccess.value).toBe(true)
     })
@@ -1424,7 +1424,7 @@ describe('Composables', () => {
       const { usePermissions } = await import('../composables/usePermissions')
       const { request } = usePermissions()
       const status = await request('camera')
-      expect(invokeModuleSpy).toHaveBeenCalledWith('Permissions', 'request', ['camera'])
+      expect(invokeModuleSpy).toHaveBeenCalledWith('Permissions', 'request', ['camera'], 0)
       expect(status).toBe('granted')
     })
 
@@ -1443,7 +1443,7 @@ describe('Composables', () => {
       const { request, check } = usePermissions()
 
       const contactsStatus = await request('contacts')
-      expect(invokeModuleSpy).toHaveBeenCalledWith('Permissions', 'request', ['contacts'])
+      expect(invokeModuleSpy).toHaveBeenCalledWith('Permissions', 'request', ['contacts'], 0)
       expect(contactsStatus).toBe('granted')
 
       const calendarStatus = await check('calendar')
@@ -1469,7 +1469,7 @@ describe('Composables', () => {
       const { useBiometry } = await import('../composables/useBiometry')
       const { authenticate } = useBiometry()
       const result = await authenticate('Confirm your identity')
-      expect(invokeModuleSpy).toHaveBeenCalledWith('Biometry', 'authenticate', ['Confirm your identity'])
+      expect(invokeModuleSpy).toHaveBeenCalledWith('Biometry', 'authenticate', ['Confirm your identity'], 0)
       expect(result.success).toBe(true)
     })
 
@@ -1478,7 +1478,7 @@ describe('Composables', () => {
       const { useBiometry } = await import('../composables/useBiometry')
       const { authenticate } = useBiometry()
       await authenticate()
-      expect(invokeModuleSpy).toHaveBeenCalledWith('Biometry', 'authenticate', ['Authenticate'])
+      expect(invokeModuleSpy).toHaveBeenCalledWith('Biometry', 'authenticate', ['Authenticate'], 0)
     })
 
     it('getSupportedBiometry calls Biometry.getSupportedBiometry', async () => {
@@ -1896,7 +1896,7 @@ describe('Composables', () => {
       const { useNotifications } = await import('../composables/useNotifications')
       const { requestPermission, isGranted } = await withSetup(() => useNotifications())
       const result = await requestPermission()
-      expect(invokeModuleSpy).toHaveBeenCalledWith('Notifications', 'requestPermission')
+      expect(invokeModuleSpy).toHaveBeenCalledWith('Notifications', 'requestPermission', [], 0)
       expect(result).toBe(true)
       expect(isGranted.value).toBe(true)
     })
@@ -2078,7 +2078,7 @@ describe('Composables', () => {
       const { useCamera } = await import('../composables/useCamera')
       const { launchCamera } = await withSetup(() => useCamera())
       const result = await launchCamera()
-      expect(invokeModuleSpy).toHaveBeenCalledWith('Camera', 'launchCamera', [{}])
+      expect(invokeModuleSpy).toHaveBeenCalledWith('Camera', 'launchCamera', [{}], 0)
       expect(result).toEqual(mockResult)
     })
 
@@ -2087,7 +2087,7 @@ describe('Composables', () => {
       const { useCamera } = await import('../composables/useCamera')
       const { launchCamera } = await withSetup(() => useCamera())
       await launchCamera({ mediaType: 'photo', quality: 0.8 })
-      expect(invokeModuleSpy).toHaveBeenCalledWith('Camera', 'launchCamera', [{ mediaType: 'photo', quality: 0.8 }])
+      expect(invokeModuleSpy).toHaveBeenCalledWith('Camera', 'launchCamera', [{ mediaType: 'photo', quality: 0.8 }], 0)
     })
 
     it('launchImageLibrary calls Camera.launchImageLibrary', async () => {
@@ -2096,7 +2096,7 @@ describe('Composables', () => {
       const { useCamera } = await import('../composables/useCamera')
       const { launchImageLibrary } = await withSetup(() => useCamera())
       const result = await launchImageLibrary({ selectionLimit: 3 })
-      expect(invokeModuleSpy).toHaveBeenCalledWith('Camera', 'launchImageLibrary', [{ selectionLimit: 3 }])
+      expect(invokeModuleSpy).toHaveBeenCalledWith('Camera', 'launchImageLibrary', [{ selectionLimit: 3 }], 0)
       expect(result).toEqual(mockResult)
     })
 
@@ -2106,7 +2106,7 @@ describe('Composables', () => {
       const { useCamera } = await import('../composables/useCamera')
       const { captureVideo } = await withSetup(() => useCamera())
       const result = await captureVideo({ quality: 'high', maxDuration: 30 })
-      expect(invokeModuleSpy).toHaveBeenCalledWith('Camera', 'captureVideo', [{ quality: 'high', maxDuration: 30 }])
+      expect(invokeModuleSpy).toHaveBeenCalledWith('Camera', 'captureVideo', [{ quality: 'high', maxDuration: 30 }], 0)
       expect(result).toEqual(mockResult)
     })
 
@@ -2115,7 +2115,7 @@ describe('Composables', () => {
       const { useCamera } = await import('../composables/useCamera')
       const { scanQRCode } = await withSetup(() => useCamera())
       await scanQRCode()
-      expect(invokeModuleSpy).toHaveBeenCalledWith('Camera', 'scanQRCode')
+      expect(invokeModuleSpy).toHaveBeenCalledWith('Camera', 'scanQRCode', [], 0)
     })
 
     it('stopQRScan calls Camera.stopQRScan', async () => {
@@ -2635,7 +2635,7 @@ describe('Composables', () => {
       const { useFileDialog } = await import('../composables/useFileDialog')
       const { openFile } = useFileDialog()
       const result = await openFile({ multiple: true, allowedTypes: ['txt'] })
-      expect(invokeModuleSpy).toHaveBeenCalledWith('FileDialog', 'openFile', [{ multiple: true, allowedTypes: ['txt'] }])
+      expect(invokeModuleSpy).toHaveBeenCalledWith('FileDialog', 'openFile', [{ multiple: true, allowedTypes: ['txt'] }], 0)
       expect(result).toEqual(['/path/to/file.txt'])
     })
 
@@ -2644,7 +2644,7 @@ describe('Composables', () => {
       const { useFileDialog } = await import('../composables/useFileDialog')
       const { openFile } = useFileDialog()
       await openFile()
-      expect(invokeModuleSpy).toHaveBeenCalledWith('FileDialog', 'openFile', [{}])
+      expect(invokeModuleSpy).toHaveBeenCalledWith('FileDialog', 'openFile', [{}], 0)
     })
 
     it('openDirectory calls FileDialog.openDirectory', async () => {
@@ -2652,7 +2652,7 @@ describe('Composables', () => {
       const { useFileDialog } = await import('../composables/useFileDialog')
       const { openDirectory } = useFileDialog()
       const result = await openDirectory({ title: 'Pick folder' })
-      expect(invokeModuleSpy).toHaveBeenCalledWith('FileDialog', 'openDirectory', [{ title: 'Pick folder' }])
+      expect(invokeModuleSpy).toHaveBeenCalledWith('FileDialog', 'openDirectory', [{ title: 'Pick folder' }], 0)
       expect(result).toBe('/path/to/dir')
     })
 
@@ -2661,7 +2661,7 @@ describe('Composables', () => {
       const { useFileDialog } = await import('../composables/useFileDialog')
       const { saveFile } = useFileDialog()
       const result = await saveFile({ defaultName: 'export.json' })
-      expect(invokeModuleSpy).toHaveBeenCalledWith('FileDialog', 'saveFile', [{ defaultName: 'export.json' }])
+      expect(invokeModuleSpy).toHaveBeenCalledWith('FileDialog', 'saveFile', [{ defaultName: 'export.json' }], 0)
       expect(result).toBe('/path/to/export.json')
     })
 

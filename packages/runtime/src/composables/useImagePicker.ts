@@ -31,7 +31,9 @@ export function useImagePicker() {
    */
   async function pickImage(options: { mediaType?: 'photo' } = {}): Promise<PickedImage | null> {
     try {
-      return await NativeBridge.invokeNativeModule<PickedImage | null>('ImagePicker', 'pickImage', [options])
+      // timeoutMs=0: the picker is human-gated, and the catch below maps any
+      // failure to `null` — the same value that means "user cancelled".
+      return await NativeBridge.invokeNativeModule<PickedImage | null>('ImagePicker', 'pickImage', [options], 0)
     } catch {
       return null
     }
