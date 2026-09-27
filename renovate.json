@@ -1,0 +1,169 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":dependencyDashboard",
+    ":semanticCommits",
+    "helpers:pinGitHubActionDigests"
+  ],
+  "timezone": "UTC",
+  "labels": ["dependencies"],
+  "rebaseWhen": "conflicted",
+  "prHourlyLimit": 2,
+  "prConcurrentLimit": 10,
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "labels": ["dependencies", "security"]
+  },
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 6am on Monday"],
+    "commitMessageAction": "Refresh lockfiles",
+    "groupName": "lockfile maintenance"
+  },
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Bun is pinned per job in the workflows; nothing else tracks it, so a stale pin silently changes lockfile resolution and --frozen-lockfile behaviour in CI.",
+      "fileMatch": ["^\\.github/workflows/[^/]+\\.ya?ml$"],
+      "matchStrings": ["bun-version:\\s*(?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+)"],
+      "depNameTemplate": "oven-sh/bun",
+      "datasourceTemplate": "github-releases",
+      "versioningTemplate": "semver"
+    },
+    {
+      "customType": "regex",
+      "description": "SwiftLint is pinned with a SHA-256 in the setup-swiftlint composite action. Bumping the tag without recomputing the checksum fails closed, so every PR from this manager carries the recompute command in its body.",
+      "fileMatch": ["^\\.github/actions/setup-swiftlint/action\\.ya?ml$"],
+      "matchStrings": [
+        "default:\\s*'(?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+)'\\s*\\n\\s*sha256:"
+      ],
+      "depNameTemplate": "realm/SwiftLint",
+      "datasourceTemplate": "github-releases",
+      "versioningTemplate": "semver"
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "JS/TS non-breaking updates land as one weekly PR. The workspace is a bun + Turborepo monorepo, so per-package PRs would be dozens of near-identical runs of the same gate set.",
+      "matchManagers": ["npm", "bun"],
+      "matchUpdateTypes": ["minor", "patch", "digest", "pin"],
+      "groupName": "JS/TS dependencies (non-breaking)",
+      "groupSlug": "js-ts-non-breaking",
+      "schedule": ["before 6am on Monday"]
+    },
+    {
+      "description": "Major JS/TS bumps stay one PR per dependency: they change public API surface of the runtime, navigation or vite plugin and need review, not batching.",
+      "matchManagers": ["npm", "bun"],
+      "matchUpdateTypes": ["major"],
+      "schedule": ["before 6am on Monday"]
+    },
+    {
+      "description": "Docs site and the 17 example apps are not published artifacts. Batch them so they cannot crowd out framework PRs.",
+      "matchManagers": ["npm", "bun"],
+      "matchPaths": ["docs/**", "examples/**"],
+      "groupName": "docs and example apps",
+      "groupSlug": "docs-examples",
+      "schedule": ["before 6am on Monday"]
+    },
+    {
+      "description": "Vue is not a normal dependency here: package.json > vueNative.vueCohort is the single source of truth, scripts/set-vue-cohort.mjs rewrites the tree from it, and check:vue-cohort is a CI gate. A blind bump desyncs the cohort contract, so it needs explicit approval.",
+      "matchManagers": ["npm", "bun"],
+      "matchPackageNames": ["vue", "@vue{/,}**"],
+      "dependencyDashboardApproval": true,
+      "prBodyNotes": [
+        "### Vue cohort coupling",
+        "This repo pins Vue through `package.json > vueNative.vueCohort` (`active` + `next`), not through a normal dependency range.",
+        "Before merging: run `bun run vue:cohort:set <version>` (or `bun run check:vue-cohort`) so every workspace stays on one Vue copy, then re-run `bun run check:ts`.",
+        "A second Vue instance means a second reactivity system, which breaks the custom renderer."
+      ]
+    },
+    {
+      "description": "Android native dependencies. Every bump needs the full native gate set (compileDebugKotlin, assembleRelease, both unit-test tasks, ktlint) plus device re-verification per AGENTS.md, so Renovate must not open these unprompted.",
+      "matchManagers": ["gradle", "gradle-wrapper"],
+      "matchUpdateTypes": ["minor", "patch", "digest", "pin"],
+      "groupName": "Android native toolchain (non-breaking)",
+      "groupSlug": "android-native-non-breaking",
+      "dependencyDashboardApproval": true,
+      "schedule": ["before 6am on Monday"],
+      "prBodyNotes": [
+        "### Native re-verification required",
+        "Run the Android gates before merging:",
+        "- `cd native/android && ./gradlew :VueNativeCore:ktlintCheck`",
+        "- `cd native/android && ./gradlew :VueNativeCore:compileDebugKotlin :VueNativeCore:assembleRelease`",
+        "- `cd native/android && ./gradlew :VueNativeCore:testDebugUnitTest :VueNativeCore:testReleaseUnitTest`",
+        "- `bun run smoke:app-shell -- --require=android.host`",
+        "AGENTS.md also expects a physical-device pass for camera capture and biometric auth."
+      ]
+    },
+    {
+      "description": "Major Android toolchain bumps are individually large migrations (AGP and Gradle are coupled, and compileSdk cannot move before AGP does). Keep them separate and approval-gated.",
+      "matchManagers": ["gradle", "gradle-wrapper"],
+      "matchUpdateTypes": ["major"],
+      "dependencyDashboardApproval": true,
+      "schedule": ["before 6am on Monday"],
+      "prBodyNotes": [
+        "### Coupled toolchain",
+        "`native/android/gradle.properties` sets `android.suppressUnsupportedCompileSdk=35` because the pinned AGP does not officially support `compileSdk` 35.",
+        "Raising `compileSdk` requires bumping AGP first, and AGP requires a matching Gradle version. Move them together and remove the suppression flag once AGP supports the SDK natively.",
+        "CameraX is pinned to 1.4.2 for the same reason: 1.5.x/1.6.x need compileSdk 36 and AGP 8.9+."
+      ]
+    },
+    {
+      "description": "J2V8 is the V8 engine under the whole Android bridge and is pinned in a build script rather than the version catalog. Upgrading swaps the bundled native library for every host app.",
+      "matchManagers": ["gradle"],
+      "matchPackageNames": ["com.eclipsesource.j2v8:j2v8"],
+      "groupName": "J2V8 Android JS engine",
+      "groupSlug": "j2v8",
+      "dependencyDashboardApproval": true,
+      "schedule": ["before 6am on Monday"],
+      "prBodyNotes": [
+        "### J2V8 is the Android JS engine",
+        "This AAR bundles the native V8 library that runs the whole bridge on Android.",
+        "It is deliberately outside `gradle/libs.versions.toml`; see the comment next to the dependency in `native/android/VueNativeCore/build.gradle.kts`.",
+        "Verify: 16 KB page alignment (Play requirement for apps targeting Android 15+), `abiFilters` coverage, and a physical-device pass of the bridge plus `bun run smoke:app-shell -- --require=android.host`.",
+        "Also confirm the artifact still resolves: JitPack sits in the Android repository list."
+      ]
+    },
+    {
+      "description": "Swift packages (iOS, macOS, shared, root consumer-facing Package.swift). Same rule as Android: a bump needs the xcodebuild and swift test gates re-run on a real simulator.",
+      "matchManagers": ["swift"],
+      "groupName": "Swift packages",
+      "groupSlug": "swift-packages",
+      "dependencyDashboardApproval": true,
+      "schedule": ["before 6am on Monday"],
+      "prBodyNotes": [
+        "### Native re-verification required",
+        "Run every affected Swift gate before merging:",
+        "- `cd native/shared/VueNativeShared && swift build && swift test`",
+        "- `cd native/macos/VueNativeMacOS && swift build && swift test`",
+        "- `cd native/ios/VueNativeCore && xcodebuild build -scheme VueNativeCore -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest'` and the matching `xcodebuild test`",
+        "- `bun run smoke:app-shell -- --require=ios.simulator,macos.host`",
+        "The root `Package.swift` is the consumer-facing SPM entry point, so a dependency change there is a public API change."
+      ]
+    },
+    {
+      "description": "Workflow action bumps in one weekly PR. helpers:pinGitHubActionDigests additionally converts tag references to commit SHAs, which is the supply-chain posture the publish workflow already assumes (OIDC, no registry token).",
+      "matchManagers": ["github-actions"],
+      "groupName": "GitHub Actions",
+      "groupSlug": "github-actions",
+      "schedule": ["before 6am on Monday"]
+    },
+    {
+      "description": "CI toolchain pins discovered by the regex managers (Bun version in the workflows, pinned SwiftLint in the composite action).",
+      "matchManagers": ["regex"],
+      "groupName": "CI toolchain pins",
+      "groupSlug": "ci-toolchain-pins",
+      "schedule": ["before 6am on Monday"],
+      "prBodyNotes": [
+        "### SwiftLint checksum",
+        "If this PR touches `.github/actions/setup-swiftlint/action.yml`, the `sha256` input must be recomputed for the new tag or the action fails closed:",
+        "```bash",
+        "curl -fsSL -o /tmp/sl.zip https://github.com/realm/SwiftLint/releases/download/<TAG>/portable_swiftlint.zip",
+        "shasum -a 256 /tmp/sl.zip",
+        "```",
+        "If it touches the `bun-version` pins, every workflow must move together so CI and the release gate resolve the same lockfile."
+      ]
+    }
+  ]
+}

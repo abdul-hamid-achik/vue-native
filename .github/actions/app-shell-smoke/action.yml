@@ -1,0 +1,135 @@
+name: App-shell host-boot smoke
+description: >-
+  Run scripts/smoke-app-shell.mjs and assert its receipt. A skipped required
+  gate is a failure (that was the original defect: an aggregate verdict that
+  treated every skip as a pass). Gates a given runner physically cannot satisfy
+  must be declared in `unsatisfiable`, so a runner that genuinely lacks a
+  simulator or an Android SDK does not turn CI red while a real failure still
+  does.
+
+inputs:
+  require:
+    description: >-
+      Comma-separated smoke gate ids that must reach `passed`. Valid ids:
+      fixture, android.host, macos.host, ios.compile, ios.simulator, ios.device,
+      android.device.
+    required: true
+  unsatisfiable:
+    description: >-
+      Comma-separated gate ids this runner cannot run at all (no toolchain).
+      Their failure is reported but tolerated. Every other gate must pass or
+      skip; leaving this empty is the safe default.
+    required: false
+    default: ''
+  artifact-name:
+    description: Name of the uploaded receipt artifact.
+    required: false
+    default: app-shell-smoke-receipt
+  retention-days:
+    description: Retention for the receipt artifact.
+    required: false
+    default: '7'
+
+runs:
+  using: composite
+  steps:
+    - name: Setup Bun for the smoke script
+      uses: oven-sh/setup-bun@v2
+      with:
+        bun-version: 1.3.8
+
+    # The script exits non-zero when ANY gate fails, including gates this runner
+    # cannot possibly run (e.g. android.host on a macOS image, macos.host on
+    # ubuntu). So its exit code alone is the wrong verdict here: capture it and
+    # let the receipt assertion below decide, gate by gate.
+    - name: Run app-shell smoke
+      id: smoke
+      continue-on-error: true
+      shell: bash
+      env:
+        REQUIRED_GATES: ${{ inputs.require }}
+      run: |
+        set -uo pipefail
+        mkdir -p artifacts
+        bun scripts/smoke-app-shell.mjs --require="$REQUIRED_GATES"
+
+    - name: Assert smoke receipt
+      shell: bash
+      env:
+        REQUIRED_GATES: ${{ inputs.require }}
+        UNSATISFIABLE_GATES: ${{ inputs.unsatisfiable }}
+        SMOKE_OUTCOME: ${{ steps.smoke.outcome }}
+      run: |
+        node <<'NODE'
+        const { readFileSync, existsSync } = require('node:fs')
+
+        const receiptPath = 'artifacts/app-shell-smoke.json'
+        if (!existsSync(receiptPath)) {
+          console.error(`FAIL: no receipt at ${receiptPath} — the smoke did not run.`)
+          process.exit(1)
+        }
+        const receipt = JSON.parse(readFileSync(receiptPath, 'utf8'))
+
+        const parse = (value) => value.split(',').map(id => id.trim()).filter(Boolean)
+        const required = parse(process.env.REQUIRED_GATES || '')
+        const unsatisfiable = new Set(parse(process.env.UNSATISFIABLE_GATES || ''))
+        const problems = []
+
+        if (receipt.schemaVersion !== 2) {
+          problems.push(`receipt schemaVersion is ${receipt.schemaVersion}, expected 2`)
+        }
+
+        // Guard against a silently weakened --require flag: the receipt must
+        // record exactly the gates this step asked for.
+        const recorded = [...(receipt.requiredGates || [])].sort().join(',')
+        const expected = [...required].sort().join(',')
+        if (recorded !== expected) {
+          problems.push(`receipt requiredGates [${recorded}] != requested [${expected}]`)
+        }
+        for (const id of receipt.missingRequired || []) {
+          problems.push(`required gate did not pass: ${id}`)
+        }
+
+        const rows = []
+        for (const gate of receipt.gates || []) {
+          const tolerated = unsatisfiable.has(gate.id) && gate.status === 'failed'
+          rows.push(
+            `${gate.status.toUpperCase().padEnd(7)} ${gate.id.padEnd(15)}` +
+            `${tolerated ? ' (tolerated: no toolchain on this runner)' : ''}` +
+            `${gate.reason ? ` — ${gate.reason}` : ''}`,
+          )
+          if (required.includes(gate.id) && gate.status !== 'passed') {
+            problems.push(`required gate ${gate.id} is ${gate.status}`)
+          } else if (gate.status === 'failed' && !unsatisfiable.has(gate.id)) {
+            problems.push(`unexpected gate failure: ${gate.id}`)
+          }
+          if (gate.status === 'failed' && gate.stderr) {
+            rows.push(gate.stderr.split('\n').slice(-15).map(line => `        ${line}`).join('\n'))
+          }
+        }
+
+        console.log(`app-shell smoke receipt (hostGatesPassed=${receipt.hostGatesPassed})`)
+        console.log(rows.join('\n'))
+        console.log(`smoke script exit outcome: ${process.env.SMOKE_OUTCOME}`)
+
+        if (problems.length > 0) {
+          console.error(`\nFAIL: ${problems.length} problem(s):`)
+          for (const problem of problems) console.error(`  - ${problem}`)
+          console.error(
+            '\nA skip is not a pass: every gate in --require must have reached ' +
+            '`passed`. Gates this runner cannot run must be listed in the ' +
+            '`unsatisfiable` input, never added to --require.',
+          )
+          process.exit(1)
+        }
+        console.log('\nOK: every required host gate passed.')
+        NODE
+
+    - name: Upload app-shell smoke receipt
+      if: always()
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: artifacts/app-shell-smoke.json
+        if-no-files-found: error
+        retention-days: ${{ inputs.retention-days }}

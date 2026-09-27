@@ -42,6 +42,9 @@ jobs:
   release-context:
     name: Release Context
     runs-on: ubuntu-latest
+    # A handful of `gh api` provenance calls; 5 min is generous and stops a wedged
+    # API call from holding the `publish-main` concurrency slot for 6 hours.
+    timeout-minutes: 5
     if: >-
       (github.event_name == 'workflow_run' &&
        github.event.workflow_run.conclusion == 'success' &&
@@ -160,6 +163,8 @@ jobs:
   changesets:
     name: Changeset Status
     runs-on: ubuntu-latest
+    # Checkout + bun install + `changeset status`: ~3-5 min. 10 min ceiling.
+    timeout-minutes: 10
     needs: release-context
     if: github.event_name == 'workflow_run'
     outputs:
@@ -208,6 +213,8 @@ jobs:
   validate:
     name: Validate
     runs-on: ubuntu-latest
+    # Same gate set as ci.yml's `typescript` job (~8-12 min cold); 20 min ceiling.
+    timeout-minutes: 20
     needs: [release-context, changesets]
     if: github.event_name == 'workflow_run' && needs.changesets.outputs.hasChangesets == 'true'
 
@@ -260,6 +267,12 @@ jobs:
   native-builds:
     name: Native Builds
     runs-on: macos-15
+    # This job is ci.yml's swift-ios + swift-macos work on a single 10x-billed
+    # macOS runner: SwiftLint, two xcodebuild builds, the full iOS test suite,
+    # then build+test of VueNativeShared and VueNativeMacOS. ~55-65 min cold with
+    # a cache miss. 75 min leaves headroom without letting a hung xcodebuild or
+    # swift-test hold a macOS runner for GitHub's 360 min default.
+    timeout-minutes: 75
     needs: [release-context, changesets]
     if: github.event_name == 'workflow_run' && needs.changesets.outputs.hasChangesets == 'true'
 
@@ -268,13 +281,19 @@ jobs:
         with:
           ref: ${{ needs.release-context.outputs.release_sha }}
 
+      # Pinned + checksum-verified instead of `brew install swiftlint`: the
+      # release gate must be reproducible, and an upstream SwiftLint release must
+      # not be able to block a publication that ci.yml already approved.
       - name: Install SwiftLint
-        run: brew install swiftlint
+        uses: ./.github/actions/setup-swiftlint
 
       - name: Lint Swift
         run: |
+          set -euo pipefail
+          mkdir -p artifacts
           cd native/ios
-          swiftlint lint --strict --reporter github-actions-logging
+          swiftlint lint --strict --reporter github-actions-logging 2>&1 |
+            tee "$GITHUB_WORKSPACE/artifacts/swiftlint-release.txt"
 
       - name: Cache Swift packages
         uses: actions/cache@v5
@@ -285,8 +304,13 @@ jobs:
             native/ios/VueNativeCore/.build
             native/shared/VueNativeShared/.build
             native/macos/VueNativeMacOS/.build
-          key: ${{ runner.os }}-swift-${{ hashFiles('Package.swift', 'native/ios/VueNativeCore/Package.swift', 'native/shared/VueNativeShared/Package.swift', 'native/macos/VueNativeMacOS/Package.swift') }}
+          # `xcode-default` matches ci.yml's PR key exactly (same hashFiles order,
+          # same runner OS, same image-default Xcode), so the release gate restores
+          # the warm build products the merged PR already produced instead of
+          # rebuilding everything on macOS minutes.
+          key: ${{ runner.os }}-swift-xcode-default-${{ hashFiles('Package.swift', 'native/ios/VueNativeCore/Package.swift', 'native/shared/VueNativeShared/Package.swift', 'native/macos/VueNativeMacOS/Package.swift') }}
           restore-keys: |
+            ${{ runner.os }}-swift-xcode-default-
             ${{ runner.os }}-swift-
 
       - name: Build VueNativeCore for iOS Simulator (in-repo package)
@@ -317,7 +341,8 @@ jobs:
             -scheme VueNativeCore \
             -sdk iphonesimulator \
             -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
-            -skipPackagePluginValidation
+            -skipPackagePluginValidation \
+            -resultBundlePath TestResults.xcresult
 
       - name: Build VueNativeShared
         run: |
@@ -326,8 +351,10 @@ jobs:
 
       - name: Test VueNativeShared
         run: |
+          set -euo pipefail
+          mkdir -p "$GITHUB_WORKSPACE/artifacts"
           cd native/shared/VueNativeShared
-          swift test
+          swift test 2>&1 | tee "$GITHUB_WORKSPACE/artifacts/swift-shared-test.log"
 
       - name: Validate root VueNativeMacOS product
         run: swift build --target VueNativeMacOS
@@ -339,13 +366,44 @@ jobs:
 
       - name: Test VueNativeMacOS
         run: |
+          set -euo pipefail
+          mkdir -p "$GITHUB_WORKSPACE/artifacts"
           cd native/macos/VueNativeMacOS
-          swift test
+          swift test 2>&1 | tee "$GITHUB_WORKSPACE/artifacts/swift-macos-test.log"
+
+      # A red release gate used to be a wall of xcodebuild/swift log with no
+      # per-test detail and no lint report. Upload on failure — the only time
+      # any of it matters.
+      - name: Upload release-gate iOS test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-ios-xcresult
+          path: native/ios/VueNativeCore/TestResults.xcresult
+          if-no-files-found: warn
+          include-hidden-files: true
+          retention-days: 14
+          compression-level: 0
+
+      - name: Upload release-gate Swift logs and lint report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-swift-logs
+          path: |
+            artifacts/swift-shared-test.log
+            artifacts/swift-macos-test.log
+            artifacts/swiftlint-release.txt
+          if-no-files-found: ignore
+          retention-days: 14
 
   # ── Android build validation ─────────────────────────────
   android-build:
     name: Android Build
     runs-on: ubuntu-latest
+    # Mirrors ci.yml's `kotlin` job: ktlint + compileDebugKotlin + assembleRelease
+    # + two unit-test tasks, ~12-18 min cold. 30 min ceiling.
+    timeout-minutes: 30
     needs: [release-context, changesets]
     if: github.event_name == 'workflow_run' && needs.changesets.outputs.hasChangesets == 'true'
 
@@ -361,7 +419,9 @@ jobs:
             ~/.gradle/caches
             ~/.gradle/wrapper
             native/android/.gradle
-          key: ${{ runner.os }}-gradle-${{ hashFiles('native/android/build.gradle.kts', 'native/android/gradle/wrapper/gradle-wrapper.properties') }}
+          # Hash the version catalog and module build file too, so a dependency
+          # bump invalidates the key instead of restoring a stale dependency cache.
+          key: ${{ runner.os }}-gradle-${{ hashFiles('native/android/build.gradle.kts', 'native/android/gradle/libs.versions.toml', 'native/android/VueNativeCore/build.gradle.kts', 'native/android/gradle/wrapper/gradle-wrapper.properties') }}
           restore-keys: |
             ${{ runner.os }}-gradle-
 
@@ -385,10 +445,33 @@ jobs:
         run: ./gradlew :VueNativeCore:testDebugUnitTest :VueNativeCore:testReleaseUnitTest
         working-directory: native/android
 
+      - name: Upload release-gate Android test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-android-junit-results
+          path: native/android/**/build/test-results/**/*.xml
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload release-gate Android reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-android-reports
+          path: native/android/**/build/reports/**
+          if-no-files-found: ignore
+          retention-days: 14
+
   # ── Prepare an exact version commit ─────────────────────
   prepare:
     name: Prepare Release
     runs-on: ubuntu-latest
+    # Full-history checkout + bun install + `changeset version` + the whole
+    # `check:ts` gate (lint, typecheck, contracts, vue cohort, metadata, build,
+    # packed-scaffold smoke, tests, knip, hooks) + push: ~12-18 min. 30 min
+    # ceiling. Timing out here is safe — nothing is published until `publish`.
+    timeout-minutes: 30
     needs: [release-context, changesets, validate, native-builds, android-build]
     if: github.event_name == 'workflow_run' && needs.changesets.outputs.hasChangesets == 'true'
     outputs:
@@ -465,6 +548,9 @@ jobs:
   dispatch:
     name: Dispatch Prepared Release
     runs-on: ubuntu-latest
+    # Two `gh api` calls and one `gh workflow run`; 5 min is ample. A stuck
+    # dispatch must not hold the `publish-main` concurrency slot.
+    timeout-minutes: 5
     needs: [release-context, prepare]
     if: github.event_name == 'workflow_run' && needs.prepare.result == 'success'
     permissions:
@@ -497,6 +583,16 @@ jobs:
   publish:
     name: Publish Packages
     runs-on: ubuntu-latest
+    # Ceiling, not an estimate of a healthy run (~20 min). The bounded retry loop
+    # in "Verify npm release" is the dominant term: 72 attempts x (npm install of
+    # the published packages + `npm audit signatures` + 5s sleep) ~= 48 min worst
+    # case, plus `check:ts` (~12 min), the Gradle publish to GitHub Packages
+    # (~5 min) and tagging (~2 min) ~= 70 min. 90 min keeps headroom while
+    # capping a hung registry/OIDC call at a quarter of GitHub's 360 min
+    # default. Timing out here is recoverable by re-running the workflow:
+    # Changesets skips versions that already exist and the tag preflight below is
+    # idempotent, which is exactly why the retry loop is safe to bound.
+    timeout-minutes: 90
     needs: release-context
     if: github.event_name == 'workflow_dispatch'
     permissions:

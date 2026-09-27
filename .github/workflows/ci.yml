@@ -5,6 +5,19 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # Called by .github/workflows/nightly.yml so the nightly toolchain matrix runs
+  # this exact gate set instead of a hand-copied duplicate. Additive only: a
+  # push/PR run leaves `inputs.xcode_channel` empty, which every consumer below
+  # treats as "keep the runner image default", so PR CI and the release gate in
+  # publish.yml stay byte-for-byte identical.
+  workflow_call:
+    inputs:
+      xcode_channel:
+        description: >-
+          'latest' selects the newest Xcode installed on the macOS runner image
+          (nightly only). Anything else keeps the image default.
+        type: string
+        default: runner-default
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -18,6 +31,11 @@ jobs:
   # ── TypeScript (lint, typecheck, build, test) ───────────
   typescript:
     runs-on: ubuntu-latest
+    # Ceiling: install + lint + typecheck + build + packed-scaffold smoke +
+    # tests + coverage + knip + hooks runs ~8-12 min cold and ~5 min with a warm
+    # node_modules/Turbo cache. 20 min leaves headroom for a cold runner while
+    # still cutting a hang from 360 min (GitHub's default) to 20.
+    timeout-minutes: 20
 
     steps:
       - uses: actions/checkout@v6
@@ -73,6 +91,10 @@ jobs:
   vue-next:
     name: Vue 3.6 RC compatibility (experimental)
     runs-on: ubuntu-latest
+    # Same work as `typescript` plus an unfrozen re-resolve of Vue, so it is the
+    # slowest Linux job. 25 min ceiling; it is non-blocking but must not be able
+    # to squat a runner for 6 hours when the ephemeral patch wedges an install.
+    timeout-minutes: 25
     continue-on-error: true
     permissions:
       contents: read
@@ -106,6 +128,18 @@ jobs:
         env:
           VUE_VERSION: ${{ steps.vue-cohort.outputs.version }}
         run: bun scripts/set-vue-cohort.mjs "$VUE_VERSION"
+
+      # Cache Bun's global module cache (not node_modules: this job deliberately
+      # re-resolves without --frozen-lockfile, so its tree is not reproducible
+      # enough to restore). Keyed on the *patched* lockfile so a cohort bump
+      # invalidates it. This was the only job in the workflow with no cache.
+      - name: Cache Bun module cache
+        uses: actions/cache@v5
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-modules-1.3.8-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-modules-1.3.8-
 
       - name: Install patched dependencies
         id: install
@@ -164,33 +198,218 @@ jobs:
           done
           echo "result=$RESULT" >> "$GITHUB_OUTPUT"
 
+  # ── Surface the experimental Vue cohort result ─────────────
+  # `vue-next` is `continue-on-error` by design (it tracks a Vue RC), but that
+  # made it able to stay red for months: its `outputs.result` only fed one row
+  # of the summary table. This job converts a *streak* of failures into a
+  # single deduplicated tracking issue, and always emits a loud annotation.
+  # It deliberately never fails itself: a notification channel must not become
+  # a new blocking check that turns PRs red when the GitHub API hiccups.
+  vue-next-report:
+    name: Vue 3.6 RC compatibility report
+    runs-on: ubuntu-latest
+    # A handful of `gh api` calls; 10 min is generous.
+    timeout-minutes: 10
+    needs: [vue-next]
+    if: always() && needs.vue-next.outputs.result == 'failure'
+    permissions:
+      contents: read
+      issues: write
+
+    steps:
+      - name: Count consecutive compatibility failures
+        id: streak
+        env:
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_BRANCH: ${{ github.head_ref || github.ref_name }}
+          CURRENT_RUN_ID: ${{ github.run_id }}
+          JOB_NAME: Vue 3.6 RC compatibility (experimental)
+        run: |
+          set -uo pipefail
+
+          # This run already failed (that is the `if:` above), so the streak
+          # starts at 1 and grows with each older run on the same branch whose
+          # compatibility job also failed. `cancelled` counts as a break: a
+          # superseded run proves nothing either way.
+          STREAK=1
+          DETAILS="- run $CURRENT_RUN_ID (this run): failure"
+
+          mapfile -t RUN_IDS < <(
+            gh api "repos/$GH_REPO/actions/workflows/ci.yml/runs?per_page=15&status=completed&branch=$HEAD_BRANCH" \
+              --jq '.workflow_runs[] | select((.id|tostring) != env.CURRENT_RUN_ID) | .id' || true
+          )
+
+          for RUN_ID in "${RUN_IDS[@]:0:5}"; do
+            CONCLUSION="$(
+              gh api "repos/$GH_REPO/actions/runs/$RUN_ID/jobs?per_page=100" \
+                --jq '.jobs[] | select(.name == env.JOB_NAME) | .conclusion' || true
+            )"
+            CONCLUSION="${CONCLUSION%%$'\n'*}"
+            if [[ "$CONCLUSION" == "failure" ]]; then
+              STREAK=$((STREAK + 1))
+              DETAILS="$DETAILS"$'\n'"- run $RUN_ID: failure"
+            else
+              DETAILS="$DETAILS"$'\n'"- run $RUN_ID: ${CONCLUSION:-unknown} (streak ends)"
+              break
+            fi
+          done
+
+          echo "streak=$STREAK" >> "$GITHUB_OUTPUT"
+          {
+            echo "details<<STREAK_DETAILS_EOF"
+            printf '%s\n' "$DETAILS"
+            echo "STREAK_DETAILS_EOF"
+          } >> "$GITHUB_OUTPUT"
+          echo "Consecutive Vue 3.6 RC compatibility failures on $HEAD_BRANCH: $STREAK"
+
+      - name: Loud summary and annotation
+        env:
+          STREAK: ${{ steps.streak.outputs.streak }}
+          DETAILS: ${{ steps.streak.outputs.details }}
+          VUE_VERSION: ${{ needs.vue-next.outputs.version }}
+        run: |
+          echo "::warning title=Vue 3.6 RC compatibility failing::The experimental Vue ${VUE_VERSION} cohort job has failed ${STREAK} time(s) in a row. It is non-blocking, so nothing else will tell you."
+          {
+            echo "## ⚠️ Vue 3.6 RC compatibility is RED (${STREAK} consecutive run(s))"
+            echo ""
+            echo "This job is \`continue-on-error\`, so it does **not** block merges and the"
+            echo "CI Summary row is easy to scroll past. Cohort: \`${VUE_VERSION}\`."
+            echo ""
+            echo '```'
+            printf '%s\n' "$DETAILS"
+            echo '```'
+            echo ""
+            echo "Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Open or update tracking issue after repeated failures
+        if: steps.streak.outputs.streak >= 3
+        env:
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          STREAK: ${{ steps.streak.outputs.streak }}
+          DETAILS: ${{ steps.streak.outputs.details }}
+          VUE_VERSION: ${{ needs.vue-next.outputs.version }}
+          HEAD_BRANCH: ${{ github.head_ref || github.ref_name }}
+          LABEL: ci:vue-next-compat
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          TITLE: 'CI: Vue 3.6 RC compatibility job failing repeatedly (non-blocking)'
+        run: |
+          set -uo pipefail
+
+          # Best-effort by design: this job must never be the reason a PR is
+          # red, so API failures become ::error:: annotations, not job failure.
+          gh label create "$LABEL" \
+            --description "Experimental Vue next-cohort compatibility job is failing" \
+            --color D93F0B >/dev/null 2>&1 || true
+
+          BODY_FILE="$RUNNER_TEMP/vue-next-issue.md"
+          {
+            echo "The \`Vue 3.6 RC compatibility (experimental)\` CI job has failed ${STREAK} times in a row on \`${HEAD_BRANCH}\`."
+            echo
+            echo "Cohort: \`${VUE_VERSION}\`"
+            echo
+            echo "${DETAILS}"
+            echo
+            echo "Latest failing run: ${RUN_URL}"
+            echo
+            echo "This job is \`continue-on-error\` by design, so it never blocks a merge."
+            echo "This issue exists because a permanently red compatibility signal is"
+            echo "indistinguishable from no signal at all. Either fix the cohort, pin a"
+            echo "newer RC in \`package.json > vueNative.vueCohort.next\`, or close this"
+            echo "issue with a reason. The \`vue-next-report\` job comments again on the"
+            echo "next failing run."
+          } > "$BODY_FILE"
+
+          EXISTING_NUMBER="$(
+            gh issue list --repo "$GH_REPO" --state open --label "$LABEL" \
+              --json number --jq '.[0].number // empty' || true
+          )"
+          EXISTING_NUMBER="${EXISTING_NUMBER%%$'\n'*}"
+
+          if [[ -n "$EXISTING_NUMBER" ]]; then
+            if ! gh issue comment "$EXISTING_NUMBER" --repo "$GH_REPO" \
+              --body "Still failing: ${STREAK} consecutive runs as of ${RUN_URL}."; then
+              echo "::error title=Vue compat issue update failed::Could not comment on issue #${EXISTING_NUMBER}."
+            else
+              echo "Commented on existing issue #${EXISTING_NUMBER}."
+            fi
+          else
+            if ! gh issue create --repo "$GH_REPO" --title "$TITLE" \
+              --label "$LABEL" --body-file "$BODY_FILE"; then
+              echo "::error title=Vue compat issue creation failed::Could not open a tracking issue; see the job summary instead."
+            else
+              echo "Opened a tracking issue."
+            fi
+          fi
+
   # ── Swift / iOS (build & test VueNativeCore) ───────────
   # Runs on the same image as publish.yml's native-builds gate so a PR is
   # validated in the exact environment that later gates its release.
   swift-ios:
     runs-on: macos-15
+    # Ceiling for a 10x-billed macOS runner. Cold worst case: SPM resolution
+    # (~4m) + two xcodebuild builds (~8m each) + xcodebuild test of the full
+    # iOS suite incl. simulator boot (~12m) + SwiftLint (~1m) + the app-shell
+    # smoke (iOS suite already warm in DerivedData, but macos.host builds
+    # VueNativeMacOS/SVGKit, ~6m cold) ~= 48m. 60m gives ~25% headroom and
+    # still caps a hung `xcodebuild test` at 1/6 of GitHub's 360m default.
+    timeout-minutes: 60
 
     steps:
       - uses: actions/checkout@v6
 
-      - name: Cache Swift packages
+      # Nightly only: build/test against the newest Xcode the image ships, so a
+      # new Xcode/Swift release breaks a scheduled run instead of the next PR.
+      # PR and release runs keep the image default (no-op) so they stay
+      # comparable with publish.yml's native-builds gate.
+      - name: Select newest installed Xcode
+        if: inputs.xcode_channel == 'latest'
+        run: |
+          set -euo pipefail
+          LATEST_XCODE="$(find /Applications -maxdepth 1 -name 'Xcode*.app' -print | sort -V | tail -1)"
+          if [[ -z "$LATEST_XCODE" ]]; then
+            echo "::error::No Xcode.app found under /Applications; cannot honour xcode_channel=latest."
+            exit 1
+          fi
+          echo "Selecting $LATEST_XCODE (image default was $(xcode-select -p))"
+          sudo xcode-select --switch "$LATEST_XCODE"
+          sudo xcodebuild -runFirstLaunch || true
+          xcodebuild -version
+          swift --version
+
+      - name: Cache Swift build products
         uses: actions/cache@v5
         with:
+          # Shared with the swift-macos job (same runner OS, same key) so the two
+          # macOS jobs warm each other instead of both paying a cold build. The
+          # app-shell smoke runs `swift test` in native/macos on this job, so its
+          # .build directories belong in this cache too.
           path: |
             ~/Library/Developer/Xcode/DerivedData
             .build
             native/ios/VueNativeCore/.build
-          key: ${{ runner.os }}-swift-${{ hashFiles('Package.swift', 'native/ios/VueNativeCore/Package.swift') }}
+            native/shared/VueNativeShared/.build
+            native/macos/VueNativeMacOS/.build
+          key: ${{ runner.os }}-swift-${{ inputs.xcode_channel == 'latest' && 'xcode-latest' || 'xcode-default' }}-${{ hashFiles('Package.swift', 'native/ios/VueNativeCore/Package.swift', 'native/shared/VueNativeShared/Package.swift', 'native/macos/VueNativeMacOS/Package.swift') }}
           restore-keys: |
+            ${{ runner.os }}-swift-${{ inputs.xcode_channel == 'latest' && 'xcode-latest' || 'xcode-default' }}-
             ${{ runner.os }}-swift-
 
+      # Pinned, checksum-verified SwiftLint instead of `brew install swiftlint`,
+      # which floated to whatever upstream published and could redden PR CI (and
+      # the release gate) with zero repo changes.
       - name: Install SwiftLint
-        run: brew install swiftlint
+        uses: ./.github/actions/setup-swiftlint
 
       - name: Lint Swift
         run: |
+          set -euo pipefail
+          mkdir -p artifacts
           cd native/ios
-          swiftlint lint --strict --reporter github-actions-logging
+          swiftlint lint --strict --reporter github-actions-logging 2>&1 |
+            tee "$GITHUB_WORKSPACE/artifacts/swiftlint-ios.txt"
 
       - name: Build VueNativeCore for iOS Simulator (in-repo package)
         run: |
@@ -223,23 +442,85 @@ jobs:
             -skipPackagePluginValidation \
             -resultBundlePath TestResults.xcresult
 
+      # Only test that boots a real native host. `ios.simulator` is safe to
+      # require here: the `Test VueNativeCore` step above already hard-fails when
+      # the image ships no iPhone simulator, so requiring it adds no new failure
+      # mode. `macos.host` is required too because the script runs it
+      # unconditionally on any macOS host and `swift` is guaranteed on the image.
+      # `ios.device` / `android.device` need physical hardware and stay skipped
+      # (never required); `android.host` cannot run on a macOS image (no Android
+      # SDK) so it is declared unsatisfiable rather than silently ignored.
+      - name: App-shell host-boot smoke
+        uses: ./.github/actions/app-shell-smoke
+        with:
+          require: fixture,ios.simulator,macos.host
+          unsatisfiable: android.host
+          artifact-name: app-shell-smoke-ios
+
+      # Uploaded on failure, which is the only time these matter: the xcresult
+      # bundle was already being produced and thrown away, so every iOS test
+      # failure was a wall of xcodebuild log with no per-test detail.
+      - name: Upload iOS test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ios-xcresult
+          path: native/ios/VueNativeCore/TestResults.xcresult
+          if-no-files-found: warn
+          include-hidden-files: true
+          retention-days: 7
+          # Already-compressed bundle; skip re-compression to keep the upload fast.
+          compression-level: 0
+
+      - name: Upload SwiftLint report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ios-swiftlint-report
+          path: artifacts/swiftlint-ios.txt
+          if-no-files-found: ignore
+          retention-days: 7
+
   # ── Swift / macOS (build & test VueNativeShared + VueNativeMacOS) ──
   swift-macos:
     name: Swift (macOS)
     runs-on: macos-15
+    # Ceiling: three `swift build` passes plus two `swift test` passes over
+    # VueNativeShared + VueNativeMacOS (+SVGKit) ~= 15-20m cold, ~8m warm from
+    # the shared .build cache. 30m covers a cold macOS runner; no simulator boot
+    # and no xcodebuild, so this is much cheaper than swift-ios.
+    timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@v6
 
-      - name: Cache Swift packages
+      - name: Select newest installed Xcode
+        if: inputs.xcode_channel == 'latest'
+        run: |
+          set -euo pipefail
+          LATEST_XCODE="$(find /Applications -maxdepth 1 -name 'Xcode*.app' -print | sort -V | tail -1)"
+          if [[ -z "$LATEST_XCODE" ]]; then
+            echo "::error::No Xcode.app found under /Applications; cannot honour xcode_channel=latest."
+            exit 1
+          fi
+          echo "Selecting $LATEST_XCODE (image default was $(xcode-select -p))"
+          sudo xcode-select --switch "$LATEST_XCODE"
+          sudo xcodebuild -runFirstLaunch || true
+          swift --version
+
+      - name: Cache Swift build products
         uses: actions/cache@v5
         with:
+          # Same key as swift-ios: the two macOS jobs share warm build products.
           path: |
             ~/Library/Developer/Xcode/DerivedData
+            .build
+            native/ios/VueNativeCore/.build
             native/shared/VueNativeShared/.build
             native/macos/VueNativeMacOS/.build
-          key: ${{ runner.os }}-swift-${{ hashFiles('native/shared/VueNativeShared/Package.swift', 'native/macos/VueNativeMacOS/Package.swift') }}
+          key: ${{ runner.os }}-swift-${{ inputs.xcode_channel == 'latest' && 'xcode-latest' || 'xcode-default' }}-${{ hashFiles('Package.swift', 'native/ios/VueNativeCore/Package.swift', 'native/shared/VueNativeShared/Package.swift', 'native/macos/VueNativeMacOS/Package.swift') }}
           restore-keys: |
+            ${{ runner.os }}-swift-${{ inputs.xcode_channel == 'latest' && 'xcode-latest' || 'xcode-default' }}-
             ${{ runner.os }}-swift-
 
       - name: Build VueNativeShared
@@ -249,8 +530,12 @@ jobs:
 
       - name: Test VueNativeShared
         run: |
+          set -euo pipefail
+          mkdir -p "$GITHUB_WORKSPACE/artifacts"
           cd native/shared/VueNativeShared
-          swift test
+          # SwiftPM has no stable machine-readable result format, so keep the
+          # full log as the artifact: pipefail preserves the gate's exit status.
+          swift test 2>&1 | tee "$GITHUB_WORKSPACE/artifacts/swift-shared-test.log"
 
       - name: Validate root VueNativeMacOS product
         run: swift build --target VueNativeMacOS
@@ -262,12 +547,31 @@ jobs:
 
       - name: Test VueNativeMacOS
         run: |
+          set -euo pipefail
+          mkdir -p "$GITHUB_WORKSPACE/artifacts"
           cd native/macos/VueNativeMacOS
-          swift test
+          swift test 2>&1 | tee "$GITHUB_WORKSPACE/artifacts/swift-macos-test.log"
+
+      - name: Upload Swift test logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: macos-swift-test-logs
+          path: |
+            artifacts/swift-shared-test.log
+            artifacts/swift-macos-test.log
+          if-no-files-found: ignore
+          retention-days: 7
 
   # ── Kotlin / Android (build & test VueNativeCore) ───────────
   kotlin:
     runs-on: ubuntu-latest
+    # Ceiling: Gradle distribution download + ktlint + compileDebugKotlin +
+    # assembleRelease + two unit-test tasks (JUnit4/Robolectric boots a JVM per
+    # class) + the app-shell smoke's Gradle re-run ~= 12-18m cold, ~7m warm.
+    # 30m covers a cold runner and a stuck Gradle daemon for half an hour
+    # instead of six.
+    timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@v6
@@ -279,7 +583,10 @@ jobs:
             ~/.gradle/caches
             ~/.gradle/wrapper
             native/android/.gradle
-          key: ${{ runner.os }}-gradle-${{ hashFiles('native/android/build.gradle.kts', 'native/android/gradle/wrapper/gradle-wrapper.properties') }}
+          # Also hash the version catalog and the module build file: those hold
+          # the real dependency versions, so a dependency bump now invalidates
+          # the key instead of silently restoring a stale dependency cache.
+          key: ${{ runner.os }}-gradle-${{ hashFiles('native/android/build.gradle.kts', 'native/android/gradle/libs.versions.toml', 'native/android/VueNativeCore/build.gradle.kts', 'native/android/gradle/wrapper/gradle-wrapper.properties') }}
           restore-keys: |
             ${{ runner.os }}-gradle-
 
@@ -303,10 +610,43 @@ jobs:
         run: ./gradlew :VueNativeCore:testDebugUnitTest :VueNativeCore:testReleaseUnitTest
         working-directory: native/android
 
+      # Android is the only host gate an ubuntu runner can actually boot:
+      # `macos.host` needs `swift` and the iOS gates probe `xcrun`, so those are
+      # skipped by the script itself (platform probe) or tolerated below. Only
+      # `android.host` is required, which is safe because the two Gradle steps
+      # above already prove the SDK/JDK are present — so a skip here would mean
+      # the smoke silently stopped testing anything.
+      - name: App-shell host-boot smoke
+        uses: ./.github/actions/app-shell-smoke
+        with:
+          require: fixture,android.host
+          unsatisfiable: macos.host
+          artifact-name: app-shell-smoke-android
+
+      - name: Upload Android test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: android-junit-results
+          path: native/android/**/build/test-results/**/*.xml
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Upload Android lint and test reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: android-reports
+          path: native/android/**/build/reports/**
+          if-no-files-found: ignore
+          retention-days: 7
+
   # ── Aggregate required checks ──────────────────────────
   summary:
     name: CI Summary
     runs-on: ubuntu-latest
+    # Pure expression evaluation plus a `tee`; 5 min is ample.
+    timeout-minutes: 5
     needs: [typescript, vue-next, swift-ios, swift-macos, kotlin]
     if: always()
 
@@ -323,6 +663,11 @@ jobs:
             echo "| Swift iOS | ${{ needs.swift-ios.result }} |"
             echo "| Swift macOS | ${{ needs.swift-macos.result }} |"
             echo "| Kotlin | ${{ needs.kotlin.result }} |"
+            echo ""
+            echo "On failure, this run carries artifacts: \`ios-xcresult\`,"
+            echo "\`ios-swiftlint-report\`, \`macos-swift-test-logs\`,"
+            echo "\`android-junit-results\`, \`android-reports\` and the"
+            echo "\`app-shell-smoke-*\` receipts."
           } | tee -a "$GITHUB_STEP_SUMMARY"
 
           if [[ "${{ needs.typescript.result }}" != "success" || \

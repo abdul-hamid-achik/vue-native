@@ -1,0 +1,340 @@
+name: Nightly Toolchain Matrix
+
+# Why this exists: this framework breaks on *toolchain* updates (a new Xcode,
+# Swift, AGP, Gradle or Kotlin), not on its own commits. PR CI pins the runner
+# image default so a PR is validated in the same environment that gates its
+# release; that means an Xcode or Android toolchain bump upstream can only be
+# discovered when someone happens to push. This workflow runs the identical gate
+# set — by calling ci.yml, not by copying it — against the newest toolchain the
+# runners offer, once a day, and shouts when it goes red.
+#
+# Cost control: nightly only (never per-PR), and it reuses ci.yml through
+# `workflow_call` so there is exactly one definition of "the native matrix".
+
+on:
+  schedule:
+    # 04:23 UTC. Off-peak for macOS runner availability, and a non-round minute
+    # so it does not collide with every other cron-on-the-hour workflow.
+    - cron: '23 4 * * *'
+  workflow_dispatch:
+    inputs:
+      xcode_channel:
+        description: Xcode used by the native matrix
+        type: choice
+        default: latest
+        options:
+          - latest
+          - runner-default
+
+concurrency:
+  group: nightly-toolchain-${{ github.ref }}
+  # Let an in-flight nightly finish. Cancelling it half-way through the macOS
+  # matrix produces a red run that proves nothing and files a misleading issue.
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  # ── Read-only toolchain drift report ──────────────────────
+  # Reports how far the pinned Android/Swift toolchain has drifted from
+  # upstream. It never fails: this is intelligence for the issue below, not a
+  # gate. Bumping any of these versions needs a full native re-verification, so
+  # Renovate is configured to hold native dependencies behind manual approval
+  # (see renovate.json) rather than opening a PR nobody can merge safely.
+  toolchain-report:
+    name: Toolchain drift report
+    runs-on: ubuntu-latest
+    # Network metadata fetches with a 15s timeout each; 10 min is generous.
+    timeout-minutes: 10
+    outputs:
+      drift_headline: ${{ steps.drift.outputs.headline }}
+      drift_count: ${{ steps.drift.outputs.count }}
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Compare pinned toolchain versions with upstream
+        id: drift
+        run: |
+          node <<'NODE'
+          const { appendFileSync, readFileSync } = require('node:fs')
+
+          const read = (path) => {
+            try { return readFileSync(path, 'utf8') } catch { return '' }
+          }
+          const grab = (pattern, text) => (text.match(pattern) || [])[1] ?? null
+
+          async function get(url) {
+            const response = await fetch(url, { signal: AbortSignal.timeout(15000) })
+            if (!response.ok) throw new Error(`HTTP ${response.status} for ${url}`)
+            return response.text()
+          }
+
+          async function mavenLatest(url) {
+            const xml = await get(url)
+            const versions = [...xml.matchAll(/<version>([^<]+)<\/version>/g)].map(match => match[1])
+            // Ignore pre-releases: "newest stable" is the useful comparison.
+            const stable = versions.filter(version => !/-(alpha|beta|rc|dev|M|eap)/i.test(version))
+            return (stable.length > 0 ? stable : versions).pop() ?? null
+          }
+
+          function compare(a, b) {
+            const parts = (value) => String(value).split(/[.\-+]/)
+              .map(part => (/^\d+$/.test(part) ? Number(part) : part))
+            const left = parts(a)
+            const right = parts(b)
+            for (let index = 0; index < Math.max(left.length, right.length); index += 1) {
+              const x = left[index] ?? 0
+              const y = right[index] ?? 0
+              if (typeof x === 'number' && typeof y === 'number') {
+                if (x !== y) return x < y ? -1 : 1
+              } else if (String(x) !== String(y)) {
+                return String(x) < String(y) ? -1 : 1
+              }
+            }
+            return 0
+          }
+
+          async function main() {
+            const rootGradle = read('native/android/build.gradle.kts')
+            const moduleGradle = read('native/android/VueNativeCore/build.gradle.kts')
+            const wrapper = read('native/android/gradle/wrapper/gradle-wrapper.properties')
+            const properties = read('native/android/gradle.properties')
+
+            // name -> pinned version + where the newest stable comes from.
+            const tracked = [
+              {
+                name: 'Gradle',
+                pinned: grab(/gradle-([0-9][0-9.]*)-(?:bin|all)\.zip/, wrapper),
+                latest: async () => JSON.parse(await get('https://services.gradle.org/versions/current')).version,
+              },
+              {
+                name: 'Android Gradle Plugin',
+                pinned: grab(/id\("com\.android\.library"\)\s+version\s+"([^"]+)"/, rootGradle),
+                latest: () => mavenLatest('https://dl.google.com/dl/android/maven2/com/android/tools/build/gradle/maven-metadata.xml'),
+              },
+              {
+                name: 'Kotlin',
+                pinned: grab(/id\("org\.jetbrains\.kotlin\.android"\)\s+version\s+"([^"]+)"/, rootGradle),
+                latest: () => mavenLatest('https://repo1.maven.org/maven2/org/jetbrains/kotlin/kotlin-gradle-plugin/maven-metadata.xml'),
+              },
+              {
+                name: 'ktlint Gradle plugin',
+                pinned: grab(/id\("org\.jlleitschuh\.gradle\.ktlint"\)\s+version\s+"([^"]+)"/, rootGradle),
+                latest: () => mavenLatest('https://plugins.gradle.org/m2/org/jlleitschuh/gradle/ktlint/org.jlleitschuh.gradle.ktlint.gradle.plugin/maven-metadata.xml'),
+              },
+              {
+                // Deliberately tracked: it is the JS engine the whole Android
+                // bridge runs on, it is pinned in a build script (not the version
+                // catalog), and upstream has been quiet for years.
+                name: 'J2V8 (Android JS engine)',
+                pinned: grab(/com\.eclipsesource\.j2v8:j2v8:([0-9][0-9.]*)/, moduleGradle),
+                latest: () => mavenLatest('https://repo1.maven.org/maven2/com/eclipsesource/j2v8/j2v8/maven-metadata.xml'),
+              },
+            ]
+
+            const rows = []
+            const drifted = []
+            for (const entry of tracked) {
+              let latest = 'unknown'
+              let lookupError = null
+              try {
+                latest = (await entry.latest()) ?? 'unknown'
+              } catch (cause) {
+                lookupError = cause.message
+              }
+              const behind = Boolean(entry.pinned) && latest !== 'unknown'
+                && compare(entry.pinned, latest) < 0
+              if (behind) drifted.push(`${entry.name} ${entry.pinned} -> ${latest}`)
+              rows.push([
+                entry.name,
+                entry.pinned ?? 'not found',
+                latest,
+                behind ? '**behind**' : (lookupError ? 'lookup failed' : 'current'),
+              ])
+            }
+
+            const compileSdkSuppressed = /android\.suppressUnsupportedCompileSdk/.test(properties)
+            const table = [
+              '| Toolchain | Pinned in repo | Newest stable upstream | Status |',
+              '|-----------|----------------|------------------------|--------|',
+              ...rows.map(row => `| ${row.join(' | ')} |`),
+            ].join('\n')
+
+            appendFileSync(process.env.GITHUB_OUTPUT, `headline=${drifted.join('; ') || 'none'}\n`)
+            appendFileSync(process.env.GITHUB_OUTPUT, `count=${drifted.length}\n`)
+
+            const summary = [
+              '## Toolchain drift',
+              '',
+              table,
+              '',
+            ]
+            if (compileSdkSuppressed) {
+              summary.push(
+                '> `android.suppressUnsupportedCompileSdk` is still set in `native/android/gradle.properties`:',
+                '> the pinned AGP does not officially support the pinned `compileSdk`. Raising `compileSdk`',
+                '> requires bumping AGP first (and re-verifying CameraX, which is pinned for the same reason).',
+                '',
+              )
+            }
+            summary.push(drifted.length > 0
+              ? `**${drifted.length} pinned toolchain component(s) are behind upstream.** Renovate holds native `
+                + 'dependency bumps behind manual approval (`renovate.json`), so nothing here moves by itself.'
+              : 'All tracked toolchain components are current.')
+            appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${summary.join('\n')}\n`)
+
+            process.stdout.write(`drift: ${drifted.length} (${drifted.join('; ') || 'none'})\n`)
+          }
+
+          // No top-level await: `node` reads this as a CommonJS stdin script.
+          main().catch((cause) => {
+            process.stdout.write(`toolchain drift report failed: ${cause.message}\n`)
+            appendFileSync(process.env.GITHUB_OUTPUT, 'headline=report failed\n')
+            appendFileSync(process.env.GITHUB_OUTPUT, 'count=0\n')
+          })
+          NODE
+
+      - name: Record runner toolchain versions
+        run: |
+          set -uo pipefail
+          {
+            echo "### Runner toolchain (ubuntu-latest)"
+            echo '```'
+            java -version 2>&1 | head -3
+            echo "ANDROID_HOME=${ANDROID_HOME:-unset}"
+            if [[ -n "${ANDROID_HOME:-}" && -x "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" ]]; then
+              "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --list_installed 2>/dev/null | head -20
+            fi
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ── The real matrix: ci.yml, on the newest toolchain ───────
+  ci-latest-toolchain:
+    name: Full CI on newest toolchain
+    needs: toolchain-report
+    # No `timeout-minutes` here: GitHub does not allow it on a job that calls a
+    # reusable workflow (only name/uses/with/secrets/needs/if/permissions). The
+    # bound comes from ci.yml, where every job now carries its own timeout — the
+    # longest is swift-ios at 60 min, so a hung nightly macOS job dies in an hour
+    # rather than at GitHub's 360 min default. Nightly also uses a separate
+    # `xcode-latest` Swift cache key on purpose, so it never restores PR build
+    # products and always compiles from scratch.
+    # Reuses ci.yml through workflow_call. Deliberately NOT a copy: two
+    # definitions of the native matrix drift, and the copy is always the stale
+    # one. The called jobs keep their own timeouts and the `summary` job still
+    # hard-fails if any native job is not `success`.
+    uses: ./.github/workflows/ci.yml
+    with:
+      xcode_channel: ${{ github.event_name == 'workflow_dispatch' && inputs.xcode_channel || 'latest' }}
+    # ci.yml reads TURBO_TOKEN from secrets; inherit so nightly is not the only
+    # run without a remote cache. (A missing TURBO_TEAM only disables remote
+    # caching — it never fails a build.)
+    secrets: inherit
+
+  # ── Loud, deduplicated failure reporting ───────────────────
+  report:
+    name: Nightly result
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [toolchain-report, ci-latest-toolchain]
+    if: always()
+
+    steps:
+      - name: Summarise and file/close the tracking issue
+        env:
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MATRIX_RESULT: ${{ needs.ci-latest-toolchain.result }}
+          DRIFT_HEADLINE: ${{ needs.toolchain-report.outputs.drift_headline }}
+          DRIFT_COUNT: ${{ needs.toolchain-report.outputs.drift_count }}
+          XCODE_CHANNEL: ${{ github.event_name == 'workflow_dispatch' && inputs.xcode_channel || 'latest' }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          LABEL: ci:nightly-toolchain
+          TITLE: 'CI: nightly toolchain matrix failing (newest Xcode / Android toolchain)'
+        run: |
+          set -uo pipefail
+
+          DRIFT_TEXT="${DRIFT_HEADLINE:-none}"
+          [[ -n "$DRIFT_TEXT" ]] || DRIFT_TEXT='none'
+
+          FAILED_JOBS="$(
+            gh api "repos/$GH_REPO/actions/runs/$GITHUB_RUN_ID/jobs?per_page=100" \
+              --jq '[.jobs[] | select(.conclusion != "success" and .conclusion != "skipped") | "\(.name) (\(.conclusion))"] | join(", ")' \
+              || echo 'unknown (job list unavailable)'
+          )"
+
+          {
+            echo "# Nightly toolchain matrix: ${MATRIX_RESULT}"
+            echo
+            echo "Xcode channel: \`${XCODE_CHANNEL}\`. Drifted components: \`${DRIFT_COUNT:-0}\` — ${DRIFT_TEXT}"
+            echo
+            if [[ "$MATRIX_RESULT" == "success" ]]; then
+              echo "The full CI matrix (TypeScript, iOS, macOS, shared Swift, Android, app-shell smoke) passed on the newest toolchain the runners offer."
+            else
+              echo "## 🚨 FAILED"
+              echo
+              echo "Failing jobs: ${FAILED_JOBS}"
+              echo
+              echo "Run: ${RUN_URL}"
+              echo
+              echo "PR CI pins the runner-image default Xcode, so this can be the first signal that a new Xcode/Swift or Android toolchain breaks the framework."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # Best-effort issue handling. The nightly must be loud, but a GitHub
+          # API hiccup should not turn the notification job itself into the
+          # loudest thing in the run.
+          gh label create "$LABEL" \
+            --description "Nightly toolchain matrix (newest Xcode / Android toolchain) is failing" \
+            --color B60205 >/dev/null 2>&1 || true
+
+          EXISTING_NUMBER="$(
+            gh issue list --repo "$GH_REPO" --state open --label "$LABEL" \
+              --json number --jq '.[0].number // empty' || true
+          )"
+          EXISTING_NUMBER="${EXISTING_NUMBER%%$'\n'*}"
+
+          if [[ "$MATRIX_RESULT" == "success" ]]; then
+            if [[ -n "$EXISTING_NUMBER" ]]; then
+              gh issue close "$EXISTING_NUMBER" --repo "$GH_REPO" \
+                --comment "Nightly toolchain matrix is green again: ${RUN_URL}" \
+                || echo "::warning::Could not close nightly issue #${EXISTING_NUMBER}."
+            else
+              echo "Nightly green, no open issue to close."
+            fi
+            exit 0
+          fi
+
+          echo "::error title=Nightly toolchain matrix ${MATRIX_RESULT}::${FAILED_JOBS} — ${RUN_URL}"
+
+          BODY_FILE="$RUNNER_TEMP/nightly-issue.md"
+          {
+            echo "The nightly toolchain matrix finished \`${MATRIX_RESULT}\` against the newest toolchain on the runner images (Xcode channel: \`${XCODE_CHANNEL}\`)."
+            echo
+            echo "**Failing jobs:** ${FAILED_JOBS}"
+            echo
+            echo "**Run:** ${RUN_URL}"
+            echo
+            echo "**Toolchain drift:** ${DRIFT_COUNT:-0} component(s) behind upstream — ${DRIFT_TEXT}"
+            echo
+            echo "This workflow calls the same \`ci.yml\` matrix that gates PRs, but selects the"
+            echo "newest installed Xcode, so it is the earliest signal that an upstream toolchain"
+            echo "release breaks the framework. PR CI will not show this until the runner image"
+            echo "default moves."
+            echo
+            echo "Artifacts worth downloading from the run: \`ios-xcresult\`,"
+            echo "\`macos-swift-test-logs\`, \`android-junit-results\`, \`app-shell-smoke-*\`."
+          } > "$BODY_FILE"
+
+          if [[ -n "$EXISTING_NUMBER" ]]; then
+            gh issue comment "$EXISTING_NUMBER" --repo "$GH_REPO" \
+              --body "Still failing (${MATRIX_RESULT}) as of ${RUN_URL}. Failing jobs: ${FAILED_JOBS}." \
+              || echo "::warning::Could not comment on nightly issue #${EXISTING_NUMBER}."
+          else
+            gh issue create --repo "$GH_REPO" --title "$TITLE" \
+              --label "$LABEL" --body-file "$BODY_FILE" \
+              || echo "::error::Could not open a nightly tracking issue; the job summary above is the only record."
+          fi
