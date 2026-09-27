@@ -6,8 +6,7 @@ Launch the device camera for photo capture or open the image library to pick exi
 
 ```vue
 <script setup>
-import { ref } from 'vue'
-import { useCamera } from '@thelacanians/vue-native-runtime'
+import { ref, useCamera } from '@thelacanians/vue-native-runtime'
 
 const { launchCamera, launchImageLibrary } = useCamera()
 const photoUri = ref('')
@@ -112,8 +111,7 @@ interface QRCodeResult {
 
 ```vue
 <script setup>
-import { ref } from 'vue'
-import { useCamera } from '@thelacanians/vue-native-runtime'
+import { ref, useCamera } from '@thelacanians/vue-native-runtime'
 
 const { launchCamera, launchImageLibrary } = useCamera()
 const image = ref<{ uri: string; width: number; height: number } | null>(null)

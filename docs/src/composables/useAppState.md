@@ -54,8 +54,7 @@ type AppStateStatus = 'active' | 'inactive' | 'background' | 'unknown'
 
 ```vue
 <script setup>
-import { watch } from 'vue'
-import { useAppState } from '@thelacanians/vue-native-runtime'
+import { watch, useAppState } from '@thelacanians/vue-native-runtime'
 import { useAsyncStorage } from '@thelacanians/vue-native-runtime'
 
 const { state } = useAppState()

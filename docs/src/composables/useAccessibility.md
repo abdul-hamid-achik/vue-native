@@ -18,8 +18,7 @@ const { announce, setFocus } = useAccessibility()
 
 ```vue
 <script setup lang="ts">
-import { ref } from 'vue'
-import { useAccessibility, VButton, VText } from '@thelacanians/vue-native-runtime'
+import { ref, useAccessibility, VButton, VText } from '@thelacanians/vue-native-runtime'
 
 const { announce, setFocus } = useAccessibility()
 const dialogRef = ref()

@@ -12,8 +12,7 @@ import { VDrawer } from '@thelacanians/vue-native-runtime'
 
 ```vue
 <script setup>
-import { ref } from 'vue'
-import { VDrawer, VPressable, VText } from '@thelacanians/vue-native-runtime'
+import { ref, VDrawer, VPressable, VText } from '@thelacanians/vue-native-runtime'
 
 const isOpen = ref(false)
 </script>

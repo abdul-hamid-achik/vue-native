@@ -146,8 +146,7 @@ user toggles system dark mode. Sync it into the theme with a `watch`:
 
 ```vue
 <script setup lang="ts">
-import { watch } from 'vue'
-import { useColorScheme } from '@thelacanians/vue-native-runtime'
+import { watch, useColorScheme } from '@thelacanians/vue-native-runtime'
 import { useTheme } from './theme'
 
 const { colorScheme: systemScheme } = useColorScheme()

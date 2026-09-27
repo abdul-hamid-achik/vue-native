@@ -71,8 +71,7 @@ interface GeoCoordinates {
 
 ```vue
 <script setup>
-import { onMounted, onUnmounted, ref } from 'vue'
-import { useGeolocation } from '@thelacanians/vue-native-runtime'
+import { onMounted, onUnmounted, ref, useGeolocation } from '@thelacanians/vue-native-runtime'
 
 const { coords, getCurrentPosition, watchPosition, clearWatch } = useGeolocation()
 const watchId = ref<number | null>(null)

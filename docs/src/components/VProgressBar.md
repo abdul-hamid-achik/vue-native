@@ -26,7 +26,6 @@ VProgressBar does not emit any events.
 
 ```vue
 <script setup>
-import { ref, onMounted } from 'vue'
 
 const progress = ref(0)
 
@@ -51,7 +50,7 @@ onMounted(() => {
 </template>
 
 <script>
-import { createStyleSheet } from '@thelacanians/vue-native-runtime'
+import { ref, onMounted, createStyleSheet } from '@thelacanians/vue-native-runtime'
 
 const styles = createStyleSheet({
   container: {

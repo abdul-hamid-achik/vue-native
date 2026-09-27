@@ -6,8 +6,7 @@ Persistent key-value storage. All operations are asynchronous and backed by the 
 
 ```vue
 <script setup>
-import { ref, onMounted } from 'vue'
-import { useAsyncStorage } from '@thelacanians/vue-native-runtime'
+import { ref, onMounted, useAsyncStorage } from '@thelacanians/vue-native-runtime'
 
 const storage = useAsyncStorage()
 const username = ref('')
@@ -51,8 +50,7 @@ useAsyncStorage(): {
 
 ```vue
 <script setup>
-import { ref, onMounted } from 'vue'
-import { useAsyncStorage } from '@thelacanians/vue-native-runtime'
+import { ref, onMounted, useAsyncStorage } from '@thelacanians/vue-native-runtime'
 
 const storage = useAsyncStorage()
 const theme = ref('light')

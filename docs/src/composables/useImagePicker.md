@@ -32,8 +32,7 @@ interface PickedImage {
 
 ```vue
 <script setup lang="ts">
-import { ref } from 'vue'
-import { useImagePicker, usePermissions, VButton, VImage, VText } from '@thelacanians/vue-native-runtime'
+import { ref, useImagePicker, usePermissions, VButton, VImage, VText } from '@thelacanians/vue-native-runtime'
 
 const { pickImage } = useImagePicker()
 const { request } = usePermissions()

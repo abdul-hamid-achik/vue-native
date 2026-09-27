@@ -105,7 +105,7 @@ app.start()
 ```ts
 // stores/counter.ts
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref, computed } from '@thelacanians/vue-native-runtime'
 
 export const useCounterStore = defineStore('counter', () => {
   const count = ref(0)
@@ -159,8 +159,7 @@ Combine Pinia with `useAsyncStorage` to persist state across app restarts:
 ```ts
 // stores/settings.ts
 import { defineStore } from 'pinia'
-import { ref, watch } from 'vue'
-import { useAsyncStorage } from '@thelacanians/vue-native-runtime'
+import { ref, watch, useAsyncStorage } from '@thelacanians/vue-native-runtime'
 
 export const useSettingsStore = defineStore('settings', () => {
   const { getItem, setItem } = useAsyncStorage()

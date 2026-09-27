@@ -76,7 +76,7 @@ Automatically trim whitespace from input:
 
 ```vue
 <script setup>
-import { ref } from '@vue/runtime-core'
+import { ref } from '@thelacanians/vue-native-runtime'
 
 const value = ref('')
 </script>
@@ -97,9 +97,9 @@ defineEmits(['update:modelValue'])
 </script>
 
 <template>
-  <VInput 
-    :value="modelValue" 
-    @input="$emit('update:modelValue', $event.target.value)" 
+  <VInput
+    :modelValue="modelValue"
+    @update:modelValue="$emit('update:modelValue', $event)"
   />
 </template>
 ```
@@ -110,7 +110,7 @@ You can have multiple v-models on a single component:
 
 ```vue
 <script setup>
-import { ref } from '@vue/runtime-core'
+import { ref } from '@thelacanians/vue-native-runtime'
 
 const firstName = ref('')
 const lastName = ref('')
@@ -132,13 +132,13 @@ defineEmits(['update:firstName', 'update:lastName'])
 
 <template>
   <VView>
-    <VInput 
-      :value="firstName"
-      @input="$emit('update:firstName', $event.target.value)"
+    <VInput
+      :modelValue="firstName"
+      @update:modelValue="$emit('update:firstName', $event)"
     />
-    <VInput 
-      :value="lastName"
-      @input="$emit('update:lastName', $event.target.value)"
+    <VInput
+      :modelValue="lastName"
+      @update:modelValue="$emit('update:lastName', $event)"
     />
   </VView>
 </template>
@@ -178,9 +178,9 @@ function submit() {
       {{ emailError }}
     </VText>
     
-    <VInput 
-      v-model="password" 
-      type="password"
+    <VInput
+      v-model="password"
+      secureTextEntry
       placeholder="Password (min 8 chars)"
     />
     

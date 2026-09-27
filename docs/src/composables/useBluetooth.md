@@ -99,8 +99,7 @@ type BLEState = 'poweredOn' | 'poweredOff' | 'unauthorized' | 'unsupported' | 'r
 
 ```vue
 <script setup>
-import { ref } from 'vue'
-import { useBluetooth } from '@thelacanians/vue-native-runtime'
+import { ref, useBluetooth } from '@thelacanians/vue-native-runtime'
 
 const HEART_RATE_SERVICE = '180D'
 const HEART_RATE_MEASUREMENT = '2A37'

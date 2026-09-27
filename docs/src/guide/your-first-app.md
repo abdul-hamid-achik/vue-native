@@ -118,15 +118,17 @@ vue-native run ios
 You should see a centered counter that increments on tap. Any edits to `.vue` files will hot-reload instantly.
 
 Each watcher creates one platform-specific bundle. Restart it with the other
-target flag when switching between iOS and Android. The CLI does not scaffold a
-macOS app shell yet; follow the [macOS setup guide](/macos/setup.md) before using
-`vue-native dev --platform macos` and `vue-native run macos`.
+target flag when switching between iOS, Android and macOS. `vue-native create`
+scaffolds all three hosts, so `vue-native dev --platform macos` and
+`vue-native run macos` work out of the box — see the
+[macOS setup guide](/macos/setup.md) for the XcodeGen prerequisite and a tour of
+the generated host.
 
 ### Key concepts
 
 - **No HTML elements.** Use `VView` (like `<div>`), `VText` (like `<span>`), `VButton` (like `<button>`)
 - **Style objects, not CSS.** Use `createStyleSheet` with camelCase properties. Numbers are in **density-independent points** (dp) — 16 dp is approximately 16 CSS pixels
-- **Flexbox layout.** Yoga (iOS) and FlexboxLayout (Android) implement CSS Flexbox. Default direction is `column` (vertical)
+- **Flexbox layout.** Yoga (iOS), FlexboxLayout (Android) and LayoutNode (macOS) implement CSS Flexbox. Default direction is `column` (vertical)
 
 ## Part 2: Adding Navigation
 

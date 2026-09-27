@@ -51,8 +51,7 @@ type ColorScheme = 'light' | 'dark'
 
 ```vue
 <script setup>
-import { computed } from 'vue'
-import { useColorScheme } from '@thelacanians/vue-native-runtime'
+import { computed, useColorScheme } from '@thelacanians/vue-native-runtime'
 
 const { isDark } = useColorScheme()
 

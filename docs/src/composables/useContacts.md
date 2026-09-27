@@ -6,8 +6,7 @@ Contacts access composable for reading, creating, and deleting device contacts. 
 
 ```vue
 <script setup>
-import { ref } from 'vue'
-import { useContacts } from '@thelacanians/vue-native-runtime'
+import { ref, useContacts } from '@thelacanians/vue-native-runtime'
 
 const { requestAccess, getContacts, hasAccess } = useContacts()
 const contacts = ref([])
@@ -99,8 +98,7 @@ interface CreateContactData {
 
 ```vue
 <script setup>
-import { ref, onMounted } from 'vue'
-import { useContacts } from '@thelacanians/vue-native-runtime'
+import { ref, onMounted, useContacts } from '@thelacanians/vue-native-runtime'
 
 const { requestAccess, getContacts, createContact, deleteContact, hasAccess } = useContacts()
 const contacts = ref([])

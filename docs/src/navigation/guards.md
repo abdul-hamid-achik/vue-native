@@ -50,7 +50,7 @@ If a guard returns a Promise and never calls `next()`, the guard auto-resolves w
 
 ```vue
 <script setup>
-import { ref, onUnmounted } from 'vue'
+import { ref, onUnmounted } from '@thelacanians/vue-native-runtime'
 import { useRouter } from '@thelacanians/vue-native-navigation'
 
 const router = useRouter()
@@ -145,7 +145,7 @@ Every guard registration returns a function that removes the guard. Always clean
 
 ```vue
 <script setup>
-import { onUnmounted } from 'vue'
+import { onUnmounted } from '@thelacanians/vue-native-runtime'
 import { useRouter } from '@thelacanians/vue-native-navigation'
 
 const router = useRouter()
@@ -219,8 +219,7 @@ router.beforeEach(async (to, from, next) => {
 A full auth flow with guards:
 
 ```ts
-import { ref } from 'vue'
-import { createApp } from '@thelacanians/vue-native-runtime'
+import { ref, createApp } from '@thelacanians/vue-native-runtime'
 import { createRouter } from '@thelacanians/vue-native-navigation'
 import App from './App.vue'
 

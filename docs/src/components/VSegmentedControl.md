@@ -32,7 +32,6 @@ A horizontal segmented control (tab strip) for selecting one option from a set. 
 
 ```vue
 <script setup>
-import { ref } from 'vue'
 
 const viewMode = ref(0)
 const modes = ['List', 'Grid', 'Map']
@@ -56,7 +55,7 @@ const onModeChange = (e) => {
 </template>
 
 <script>
-import { createStyleSheet } from '@thelacanians/vue-native-runtime'
+import { ref, createStyleSheet } from '@thelacanians/vue-native-runtime'
 
 const styles = createStyleSheet({
   container: {

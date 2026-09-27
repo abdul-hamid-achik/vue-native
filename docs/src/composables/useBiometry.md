@@ -53,8 +53,7 @@ interface BiometryResult {
 
 ```vue
 <script setup>
-import { ref, onMounted } from 'vue'
-import { useBiometry } from '@thelacanians/vue-native-runtime'
+import { ref, onMounted, useBiometry } from '@thelacanians/vue-native-runtime'
 
 const { authenticate, getSupportedBiometry, isAvailable } = useBiometry()
 const biometryType = ref('none')

@@ -49,8 +49,7 @@ type ConnectionType = 'wifi' | 'cellular' | 'ethernet' | 'none' | 'unknown'
 
 ```vue
 <script setup>
-import { watch } from 'vue'
-import { useNetwork } from '@thelacanians/vue-native-runtime'
+import { watch, useNetwork } from '@thelacanians/vue-native-runtime'
 
 const { isConnected, connectionType } = useNetwork()
 

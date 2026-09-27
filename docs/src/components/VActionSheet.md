@@ -56,7 +56,6 @@ If no action has `style: 'cancel'`, a "Cancel" button is automatically added.
 
 ```vue
 <script setup>
-import { ref } from 'vue'
 
 const showSheet = ref(false)
 const lastAction = ref('')
@@ -94,7 +93,7 @@ function handleAction(e) {
 </template>
 
 <script>
-import { createStyleSheet } from '@thelacanians/vue-native-runtime'
+import { ref, createStyleSheet } from '@thelacanians/vue-native-runtime'
 
 const styles = createStyleSheet({
   container: {

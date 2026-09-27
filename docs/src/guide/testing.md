@@ -113,7 +113,7 @@ Components produce bridge operations (create, updateProp, addEventListener, etc.
 
 ```ts
 import { describe, it, expect, beforeEach } from 'vitest'
-import { createVNode } from '@vue/runtime-core'
+import { createVNode } from '@thelacanians/vue-native-runtime'
 import { installMockBridge, nextTick } from './helpers'
 
 const mockBridge = installMockBridge()
@@ -251,7 +251,7 @@ The router is pure TypeScript -- no native dependencies. Create a router instanc
 
 ```ts
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { defineComponent, h } from '@vue/runtime-core'
+import { defineComponent, h } from '@thelacanians/vue-native-runtime'
 import { installMockBridge, nextTick } from './helpers'
 
 const mockBridge = installMockBridge()

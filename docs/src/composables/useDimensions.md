@@ -49,8 +49,7 @@ useDimensions(): {
 
 ```vue
 <script setup>
-import { computed } from 'vue'
-import { useDimensions } from '@thelacanians/vue-native-runtime'
+import { computed, useDimensions } from '@thelacanians/vue-native-runtime'
 
 const { width, height } = useDimensions()
 const isLandscape = computed(() => width.value > height.value)

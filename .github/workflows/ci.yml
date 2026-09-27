@@ -65,6 +65,14 @@ jobs:
       - name: Native module contract check
         run: bun run contracts:check
 
+      # Docs were previously checked by nothing: eslint ignores docs/, and the
+      # VuePress build only catches syntax, not content. Six guide pages once
+      # documented APIs that throw at runtime; this gate extracts every import,
+      # destructured composable member, router member and component prop from
+      # the markdown and fails on any symbol the real sources do not export.
+      - name: Documentation contract check
+        run: bun run contracts:docs
+
       - name: Vue dependency cohort check
         run: bun run check:vue-cohort
 

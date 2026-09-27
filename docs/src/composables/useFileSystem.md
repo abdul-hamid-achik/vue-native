@@ -6,8 +6,7 @@ File system access for reading, writing, and managing files on the device. Provi
 
 ```vue
 <script setup>
-import { ref } from 'vue'
-import { useFileSystem } from '@thelacanians/vue-native-runtime'
+import { ref, useFileSystem } from '@thelacanians/vue-native-runtime'
 
 const { readFile, writeFile, getDocumentsPath, exists } = useFileSystem()
 const content = ref('')
@@ -97,8 +96,7 @@ interface FileStat {
 
 ```vue
 <script setup>
-import { ref } from 'vue'
-import { useFileSystem } from '@thelacanians/vue-native-runtime'
+import { ref, useFileSystem } from '@thelacanians/vue-native-runtime'
 
 const { listDirectory, getDocumentsPath, stat, deleteFile, downloadFile } = useFileSystem()
 const files = ref([])

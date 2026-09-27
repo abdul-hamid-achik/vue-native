@@ -82,8 +82,7 @@ Communicates dynamic state to the screen reader. Pass an object with any combina
 
 ```vue
 <script setup>
-import { ref } from 'vue'
-import { VButton, VText, VView } from '@thelacanians/vue-native-runtime'
+import { ref, VButton, VText, VView } from '@thelacanians/vue-native-runtime'
 
 const isExpanded = ref(false)
 </script>
@@ -170,8 +169,7 @@ Pair every input with a descriptive label:
 
 ```vue
 <script setup>
-import { ref } from 'vue'
-import { VView, VText, VInput } from '@thelacanians/vue-native-runtime'
+import { ref, VView, VText, VInput } from '@thelacanians/vue-native-runtime'
 
 const email = ref('')
 const password = ref('')
@@ -254,8 +252,7 @@ Informational images should have a label. Decorative images should be hidden fro
 
 ```vue
 <script setup>
-import { ref } from 'vue'
-import { VView, VText, VSwitch } from '@thelacanians/vue-native-runtime'
+import { ref, VView, VText, VSwitch } from '@thelacanians/vue-native-runtime'
 
 const darkMode = ref(false)
 const notifications = ref(true)
@@ -292,8 +289,7 @@ const notifications = ref(true)
 
 ```vue
 <script setup>
-import { ref, computed } from 'vue'
-import { VButton, VText } from '@thelacanians/vue-native-runtime'
+import { ref, computed, VButton, VText } from '@thelacanians/vue-native-runtime'
 
 const formValid = ref(false)
 </script>

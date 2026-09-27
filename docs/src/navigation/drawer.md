@@ -228,7 +228,7 @@ const screens = [
 
 ```vue
 <script setup>
-import { watch } from 'vue'
+import { watch } from '@thelacanians/vue-native-runtime'
 import { createDrawerNavigator } from '@thelacanians/vue-native-navigation'
 import HomeView from './views/HomeView.vue'
 import ProfileView from './views/ProfileView.vue'

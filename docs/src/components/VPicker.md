@@ -47,7 +47,6 @@ The older `:value` + `@change` pair still works as a legacy alias:
 
 ```vue
 <script setup>
-import { ref, computed } from 'vue'
 
 const selectedDate = ref(Date.now())
 
@@ -70,7 +69,7 @@ const formatted = computed(() => {
 </template>
 
 <script>
-import { createStyleSheet } from '@thelacanians/vue-native-runtime'
+import { ref, computed, createStyleSheet } from '@thelacanians/vue-native-runtime'
 
 const styles = createStyleSheet({
   container: {
@@ -93,7 +92,7 @@ const styles = createStyleSheet({
 
 ```vue
 <script setup>
-import { ref } from 'vue'
+import { ref } from '@thelacanians/vue-native-runtime'
 
 const selectedTime = ref(Date.now())
 </script>

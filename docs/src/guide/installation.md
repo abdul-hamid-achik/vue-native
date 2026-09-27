@@ -51,10 +51,12 @@ The CLI scaffolds a full project with:
 - Vue 3 app in `app/`
 - iOS Xcode project in `ios/`
 - Android Gradle project in `android/`
+- macOS XcodeGen host in `macos/`
+- A vendored copy of the native runtime in `native/`
 - Vite config with `@thelacanians/vue-native-vite-plugin`
 - `vue-native.config.ts` for app configuration
 
-macOS support is available through the native `VueNativeMacOS` package, but `vue-native create` does not scaffold a macOS app shell yet. Follow the [macOS Setup](/macos/setup.md) guide to add a macOS target manually.
+macOS support ships in the same scaffold: `macos/project.yml` plus `macos/Sources/` are generated, and `vue-native run macos` turns that spec into an `.xcodeproj` with XcodeGen, builds it and launches the `.app`. Follow the [macOS Setup](/macos/setup.md) guide for the generated host, the vendored-package requirement, and hot reload.
 
 See the [Managed Workflow](./managed-workflow.md) guide for the full configuration reference and available CLI commands (`doctor`, `inspect`, `capabilities`, `run`, `build`, `generate`). After scaffolding, `vue-native doctor` checks that Bun, Xcode, and the Android SDK are visible.
 

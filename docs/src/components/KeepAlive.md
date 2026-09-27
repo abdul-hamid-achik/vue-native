@@ -15,8 +15,7 @@ Cache component instances to preserve state and avoid re-rendering when switchin
 
 ```vue
 <script setup>
-import { ref, keepAlive } from 'vue'
-import { KeepAlive, VView, VText, VButton } from '@thelacanians/vue-native-runtime'
+import { ref, KeepAlive, VView, VText, VButton } from '@thelacanians/vue-native-runtime'
 import HomeTab from './HomeTab.vue'
 import ProfileTab from './ProfileTab.vue'
 import SettingsTab from './SettingsTab.vue'
@@ -115,8 +114,7 @@ When the cache exceeds 5 instances, the least recently used component is destroy
 
 ```vue
 <script setup>
-import { ref } from 'vue'
-import { KeepAlive, VView, VText, VButton, VScrollView } from '@thelacanians/vue-native-runtime'
+import { ref, KeepAlive, VView, VText, VButton, VScrollView } from '@thelacanians/vue-native-runtime'
 
 // Each tab maintains its own scroll position
 const HomeTab = {
@@ -168,7 +166,7 @@ Components inside `<KeepAlive>` have access to special lifecycle hooks:
 
 ```vue
 <script setup>
-import { onActivated, onDeactivated } from 'vue'
+import { onActivated, onDeactivated } from '@thelacanians/vue-native-runtime'
 
 onActivated(() => {
   console.log('Component activated (restored from cache)')
@@ -189,8 +187,7 @@ onDeactivated(() => {
 
 ```vue
 <script setup>
-import { ref } from 'vue'
-import { KeepAlive, VView, VText, VInput, VButton } from '@thelacanians/vue-native-runtime'
+import { ref, KeepAlive, VView, VText, VInput, VButton } from '@thelacanians/vue-native-runtime'
 
 const FormTab = {
   template: `

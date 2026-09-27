@@ -6,8 +6,7 @@ Calendar access composable for reading and writing device calendar events. Suppo
 
 ```vue
 <script setup>
-import { ref, onMounted } from 'vue'
-import { useCalendar } from '@thelacanians/vue-native-runtime'
+import { ref, onMounted, useCalendar } from '@thelacanians/vue-native-runtime'
 
 const { requestAccess, getEvents, hasAccess } = useCalendar()
 const events = ref([])
@@ -98,8 +97,7 @@ interface CreateEventOptions {
 
 ```vue
 <script setup>
-import { ref, onMounted } from 'vue'
-import { useCalendar } from '@thelacanians/vue-native-runtime'
+import { ref, onMounted, useCalendar } from '@thelacanians/vue-native-runtime'
 
 const { requestAccess, getEvents, createEvent, deleteEvent, getCalendars, hasAccess } = useCalendar()
 const events = ref([])

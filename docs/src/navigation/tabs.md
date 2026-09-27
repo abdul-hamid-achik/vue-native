@@ -127,7 +127,7 @@ In this example, `SearchView` and `SettingsView` are not mounted until the user 
 
 ```vue
 <script setup>
-import { watch } from 'vue'
+import { watch } from '@thelacanians/vue-native-runtime'
 import { createTabNavigator } from '@thelacanians/vue-native-navigation'
 import HomeView from './views/HomeView.vue'
 import NotificationsView from './views/NotificationsView.vue'

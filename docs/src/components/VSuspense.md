@@ -91,8 +91,7 @@ const AsyncModal = defineAsyncComponent({
 
 ```vue
 <script setup>
-import { ref, defineAsyncComponent } from 'vue'
-import { VSuspense, VView, VText, VActivityIndicator, VScrollView, VButton } from '@thelacanians/vue-native-runtime'
+import { ref, defineAsyncComponent, VSuspense, VView, VText, VActivityIndicator, VScrollView, VButton } from '@thelacanians/vue-native-runtime'
 
 // Lazy load dashboard widgets
 const StatsWidget = defineAsyncComponent(() => import('./StatsWidget.vue'))
@@ -211,8 +210,7 @@ Use `async setup()` in components for data fetching:
 ```vue
 <!-- UserProfile.vue -->
 <script setup>
-import { ref } from 'vue'
-import { useHttp } from '@thelacanians/vue-native-runtime'
+import { ref, useHttp } from '@thelacanians/vue-native-runtime'
 import { VView, VText, VImage } from '@thelacanians/vue-native-runtime'
 
 const props = defineProps(['userId'])

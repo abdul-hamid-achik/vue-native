@@ -25,7 +25,7 @@ Native code blocks allow you to write platform-specific native code alongside yo
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref } from '@thelacanians/vue-native-runtime'
 import { useHaptics } from './generated/useHaptics'
 
 const { vibrate } = useHaptics()
@@ -306,7 +306,7 @@ bun -e "
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref } from '@thelacanians/vue-native-runtime'
 import { useAIChat } from './generated/useAIChat'
 
 const { messages, send, streamResponse } = useAIChat()
@@ -395,7 +395,7 @@ class AIChatModule: NativeModule {
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref } from '@thelacanians/vue-native-runtime'
 import { useCodeEditor } from './generated/useCodeEditor'
 
 const { highlight, getCompletions } = useCodeEditor()

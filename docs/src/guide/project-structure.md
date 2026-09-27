@@ -17,11 +17,26 @@ my-app/
 │       └── src/main/
 │           ├── kotlin/…/MainActivity.kt  (extends VueNativeActivity)
 │           └── AndroidManifest.xml
+├── macos/               # macOS Xcode project
+│   ├── Sources/
+│   │   ├── main.swift
+│   │   ├── AppDelegate.swift           (subclasses VueNativeAppDelegate)
+│   │   ├── MainWindowController.swift  (subclasses VueNativeWindowController)
+│   │   ├── Info.plist
+│   │   └── App.entitlements
+│   └── project.yml      # XcodeGen project definition
+├── native/              # Vendored Vue Native runtime, copied by the CLI
+│   ├── ios/VueNativeCore/
+│   ├── android/VueNativeCore/
+│   ├── macos/VueNativeMacOS/
+│   └── shared/VueNativeShared/
 ├── dist/                # Built JS bundle (auto-generated, do not commit)
 │   └── vue-native-bundle.js
 ├── vite.config.ts
 └── package.json
 ```
+
+The generated `ios/*.xcodeproj` and `macos/*.xcodeproj` are gitignored — each `project.yml` is the committed source of truth and XcodeGen recreates the project on demand (`brew install xcodegen`).
 
 ## Key files
 

@@ -45,7 +45,6 @@ Provide either `uri` or `html`, not both.
 
 ```vue
 <script setup>
-import { ref } from 'vue'
 
 const loading = ref(true)
 
@@ -73,7 +72,7 @@ function onError(e) {
 </template>
 
 <script>
-import { createStyleSheet } from '@thelacanians/vue-native-runtime'
+import { ref, createStyleSheet } from '@thelacanians/vue-native-runtime'
 
 const styles = createStyleSheet({
   container: {

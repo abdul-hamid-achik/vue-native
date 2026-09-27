@@ -17,8 +17,7 @@ Both use the `useAnimation` composable under the hood to drive platform-native a
 
 ```vue
 <script setup>
-import { ref } from 'vue'
-import { VTransition, VView, VText, VButton } from '@thelacanians/vue-native-runtime'
+import { ref, VTransition, VView, VText, VButton } from '@thelacanians/vue-native-runtime'
 
 const show = ref(false)
 </script>
@@ -99,8 +98,7 @@ Slides in from the left and out to the left.
 
 ```vue
 <script setup>
-import { ref } from 'vue'
-import { VTransition, VView, VText, VButton } from '@thelacanians/vue-native-runtime'
+import { ref, VTransition, VView, VText, VButton } from '@thelacanians/vue-native-runtime'
 
 const show = ref(false)
 </script>
@@ -134,8 +132,7 @@ Animate multiple keyed elements as they're added or removed.
 
 ```vue
 <script setup>
-import { ref } from 'vue'
-import { VTransitionGroup, VView, VText, VButton } from '@thelacanians/vue-native-runtime'
+import { ref, VTransitionGroup, VView, VText, VButton } from '@thelacanians/vue-native-runtime'
 
 const items = ref([
   { id: 1, text: 'First' },
@@ -187,8 +184,7 @@ Items should be keyed so Vue can track additions and removals correctly. Reorder
 
 ```vue
 <script setup>
-import { ref } from 'vue'
-import { VTransitionGroup, VView, VText, VButton } from '@thelacanians/vue-native-runtime'
+import { ref, VTransitionGroup, VView, VText, VButton } from '@thelacanians/vue-native-runtime'
 
 const items = ref(['Apple', 'Banana', 'Cherry', 'Date'])
 

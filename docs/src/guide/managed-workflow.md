@@ -36,13 +36,15 @@ vue-native create my-app --template drawer
 All templates include:
 - Complete iOS Xcode project (`ios/`) with XcodeGen spec
 - Complete Android Gradle project (`android/`) with Kotlin
+- Complete macOS host (`macos/`) with XcodeGen spec
+- A vendored copy of the native runtime (`native/`), which the Apple hosts link against
 - Vite configuration with Vue Native plugin
 - TypeScript configuration
 - `vue-native.config.ts` configuration file
-- `.gitignore` with common exclusions
+- `.gitignore` with common exclusions (including the generated `ios/*.xcodeproj` and `macos/*.xcodeproj`)
 
 ::: note macOS
-The CLI can run and build an existing macOS Xcode project, but `vue-native create` does not scaffold a macOS app shell yet. Use the [macOS Setup](/macos/setup.md) guide to add that target manually.
+`vue-native run macos` and `vue-native build macos` generate `macos/*.xcodeproj` from `macos/project.yml` with XcodeGen (`brew install xcodegen`), then build and launch the `.app`. The generated host is single-window by design — see [macOS Setup](/macos/setup.md).
 :::
 
 ## Project Configuration
@@ -185,12 +187,27 @@ my-app/
         kotlin/.../MainActivity.kt
     build.gradle.kts
     settings.gradle.kts
+  macos/                 # macOS native project
+    project.yml          # XcodeGen specification
+    Sources/
+      main.swift
+      AppDelegate.swift
+      MainWindowController.swift
+      Info.plist
+      App.entitlements
+  native/                # Vendored Vue Native runtime (copied by the CLI)
+    ios/VueNativeCore/
+    android/VueNativeCore/
+    macos/VueNativeMacOS/
+    shared/VueNativeShared/
   dist/                  # Built JS bundle (generated)
   vue-native.config.ts   # App configuration
   vite.config.ts         # Vite build config
   package.json
   tsconfig.json
 ```
+
+The generated `ios/*.xcodeproj` and `macos/*.xcodeproj` are gitignored; XcodeGen recreates them from each `project.yml` on demand.
 
 ## Typical Workflow
 

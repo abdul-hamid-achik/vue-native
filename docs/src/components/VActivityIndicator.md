@@ -26,7 +26,6 @@ VActivityIndicator does not emit any events.
 
 ```vue
 <script setup>
-import { ref } from 'vue'
 
 const loading = ref(true)
 
@@ -52,7 +51,7 @@ function fetchData() {
 </template>
 
 <script>
-import { createStyleSheet } from '@thelacanians/vue-native-runtime'
+import { ref, createStyleSheet } from '@thelacanians/vue-native-runtime'
 
 const styles = createStyleSheet({
   container: {

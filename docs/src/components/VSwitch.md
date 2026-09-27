@@ -33,7 +33,6 @@ A boolean toggle switch. Maps to `UISwitch` on iOS and `SwitchCompat` on Android
 
 ```vue
 <script setup>
-import { ref } from 'vue'
 
 const notifications = ref(true)
 const darkMode = ref(false)
@@ -53,7 +52,7 @@ const darkMode = ref(false)
 </template>
 
 <script>
-import { createStyleSheet } from '@thelacanians/vue-native-runtime'
+import { ref, createStyleSheet } from '@thelacanians/vue-native-runtime'
 
 const styles = createStyleSheet({
   container: {

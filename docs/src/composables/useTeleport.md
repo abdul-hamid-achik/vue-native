@@ -51,7 +51,7 @@ function useTeleport(target: string): {
 
 ```vue
 <script setup>
-import { ref } from 'vue'
+import { ref } from '@thelacanians/vue-native-runtime'
 
 const showModal = ref(false)
 

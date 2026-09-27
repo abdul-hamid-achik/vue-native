@@ -84,8 +84,7 @@ type WebSocketStatus = 'CLOSED' | 'CONNECTING' | 'OPEN' | 'CLOSING'
 
 ```vue
 <script setup>
-import { ref, watch } from 'vue'
-import { useWebSocket } from '@thelacanians/vue-native-runtime'
+import { ref, watch, useWebSocket } from '@thelacanians/vue-native-runtime'
 
 const messages = ref([])
 const input = ref('')

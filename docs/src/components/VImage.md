@@ -83,7 +83,6 @@ a missing asset.
 
 ```vue
 <script setup>
-import { ref } from 'vue'
 
 const loaded = ref(false)
 const error = ref('')
@@ -122,7 +121,7 @@ const onError = (e) => {
 </template>
 
 <script>
-import { createStyleSheet } from '@thelacanians/vue-native-runtime'
+import { ref, createStyleSheet } from '@thelacanians/vue-native-runtime'
 
 const styles = createStyleSheet({
   container: {

@@ -332,7 +332,7 @@ If Yoga recalculates layout on every frame, the app will stutter. Avoid:
 `setTimeout` and `setInterval` callbacks persist even after a component unmounts. Always clear them:
 
 ```ts
-import { onUnmounted } from 'vue'
+import { onUnmounted } from '@thelacanians/vue-native-runtime'
 
 const timer = setInterval(() => { /* ... */ }, 1000)
 onUnmounted(() => clearInterval(timer))
@@ -343,8 +343,7 @@ onUnmounted(() => clearInterval(timer))
 Composables that subscribe to global events (via `NativeBridge.onGlobalEvent`) return an unsubscribe function. Call it in `onUnmounted`:
 
 ```ts
-import { onUnmounted } from 'vue'
-import { NativeBridge } from '@thelacanians/vue-native-runtime'
+import { onUnmounted, NativeBridge } from '@thelacanians/vue-native-runtime'
 
 const unsubscribe = NativeBridge.onGlobalEvent('network:change', (payload) => {
   // handle event
@@ -457,10 +456,12 @@ useBackHandler(() => {
 
 **Android soft keyboard resizing the layout:**
 
-Use `VKeyboardAvoiding` to adjust the layout when the keyboard appears:
+Use `VKeyboardAvoiding` to adjust the layout when the keyboard appears. It pads
+its content automatically — there is no `behavior` prop (that belongs to React
+Native's `KeyboardAvoidingView`):
 
 ```vue
-<VKeyboardAvoiding :style="{ flex: 1 }" behavior="padding">
+<VKeyboardAvoiding :style="{ flex: 1 }">
   <VInput placeholder="Type here..." />
 </VKeyboardAvoiding>
 ```

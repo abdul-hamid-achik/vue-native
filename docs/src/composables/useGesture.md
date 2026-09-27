@@ -10,8 +10,7 @@ A composable for handling touch and mouse gestures across iOS, Android, and macO
 
 ```vue
 <script setup>
-import { ref } from 'vue'
-import { useGesture, VView, VText } from '@thelacanians/vue-native-runtime'
+import { ref, useGesture, VView, VText } from '@thelacanians/vue-native-runtime'
 
 const viewRef = ref()
 
@@ -187,8 +186,7 @@ interface UseGestureOptions {
 
 ```vue
 <script setup>
-import { ref, computed } from 'vue'
-import { useGesture, VView, VText } from '@thelacanians/vue-native-runtime'
+import { ref, computed, useGesture, VView, VText } from '@thelacanians/vue-native-runtime'
 
 const viewRef = ref()
 const offsetX = ref(0)
@@ -236,8 +234,7 @@ directly to the view's transform on the UI thread — no JS round-trip per frame
 
 ```vue
 <script setup>
-import { ref } from 'vue'
-import { useGesture, VView, VText } from '@thelacanians/vue-native-runtime'
+import { ref, useGesture, VView, VText } from '@thelacanians/vue-native-runtime'
 
 const viewRef = ref()
 
@@ -267,8 +264,7 @@ position in your `ended` handler.
 
 ```vue
 <script setup>
-import { ref, computed } from 'vue'
-import { useGesture, VView, VText, VImage } from '@thelacanians/vue-native-runtime'
+import { ref, computed, useGesture, VView, VText, VImage } from '@thelacanians/vue-native-runtime'
 
 const imageRef = ref()
 const scale = ref(1)
@@ -306,8 +302,7 @@ function onPinchEnd() {
 
 ```vue
 <script setup>
-import { ref } from 'vue'
-import { useGesture, VView, VText, VImage } from '@thelacanians/vue-native-runtime'
+import { ref, watch, useGesture, VView, VText, VImage } from '@thelacanians/vue-native-runtime'
 
 const images = [
   'https://example.com/image1.jpg',
@@ -324,7 +319,6 @@ const { swipeLeft, swipeRight } = useGesture(containerRef, {
 })
 
 // React to swipes
-import { watch } from 'vue'
 watch(swipeLeft, (state) => {
   if (state) {
     currentIndex.value = Math.min(currentIndex.value + 1, images.length - 1)
@@ -357,8 +351,7 @@ For handling multiple simultaneous gestures with combined state:
 
 ```vue
 <script setup>
-import { ref } from 'vue'
-import { useComposedGestures, VView, VText } from '@thelacanians/vue-native-runtime'
+import { ref, useComposedGestures, VView, VText } from '@thelacanians/vue-native-runtime'
 
 const viewRef = ref()
 
@@ -388,8 +381,7 @@ For advanced use cases, use the `on()` method:
 
 ```vue
 <script setup>
-import { ref, onMounted } from 'vue'
-import { useGesture, VView } from '@thelacanians/vue-native-runtime'
+import { ref, onMounted, useGesture, VView } from '@thelacanians/vue-native-runtime'
 
 const viewRef = ref()
 const { attach, on, detach } = useGesture()

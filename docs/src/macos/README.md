@@ -19,18 +19,23 @@ Vue Native on macOS uses the same architecture as iOS:
 
 ## Quick Start
 
-`vue-native create` does not scaffold a macOS app shell yet. Start with the shared Vue app, add a macOS Xcode target manually, then use the CLI to build the bundle and run that target:
+`vue-native create` scaffolds a complete macOS host (`macos/project.yml` plus `macos/Sources/`), so the whole flow is three commands:
 
 ```bash
 vue-native create my-mac-app
 cd my-mac-app
+bun install
+
+# watch mode: rebuilds the bundle and pushes it over WebSocket
 vue-native dev --platform macos
 
-# after adding macos/
+# generates macos/*.xcodeproj with XcodeGen, then builds and launches the .app
 vue-native run macos
 ```
 
-See [macOS Setup](./setup.md) for the manual app-shell steps.
+XcodeGen is a hard prerequisite (`brew install xcodegen`): `macos/project.yml` is the committed source of truth and the generated `.xcodeproj` is gitignored.
+
+See [macOS Setup](./setup.md) for the generated host file by file, hot reload, and debugging.
 
 ## Key Differences from iOS
 

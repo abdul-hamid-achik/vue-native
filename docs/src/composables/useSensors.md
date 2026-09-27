@@ -88,8 +88,7 @@ interface SensorOptions {
 
 ```vue
 <script setup>
-import { computed } from 'vue'
-import { useAccelerometer } from '@thelacanians/vue-native-runtime'
+import { computed, useAccelerometer } from '@thelacanians/vue-native-runtime'
 
 const { x, y, z, isAvailable, start, stop } = useAccelerometer({ interval: 100 })
 

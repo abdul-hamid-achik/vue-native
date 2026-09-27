@@ -32,7 +32,6 @@ A slider control for selecting a value from a continuous range. Maps to `UISlide
 
 ```vue
 <script setup>
-import { ref } from 'vue'
 
 const brightness = ref(0.5)
 const volume = ref(0.8)
@@ -49,7 +48,7 @@ const volume = ref(0.8)
 </template>
 
 <script>
-import { createStyleSheet } from '@thelacanians/vue-native-runtime'
+import { ref, createStyleSheet } from '@thelacanians/vue-native-runtime'
 
 const styles = createStyleSheet({
   container: {

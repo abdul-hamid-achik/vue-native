@@ -24,7 +24,6 @@ Use `VSafeArea` to keep your content clear of the device notch, status bar, home
 
 ```vue
 <script setup>
-import { ref } from 'vue'
 
 const items = ref(['Home', 'Search', 'Profile'])
 </script>
@@ -39,7 +38,7 @@ const items = ref(['Home', 'Search', 'Profile'])
 </template>
 
 <script>
-import { createStyleSheet } from '@thelacanians/vue-native-runtime'
+import { ref, createStyleSheet } from '@thelacanians/vue-native-runtime'
 
 const styles = createStyleSheet({
   container: {
