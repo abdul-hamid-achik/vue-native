@@ -2,6 +2,17 @@
 
 Build native iOS, Android, and macOS apps with Vue 3. Write Vue components, render real native views — no WebView, no compromise.
 
+<p align="center">
+  <img src="assets/ios-simulator-counter.png" alt="The counter example running as a native iOS app in the iPhone Simulator: a heading, a text input, a live count and two styled buttons, all rendered by UIKit from Vue components" width="280">
+</p>
+
+<p align="center">
+  The <code>counter</code> example running in the iPhone Simulator. Every element on
+  that screen is a real UIKit view — <code>UILabel</code>, <code>UITextField</code>,
+  <code>UIButton</code> — driven by Vue components over the native bridge. There is
+  no WebView and no DOM anywhere in it.
+</p>
+
 📖 Full documentation: [docs/src](./docs/src/README.md) (VuePress site -- run `cd docs && bun run dev` to browse it locally).
 
 ## Features
