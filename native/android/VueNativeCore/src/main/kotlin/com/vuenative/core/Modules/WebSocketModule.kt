@@ -11,6 +11,44 @@ import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 
 /**
+ * Default [WebSocket.Factory] for [WebSocketModule].
+ *
+ * Resolves `HttpModule.client()` per connection so certificate pins configured
+ * AFTER module construction still apply, and rebuilds the read-timeout-free
+ * client only when the underlying pinned client identity changes. `newBuilder()`
+ * shares the source client's connection pool and dispatcher, so this is cheap.
+ *
+ * The previous default built its own `OkHttpClient` with no pinner at all, which
+ * silently bypassed any pins the host had configured — a MITM on a pinned host
+ * was still accepted for WebSocket traffic.
+ *
+ * This factory never shuts down the shared client: other modules own it.
+ */
+internal object PinnedWebSocketFactory : WebSocket.Factory {
+    private val lock = Any()
+    private var cached: OkHttpClient? = null
+    private var cachedSource: OkHttpClient? = null
+
+    internal fun client(): OkHttpClient = synchronized(lock) {
+        val source = HttpModule.client()
+        val existing = cached
+        if (existing != null && cachedSource === source) {
+            existing
+        } else {
+            val built = source.newBuilder()
+                .readTimeout(0, TimeUnit.MILLISECONDS)
+                .build()
+            cached = built
+            cachedSource = source
+            built
+        }
+    }
+
+    override fun newWebSocket(request: Request, listener: WebSocketListener): WebSocket =
+        client().newWebSocket(request, listener)
+}
+
+/**
  * Native module for WebSocket connections using OkHttp.
  *
  * Supports multiple simultaneous connections keyed by connection ID.
@@ -29,11 +67,7 @@ import okhttp3.WebSocketListener
 class WebSocketModule internal constructor(
     private val webSocketFactory: WebSocket.Factory,
 ) : NativeModule {
-    constructor() : this(
-        OkHttpClient.Builder()
-            .readTimeout(0, TimeUnit.MILLISECONDS)
-            .build(),
-    )
+    constructor() : this(PinnedWebSocketFactory)
 
     override val moduleName = "WebSocket"
 

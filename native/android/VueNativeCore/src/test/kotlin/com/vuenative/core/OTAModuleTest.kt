@@ -45,6 +45,7 @@ class OTAModuleTest {
         prefs = OTAModule.preferences(context)
         prefs.edit().clear().commit()
         OTAModule.bundleDirectory(context).deleteRecursively()
+        OTAModule.resetPublisherKeyForTests()
         bridge = NativeBridge(context)
         module = OTAModule().also { it.initialize(context, bridge) }
     }
@@ -52,6 +53,7 @@ class OTAModuleTest {
     @After
     fun tearDown() {
         module.destroy()
+        OTAModule.resetPublisherKeyForTests()
         prefs.edit().clear().commit()
         OTAModule.bundleDirectory(context).deleteRecursively()
     }
@@ -168,6 +170,10 @@ class OTAModuleTest {
 
     @Test
     fun localHttpManifestDownloadIntegrityApplyAndRollback() {
+        // Publisher authentication is mandatory now, so this end-to-end fixture
+        // signs both bundles with a natively configured key.
+        val keyPair = generateEcKeyPair()
+        withPublisherKey(keyPair)
         LocalHttpServer().use { server ->
             val firstSource = "globalThis.__otaVersion = 1;".toByteArray()
             val firstHash = OTAModule.sha256(firstSource)
@@ -190,7 +196,7 @@ class OTAModuleTest {
             assertNull(
                 invokeAsync(
                     "downloadUpdate",
-                    listOf("${server.baseUrl}/bundle-1.js", firstHash, "1.0.0"),
+                    listOf("${server.baseUrl}/bundle-1.js", firstHash, "1.0.0", sign(firstSource, keyPair)),
                 ).error,
             )
             assertNull(invoke("verifyBundle").error)
@@ -211,7 +217,7 @@ class OTAModuleTest {
             assertNull(
                 invokeAsync(
                     "downloadUpdate",
-                    listOf("${server.baseUrl}/bundle-2.js", secondHash, "2.0.0"),
+                    listOf("${server.baseUrl}/bundle-2.js", secondHash, "2.0.0", sign(secondSource, keyPair)),
                 ).error,
             )
             assertNull(invoke("applyUpdate").error)
@@ -242,27 +248,66 @@ class OTAModuleTest {
     // -------------------------------------------------------------------------
 
     @Test
-    fun setVerifyKeyRejectsMalformedKey() {
-        val result = invoke("setVerifyKey", listOf("!!!not-base64-der!!!"))
-        assertTrue(result.error?.contains("Invalid ECDSA verify key") == true)
+    fun setVerifyKeyFromJavaScriptIsRejectedAndInstallsNoKey() {
+        val keyPair = generateEcKeyPair()
+
+        // A perfectly valid SPKI key is still refused: a key settable by the code
+        // it authenticates is not a trust anchor.
+        val valid = invoke("setVerifyKey", listOf(exportPublicKey(keyPair)))
+        assertNull(valid.result)
+        assertEquals("setVerifyKey is not permitted from JavaScript; configure the OTA publisher key natively " +
+            "(Info.plist VueNativeOTAVerifyKey on iOS, AndroidManifest meta-data " +
+            "com.vuenative.ota.verifyKey on Android, or the host-side configurePublisherKey API)", valid.error)
+
+        val malformed = invoke("setVerifyKey", listOf("!!!not-base64-der!!!"))
+        assertNull(malformed.result)
+        assertEquals(valid.error, malformed.error)
+
+        // The rejected call must not have installed anything, so verification
+        // still fails closed even for a bundle the "attacker" signed itself.
+        LocalHttpServer().use { server ->
+            val source = "globalThis.__attacker = true;".toByteArray()
+            server.respond("/attacker.js", source)
+            val result = invokeAsync(
+                "downloadUpdate",
+                listOf("${server.baseUrl}/attacker.js", OTAModule.sha256(source), "1.0.0", sign(source, keyPair)),
+            )
+            assertEquals(
+                "OTA update rejected: no publisher verification key is configured natively; " +
+                    "refusing to install an unauthenticated bundle",
+                result.error,
+            )
+        }
     }
 
     @Test
-    fun setVerifyKeyAcceptsValidEcPublicKey() {
+    fun hostConfiguredPublisherKeyIsHonoured() {
         val keyPair = generateEcKeyPair()
-        val publicKeyBase64 = Base64.encodeToString(keyPair.public.encoded, Base64.DEFAULT)
+        assertNull(OTAModule.configurePublisherKey(exportPublicKey(keyPair)))
+        assertTrue(OTAModule.configurePublisherKey("!!!not-base64!!!") != null)
+        assertTrue(OTAModule.configurePublisherKey(exportPublicKey(keyPair)) == null)
 
-        val result = invoke("setVerifyKey", listOf(publicKeyBase64))
+        // Re-initialize so the module picks up the host-configured key, exactly
+        // as it would at app startup.
+        module.destroy()
+        module = OTAModule().also { it.initialize(context, bridge) }
 
-        assertNull(result.error)
-        @Suppress("UNCHECKED_CAST")
-        assertEquals(true, (result.result as Map<String, Any>)["configured"])
+        LocalHttpServer().use { server ->
+            val source = "globalThis.__hostSigned = true;".toByteArray()
+            server.respond("/host.js", source)
+            val result = invokeAsync(
+                "downloadUpdate",
+                listOf("${server.baseUrl}/host.js", OTAModule.sha256(source), "1.0.0", sign(source, keyPair)),
+            )
+            assertNull(result.error)
+            assertEquals("1.0.0", prefs.getString(OTAModule.KEY_PENDING_VERSION, null))
+        }
     }
 
     @Test
     fun downloadUpdateAcceptsValidEcdsaSignature() {
         val keyPair = generateEcKeyPair()
-        assertNull(invoke("setVerifyKey", listOf(exportPublicKey(keyPair))).error)
+        withPublisherKey(keyPair)
 
         LocalHttpServer().use { server ->
             val source = "globalThis.__signed = true;".toByteArray()
@@ -284,7 +329,7 @@ class OTAModuleTest {
     @Test
     fun downloadUpdateRejectsForgedSignature() {
         val keyPair = generateEcKeyPair()
-        assertNull(invoke("setVerifyKey", listOf(exportPublicKey(keyPair))).error)
+        withPublisherKey(keyPair)
 
         LocalHttpServer().use { server ->
             val source = "globalThis.__real = true;".toByteArray()
@@ -306,9 +351,27 @@ class OTAModuleTest {
     }
 
     @Test
+    fun downloadUpdateRejectsSignatureFromWrongKey() {
+        withPublisherKey(generateEcKeyPair())
+        val attackerKey = generateEcKeyPair()
+
+        LocalHttpServer().use { server ->
+            val source = "globalThis.__bundle = 1;".toByteArray()
+            server.respond("/wrongkey.js", source)
+
+            val result = invokeAsync(
+                "downloadUpdate",
+                listOf("${server.baseUrl}/wrongkey.js", OTAModule.sha256(source), "1.0.0", sign(source, attackerKey)),
+            )
+
+            assertTrue(result.error?.contains("signature verification failed") == true)
+            assertNull(prefs.getString(OTAModule.KEY_PENDING_BUNDLE_PATH, null))
+        }
+    }
+
+    @Test
     fun downloadUpdateRejectsMissingSignatureWhenKeyConfigured() {
-        val keyPair = generateEcKeyPair()
-        assertNull(invoke("setVerifyKey", listOf(exportPublicKey(keyPair))).error)
+        withPublisherKey(generateEcKeyPair())
 
         LocalHttpServer().use { server ->
             val source = "globalThis.__unsigned = true;".toByteArray()
@@ -326,9 +389,9 @@ class OTAModuleTest {
     }
 
     @Test
-    fun downloadUpdateWithoutKeySkipsPublisherAuthentication() {
-        // No verify key configured: a download with no signature must still
-        // succeed on hash integrity alone (publisher auth is opt-in).
+    fun downloadUpdateFailsClosedWithoutNativePublisherKey() {
+        // No publisher key configured anywhere. Integrity alone must NOT be
+        // enough: attacker JS can compute a matching SHA-256 for its own bundle.
         LocalHttpServer().use { server ->
             val source = "globalThis.__noKey = true;".toByteArray()
             val hash = OTAModule.sha256(source)
@@ -339,9 +402,113 @@ class OTAModuleTest {
                 listOf("${server.baseUrl}/nokey.js", hash, "1.0.0"),
             )
 
-            assertNull(result.error)
-            assertEquals("1.0.0", prefs.getString(OTAModule.KEY_PENDING_VERSION, null))
+            assertEquals(
+                "OTA update rejected: no publisher verification key is configured natively; " +
+                    "refusing to install an unauthenticated bundle",
+                result.error,
+            )
+            assertNull(prefs.getString(OTAModule.KEY_PENDING_BUNDLE_PATH, null))
+            assertFalse(File(OTAModule.bundleDirectory(context), "bundle-$hash.js").exists())
         }
+    }
+
+    // -------------------------------------------------------------------------
+    // Anti-downgrade
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun compareVersionsOrdersDottedNumerics() {
+        assertEquals(-1, OTAModule.compareVersions("1.0.0", "1.0.1"))
+        assertEquals(1, OTAModule.compareVersions("1.0.1", "1.0.0"))
+        assertEquals(0, OTAModule.compareVersions("1.0.0", "1.0.0"))
+        // Numeric, not lexical, per segment.
+        assertEquals(1, OTAModule.compareVersions("1.10.0", "1.9.0"))
+        assertEquals(-1, OTAModule.compareVersions("2.0.0", "10.0.0"))
+        // A missing segment counts as zero.
+        assertEquals(0, OTAModule.compareVersions("2.0", "2.0.0"))
+        assertEquals(1, OTAModule.compareVersions("2.0.1", "2.0"))
+        // Non-numeric segments compare lexically.
+        assertEquals(-1, OTAModule.compareVersions("v1", "v2"))
+        assertEquals(1, OTAModule.compareVersions("v2", "v1"))
+        assertEquals(0, OTAModule.compareVersions("v1", "v1"))
+    }
+
+    @Test
+    fun isStrictlyNewerTreatsEmbeddedAsOldest() {
+        assertTrue(OTAModule.isStrictlyNewer("0.0.1", null))
+        assertTrue(OTAModule.isStrictlyNewer("0.0.1", ""))
+        assertTrue(OTAModule.isStrictlyNewer("1.0.1", "1.0.0"))
+        assertFalse(OTAModule.isStrictlyNewer("1.0.0", "1.0.0"))
+        assertFalse(OTAModule.isStrictlyNewer("0.9.0", "1.0.0"))
+    }
+
+    @Test
+    fun applyUpdateRejectsDowngradeToAnOlderBundle() {
+        stageBundle("globalThis.__v = 2;", "2.0.0")
+        assertNull(invoke("applyUpdate").error)
+        assertEquals("2.0.0", prefs.getString(OTAModule.KEY_CURRENT_VERSION, null))
+
+        stageBundle("globalThis.__v = 1;", "1.0.0")
+        val downgrade = invoke("applyUpdate")
+        assertNull(downgrade.result)
+        assertEquals(
+            "OTA update rejected: version '1.0.0' is not newer than the installed version '2.0.0'",
+            downgrade.error,
+        )
+        // The installed version must be untouched.
+        assertEquals("2.0.0", prefs.getString(OTAModule.KEY_CURRENT_VERSION, null))
+
+        // An equal version is not "strictly greater" either.
+        stageBundle("globalThis.__v = 2;", "2.0.0")
+        val same = invoke("applyUpdate")
+        assertNull(same.result)
+        assertEquals(
+            "OTA update rejected: version '2.0.0' is not newer than the installed version '2.0.0'",
+            same.error,
+        )
+    }
+
+    @Test
+    fun downloadUpdateRejectsDowngradeBeforeAnyNetworkRequest() {
+        stageBundle("globalThis.__v = 3;", "3.0.0")
+        assertNull(invoke("applyUpdate").error)
+
+        // A syntactically valid loopback URL and hash: only the version can
+        // reject this, and it must do so without opening a connection.
+        val result = invokeAsync(
+            "downloadUpdate",
+            listOf("http://127.0.0.1:1/bundle.js", "a".repeat(64), "2.9.9"),
+        )
+        assertNull(result.result)
+        assertEquals(
+            "OTA update rejected: version '2.9.9' is not newer than the installed version '3.0.0'",
+            result.error,
+        )
+        assertNull(prefs.getString(OTAModule.KEY_PENDING_BUNDLE_PATH, null))
+    }
+
+    @Test
+    fun rollbackIsNotVersionGated() {
+        stageBundle("globalThis.__v = 1;", "1.0.0")
+        assertNull(invoke("applyUpdate").error)
+        stageBundle("globalThis.__v = 2;", "2.0.0")
+        assertNull(invoke("applyUpdate").error)
+        assertEquals("2.0.0", prefs.getString(OTAModule.KEY_CURRENT_VERSION, null))
+
+        // Rolling back to an OLDER version must still work — that is its purpose.
+        assertNull(invoke("rollback").error)
+        assertEquals("1.0.0", prefs.getString(OTAModule.KEY_CURRENT_VERSION, null))
+    }
+
+    /**
+     * Configure the publisher key the way a host app would (programmatically or
+     * via manifest meta-data), then rebuild the module so it resolves the key at
+     * `initialize` exactly as it does at app startup.
+     */
+    private fun withPublisherKey(keyPair: KeyPair) {
+        assertNull(OTAModule.configurePublisherKey(exportPublicKey(keyPair)))
+        module.destroy()
+        module = OTAModule().also { it.initialize(context, bridge) }
     }
 
     private fun generateEcKeyPair(): KeyPair {
@@ -350,7 +517,7 @@ class OTAModuleTest {
         return generator.generateKeyPair()
     }
 
-    /** Export the public key as base64 DER (X.509/SPKI), matching setVerifyKey. */
+    /** Export the public key as base64 DER (X.509/SPKI), matching the native key format. */
     private fun exportPublicKey(keyPair: KeyPair): String =
         Base64.encodeToString(keyPair.public.encoded, Base64.DEFAULT)
 

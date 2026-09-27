@@ -11,6 +11,7 @@ import androidx.test.core.app.ApplicationProvider
 import java.security.KeyPairGenerator
 import java.security.spec.ECGenParameterSpec
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -116,7 +117,7 @@ class ModuleContractParityTest {
     }
 
     @Test
-    fun otaRecognizesSetVerifyKeyPublisherAuthMethod() {
+    fun otaRecognizesSetVerifyKeyButRefusesToInstallAJsSuppliedKey() {
         val module = OTAModule().also { it.initialize(context, bridge) }
 
         val keyPair = KeyPairGenerator.getInstance("EC").apply {
@@ -124,15 +125,24 @@ class ModuleContractParityTest {
         }.generateKeyPair()
         val publicKeyBase64 = Base64.encodeToString(keyPair.public.encoded, Base64.DEFAULT)
 
-        var result: Any? = null
-        var resultError: String? = "not_called"
+        var result: Any? = "not_called"
+        var resultError: String? = null
         module.invoke("setVerifyKey", listOf(publicKeyBase64), bridge) { value, error ->
             result = value
             resultError = error
         }
 
-        assertNull(resultError)
-        assertEquals(true, (result as Map<*, *>)["configured"])
+        // The method must still be *recognised* — an app on an older runtime
+        // bundle should get an actionable migration error, not "Unknown method".
+        // But it must never install a key: the publisher key has to come from
+        // native configuration, otherwise the code being authenticated can
+        // choose its own authenticator.
+        assertNull(result)
+        assertTrue(
+            "expected the setVerifyKey migration error, got: $resultError",
+            resultError?.startsWith("setVerifyKey is not permitted from JavaScript") == true
+        )
+        assertNotEquals("Unknown method: setVerifyKey", resultError)
 
         module.destroy()
     }

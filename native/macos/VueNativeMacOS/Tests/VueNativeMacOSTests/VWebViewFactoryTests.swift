@@ -69,9 +69,14 @@ final class VWebViewFactoryTests: XCTestCase {
             received.fulfill()
         }
 
-        webView.loadHTMLString(
-            "<script>window.webkit.messageHandlers.vueNative.postMessage('hello')</script>",
-            baseURL: nil
+        // Load through the factory's `source` prop rather than calling
+        // `loadHTMLString` on the web view directly. That is the supported path,
+        // and it is what records the inline-HTML origin in the allowlist — since
+        // P1-4 a message from an origin the app never declared is dropped.
+        factory.updateProp(
+            view: webView,
+            key: "source",
+            value: ["html": "<script>window.webkit.messageHandlers.vueNative.postMessage('hello')</script>"]
         )
         await fulfillment(of: [received], timeout: 5)
         XCTAssertEqual((receivedPayload as? [String: String])?["data"], "hello")

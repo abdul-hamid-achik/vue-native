@@ -2,6 +2,7 @@ package com.vuenative.core
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.content.pm.PackageManager
 import android.util.Base64
 import android.util.Log
 import java.io.File
@@ -46,6 +47,132 @@ class OTAModule : NativeModule {
         internal const val KEY_PENDING_BUNDLE_HASH = "vue_native_ota_pending_bundle_hash"
 
         private val SHA256_PATTERN = Regex("^[a-fA-F0-9]{64}$")
+
+        /**
+         * AndroidManifest `<meta-data>` key holding the base64 DER (X.509/SPKI)
+         * ECDSA P-256 publisher key.
+         *
+         * The publisher key MUST come from native configuration. It used to be
+         * settable from JavaScript via a `setVerifyKey` method and was never
+         * persisted natively, which meant JS was by construction the only party
+         * that could set it — there was no trust anchor at all. Any code that ran
+         * once in the JS context could install its own key, sign its own bundle,
+         * and have the ECDSA check pass.
+         */
+        internal const val META_DATA_PUBLISHER_KEY = "com.vuenative.ota.verifyKey"
+
+        /** Migration error returned to any JavaScript caller of `setVerifyKey`. */
+        internal const val SET_VERIFY_KEY_REJECTION =
+            "setVerifyKey is not permitted from JavaScript; configure the OTA publisher key natively " +
+                "(Info.plist VueNativeOTAVerifyKey on iOS, AndroidManifest meta-data " +
+                "com.vuenative.ota.verifyKey on Android, or the host-side configurePublisherKey API)"
+
+        /**
+         * Returned when no publisher key is configured. Verification FAILS
+         * CLOSED: the previous behaviour accepted a hash-only bundle, which means
+         * any party able to serve bytes with a matching SHA-256 — including
+         * attacker JS that computed the hash itself — could install code.
+         */
+        internal const val MISSING_PUBLISHER_KEY =
+            "OTA update rejected: no publisher verification key is configured natively; " +
+                "refusing to install an unauthenticated bundle"
+
+        @Volatile
+        private var hostPublisherKeyBase64: String? = null
+
+        @Volatile
+        private var decodedHostKey: PublicKey? = null
+
+        /**
+         * Host-only entry point for apps that prefer code over manifest
+         * meta-data. Not reachable from JavaScript.
+         *
+         * @return an error message when the key material is invalid, else null.
+         */
+        fun configurePublisherKey(base64SPKI: String): String? = try {
+            val der = Base64.decode(base64SPKI, Base64.DEFAULT)
+            val key = KeyFactory.getInstance("EC").generatePublic(X509EncodedKeySpec(der))
+            decodedHostKey = key
+            hostPublisherKeyBase64 = base64SPKI
+            null
+        } catch (error: Exception) {
+            "Invalid ECDSA publisher key: ${error.message}"
+        }
+
+        /** Test seam for the host-only configuration path. */
+        internal fun resetPublisherKeyForTests() {
+            hostPublisherKeyBase64 = null
+            decodedHostKey = null
+        }
+
+        /** Read the publisher key from the host app's manifest meta-data. */
+        internal fun manifestPublisherKey(context: Context): String? = try {
+            val info = context.applicationContext.packageManager.getApplicationInfo(
+                context.applicationContext.packageName,
+                PackageManager.GET_META_DATA
+            )
+            info.metaData?.getString(META_DATA_PUBLISHER_KEY)
+        } catch (error: PackageManager.NameNotFoundException) {
+            null
+        } catch (error: RuntimeException) {
+            null
+        }
+
+        /**
+         * Compare two dotted version strings.
+         *
+         * Segments that are all ASCII digits on both sides compare numerically
+         * (so `1.10.0` > `1.9.0`); any other pair compares lexically. A missing
+         * segment counts as `0` numerically and as the empty string lexically.
+         *
+         * Semver pre-release ordering is deliberately NOT implemented:
+         * `1.0.0-a` and `1.0.0-b` compare lexically as whole segments.
+         */
+        internal fun compareVersions(lhs: String, rhs: String): Int {
+            val left = lhs.split(".")
+            val right = rhs.split(".")
+            for (index in 0 until maxOf(left.size, right.size)) {
+                // A missing segment counts as "0", not as the empty string, so
+                // `2.0.1` is correctly newer than `2.0` and `2.0` equals `2.0.0`.
+                val leftSegment = left.getOrElse(index) { "0" }
+                val rightSegment = right.getOrElse(index) { "0" }
+                val leftDigits = isNumericSegment(leftSegment)
+                val rightDigits = isNumericSegment(rightSegment)
+                if (leftDigits && rightDigits) {
+                    val leftValue = leftSegment.toLongOrNull() ?: 0L
+                    val rightValue = rightSegment.toLongOrNull() ?: 0L
+                    if (leftValue != rightValue) {
+                        return leftValue.compareTo(rightValue).coerceIn(-1, 1)
+                    }
+                } else {
+                    val leftText = if (leftDigits) "" else leftSegment
+                    val rightText = if (rightDigits) "" else rightSegment
+                    if (leftText != rightText) {
+                        // `String.compareTo` returns a character delta, so
+                        // normalise to the sign the contract promises.
+                        return leftText.compareTo(rightText).coerceIn(-1, 1)
+                    }
+                }
+            }
+            return 0
+        }
+
+        /**
+         * `true` when [candidate] is strictly newer than the installed version.
+         * A null/blank current version means the app is running its embedded
+         * bundle, so any candidate is newer.
+         */
+        internal fun isStrictlyNewer(candidate: String, current: String?): Boolean {
+            if (current.isNullOrBlank()) return true
+            return compareVersions(candidate, current) > 0
+        }
+
+        /** Rejection message for a downgrade attempt. */
+        internal fun downgradeMessage(candidate: String, current: String) =
+            "OTA update rejected: version '$candidate' is not newer than the installed version '$current'"
+
+        private fun isNumericSegment(segment: String) =
+            segment.isNotEmpty() && segment.all { it in '0'..'9' }
 
         internal fun preferences(context: Context): SharedPreferences =
             context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -149,9 +276,11 @@ class OTAModule : NativeModule {
     private fun httpClient(): OkHttpClient = HttpModule.client()
     @Volatile private var destroyed = false
 
-    // Optional ECDSA P-256 publisher key. When set, every downloaded bundle must
-    // carry a valid SHA256withECDSA signature or it is rejected. Volatile because
-    // it is written from the invoke thread and read on the OkHttp callback thread.
+    // ECDSA P-256 publisher key, resolved exclusively from native configuration:
+    // `OTAModule.configurePublisherKey(...)` from host code, or the
+    // `com.vuenative.ota.verifyKey` AndroidManifest meta-data. When null,
+    // verification FAILS CLOSED — see [verifySignature]. Volatile because it is
+    // written on the initialize thread and read on the OkHttp callback thread.
     @Volatile private var verifyKey: PublicKey? = null
 
     override fun initialize(context: Context, bridge: NativeBridge) {
@@ -159,6 +288,37 @@ class OTAModule : NativeModule {
         bridgeRef = bridge
         prefs = preferences(context)
         destroyed = false
+        verifyKey = resolvePublisherKey(context)
+    }
+
+    /**
+     * Resolve the publisher key from native configuration only.
+     *
+     * A programmatically configured host key wins over the manifest so a host
+     * that derives its key at runtime (e.g. from a build constant) is not
+     * overridden by a stale manifest entry. Invalid manifest material is logged
+     * and treated as "no key", which fails closed rather than silently disabling
+     * publisher authentication.
+     */
+    private fun resolvePublisherKey(context: Context): PublicKey? {
+        decodedHostKey?.let { return it }
+        val base64 = hostPublisherKeyBase64 ?: manifestPublisherKey(context) ?: return null
+        return try {
+            val der = Base64.decode(base64, Base64.DEFAULT)
+            KeyFactory.getInstance("EC").generatePublic(X509EncodedKeySpec(der))
+        } catch (error: Exception) {
+            Log.e(TAG, "Configured OTA publisher key could not be decoded; updates will be rejected", error)
+            null
+        }
+    }
+
+    /**
+     * The version of the bundle that will actually run at next launch, or null
+     * when the app is on its embedded bundle.
+     */
+    private fun installedVersion(context: Context, prefs: SharedPreferences): String? {
+        if (activeBundleFile(context) == null) return null
+        return prefs.getString(KEY_CURRENT_VERSION, null)?.trim()?.takeIf { it.isNotEmpty() }
     }
 
     override fun invoke(
@@ -182,17 +342,12 @@ class OTAModule : NativeModule {
                 checkForUpdate(serverUrl, preferences, callback)
             }
             "setVerifyKey" -> {
-                val base64Key = args.getOrNull(0)?.toString()
-                if (base64Key.isNullOrEmpty()) {
-                    callback(null, "setVerifyKey requires a base64 SPKI public key")
-                    return
-                }
-                val error = configureVerifyKey(base64Key)
-                if (error != null) {
-                    callback(null, error)
-                } else {
-                    callback(mapOf("configured" to true), null)
-                }
+                // Retained in the dispatch table purely so callers get an
+                // actionable migration error instead of "Unknown method". It
+                // never installs a key: a key settable by the code it
+                // authenticates is not a trust anchor.
+                Log.w(TAG, SET_VERIFY_KEY_REJECTION)
+                callback(null, SET_VERIFY_KEY_REJECTION)
             }
             "downloadUpdate" -> {
                 val url = args.getOrNull(0)?.toString()
@@ -322,6 +477,15 @@ class OTAModule : NativeModule {
             return
         }
 
+        // Anti-downgrade, checked before spending any bandwidth. Without this an
+        // attacker who can serve bytes could reinstall an older, vulnerable
+        // bundle whose signature is still valid.
+        val installed = installedVersion(context, prefs)
+        if (installed != null && !isStrictlyNewer(normalizedVersion, installed)) {
+            callback(null, downgradeMessage(normalizedVersion, installed))
+            return
+        }
+
         cleanupPendingBundle(prefs, removeFile = true)
         val request = Request.Builder().url(downloadUrl).build()
         httpClient().newCall(request).enqueue(object : Callback {
@@ -434,39 +598,25 @@ class OTAModule : NativeModule {
     }
 
     /**
-     * Decode a base64 DER (X.509/SPKI) ECDSA P-256 public key and store it as
-     * the publisher verification key. Returns an error message on failure (and
-     * clears any previously configured key) or null on success.
-     */
-    private fun configureVerifyKey(base64Key: String): String? {
-        return try {
-            val der = Base64.decode(base64Key, Base64.DEFAULT)
-            val spec = X509EncodedKeySpec(der)
-            val keyFactory = KeyFactory.getInstance("EC")
-            verifyKey = keyFactory.generatePublic(spec)
-            null
-        } catch (error: Exception) {
-            verifyKey = null
-            "Invalid ECDSA verify key: ${error.message}"
-        }
-    }
-
-    /**
      * Verify the downloaded bundle's publisher signature.
      *
-     * - No verify key configured: integrity hash is the only guarantee; log a
-     *   warning that publisher authentication is disabled and accept the bundle.
-     * - Verify key configured but signature missing/empty: reject.
-     * - Verify key configured and signature present: verify SHA256withECDSA over
-     *   the bundle bytes; reject on any failure or mismatch.
+     * Publisher authentication is MANDATORY:
+     * - No publisher key configured natively: FAIL CLOSED and reject. The old
+     *   behaviour logged a warning and accepted the bundle on its hash alone,
+     *   which only proves the bytes were not corrupted in transit — not who
+     *   produced them. Attacker JS can compute a matching SHA-256 for its own
+     *   bundle trivially.
+     * - Key configured but signature missing/empty: reject.
+     * - Key configured and signature present: verify SHA256withECDSA over the
+     *   bundle bytes; reject on any failure or mismatch.
      *
      * Returns an error message on rejection, or null when the bundle is accepted.
      */
     private fun verifySignature(bundleFile: File, signature: String?): String? {
         val publicKey = verifyKey
         if (publicKey == null) {
-            Log.w(TAG, "OTA publisher authentication disabled: no verify key configured")
-            return null
+            Log.e(TAG, MISSING_PUBLISHER_KEY)
+            return MISSING_PUBLISHER_KEY
         }
         if (signature.isNullOrEmpty()) {
             return "signature required when a verify key is configured"
@@ -507,6 +657,15 @@ class OTAModule : NativeModule {
         val (pending, error) = pendingBundle(prefs)
         if (pending == null) {
             callback(null, error)
+            return
+        }
+
+        // Authoritative anti-downgrade gate. `downloadUpdate` checks the same
+        // rule, but the pending state lives in SharedPreferences and could have
+        // been staged by an older build or written directly, so re-check here.
+        val installed = installedVersion(context, prefs)
+        if (installed != null && !isStrictlyNewer(pending.version, installed)) {
+            callback(null, downgradeMessage(pending.version, installed))
             return
         }
 

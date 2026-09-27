@@ -3,18 +3,36 @@ package com.vuenative.core
 import android.content.Context
 import android.util.Base64
 import java.io.File
+import java.io.FileOutputStream
 import java.io.IOException
+import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 
+/**
+ * Native module providing file system access.
+ *
+ * ## Path confinement
+ *
+ * Every path argument is resolved through [FileSystemSandbox] before any I/O.
+ * The JavaScript bundle is untrusted in the worst case — a malicious OTA update
+ * or a compromised dependency gets to call these methods with full app-UID
+ * privileges — so an arbitrary absolute path from JS must never reach [File].
+ * Resolution canonicalises the path, resolves symlinks, denies the reserved OTA
+ * directory, and rejects anything outside the app's own storage roots.
+ * Rejections are surfaced as errors; there is no silent fallback to the raw path.
+ */
 class FileSystemModule : NativeModule {
     override val moduleName = "FileSystem"
     private var appContext: Context? = null
 
+    // Shares the pin-aware client so configured certificate pins apply to
+    // downloads too. Never own or shut down that client's dispatcher.
     private fun httpClient(): OkHttpClient = HttpModule.client()
 
     override fun initialize(context: Context, bridge: NativeBridge) {
-        appContext = context
+        appContext = context.applicationContext
     }
 
     override fun invoke(
@@ -23,6 +41,11 @@ class FileSystemModule : NativeModule {
         bridge: NativeBridge,
         callback: (Any?, String?) -> Unit
     ) {
+        val ctx = appContext
+        if (ctx == null) {
+            callback(null, "FileSystem not initialized")
+            return
+        }
         when (method) {
             "readFile" -> {
                 val path = args.getOrNull(0)?.toString()
@@ -30,10 +53,10 @@ class FileSystemModule : NativeModule {
                         callback(null, "readFile: missing path")
                         return
                     }
+                val file = resolve(ctx, path, callback) ?: return
                 val encoding = args.getOrNull(1)?.toString() ?: "utf8"
-                val file = File(path)
                 if (!file.exists()) {
-                    callback(null, "readFile: file not found at $path")
+                    callback(null, "readFile: file not found at ${file.path}")
                     return
                 }
                 try {
@@ -58,9 +81,9 @@ class FileSystemModule : NativeModule {
                         callback(null, "writeFile: missing content")
                         return
                     }
+                val file = resolve(ctx, path, callback) ?: return
                 val encoding = args.getOrNull(2)?.toString() ?: "utf8"
                 try {
-                    val file = File(path)
                     file.parentFile?.mkdirs()
                     if (encoding == "base64") {
                         val bytes = Base64.decode(content, Base64.DEFAULT)
@@ -79,9 +102,13 @@ class FileSystemModule : NativeModule {
                         callback(null, "deleteFile: missing path")
                         return
                     }
-                val file = File(path)
+                val file = resolve(ctx, path, callback) ?: return
+                if (FileSystemSandbox.isSandboxRoot(ctx, file)) {
+                    callback(null, "FileSystem: refusing to delete a sandbox root directory")
+                    return
+                }
                 if (!file.exists()) {
-                    callback(null, "deleteFile: file not found at $path")
+                    callback(null, "deleteFile: file not found at ${file.path}")
                     return
                 }
                 try {
@@ -101,7 +128,8 @@ class FileSystemModule : NativeModule {
                         callback(null, "exists: missing path")
                         return
                     }
-                callback(File(path).exists(), null)
+                val file = resolve(ctx, path, callback) ?: return
+                callback(file.exists(), null)
             }
             "listDirectory" -> {
                 val path = args.getOrNull(0)?.toString()
@@ -109,9 +137,9 @@ class FileSystemModule : NativeModule {
                         callback(null, "listDirectory: missing path")
                         return
                     }
-                val dir = File(path)
+                val dir = resolve(ctx, path, callback) ?: return
                 if (!dir.exists() || !dir.isDirectory) {
-                    callback(null, "listDirectory: not a directory at $path")
+                    callback(null, "listDirectory: not a directory at ${dir.path}")
                     return
                 }
                 callback(dir.list()?.toList() ?: emptyList<String>(), null)
@@ -127,60 +155,39 @@ class FileSystemModule : NativeModule {
                         callback(null, "downloadFile: missing destPath")
                         return
                     }
-                val request = Request.Builder().url(url).build()
-                httpClient().newCall(request).enqueue(object : okhttp3.Callback {
-                    override fun onFailure(call: okhttp3.Call, e: IOException) {
-                        callback(null, "downloadFile: ${e.message}")
-                    }
-                    override fun onResponse(call: okhttp3.Call, response: okhttp3.Response) {
-                        try {
-                            val bytes = response.body?.bytes()
-                                ?: run {
-                                    callback(null, "downloadFile: empty response")
-                                    return
-                                }
-                            val file = File(destPath)
-                            file.parentFile?.mkdirs()
-                            file.writeBytes(bytes)
-                            callback(destPath, null)
-                        } catch (e: Exception) {
-                            callback(null, "downloadFile: ${e.message}")
-                        }
-                    }
-                })
+                val httpUrl = url.toHttpUrlOrNull()
+                // `toHttpUrlOrNull` only accepts http/https, so a null result
+                // covers `file:`, `javascript:`, `content:` and plain garbage.
+                // One clear rejection for all of them: no scheme allowlisting by
+                // trial and error, and no silent fallback.
+                if (httpUrl == null || !FileSystemSandbox.isSecureDownload(httpUrl)) {
+                    callback(null, "downloadFile: refusing non-HTTPS URL: $url")
+                    return
+                }
+                val destination = resolve(ctx, destPath, callback) ?: return
+                downloadFile(httpUrl, destination, callback)
             }
-            "getDocumentsPath" -> {
-                val ctx = appContext
-                    ?: run {
-                        callback(null, "FileSystem not initialized")
-                        return
-                    }
-                callback(ctx.filesDir.absolutePath, null)
-            }
-            "getCachesPath" -> {
-                val ctx = appContext
-                    ?: run {
-                        callback(null, "FileSystem not initialized")
-                        return
-                    }
-                callback(ctx.cacheDir.absolutePath, null)
-            }
+            "getDocumentsPath" -> callback(ctx.filesDir.absolutePath, null)
+            "getCachesPath" -> callback(ctx.cacheDir.absolutePath, null)
             "stat" -> {
                 val path = args.getOrNull(0)?.toString()
                     ?: run {
                         callback(null, "stat: missing path")
                         return
                     }
-                val file = File(path)
+                val file = resolve(ctx, path, callback) ?: return
                 if (!file.exists()) {
-                    callback(null, "stat: file not found at $path")
+                    callback(null, "stat: file not found at ${file.path}")
                     return
                 }
-                callback(mapOf(
-                    "size" to file.length(),
-                    "isDirectory" to file.isDirectory,
-                    "modified" to file.lastModified()
-                ), null)
+                callback(
+                    mapOf(
+                        "size" to file.length(),
+                        "isDirectory" to file.isDirectory,
+                        "modified" to file.lastModified()
+                    ),
+                    null
+                )
             }
             "mkdir" -> {
                 val path = args.getOrNull(0)?.toString()
@@ -188,11 +195,11 @@ class FileSystemModule : NativeModule {
                         callback(null, "mkdir: missing path")
                         return
                     }
-                val dir = File(path)
+                val dir = resolve(ctx, path, callback) ?: return
                 if (dir.mkdirs() || dir.exists()) {
                     callback(null, null)
                 } else {
-                    callback(null, "mkdir: could not create directory at $path")
+                    callback(null, "mkdir: could not create directory at ${dir.path}")
                 }
             }
             "copyFile" -> {
@@ -206,9 +213,9 @@ class FileSystemModule : NativeModule {
                         callback(null, "copyFile: missing destPath")
                         return
                     }
+                val src = resolve(ctx, srcPath, callback) ?: return
+                val dest = resolve(ctx, destPath, callback) ?: return
                 try {
-                    val src = File(srcPath)
-                    val dest = File(destPath)
                     dest.parentFile?.mkdirs()
                     src.copyTo(dest, overwrite = true)
                     callback(null, null)
@@ -227,9 +234,9 @@ class FileSystemModule : NativeModule {
                         callback(null, "moveFile: missing destPath")
                         return
                     }
+                val src = resolve(ctx, srcPath, callback) ?: return
+                val dest = resolve(ctx, destPath, callback) ?: return
                 try {
-                    val src = File(srcPath)
-                    val dest = File(destPath)
                     dest.parentFile?.mkdirs()
                     src.copyTo(dest, overwrite = true)
                     src.delete()
@@ -240,5 +247,96 @@ class FileSystemModule : NativeModule {
             }
             else -> callback(null, "Unknown method: $method")
         }
+    }
+
+    /**
+     * Resolve a JavaScript-supplied path through the sandbox, reporting the
+     * rejection reason to JS when it is not allowed.
+     */
+    private fun resolve(
+        context: Context,
+        path: String,
+        callback: (Any?, String?) -> Unit
+    ): File? = try {
+        FileSystemSandbox.resolve(context, path)
+    } catch (e: IllegalArgumentException) {
+        callback(null, e.message)
+        null
+    }
+
+    /**
+     * Stream a remote body to disk under a byte cap.
+     *
+     * Written incrementally to a `.part` file rather than buffered in memory with
+     * `response.body.bytes()`, and aborted as soon as it exceeds
+     * [FileSystemSandbox.maxDownloadBytes].
+     */
+    private fun downloadFile(
+        url: HttpUrl,
+        destination: File,
+        callback: (Any?, String?) -> Unit
+    ) {
+        val limit = FileSystemSandbox.maxDownloadBytes
+        val request = Request.Builder().url(url).build()
+        httpClient().newCall(request).enqueue(object : okhttp3.Callback {
+            override fun onFailure(call: okhttp3.Call, e: IOException) {
+                callback(null, "downloadFile: ${e.message}")
+            }
+
+            override fun onResponse(call: okhttp3.Call, response: okhttp3.Response) {
+                response.use {
+                    if (!response.isSuccessful) {
+                        callback(null, "downloadFile: server returned HTTP ${response.code}")
+                        return
+                    }
+                    val body = response.body
+                    if (body == null) {
+                        callback(null, "downloadFile: empty response")
+                        return
+                    }
+                    // Reject up front when the server declares an oversized body;
+                    // the streaming loop below catches a server that lies.
+                    if (body.contentLength() > limit) {
+                        callback(null, "downloadFile: response exceeds the $limit byte limit")
+                        return
+                    }
+                    destination.parentFile?.mkdirs()
+                    val partial = File(destination.parentFile, destination.name + ".part")
+                    try {
+                        var written = 0L
+                        body.byteStream().use { input ->
+                            FileOutputStream(partial).use { output ->
+                                val buffer = ByteArray(DOWNLOAD_BUFFER_SIZE)
+                                while (true) {
+                                    val read = input.read(buffer)
+                                    if (read == -1) break
+                                    written += read
+                                    if (written > limit) throw DownloadTooLargeException(limit)
+                                    output.write(buffer, 0, read)
+                                }
+                            }
+                        }
+                        if (destination.exists()) destination.delete()
+                        if (!partial.renameTo(destination)) {
+                            partial.copyTo(destination, overwrite = true)
+                            partial.delete()
+                        }
+                        callback(destination.absolutePath, null)
+                    } catch (e: DownloadTooLargeException) {
+                        partial.delete()
+                        callback(null, "downloadFile: response exceeds the ${e.limit} byte limit")
+                    } catch (e: Exception) {
+                        partial.delete()
+                        callback(null, "downloadFile: ${e.message}")
+                    }
+                }
+            }
+        })
+    }
+
+    private class DownloadTooLargeException(val limit: Long) : IOException("download too large")
+
+    private companion object {
+        const val DOWNLOAD_BUFFER_SIZE = 8192
     }
 }

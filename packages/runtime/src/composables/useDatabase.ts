@@ -41,10 +41,29 @@ function releaseInstance(name: string): boolean {
 }
 
 /**
+ * Database names are interpolated into a file path on the native side, so the
+ * allowed character set is deliberately narrow. The native modules enforce the
+ * same rule; validating here only makes the failure immediate and legible
+ * instead of surfacing as a rejected bridge call.
+ */
+const DATABASE_NAME_PATTERN = /^[A-Za-z0-9_-]{1,64}$/
+
+function assertValidDatabaseName(name: string): void {
+  if (!DATABASE_NAME_PATTERN.test(name)) {
+    throw new Error(
+      `Invalid database name '${name}'; expected 1-64 characters of A-Z, a-z, 0-9, underscore, or hyphen`,
+    )
+  }
+}
+
+/**
  * Reactive SQLite database access. Opens a named database on first use
  * and auto-closes on component unmount.
  *
  * @param name - Database name (defaults to "default"). Stored as `<name>.sqlite`.
+ *   Must match `^[A-Za-z0-9_-]{1,64}$` — names containing path separators or
+ *   traversal segments are rejected, because the name becomes part of a file
+ *   path on the native side.
  *
  * @example
  * const db = useDatabase('myapp')
@@ -65,6 +84,8 @@ function releaseInstance(name: string): boolean {
  * })
  */
 export function useDatabase(name: string = 'default') {
+  assertValidDatabaseName(name)
+
   const isOpen = ref(false)
   let opened = false
   let openPromise: Promise<void> | null = null

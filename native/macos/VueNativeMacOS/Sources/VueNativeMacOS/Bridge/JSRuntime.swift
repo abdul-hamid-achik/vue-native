@@ -1,5 +1,6 @@
 import JavaScriptCore
 import Foundation
+import VueNativeShared
 
 // MARK: - Bundle Source
 
@@ -284,7 +285,11 @@ public final class JSRuntime: @unchecked Sendable {
     }
 
     private func loadDevServerBundle(url: URL, completion: ((Bool) -> Void)?) {
-        let task = URLSession.shared.dataTask(with: url) { [weak self] data, response, error in
+        // The bytes returned here go straight into `evaluateScript`, i.e. they
+        // are executed as code, so this fetch must honour any certificate pins
+        // the host configured. `URLSession.shared` has no pinning delegate; the
+        // iOS equivalent already routes through the pinning-aware session.
+        let task = CertificatePinning.shared.requestSession.dataTask(with: url) { [weak self] data, response, error in
             guard let self = self else {
                 completion?(false)
                 return

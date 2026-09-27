@@ -1,6 +1,33 @@
 import Foundation
 import SQLite3
 
+/// Validates the database name that both Apple platforms interpolate into a
+/// `<name>.sqlite` file path.
+///
+/// Public so the iOS package — which carries its own copy of `DatabaseModule` —
+/// enforces exactly the same rule and returns exactly the same message. Keeping
+/// this in one place is what stops the two copies from drifting apart on a
+/// security check.
+public enum DatabaseNameValidator {
+
+    /// Names are restricted to a character set that cannot express a path
+    /// separator, a traversal segment, or a NUL. Without this, `open("../../evil")`
+    /// produced `<documents>/databases/../../evil.sqlite`, and combined with the
+    /// arbitrary SQL accepted by `execute`/`query` an `ATTACH DATABASE` could
+    /// reach any writable path in the app sandbox.
+    public static let pattern = "^[A-Za-z0-9_-]{1,64}$"
+
+    /// Rejection message. Identical on Android.
+    public static func invalidNameError(_ name: String) -> String {
+        "Invalid database name '\(name)'; expected 1-64 characters of A-Z, a-z, 0-9, underscore, or hyphen"
+    }
+
+    /// `nil` when `name` is usable, otherwise the rejection message.
+    public static func validationError(name: String) -> String? {
+        name.range(of: pattern, options: .regularExpression) == nil ? invalidNameError(name) : nil
+    }
+}
+
 /// Native module for SQLite database access.
 /// Uses the sqlite3 C API (built into both iOS and macOS, no external dependencies).
 /// Supports multiple named databases, parameterized queries, and transactions.
@@ -37,12 +64,15 @@ public final class DatabaseModule: NativeModule {
         databaseDirectoryOverride = nil
     }
 
-    init(databaseDirectory: URL) {
+    /// Directory override. Public because the iOS package adapts this class
+    /// through a facade and its tests need to point databases at a scratch
+    /// directory instead of the real documents folder.
+    public init(databaseDirectory: URL) {
         databaseDirectoryOverride = databaseDirectory
     }
 
-    /// Internal lifecycle diagnostic used by package tests.
-    var openDatabaseCount: Int { databases.count }
+    /// Lifecycle diagnostic used by package tests and the iOS facade's tests.
+    public var openDatabaseCount: Int { databases.count }
 
     public func invoke(method: String, args: [Any], callback: @escaping (Any?, String?) -> Void) {
         switch method {
@@ -74,6 +104,10 @@ public final class DatabaseModule: NativeModule {
     // MARK: - Open / Close
 
     private func open(name: String, callback: @escaping (Any?, String?) -> Void) {
+        if let validationError = DatabaseNameValidator.validationError(name: name) {
+            callback(nil, validationError)
+            return
+        }
         if databases[name] != nil {
             callback(true, nil)
             return
@@ -85,8 +119,7 @@ public final class DatabaseModule: NativeModule {
         let flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX
         let result = sqlite3_open_v2(path, &db, flags, nil)
         if result == SQLITE_OK, let db = db {
-            // Enable WAL mode for better concurrent read/write performance
-            sqlite3_exec(db, "PRAGMA journal_mode=WAL", nil, nil, nil)
+            Self.harden(db)
             databases[name] = db
             callback(true, nil)
         } else {
@@ -97,12 +130,29 @@ public final class DatabaseModule: NativeModule {
     }
 
     private func close(name: String, callback: @escaping (Any?, String?) -> Void) {
+        if let validationError = DatabaseNameValidator.validationError(name: name) {
+            callback(nil, validationError)
+            return
+        }
         guard let db = databases.removeValue(forKey: name) else {
             callback(nil, nil)
             return
         }
         sqlite3_close(db)
         callback(nil, nil)
+    }
+
+    /// Post-open hardening applied to every handle.
+    ///
+    /// `execute` and `query` accept arbitrary SQL by design (they are an ORM
+    /// substrate, not a query builder), so `ATTACH DATABASE '<path>'` would
+    /// otherwise give JavaScript a second write-anywhere primitive that does not
+    /// go through the validated database name. Capping attached databases at
+    /// zero removes it. Parameter binding is already safe (`bindParams` uses
+    /// `SQLITE_TRANSIENT`), so no statement-level filtering is needed.
+    private static func harden(_ db: OpaquePointer) {
+        sqlite3_exec(db, "PRAGMA journal_mode=WAL", nil, nil, nil)
+        sqlite3_limit(db, SQLITE_LIMIT_ATTACHED, 0)
     }
 
     // MARK: - Execute (INSERT, UPDATE, DELETE, CREATE TABLE, etc.)
@@ -246,13 +296,19 @@ public final class DatabaseModule: NativeModule {
     private func getOrOpen(name: String, callback: @escaping (Any?, String?) -> Void) -> OpaquePointer? {
         if let db = databases[name] { return db }
 
+        // Validate before the name is interpolated into a file path.
+        if let validationError = DatabaseNameValidator.validationError(name: name) {
+            callback(nil, validationError)
+            return nil
+        }
+
         // Auto-open
         let path = dbDirectory.appendingPathComponent("\(name).sqlite").path
         var db: OpaquePointer?
         let flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX
         let result = sqlite3_open_v2(path, &db, flags, nil)
         if result == SQLITE_OK, let db = db {
-            sqlite3_exec(db, "PRAGMA journal_mode=WAL", nil, nil, nil)
+            Self.harden(db)
             databases[name] = db
             return db
         } else {

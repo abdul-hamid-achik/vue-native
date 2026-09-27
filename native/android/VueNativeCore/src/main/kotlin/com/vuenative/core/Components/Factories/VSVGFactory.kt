@@ -13,8 +13,9 @@ import android.view.View
 import android.view.ViewGroup
 import com.caverock.androidsvg.SVG
 import com.caverock.androidsvg.SVGParseException
-import java.net.HttpURLConnection
-import java.net.URL
+import java.util.concurrent.TimeUnit
+import okhttp3.OkHttpClient
+import okhttp3.Request
 import org.json.JSONObject
 
 /**
@@ -106,6 +107,36 @@ class VSVGFactory : NativeComponentFactory {
 
     private val uiHandler = Handler(Looper.getMainLooper())
 
+    private val clientLock = Any()
+    private var cachedClient: OkHttpClient? = null
+    private var cachedClientSource: OkHttpClient? = null
+
+    /**
+     * Pin-aware client for remote SVG fetches.
+     *
+     * This must go through `HttpModule.client()`. The raw `HttpURLConnection` it
+     * replaced bypassed the configured certificate pinner entirely, so an
+     * attacker-positioned network could serve arbitrary SVG to a host that had
+     * pinned its CDN. The client is rebuilt only when the underlying pinned
+     * client identity changes (i.e. when pins are configured after startup);
+     * `newBuilder()` shares the source's connection pool and dispatcher.
+     */
+    private fun svgClient(): OkHttpClient = synchronized(clientLock) {
+        val source = HttpModule.client()
+        val existing = cachedClient
+        if (existing != null && cachedClientSource === source) {
+            existing
+        } else {
+            val built = source.newBuilder()
+                .connectTimeout(CONNECT_TIMEOUT_MS.toLong(), TimeUnit.MILLISECONDS)
+                .readTimeout(READ_TIMEOUT_MS.toLong(), TimeUnit.MILLISECONDS)
+                .build()
+            cachedClient = built
+            cachedClientSource = source
+            built
+        }
+    }
+
     override fun createView(context: Context): View {
         return SVGView(context).apply {
             layoutParams = ViewGroup.LayoutParams(
@@ -196,13 +227,18 @@ class VSVGFactory : NativeComponentFactory {
             var parsed: SVG? = null
             var errorMessage: String? = null
             try {
-                val connection = URL(uri).openConnection() as HttpURLConnection
-                connection.connectTimeout = CONNECT_TIMEOUT_MS
-                connection.readTimeout = READ_TIMEOUT_MS
-                try {
-                    connection.inputStream.use { parsed = SVG.getFromInputStream(it) }
-                } finally {
-                    connection.disconnect()
+                val request = Request.Builder().url(uri).build()
+                svgClient().newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) {
+                        errorMessage = "Failed to load SVG uri: $uri (HTTP ${response.code})"
+                    } else {
+                        val stream = response.body?.byteStream()
+                        if (stream == null) {
+                            errorMessage = "Failed to load SVG uri: $uri (empty response)"
+                        } else {
+                            stream.use { parsed = SVG.getFromInputStream(it) }
+                        }
+                    }
                 }
             } catch (e: Exception) {
                 errorMessage = e.message ?: "Failed to load SVG uri: $uri"

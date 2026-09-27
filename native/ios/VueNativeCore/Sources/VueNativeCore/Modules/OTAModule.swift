@@ -22,6 +22,78 @@ final class OTAModule: NativeModule {
     static let pendingVersionKey = "VueNative.OTA.pendingVersion"
     static let pendingBundleHashKey = "VueNative.OTA.pendingBundleHash"
 
+    /// Info.plist key holding the base64 DER (X.509 SubjectPublicKeyInfo) ECDSA
+    /// P-256 publisher key.
+    ///
+    /// The publisher key MUST come from native configuration. It used to be
+    /// settable from JavaScript via a `setVerifyKey` method and was never
+    /// persisted natively, which meant JS was by construction the only party
+    /// that could set it — there was no trust anchor at all. Any code that ran
+    /// once in the JS context could install its own key, sign its own bundle,
+    /// and have the ECDSA check pass.
+    static let publisherKeyInfoPlistKey = "VueNativeOTAVerifyKey"
+
+    /// Migration error returned to any JavaScript caller of `setVerifyKey`.
+    /// Identical on Android so a single message documents both platforms.
+    static let setVerifyKeyRejectionMessage =
+        "setVerifyKey is not permitted from JavaScript; configure the OTA publisher key natively "
+        + "(Info.plist VueNativeOTAVerifyKey on iOS, AndroidManifest meta-data "
+        + "com.vuenative.ota.verifyKey on Android, or the host-side configurePublisherKey API)"
+
+    /// Returned when no publisher key is configured. Verification FAILS CLOSED
+    /// here: the previous behaviour accepted a hash-only bundle, which means any
+    /// party able to serve bytes with a matching SHA-256 — including attacker JS
+    /// that computed the hash itself — could install code.
+    static let missingPublisherKeyMessage =
+        "OTA update rejected: no publisher verification key is configured natively; "
+        + "refusing to install an unauthenticated bundle"
+
+    /// Error raised by the host-only key configuration entry point.
+    enum PublisherKeyError: LocalizedError {
+        case invalidBase64
+        case invalidKey(String)
+
+        var errorDescription: String? {
+            switch self {
+            case .invalidBase64:
+                return "OTA publisher key is not valid base64"
+            case .invalidKey(let detail):
+                return "OTA publisher key is not a valid ECDSA P-256 SPKI key: \(detail)"
+            }
+        }
+    }
+
+    private static let hostKeyLock = NSLock()
+    private static var storedHostKeyBase64: String?
+
+    /// Host-only entry point for apps that prefer code over Info.plist.
+    /// Not reachable from JavaScript.
+    static func configurePublisherKey(base64SPKI: String) throws {
+        guard let der = Data(base64Encoded: base64SPKI) else {
+            throw PublisherKeyError.invalidBase64
+        }
+        do {
+            _ = try P256.Signing.PublicKey(derRepresentation: der)
+        } catch {
+            throw PublisherKeyError.invalidKey(error.localizedDescription)
+        }
+        hostKeyLock.withLock { storedHostKeyBase64 = base64SPKI }
+    }
+
+    /// Test seam for the host-only configuration path.
+    static func resetPublisherKeyForTesting() {
+        hostKeyLock.withLock { storedHostKeyBase64 = nil }
+    }
+
+    /// Resolve the configured publisher key material: host-configured key first,
+    /// then Info.plist.
+    static func publisherKeyBase64(bundle: Bundle = .main) -> String? {
+        if let configured = hostKeyLock.withLock({ storedHostKeyBase64 }) {
+            return configured
+        }
+        return bundle.object(forInfoDictionaryKey: publisherKeyInfoPlistKey) as? String
+    }
+
     private weak var bridge: NativeBridge?
     private let defaults: UserDefaults
     private let fileManager: FileManager
@@ -30,27 +102,56 @@ final class OTAModule: NativeModule {
     private var downloadSession: URLSession?
     private var destroyed = false
 
-    /// Optional ECDSA P-256 public key used to authenticate the publisher of a
-    /// downloaded bundle. Accessed from both the invoke thread and the download
-    /// session's delegate queue, so it is guarded by `keyLock`.
+    /// ECDSA P-256 public key used to authenticate the publisher of a downloaded
+    /// bundle. Resolved exclusively from native configuration — an explicit init
+    /// parameter, `configurePublisherKey`, or Info.plist. Accessed from both the
+    /// invoke thread and the download session's delegate queue, so the decoded
+    /// key and its cache slot are guarded by `keyLock`.
     private let keyLock = NSLock()
-    private var storedVerifyKey: P256.Signing.PublicKey?
+    private let injectedKeyBase64: String?
+    private var cachedKeySource: String?
+    private var cachedVerifyKey: P256.Signing.PublicKey?
 
+    /// The resolved publisher key, or `nil` when the host configured none.
+    /// A `nil` result makes verification FAIL CLOSED — see `verificationError`.
     private var verifyKey: P256.Signing.PublicKey? {
-        get { keyLock.withLock { storedVerifyKey } }
-        set { keyLock.withLock { storedVerifyKey = newValue } }
+        guard let source = injectedKeyBase64 ?? Self.publisherKeyBase64() else { return nil }
+        return keyLock.withLock {
+            if let cachedVerifyKey, cachedKeySource == source { return cachedVerifyKey }
+            guard let der = Data(base64Encoded: source),
+                  let key = try? P256.Signing.PublicKey(derRepresentation: der) else {
+                #if DEBUG
+                NSLog(
+                    "[VueNative OTA] Configured publisher key could not be decoded; "
+                    + "updates will be rejected until Info.plist '%@' is fixed",
+                    Self.publisherKeyInfoPlistKey
+                )
+                #endif
+                cachedKeySource = nil
+                cachedVerifyKey = nil
+                return nil
+            }
+            cachedKeySource = source
+            cachedVerifyKey = key
+            return key
+        }
     }
 
     init(
         bridge: NativeBridge,
         defaults: UserDefaults = .standard,
         fileManager: FileManager = .default,
-        bundleDirectory: URL? = nil
+        bundleDirectory: URL? = nil,
+        publisherKeyBase64: String? = nil
     ) {
         self.bridge = bridge
         self.defaults = defaults
         self.fileManager = fileManager
         self.bundleDirectory = bundleDirectory ?? Self.defaultBundleDirectory(fileManager: fileManager)
+        // An explicitly injected key wins over `configurePublisherKey` and
+        // Info.plist so tests and hosts that build the module directly are
+        // deterministic regardless of process-global state.
+        self.injectedKeyBase64 = publisherKeyBase64 ?? Self.publisherKeyBase64()
     }
 
     func invoke(method: String, args: [Any], callback: @escaping (Any?, String?) -> Void) {
@@ -82,11 +183,18 @@ final class OTAModule: NativeModule {
             )
 
         case "setVerifyKey":
-            guard let keyBase64 = args.first as? String else {
-                callback(nil, "setVerifyKey: missing base64 SPKI public key")
-                return
-            }
-            setVerifyKey(keyBase64, callback: callback)
+            // Retained in the dispatch table purely so callers get an actionable
+            // migration error instead of "Unknown method". It never installs a
+            // key: a key settable by the code it authenticates is not a trust
+            // anchor. The key must come from Info.plist or host Swift code.
+            #if DEBUG
+            NSLog(
+                "[VueNative OTA] Ignoring setVerifyKey from JavaScript. Configure the publisher key "
+                + "natively via Info.plist '%@' or OTAModule.configurePublisherKey(base64SPKI:).",
+                Self.publisherKeyInfoPlistKey
+            )
+            #endif
+            callback(nil, Self.setVerifyKeyRejectionMessage)
 
         case "verifyBundle":
             verifyBundle(callback: callback)
@@ -184,6 +292,15 @@ final class OTAModule: NativeModule {
             return
         }
 
+        // Anti-downgrade, checked before spending any bandwidth. Without this an
+        // attacker who can serve bytes could reinstall an older, vulnerable
+        // bundle whose signature is still valid.
+        if let installed = installedVersion(),
+           !Self.isStrictlyNewer(candidate: normalizedVersion, current: installed) {
+            callback(nil, Self.downgradeMessage(candidate: normalizedVersion, current: installed))
+            return
+        }
+
         cleanupPendingBundle(removeFile: true)
 
         let delegate = DownloadDelegate(bridge: bridge)
@@ -249,28 +366,18 @@ final class OTAModule: NativeModule {
 
     // MARK: - Publisher verification (ECDSA P-256)
 
-    /// Configure the ECDSA P-256 public key used to authenticate bundle publishers.
-    /// - Parameter base64SPKI: base64-encoded DER (X.509 SubjectPublicKeyInfo) key.
-    private func setVerifyKey(_ base64SPKI: String, callback: @escaping (Any?, String?) -> Void) {
-        guard let der = Data(base64Encoded: base64SPKI) else {
-            callback(nil, "setVerifyKey: invalid base64 encoding")
-            return
-        }
-        do {
-            verifyKey = try P256.Signing.PublicKey(derRepresentation: der)
-            callback(["configured": true], nil)
-        } catch {
-            callback(nil, "setVerifyKey: invalid P-256 SPKI public key: \(error.localizedDescription)")
-        }
-    }
-
-    /// Verify downloaded bundle bytes: SHA-256 integrity, then — when a verify
-    /// key is configured — the ECDSA P-256 (SHA-256, DER) publisher signature.
+    /// Verify downloaded bundle bytes: SHA-256 integrity, then the ECDSA P-256
+    /// (SHA-256, DER) publisher signature.
     ///
     /// CryptoKit's `isValidSignature(_:for:)` hashes the supplied data internally
     /// (SHA-256 for P-256), so the signature is verified against the raw bundle
     /// bytes, not a pre-computed digest. The signing side must likewise sign the
     /// raw bytes (`signature(for: data)`).
+    ///
+    /// Publisher authentication is MANDATORY. When the host has not configured a
+    /// key this returns ``missingPublisherKeyMessage`` instead of accepting the
+    /// bundle on its hash alone — integrity without authentication only proves
+    /// the bytes were not corrupted in transit, not who produced them.
     ///
     /// - Returns: `nil` when the bundle passes every check, or a rejection message.
     func verificationError(for data: Data, expectedHash: String, signature: String?) -> String? {
@@ -282,21 +389,85 @@ final class OTAModule: NativeModule {
             return "Bundle integrity check failed. Expected: \(expectedHash.lowercased()), got: \(actualHash)"
         }
 
-        if let verifyKey = self.verifyKey {
-            guard let signature, !signature.isEmpty else {
-                return "OTA update rejected: signature required when a verify key is configured"
-            }
-            guard let signatureData = Data(base64Encoded: signature),
-                  let ecdsaSignature = try? P256.Signing.ECDSASignature(derRepresentation: signatureData),
-                  verifyKey.isValidSignature(ecdsaSignature, for: data) else {
-                return "OTA update rejected: signature verification failed"
-            }
-        } else {
-            #if DEBUG
-            NSLog("[VueNative OTA] Warning: no verify key configured; publisher authentication is disabled (hash-only integrity check)")
-            #endif
+        guard let verifyKey = self.verifyKey else {
+            return Self.missingPublisherKeyMessage
+        }
+        guard let signature, !signature.isEmpty else {
+            return "OTA update rejected: signature required when a verify key is configured"
+        }
+        guard let signatureData = Data(base64Encoded: signature),
+              let ecdsaSignature = try? P256.Signing.ECDSASignature(derRepresentation: signatureData),
+              verifyKey.isValidSignature(ecdsaSignature, for: data) else {
+            return "OTA update rejected: signature verification failed"
         }
         return nil
+    }
+
+    // MARK: - Version ordering (anti-downgrade)
+
+    /// Compare two dotted version strings.
+    ///
+    /// Segments that are all digits on both sides compare numerically (so
+    /// `1.10.0` > `1.9.0`); any other pair compares lexically. A missing segment
+    /// counts as `0` numerically and as the empty string lexically.
+    ///
+    /// Semver pre-release ordering is deliberately NOT implemented: `1.0.0-a`
+    /// and `1.0.0-b` compare lexically as whole segments. Versions used for OTA
+    /// gating should be plain dotted numerics.
+    static func compareVersions(_ lhs: String, _ rhs: String) -> Int {
+        let left = lhs.split(separator: ".", omittingEmptySubsequences: false).map(String.init)
+        let right = rhs.split(separator: ".", omittingEmptySubsequences: false).map(String.init)
+        for index in 0..<max(left.count, right.count) {
+            // A missing segment counts as "0", not as the empty string, so
+            // `2.0.1` is correctly newer than `2.0` and `2.0` equals `2.0.0`.
+            let leftSegment = index < left.count ? left[index] : "0"
+            let rightSegment = index < right.count ? right[index] : "0"
+            let leftDigits = Self.isNumericSegment(leftSegment)
+            let rightDigits = Self.isNumericSegment(rightSegment)
+            if leftDigits && rightDigits {
+                let leftValue = Int(leftSegment) ?? 0
+                let rightValue = Int(rightSegment) ?? 0
+                if leftValue != rightValue { return leftValue < rightValue ? -1 : 1 }
+            } else {
+                let leftText = leftDigits ? "" : leftSegment
+                let rightText = rightDigits ? "" : rightSegment
+                if leftText != rightText { return leftText < rightText ? -1 : 1 }
+            }
+        }
+        return 0
+    }
+
+    /// `true` when `candidate` is strictly newer than the installed version.
+    /// A `nil` current version means the app is running its embedded bundle, so
+    /// any candidate is newer.
+    static func isStrictlyNewer(candidate: String, current: String?) -> Bool {
+        guard let current, !current.isEmpty else { return true }
+        return compareVersions(candidate, current) > 0
+    }
+
+    /// ASCII-only digit test. `Character.isNumber` also accepts non-ASCII digits
+    /// that `Int(_:)` cannot parse, which would silently collapse to 0.
+    private static func isNumericSegment(_ segment: String) -> Bool {
+        !segment.isEmpty && segment.allSatisfy { $0.isASCII && $0.isNumber }
+    }
+
+    /// Rejection message for a downgrade attempt.
+    static func downgradeMessage(candidate: String, current: String) -> String {
+        "OTA update rejected: version '\(candidate)' is not newer than the installed version '\(current)'"
+    }
+
+    /// The version of the bundle that will actually run at next launch, or `nil`
+    /// when the app is on its embedded bundle.
+    private func installedVersion() -> String? {
+        guard Self.activeBundleURL(
+            defaults: defaults,
+            fileManager: fileManager,
+            bundleDirectory: bundleDirectory
+        ) != nil else { return nil }
+        let version = defaults.string(forKey: Self.currentVersionKey)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let version, !version.isEmpty else { return nil }
+        return version
     }
 
     private func verifyBundle(callback: @escaping (Any?, String?) -> Void) {
@@ -321,6 +492,15 @@ final class OTAModule: NativeModule {
             pending = bundle
         case .failure(let error):
             callback(nil, error.localizedDescription)
+            return
+        }
+
+        // Authoritative anti-downgrade gate. `downloadUpdate` checks the same
+        // rule, but the pending state lives in `UserDefaults` and could have
+        // been staged by an older build or written directly, so re-check here.
+        if let installed = installedVersion(),
+           !Self.isStrictlyNewer(candidate: pending.version, current: installed) {
+            callback(nil, Self.downgradeMessage(candidate: pending.version, current: installed))
             return
         }
 

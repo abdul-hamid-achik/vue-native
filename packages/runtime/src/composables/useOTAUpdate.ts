@@ -15,8 +15,9 @@ export interface UpdateInfo {
   /** Release notes for the update. */
   releaseNotes: string
   /**
-   * Optional base64 ECDSA (P-256, SHA-256, DER) signature over the bundle bytes.
-   * Verified against the configured `verifyKey` when one is set.
+   * Base64 ECDSA (P-256, SHA-256, DER) signature over the bundle bytes.
+   * Required: the native module verifies it against the publisher key
+   * configured natively and rejects the update when it is missing or invalid.
    */
   signature?: string
 }
@@ -46,14 +47,35 @@ function getErrorMessage(error: unknown): string {
 /**
  * Composable for managing Over-The-Air (OTA) JS bundle updates.
  *
- * Downloads versioned JS bundles from a server, verifies integrity via
- * SHA-256, and applies them on the next production app launch. When a
- * `verifyKey` is configured, the bundle's ECDSA (P-256) signature is also
- * verified, authenticating the publisher (not just integrity).
+ * Downloads versioned JS bundles from a server, verifies integrity via SHA-256
+ * AND authenticity via an ECDSA (P-256) publisher signature, and applies them on
+ * the next production app launch.
+ *
+ * ## Publisher key configuration (BREAKING CHANGE)
+ *
+ * The publisher key can no longer be supplied from JavaScript. It used to be set
+ * with an `OTA.setVerifyKey` call, but a key settable by the very code it
+ * authenticates is not a trust anchor: anything that executed once in the JS
+ * context — a compromised dependency, a message injected through `VWebView` —
+ * could install its own key, sign its own bundle, and pass verification.
+ *
+ * Configure it natively instead:
+ * - **iOS:** `VueNativeOTAVerifyKey` in `Info.plist` (base64 DER / SPKI), or
+ *   `OTAModule.configurePublisherKey(base64SPKI:)` from host Swift.
+ * - **Android:** `<meta-data android:name="com.vuenative.ota.verifyKey" .../>` in
+ *   `AndroidManifest.xml`, or `OTAModule.configurePublisherKey(base64)` from host
+ *   Kotlin.
+ *
+ * With no key configured, updates FAIL CLOSED and are rejected — the old
+ * hash-only fallback is gone, because a matching SHA-256 only proves the bytes
+ * were not corrupted, not who produced them.
+ *
+ * Native also rejects any bundle whose version is not strictly greater than the
+ * installed one, so a signed-but-older bundle cannot be reinstalled.
  *
  * @param serverUrl - URL of the update server endpoint
- * @param options.verifyKey - Optional base64 DER (SPKI) ECDSA P-256 public key.
- *   When set, updates must carry a valid `signature` or they are rejected.
+ * @param options.verifyKey - **Deprecated and ignored.** See above; the key must
+ *   come from native configuration. Supplying it logs a warning in development.
  *
  * @example
  * ```ts
@@ -61,19 +83,29 @@ function getErrorMessage(error: unknown): string {
  *   checkForUpdate, downloadUpdate, applyUpdate, rollback,
  *   currentVersion, availableVersion, downloadProgress,
  *   isChecking, isDownloading, error,
- * } = useOTAUpdate('https://updates.myapp.com/check', {
- *   verifyKey: 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE...',
- * })
+ * } = useOTAUpdate('https://updates.myapp.com/check')
  *
  * await checkForUpdate()
  * if (availableVersion.value) {
  *   await downloadUpdate()
  *   await applyUpdate()
- *   // Restart app to load new bundle
+ *   // Restart app to load the new bundle
  * }
  * ```
  */
-export function useOTAUpdate(serverUrl: string, options: { verifyKey?: string } = {}) {
+export function useOTAUpdate(
+  serverUrl: string,
+  options: {
+    /**
+     * @deprecated Ignored. The OTA publisher key must be configured natively
+     * (Info.plist `VueNativeOTAVerifyKey` on iOS, manifest meta-data
+     * `com.vuenative.ota.verifyKey` on Android). A key supplied from JavaScript
+     * is not a trust anchor, so `OTA.setVerifyKey` is rejected by the native
+     * modules.
+     */
+    verifyKey?: string
+  } = {},
+) {
   const currentVersion = ref<string>('embedded')
   const availableVersion = ref<string | null>(null)
   const downloadProgress = ref(0)
@@ -85,12 +117,15 @@ export function useOTAUpdate(serverUrl: string, options: { verifyKey?: string } 
   // Cached update info from last check
   let lastUpdateInfo: UpdateInfo | null = null
 
-  // Configure publisher verification on the native side when a key is provided.
-  // Best-effort: failure here is surfaced lazily when a download is verified.
+  // The key is no longer forwarded to native. Fail loudly rather than silently
+  // ignoring the option, so an app relying on the old behaviour learns that its
+  // updates are now being rejected for want of a natively configured key.
   if (options.verifyKey) {
-    NativeBridge.invokeNativeModule('OTA', 'setVerifyKey', [options.verifyKey]).catch((err: unknown) => {
-      if (__DEV__) console.warn('[vue-native] OTA.setVerifyKey failed:', err)
-    })
+    console.warn(
+      '[vue-native] useOTAUpdate: the `verifyKey` option is ignored. Configure the OTA publisher key '
+      + 'natively instead (Info.plist "VueNativeOTAVerifyKey" on iOS, AndroidManifest meta-data '
+      + '"com.vuenative.ota.verifyKey" on Android). Updates are rejected until one is configured.',
+    )
   }
 
   // Listen for download progress events

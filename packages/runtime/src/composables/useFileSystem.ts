@@ -7,6 +7,17 @@ import { NativeBridge } from '../bridge'
  * Paths should be absolute — use getDocumentsPath() or getCachesPath()
  * to obtain app-scoped directories.
  *
+ * ## Sandbox confinement (BREAKING CHANGE)
+ *
+ * Every path is confined natively to the app's own sandbox: the documents,
+ * caches, application-support and temporary directories. Paths are canonicalised
+ * and symlinks resolved before the check, so `../` segments and symlinked
+ * directories cannot be used to escape, and reserved framework directories (the
+ * OTA bundle store) are rejected outright. Anything outside the sandbox fails
+ * with a `path escapes the app sandbox` error — there is no silent fallback.
+ *
+ * A relative path is resolved against the documents directory.
+ *
  * @example
  * ```ts
  * const fs = useFileSystem()
@@ -66,6 +77,13 @@ export function useFileSystem() {
 
   /**
    * Download a file from a URL and save it to the destination path.
+   *
+   * The URL must be HTTPS unless the host app opted into insecure downloads
+   * natively; loopback hosts are always permitted for local development. The
+   * response is streamed to disk under a byte cap (25 MiB by default,
+   * host-configurable natively — never from JavaScript), so an oversized or
+   * misreported body is rejected rather than exhausting memory.
+   *
    * @returns The destination path on success
    */
   function downloadFile(url: string, destPath: string): Promise<string> {

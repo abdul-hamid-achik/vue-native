@@ -216,8 +216,25 @@ final class ModuleContractParityTest: XCTestCase {
 
     func testFileSystemExistsReportsShape() async {
         let module = FileSystemModule()
-        let result = await invoke(module, method: "exists", args: ["/definitely/not/here-\(UUID().uuidString)"])
+        // `exists` must be probed with an in-sandbox path: since P0-2 the module
+        // rejects anything outside the app sandbox instead of reporting `false`,
+        // so an out-of-sandbox probe no longer describes the result shape.
+        let inside = NSTemporaryDirectory() + "vn-parity-missing-\(UUID().uuidString).txt"
+        let result = await invoke(module, method: "exists", args: [inside])
         XCTAssertNil(result.error)
         XCTAssertEqual(result.result as? Bool, false)
+    }
+
+    func testFileSystemRejectsPathsOutsideTheSandbox() async {
+        let module = FileSystemModule()
+        let outside = "/definitely/not/here-\(UUID().uuidString)"
+
+        let exists = await invoke(module, method: "exists", args: [outside])
+        XCTAssertNil(exists.result)
+        XCTAssertEqual(exists.error, "FileSystem: path escapes the app sandbox: '\(outside)'")
+
+        let read = await invoke(module, method: "readFile", args: ["/etc/passwd"])
+        XCTAssertNil(read.result)
+        XCTAssertTrue(read.error?.contains("escapes the app sandbox") == true)
     }
 }

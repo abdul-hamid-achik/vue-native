@@ -72,6 +72,93 @@ final class DatabaseModuleTests: XCTestCase {
         XCTAssertEqual(module.openDatabaseCount, 0)
     }
 
+    // MARK: - Database name validation (P1-3)
+
+    func testInvalidDatabaseNamesAreRejectedBeforeTouchingTheFilesystem() {
+        let module = DatabaseModule(databaseDirectory: databaseDirectory)
+        defer { module.destroy() }
+
+        let rejected = ["../evil", "../../evil", "a/b", "", " ", "with space", "semi;colon", String(repeating: "a", count: 65)]
+        for name in rejected {
+            for method in ["open", "close", "execute", "query"] {
+                let args: [Any] = method == "execute" || method == "query"
+                    ? [name, "SELECT 1", []]
+                    : [name]
+                let response = invoke(module, method: method, args: args)
+                XCTAssertNil(response.result, "\(method) accepted invalid name '\(name)'")
+                XCTAssertEqual(
+                    response.error,
+                    DatabaseNameValidator.invalidNameError(name),
+                    "\(method) produced an unexpected error for '\(name)'"
+                )
+            }
+        }
+
+        let transaction = invoke(
+            module,
+            method: "executeTransaction",
+            args: ["../evil", [["sql": "SELECT 1", "params": []]]]
+        )
+        XCTAssertNil(transaction.result)
+        XCTAssertEqual(transaction.error, DatabaseNameValidator.invalidNameError("../evil"))
+
+        // Nothing escaped the configured database directory.
+        let escaped = databaseDirectory
+            .deletingLastPathComponent()
+            .appendingPathComponent("evil.sqlite")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: escaped.path))
+        XCTAssertEqual(module.openDatabaseCount, 0)
+    }
+
+    func testValidDatabaseNamesStillWorkEndToEnd() {
+        let module = DatabaseModule(databaseDirectory: databaseDirectory)
+        defer { module.destroy() }
+
+        for name in ["default", "my-app_1", "A9", String(repeating: "z", count: 64)] {
+            XCTAssertNil(invoke(module, method: "open", args: [name]).error, "open rejected '\(name)'")
+            let create = invoke(
+                module,
+                method: "execute",
+                args: [name, "CREATE TABLE IF NOT EXISTS items (id INTEGER PRIMARY KEY, label TEXT)", []]
+            )
+            XCTAssertNil(create.error, "create table failed for '\(name)': \(String(describing: create.error))")
+
+            let insert = invoke(
+                module,
+                method: "execute",
+                args: [name, "INSERT INTO items (label) VALUES (?)", ["alpha"]]
+            )
+            XCTAssertNil(insert.error)
+
+            let rows = invoke(module, method: "query", args: [name, "SELECT label FROM items", []])
+            XCTAssertEqual((rows.result as? [[String: Any]])?.first?["label"] as? String, "alpha")
+
+            XCTAssertTrue(
+                FileManager.default.fileExists(atPath: databaseDirectory.appendingPathComponent("\(name).sqlite").path),
+                "'\(name)' should be stored as <name>.sqlite inside the database directory"
+            )
+        }
+    }
+
+    func testAttachDatabaseIsRefusedSoSqlCannotReachAnotherPath() {
+        let module = DatabaseModule(databaseDirectory: databaseDirectory)
+        defer { module.destroy() }
+
+        XCTAssertNil(invoke(module, method: "open", args: ["guarded"]).error)
+
+        let target = databaseDirectory.appendingPathComponent("attached.sqlite").path
+        let attach = invoke(
+            module,
+            method: "execute",
+            args: ["guarded", "ATTACH DATABASE ? AS payload", [target]]
+        )
+        XCTAssertNotNil(attach.error, "ATTACH DATABASE must be refused when the attached limit is 0")
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: target),
+            "ATTACH DATABASE created a file outside the named database"
+        )
+    }
+
     private func invoke(
         _ module: DatabaseModule,
         method: String,

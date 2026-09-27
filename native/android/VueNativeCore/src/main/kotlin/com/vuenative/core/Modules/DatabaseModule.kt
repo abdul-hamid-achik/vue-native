@@ -12,6 +12,34 @@ class DatabaseModule : NativeModule {
     private val databases = mutableMapOf<String, SQLiteDatabase>()
     private val lock = Object()
 
+    /**
+     * Database names are interpolated into a file path, so they must be
+     * restricted to a character set that cannot express a path separator or a
+     * traversal segment. Without this, `open("../../evil")` produced
+     * `<filesDir>/databases/../../evil.sqlite`, and combined with the arbitrary
+     * SQL accepted by `execute`/`query` an `ATTACH DATABASE` could reach any
+     * writable path in the app sandbox.
+     *
+     * The Apple implementation additionally caps `SQLITE_LIMIT_ATTACHED` at 0;
+     * the Android framework `SQLiteDatabase` API exposes no equivalent limit, so
+     * name validation is the enforced control here.
+     */
+    private companion object {
+        val NAME_PATTERN = Regex("^[A-Za-z0-9_-]{1,64}$")
+
+        /** Kept identical to the Apple implementation so behaviour matches. */
+        fun invalidNameError(name: String) =
+            "Invalid database name '$name'; expected 1-64 characters of A-Z, a-z, 0-9, underscore, or hyphen"
+
+        fun validationError(name: String): String? =
+            if (NAME_PATTERN.matches(name)) null else invalidNameError(name)
+
+        /** Throws so the single `invoke` catch-all surfaces the reason verbatim. */
+        fun requireValidName(name: String) {
+            validationError(name)?.let { throw IllegalArgumentException(it) }
+        }
+    }
+
     override fun initialize(context: Context, bridge: NativeBridge) {
         this.context = context.applicationContext
     }
@@ -47,6 +75,9 @@ class DatabaseModule : NativeModule {
                     }
                     else -> callback(null, "DatabaseModule: unknown method '$method'")
                 }
+            } catch (e: IllegalArgumentException) {
+                // Name-validation rejection: report the reason, not a wrapper.
+                callback(null, e.message)
             } catch (e: Exception) {
                 callback(null, "DatabaseModule error: ${e.message}")
             }
@@ -63,6 +94,7 @@ class DatabaseModule : NativeModule {
     // -- Open / Close --
 
     private fun open(name: String, callback: (Any?, String?) -> Unit) {
+        requireValidName(name)
         if (databases.containsKey(name)) {
             callback(true, null)
             return
@@ -76,6 +108,7 @@ class DatabaseModule : NativeModule {
     }
 
     private fun close(name: String, callback: (Any?, String?) -> Unit) {
+        requireValidName(name)
         databases.remove(name)?.close()
         callback(null, null)
     }
@@ -170,6 +203,9 @@ class DatabaseModule : NativeModule {
     private fun getOrOpen(name: String): SQLiteDatabase? {
         databases[name]?.let { return it }
         val ctx = context ?: return null
+        // Validate BEFORE the name reaches the file path. Throws
+        // IllegalArgumentException, which `invoke` surfaces verbatim.
+        requireValidName(name)
         val dbDir = File(ctx.filesDir, "databases")
         if (!dbDir.exists()) dbDir.mkdirs()
         val dbPath = File(dbDir, "$name.sqlite").absolutePath
