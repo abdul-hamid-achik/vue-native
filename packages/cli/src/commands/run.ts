@@ -16,6 +16,7 @@ import {
   findIOSConfigDrift,
   formatGradleFailure,
   installAndroidBundle,
+  macosHostMissingHint,
   readAndroidApplicationId,
   resolveGradleWrapper,
 } from '../native-project.js'
@@ -662,33 +663,22 @@ async function runMacOS(
   const macosDir = join(cwd, 'macos')
 
   if (!existsSync(macosDir)) {
+    throw new ConfigError(macosHostMissingHint())
+  }
+
+  // Same contract as iOS: macos/project.yml is the committed source of truth
+  // and XcodeGen generates the (gitignored) .xcodeproj on demand.
+  const project = ensureXcodeProject(macosDir, { label: 'macos' })
+
+  if (!project) {
     throw new ConfigError(bundleOnlyHint(
-      'No macos/ directory found. To add macOS support, create an Xcode project in the macos/ directory.',
+      'macos/ exists but has neither an .xcodeproj/.xcworkspace nor a project.yml. '
+      + 'Add macos/project.yml (XcodeGen spec) or an Xcode project, then retry.',
     ))
   }
 
-  // Find Xcode project in macos/ directory
-  let xcodeProject: string | null = null
-  for (const ext of ['.xcworkspace', '.xcodeproj']) {
-    try {
-      const entries = readdirSync(macosDir)
-      const match = entries.find(e => e.endsWith(ext))
-      if (match) {
-        xcodeProject = join(macosDir, match)
-        break
-      }
-    } catch {}
-  }
-
-  if (!xcodeProject) {
-    throw new ConfigError(bundleOnlyHint(
-      'No Xcode project found in ./macos/. To add macOS support, create an Xcode project in the macos/ directory.',
-    ))
-  }
-
-  const isWorkspace = xcodeProject.endsWith('.xcworkspace')
-  const scheme = options.scheme || xcodeProject.split('/').pop()?.replace(/\.(xcworkspace|xcodeproj)$/, '') || 'App'
-  const projectFlag = isWorkspace ? '-workspace' : '-project'
+  const projectFlag = project.isWorkspace ? '-workspace' : '-project'
+  const scheme = options.scheme || project.path.split('/').pop()?.replace(/\.(xcworkspace|xcodeproj)$/, '') || 'App'
 
   console.log(pc.white(`  Building ${scheme} for macOS...`))
 
@@ -696,7 +686,7 @@ async function runMacOS(
   try {
     result = await runManagedProcess('xcodebuild', [
       projectFlag,
-      xcodeProject,
+      project.path,
       '-scheme',
       scheme,
       '-destination',

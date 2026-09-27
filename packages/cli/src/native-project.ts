@@ -7,7 +7,7 @@ import {
   readdirSync,
   statSync,
 } from 'node:fs'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { ConfigError, type ResolvedConfig } from './config.js'
 
 export interface XcodeProject {
@@ -152,36 +152,71 @@ export function bundleOnlyHint(detail: string): string {
 }
 
 /**
- * Return an Xcode project, generating the scaffolded project.yml with XcodeGen
- * when necessary.
+ * Explain a missing `macos/` host.
+ *
+ * `vue-native create` now scaffolds one, so this is only reached for projects
+ * created before the macOS host existed (or projects whose `macos/` was
+ * deleted). The old message told users to "create an Xcode project in the
+ * macos/ directory", which is six hand-written files and is why `run macos`
+ * and `build macos` were dead ends — name the actual files instead.
  */
-export function ensureXcodeProject(iosDir: string): XcodeProject | null {
-  const existing = findXcodeProject(iosDir)
+export function macosHostMissingHint(): string {
+  return bundleOnlyHint(
+    'No macos/ directory found. `vue-native create` scaffolds a macOS host '
+    + '(macos/project.yml, macos/Sources/Info.plist, macos/Sources/AppDelegate.swift, '
+    + 'macos/Sources/MainWindowController.swift, macos/Sources/main.swift, '
+    + 'macos/Sources/App.entitlements) and `vue-native run macos` turns that project.yml '
+    + 'into an .xcodeproj with XcodeGen. For a project created before the macOS host '
+    + 'existed, re-scaffold with `vue-native create` and copy macos/ across, then '
+    + 'install XcodeGen with `brew install xcodegen`.',
+  )
+}
+
+export interface EnsureXcodeProjectOptions {
+  /**
+   * Directory name used in error messages (`ios`, `macos`). Defaults to the
+   * basename of the directory being resolved.
+   */
+  label?: string
+}
+
+/**
+ * Return an Xcode project, generating the scaffolded project.yml with XcodeGen
+ * when necessary. Shared by the iOS and macOS hosts — both are XcodeGen specs
+ * committed to the repository, with the generated project gitignored.
+ */
+export function ensureXcodeProject(
+  projectDir: string,
+  options: EnsureXcodeProjectOptions = {},
+): XcodeProject | null {
+  const label = options.label ?? basename(projectDir)
+
+  const existing = findXcodeProject(projectDir)
   if (existing) return existing
 
-  const specPath = join(iosDir, 'project.yml')
+  const specPath = join(projectDir, 'project.yml')
   if (!existsSync(specPath)) return null
 
   try {
-    execSync('xcodegen --version', { cwd: iosDir, stdio: 'ignore' })
+    execSync('xcodegen --version', { cwd: projectDir, stdio: 'ignore' })
   } catch {
     throw new ConfigError(
-      'XcodeGen is required to generate ios/project.yml. Install it with `brew install xcodegen`, then retry.',
+      `XcodeGen is required to generate ${label}/project.yml. Install it with \`brew install xcodegen\`, then retry.`,
     )
   }
 
   try {
-    execSync('xcodegen generate', { cwd: iosDir, stdio: 'inherit' })
+    execSync('xcodegen generate', { cwd: projectDir, stdio: 'inherit' })
   } catch (error) {
     throw new ConfigError(
-      `Failed to generate the iOS project with XcodeGen: ${(error as Error).message}`,
+      `Failed to generate the ${label} project with XcodeGen: ${(error as Error).message}`,
     )
   }
 
-  const generated = findXcodeProject(iosDir)
+  const generated = findXcodeProject(projectDir)
   if (!generated) {
     throw new ConfigError(
-      'XcodeGen completed, but no .xcodeproj or .xcworkspace was created in ios/.',
+      `XcodeGen completed, but no .xcodeproj or .xcworkspace was created in ${label}/.`,
     )
   }
 

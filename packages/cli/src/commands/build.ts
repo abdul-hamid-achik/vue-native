@@ -12,9 +12,9 @@ import {
   ensureXcodeProject,
   findAndroidConfigDrift,
   findIOSConfigDrift,
-  findXcodeProject,
   formatGradleFailure,
   installAndroidBundle,
+  macosHostMissingHint,
   resolveGradleWrapper,
 } from '../native-project.js'
 import { p, resolvePlatform } from '../ui.js'
@@ -344,11 +344,19 @@ async function buildMacOS(
   },
 ): Promise<void> {
   const macosDir = join(cwd, 'macos')
-  const project = findXcodeProject(macosDir)
+
+  if (!existsSync(macosDir)) {
+    throw new ConfigError(macosHostMissingHint())
+  }
+
+  // Same contract as iOS: macos/project.yml is the committed source of truth
+  // and XcodeGen generates the (gitignored) .xcodeproj on demand.
+  const project = ensureXcodeProject(macosDir, { label: 'macos' })
 
   if (!project) {
     throw new ConfigError(bundleOnlyHint(
-      'No Xcode project found in ./macos/. To add macOS support, create an Xcode project in the macos/ directory.',
+      'macos/ exists but has neither an .xcodeproj/.xcworkspace nor a project.yml. '
+      + 'Add macos/project.yml (XcodeGen spec) or an Xcode project, then retry.',
     ))
   }
 

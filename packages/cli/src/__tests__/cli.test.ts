@@ -7,6 +7,18 @@ function toPortablePath(value: unknown): unknown {
   return typeof value === 'string' ? value.split(sep).join('/') : value
 }
 
+/**
+ * Drop XML comments so a test can tell a live key from a commented-out one.
+ *
+ * The iOS scaffold writes its privacy usage descriptions inside `<!-- -->`,
+ * which makes them invisible to the OS: the first app that calls useCamera()
+ * crashes in TCC instead of prompting. Assertions about "a real Info.plist"
+ * must run against the uncommented text only.
+ */
+function stripXmlComments(content: string): string {
+  return content.replace(/<!--[\s\S]*?-->/g, '')
+}
+
 // Polyfill vi.resetModules for Bun's test runner (no-op — Bun re-evaluates dynamic imports)
 if (typeof vi.resetModules !== 'function') {
   vi.resetModules = () => vi
@@ -705,6 +717,32 @@ describe('create command', () => {
       expect(content).toContain('UILaunchScreen')
     })
 
+    it('ships iOS privacy usage descriptions live, not commented out', async () => {
+      await runCreate('my-app')
+
+      const plistCall = mockWriteFile.mock.calls.find(
+        ([path]: any[]) => path.endsWith('ios/Sources/Info.plist'),
+      )
+      const raw = plistCall![1] as string
+
+      // iOS terminates the process the moment a gated framework is touched
+      // without its usage string, so a commented-out key is a first-run crash,
+      // not a missing nicety. Every key must survive comment stripping.
+      const plist = stripXmlComments(raw)
+      for (const key of [
+        'NSCameraUsageDescription',
+        'NSMicrophoneUsageDescription',
+        'NSLocationWhenInUseUsageDescription',
+        'NSPhotoLibraryUsageDescription',
+        'NSContactsUsageDescription',
+        'NSCalendarsUsageDescription',
+        'NSBluetoothAlwaysUsageDescription',
+        'NSFaceIDUsageDescription',
+      ]) {
+        expect(plist, `${key} must not be inside an XML comment`).toContain(`<key>${key}</key>`)
+      }
+    })
+
     it('creates AppDelegate.swift and SceneDelegate.swift', async () => {
       await runCreate('my-app')
 
@@ -721,6 +759,186 @@ describe('create command', () => {
       const sceneContent = sceneDelegateCall![1] as string
       expect(sceneContent).toContain('VueNativeViewController')
       expect(sceneContent).toContain('vue-native-bundle')
+    })
+  })
+
+  describe('macOS native project', () => {
+    function writtenContent(suffix: string): string | undefined {
+      const call = mockWriteFile.mock.calls.find(
+        ([path]: any[]) => typeof path === 'string' && path.endsWith(suffix),
+      )
+      return call?.[1] as string | undefined
+    }
+
+    it('creates the macOS host directory structure', async () => {
+      await runCreate('my-app')
+
+      const mkdirCalls = mockMkdir.mock.calls.map(([path]: any[]) => path)
+      expect(mkdirCalls).toContainEqual(toPortablePath(join(process.cwd(), 'my-app', 'macos', 'Sources')))
+    })
+
+    it('creates macos/project.yml as an XcodeGen spec pointing at the vendored package', async () => {
+      await runCreate('my-app')
+
+      const content = writtenContent('macos/project.yml')
+      expect(content).toBeDefined()
+
+      // Vendored by local path, never by git URL: VueNativeMacOS depends on
+      // VueNativeShared through `path: ../../shared/VueNativeShared`, which
+      // only resolves inside the native/ tree create copies into the project.
+      expect(content).toContain('path: ../native/macos/VueNativeMacOS')
+      expect(content).not.toContain('url: https://github.com')
+
+      expect(content).toContain('type: application')
+      expect(content).toContain('platform: macOS')
+      expect(content).toContain('macOS: "15.0"')
+      expect(content).toContain('MACOSX_DEPLOYMENT_TARGET: "15.0"')
+      expect(content).toContain('product: VueNativeMacOS')
+    })
+
+    it('copies the Vite output into the app bundle as a resource', async () => {
+      await runCreate('my-app')
+
+      const content = writtenContent('macos/project.yml')!
+
+      // JSRuntime resolves the bundle with
+      // Bundle.main.url(forResource: "vue-native-bundle", withExtension: "js"),
+      // so the file has to land in Contents/Resources, not just be referenced.
+      expect(content).toContain('path: ../dist/vue-native-bundle.js')
+      expect(content).toContain('buildPhase: resources')
+      expect(content).toContain('optional: true')
+    })
+
+    it('declares a shared scheme so -scheme does not depend on Xcode autocreation', async () => {
+      await runCreate('my-app')
+
+      const content = writtenContent('macos/project.yml')!
+      expect(content).toMatch(/^\s{4}scheme: \{\}$/m)
+    })
+
+    it('keeps Info.plist and entitlements out of the resources build phase', async () => {
+      await runCreate('my-app')
+
+      const content = writtenContent('macos/project.yml')!
+      expect(content).toContain('INFOPLIST_FILE: Sources/Info.plist')
+      expect(content).toContain('CODE_SIGN_ENTITLEMENTS: Sources/App.entitlements')
+      expect(content).toContain('GENERATE_INFOPLIST_FILE: false')
+      // Without these excludes XcodeGen adds both files to Copy Bundle
+      // Resources, so two build steps produce the same Info.plist.
+      expect(content).toMatch(/excludes:\s*\n\s*- Info\.plist\n\s*- App\.entitlements/)
+    })
+
+    it('creates a real macOS Info.plist with live (not commented-out) keys', async () => {
+      await runCreate('my-app')
+
+      const raw = writtenContent('macos/Sources/Info.plist')
+      expect(raw).toBeDefined()
+
+      const plist = stripXmlComments(raw!)
+
+      // macOS-specific keys the iOS plist does not carry.
+      expect(plist).toContain('<key>NSPrincipalClass</key>')
+      expect(plist).toContain('<string>NSApplication</string>')
+      expect(plist).toContain('<key>LSMinimumSystemVersion</key>')
+      expect(plist).toContain('<key>NSHumanReadableCopyright</key>')
+      expect(plist).toContain('<key>NSHighResolutionCapable</key>')
+      expect(plist).toContain('<key>CFBundleIdentifier</key>')
+      expect(plist).toContain('<string>com.vuenative.myapp</string>')
+
+      // Privacy descriptions for frameworks the macOS host can actually reach:
+      // CameraModule (AVCaptureDevice), AudioModule record (AVAudioRecorder),
+      // GeolocationModule (CLLocationManager). These must be live — commented
+      // out, the app crashes in TCC instead of prompting.
+      expect(plist).toContain('<key>NSCameraUsageDescription</key>')
+      expect(plist).toContain('<key>NSMicrophoneUsageDescription</key>')
+      expect(plist).toContain('<key>NSLocationUsageDescription</key>')
+
+      // Regression guard: no usage description may be hidden in a comment.
+      expect(raw!).not.toMatch(/<!--[\s\S]*UsageDescription/)
+      // The dev server is ws://localhost, which ATS blocks without this.
+      expect(plist).toContain('<key>NSAllowsLocalNetworking</key>')
+    })
+
+    it('creates an entitlements file that pins App Sandbox off', async () => {
+      await runCreate('my-app')
+
+      const content = writtenContent('macos/Sources/App.entitlements')
+      expect(content).toBeDefined()
+      expect(stripXmlComments(content!)).toContain('<key>com.apple.security.app-sandbox</key>')
+      expect(stripXmlComments(content!)).toContain('<false/>')
+    })
+
+    it('creates main.swift, AppDelegate.swift and MainWindowController.swift', async () => {
+      await runCreate('my-app')
+
+      const main = writtenContent('macos/Sources/main.swift')
+      const appDelegate = writtenContent('macos/Sources/AppDelegate.swift')
+      const windowController = writtenContent('macos/Sources/MainWindowController.swift')
+
+      expect(main).toBeDefined()
+      expect(appDelegate).toBeDefined()
+      expect(windowController).toBeDefined()
+
+      // No nib/storyboard host: the run loop is started in code.
+      expect(main).toContain('NSApplication.shared')
+      expect(main).toContain('app.run()')
+      expect(main).toContain('AppDelegate()')
+
+      // VueNativeAppDelegate (not a bare NSApplicationDelegate) is what
+      // installs the main menu, without which Cmd+Q and Cmd+C/V do nothing.
+      expect(appDelegate).toContain('VueNativeAppDelegate')
+      expect(appDelegate).toContain('createWindowController')
+      expect(appDelegate).toContain('MainWindowController()')
+
+      expect(windowController).toContain('VueNativeWindowController')
+      expect(windowController).toContain('override var bundleName: String { "vue-native-bundle" }')
+      expect(windowController).toContain('ws://localhost:8174')
+    })
+
+    it('gitignores the XcodeGen-generated macOS project', async () => {
+      await runCreate('my-app')
+
+      const content = writtenContent('.gitignore')!
+      expect(content).toContain('macos/*.xcodeproj/')
+      expect(content).toContain('macos/*.xcworkspace/')
+
+      // macos/project.yml and the vendored native/ tree stay tracked — the
+      // .xcodeproj is derived output, the spec and the stamp are not.
+      const lines = content.split('\n')
+      expect(lines).not.toContain('macos/')
+      expect(lines).not.toContain('native/')
+    })
+  })
+
+  describe('vendored native/ version stamp', () => {
+    it('records which CLI wrote the copied framework tree', async () => {
+      await runCreate('my-app')
+
+      const stampCall = mockWriteFile.mock.calls.find(
+        ([path]: any[]) => typeof path === 'string' && path.endsWith('native/.vue-native-version'),
+      )
+      expect(stampCall).toBeDefined()
+
+      const stamp = JSON.parse(stampCall![1] as string)
+      expect(stamp.schema).toBe(1)
+      expect(stamp.cliVersion).toBe(cliPackage.version)
+      expect(stamp.frameworkVersion).toBe(cliPackage.version)
+      expect(typeof stamp.generatedAt).toBe('string')
+      expect(Number.isNaN(Date.parse(stamp.generatedAt))).toBe(false)
+    })
+
+    it('writes the stamp inside the copied native/ tree, which .gitignore keeps tracked', async () => {
+      await runCreate('my-app')
+
+      const stampCall = mockWriteFile.mock.calls.find(
+        ([path]: any[]) => typeof path === 'string' && path.endsWith('native/.vue-native-version'),
+      )
+      expect(stampCall![0]).toBe(toPortablePath(join(process.cwd(), 'my-app', 'native', '.vue-native-version')))
+
+      const gitignore = mockWriteFile.mock.calls.find(
+        ([path]: any[]) => typeof path === 'string' && path.endsWith('.gitignore'),
+      )![1] as string
+      expect(gitignore.split('\n')).not.toContain('native/')
     })
   })
 
@@ -2278,6 +2496,94 @@ describe('run command', () => {
         /No macos\/ directory found[\s\S]*--bundle-only/,
       )
     })
+
+    it('names the scaffolded host files instead of "create an Xcode project" when macos/ is missing', async () => {
+      mockExecSync.mockImplementation(() => '')
+      mockExistsSync.mockReturnValue(false)
+
+      const runCmd = await importRunCommand()
+
+      // The old message told users to hand-write an Xcode project in macos/,
+      // which is six files nobody could guess. It has to name them and point
+      // at the two things that actually unblock a build: the scaffold and
+      // XcodeGen.
+      await expect(runCmd.parseAsync(['node', 'run', 'macos'])).rejects.toThrow(
+        /macos\/project\.yml[\s\S]*macos\/Sources\/Info\.plist[\s\S]*brew install xcodegen/,
+      )
+      await expect(importRunCommand().then(cmd => cmd.parseAsync(['node', 'run', 'macos'])))
+        .rejects.toThrow(/vue-native create/)
+    })
+
+    it('reports a macos/ directory that has neither a project nor a spec', async () => {
+      mockExecSync.mockImplementation(() => '')
+      mockExistsSync.mockImplementation((path: string) =>
+        typeof path === 'string' && path.endsWith('/macos'))
+      mockReaddirSync.mockReturnValue([])
+
+      const runCmd = await importRunCommand()
+      await expect(runCmd.parseAsync(['node', 'run', 'macos'])).rejects.toThrow(
+        /macos\/ exists but has neither an \.xcodeproj\/\.xcworkspace nor a project\.yml[\s\S]*--bundle-only/,
+      )
+      expect(mockExecSync).not.toHaveBeenCalledWith(
+        'xcodegen generate',
+        expect.anything(),
+      )
+    })
+
+    it('generates the scaffolded macos/project.yml with XcodeGen before building', async () => {
+      mockExecSync.mockImplementation(() => '')
+      mockExistsSync.mockImplementation((path: string) => {
+        return typeof path === 'string'
+          && (path.endsWith('/macos') || path.endsWith('/macos/project.yml'))
+      })
+      let readCount = 0
+      mockReaddirSync.mockImplementation(() => {
+        readCount += 1
+        return readCount <= 2 ? [] : ['MacProbe.xcodeproj']
+      })
+
+      const runCmd = await importRunCommand()
+      await expect(runCmd.parseAsync(['node', 'run', 'macos'])).rejects.toThrow(
+        /Could not locate \.app bundle/,
+      )
+
+      expect(mockExecSync).toHaveBeenCalledWith(
+        'xcodegen --version',
+        expect.objectContaining({ stdio: 'ignore' }),
+      )
+      expect(mockExecSync).toHaveBeenCalledWith(
+        'xcodegen generate',
+        expect.objectContaining({ stdio: 'inherit', cwd: expect.stringMatching(/macos$/) }),
+      )
+      expect(mockSpawn).toHaveBeenCalledWith(
+        'xcodebuild',
+        expect.arrayContaining([
+          '-project',
+          expect.stringContaining('MacProbe.xcodeproj'),
+          '-scheme',
+          'MacProbe',
+          '-destination',
+          'platform=macOS',
+        ]),
+        expect.any(Object),
+      )
+    })
+
+    it('reports how to install XcodeGen when the macOS host cannot be generated', async () => {
+      mockExecSync.mockImplementation((command: string) => {
+        if (command === 'xcodegen --version') throw new Error('command not found')
+        return ''
+      })
+      mockExistsSync.mockImplementation((path: string) => {
+        return typeof path === 'string'
+          && (path.endsWith('/macos') || path.endsWith('/macos/project.yml'))
+      })
+      mockReaddirSync.mockReturnValue([])
+
+      const runCmd = await importRunCommand()
+      await expect(runCmd.parseAsync(['node', 'run', 'macos']))
+        .rejects.toThrow(/macos\/project\.yml[\s\S]*brew install xcodegen/)
+    })
   })
 })
 
@@ -2538,6 +2844,16 @@ describe('cli entry point', () => {
 
     expect(report.limitations.some(item => item.id === 'navigation.jsStack')).toBe(true)
     expect(report.limitations.some(item => item.id === 'sharedElement.registryOnly')).toBe(true)
+
+    // `create.noMacosScaffold` used to declare that "a macOS app shell must be
+    // added by hand". `vue-native create` scaffolds macos/ now, so keeping the
+    // id would make `vue-native capabilities` lie. The real remaining host
+    // constraint is the single-window one VueNativeWindowController documents.
+    expect(report.limitations.some(item => item.id === 'create.noMacosScaffold')).toBe(false)
+    const singleWindow = report.limitations.find(item => item.id === 'macos.singleWindowHost')
+    expect(singleWindow).toBeDefined()
+    expect(singleWindow!.status).toBe('single-window')
+    expect(singleWindow!.message).toMatch(/process-wide singletons/)
   })
 
   it('build and run commands expose --bundle-only', async () => {
@@ -2612,6 +2928,55 @@ describe('build command', () => {
       buildCmd.parseAsync(['node', 'build', 'android', '--mode', 'staging']),
     ).rejects.toThrow('Build mode must be "debug" or "release"')
     expect(mockExecSync).not.toHaveBeenCalled()
+  })
+
+  describe('macOS platform', () => {
+    it('names the scaffolded host files when macos/ is missing', async () => {
+      mockExecSync.mockImplementation(() => '')
+      mockExistsSync.mockReturnValue(false)
+
+      const buildCmd = await importBuildCommand()
+      await expect(buildCmd.parseAsync(['node', 'build', 'macos'])).rejects.toThrow(
+        /No macos\/ directory found[\s\S]*macos\/project\.yml[\s\S]*--bundle-only/,
+      )
+    })
+
+    it('generates macos/project.yml with XcodeGen before archiving', async () => {
+      mockExecSync.mockImplementation(() => '')
+      mockExistsSync.mockImplementation((path: string) => {
+        return typeof path === 'string'
+          && (path.endsWith('/macos')
+            || path.endsWith('/macos/project.yml')
+            // buildMacOS checks the archive exists after xcodebuild reports 0.
+            || path.endsWith('MacProbe.xcarchive'))
+      })
+      let readCount = 0
+      mockReaddirSync.mockImplementation(() => {
+        readCount += 1
+        return readCount <= 2 ? [] : ['MacProbe.xcodeproj']
+      })
+
+      const buildCmd = await importBuildCommand()
+      // Resolves rather than throwing: the archive path "exists" per the mock,
+      // so buildMacOS runs to completion.
+      await buildCmd.parseAsync(['node', 'build', 'macos'])
+
+      expect(mockExecSync).toHaveBeenCalledWith(
+        'xcodegen generate',
+        expect.objectContaining({ cwd: expect.stringMatching(/macos$/) }),
+      )
+      expect(mockSpawn).toHaveBeenCalledWith(
+        'xcodebuild',
+        expect.arrayContaining([
+          '-project',
+          expect.stringContaining('MacProbe.xcodeproj'),
+          '-destination',
+          'generic/platform=macOS',
+          'archive',
+        ]),
+        expect.any(Object),
+      )
+    })
   })
 
   describe('iOS build', () => {

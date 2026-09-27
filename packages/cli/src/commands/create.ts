@@ -9,6 +9,19 @@ import { ConfigError } from '../config.js'
 import { canPrompt, p, unwrap } from '../ui.js'
 
 const DEFAULT_VUE_VERSION = cliPackage.vueNative.vueVersion
+
+/**
+ * Minimum macOS version for the scaffolded host.
+ *
+ * One constant because four places have to agree: macos/project.yml's
+ * `options.deploymentTarget.macOS`, the target's `MACOSX_DEPLOYMENT_TARGET`
+ * (which Info.plist's `LSMinimumSystemVersion` expands from), the
+ * `macos.deploymentTarget` written into vue-native.config.ts, and the default
+ * config.ts resolves when that key is absent. VueNativeMacOS itself declares
+ * `platforms: [.macOS(.v15)]`.
+ */
+const MACOS_DEPLOYMENT_TARGET = '15.0'
+
 const VUE_COHORT_PACKAGES = [
   'vue',
   '@vue/compiler-core',
@@ -307,15 +320,26 @@ targets:
     <key>NSAllowsLocalNetworking</key>
     <true/>
   </dict>
-  <!-- Uncomment the privacy descriptions for features your app uses -->
-  <!-- <key>NSCameraUsageDescription</key><string>This app needs camera access</string> -->
-  <!-- <key>NSMicrophoneUsageDescription</key><string>This app needs microphone access</string> -->
-  <!-- <key>NSLocationWhenInUseUsageDescription</key><string>This app needs your location</string> -->
-  <!-- <key>NSPhotoLibraryUsageDescription</key><string>This app needs photo library access</string> -->
-  <!-- <key>NSContactsUsageDescription</key><string>This app needs contacts access</string> -->
-  <!-- <key>NSCalendarsUsageDescription</key><string>This app needs calendar access</string> -->
-  <!-- <key>NSBluetoothAlwaysUsageDescription</key><string>This app needs Bluetooth access</string> -->
-  <!-- <key>NSFaceIDUsageDescription</key><string>This app uses Face ID for authentication</string> -->
+  <!--
+    iOS privacy usage descriptions.
+    These are NOT optional comments: iOS terminates the process the moment a
+    gated framework (camera, microphone, location, photos, contacts, calendars,
+    Bluetooth, Face ID) is touched without its usage string, so a commented-out
+    key turns the first useCamera() call in a fresh app into a hard crash with
+    no diagnostic. The strings are only *shown* when the corresponding API is
+    actually called, so an app that never uses one never prompts for it.
+    Before App Store submission, delete the entries your app does not use —
+    declaring a sensitive purpose you never exercise is itself a rejection
+    reason.
+  -->
+  <key>NSCameraUsageDescription</key><string>This app uses the camera when you choose to take a photo or scan a code.</string>
+  <key>NSMicrophoneUsageDescription</key><string>This app records audio when you choose to record.</string>
+  <key>NSLocationWhenInUseUsageDescription</key><string>This app uses your location while in use when you choose to share it.</string>
+  <key>NSPhotoLibraryUsageDescription</key><string>This app reads from your photo library when you choose a photo.</string>
+  <key>NSContactsUsageDescription</key><string>This app reads contacts when you choose to look one up.</string>
+  <key>NSCalendarsUsageDescription</key><string>This app reads and writes calendar events when you choose to.</string>
+  <key>NSBluetoothAlwaysUsageDescription</key><string>This app connects to Bluetooth devices when you choose to pair one.</string>
+  <key>NSFaceIDUsageDescription</key><string>This app uses Face ID or Touch ID when you choose to authenticate.</string>
 </dict>
 </plist>
 `)
@@ -609,6 +633,263 @@ zipStorePath=wrapper/dists
       }
       p.log.step('Bundled native runtimes copied for local builds.')
 
+      // ── Vendored native runtime version stamp ──────────────
+      // The copy above puts the entire framework source tree (~424 files) into
+      // the new project, and .gitignore deliberately does NOT exclude native/ —
+      // the tree is committed. Nothing recorded which CLI wrote it, so a stale
+      // copy was indistinguishable from a locally-edited one and there was no
+      // basis for an `upgrade` command. This stamp is that record.
+      await writeFile(
+        join(dir, 'native', '.vue-native-version'),
+        `${JSON.stringify({
+          schema: 1,
+          cliVersion: cliPackage.version,
+          // runtime/navigation/vite-plugin are in the same changesets `fixed`
+          // group as the CLI, so the CLI version *is* the framework version.
+          frameworkVersion: cliPackage.version,
+          jsDependencyRange: JS_PACKAGE_VERSION,
+          vendoredFrom: '@thelacanians/vue-native-cli/native',
+          generatedAt: new Date().toISOString(),
+        }, null, 2)}\n`,
+      )
+
+      // ── macOS native project ───────────────────────────────
+      //
+      // XcodeGen, not a bare SPM executable target. Two reasons, both hard:
+      //
+      //  1. `swift build` produces a Mach-O binary in .build/debug/, not a
+      //     .app bundle. VueNativeWindowController loads the JS bundle through
+      //     `Bundle.main.url(forResource:withExtension:)` (JSRuntime.swift), so
+      //     a host without a real bundle finds no bundle and boots to the
+      //     DEBUG error overlay. An .app is also what gives us Info.plist,
+      //     Contents/Resources/vue-native-bundle.js, an activation policy and a
+      //     Dock item — and what `vue-native run macos` launches with `open`.
+      //  2. run.ts/build.ts already resolve `.xcodeproj`/`.xcworkspace` in
+      //     macos/ and locate the product with findAppleAppBundle(). XcodeGen
+      //     makes macOS reuse the exact iOS path (project.yml committed,
+      //     generated project gitignored, ensureXcodeProject shared).
+      //
+      // The VueNativeMacOS package declares `VueNativeShared` as a *local*
+      // `path: ../../shared/VueNativeShared` dependency, so it cannot be
+      // resolved from a git URL. That is fine here: the copy above preserves
+      // the canonical `native/{macos,shared}` layout, so the relative path
+      // still resolves inside the generated project and we point XcodeGen at
+      // the vendored package rather than a remote one.
+      const macosDir = join(dir, 'macos')
+      const macosSrcDir = join(macosDir, 'Sources')
+      await mkdir(macosSrcDir, { recursive: true })
+      const copyrightYear = new Date().getFullYear()
+
+      // macos/project.yml (XcodeGen spec)
+      await writeFile(join(macosDir, 'project.yml'), `name: ${xcodeProjectName}
+options:
+  bundleIdPrefix: com.vuenative
+  deploymentTarget:
+    macOS: "${MACOS_DEPLOYMENT_TARGET}"
+  xcodeVersion: "15.0"
+
+packages:
+  # Vendored copy, not a git URL: VueNativeMacOS depends on VueNativeShared by
+  # local path (../../shared/VueNativeShared), which only resolves inside the
+  # native/ tree that create copies into this project.
+  VueNativeMacOS:
+    path: ../native/macos/VueNativeMacOS
+
+targets:
+  ${xcodeProjectName}:
+    type: application
+    platform: macOS
+    sources:
+      # Info.plist and App.entitlements are consumed through build settings
+      # (INFOPLIST_FILE / CODE_SIGN_ENTITLEMENTS). Excluding them here keeps
+      # XcodeGen from also adding them to Copy Bundle Resources, which would
+      # make two build steps produce the same file.
+      - path: Sources
+        excludes:
+          - Info.plist
+          - App.entitlements
+      # The Vite output, copied into Contents/Resources so JSRuntime's
+      # Bundle.main lookup for "vue-native-bundle.js" succeeds.
+      - path: ../dist/vue-native-bundle.js
+        buildPhase: resources
+        optional: true
+    # An explicit scheme block makes XcodeGen write a shared scheme into the
+    # generated .xcodeproj. Without it the only scheme is the one Xcode
+    # autocreates into xcuserdata on first use, so \`xcodebuild -scheme ${xcodeProjectName}\`
+    # depends on state that a fresh clone and CI do not have.
+    scheme: {}
+    dependencies:
+      - package: VueNativeMacOS
+        product: VueNativeMacOS
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ${bundleId}
+        INFOPLIST_FILE: Sources/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Sources/App.entitlements
+        GENERATE_INFOPLIST_FILE: false
+        MACOSX_DEPLOYMENT_TARGET: "${MACOS_DEPLOYMENT_TARGET}"
+        SWIFT_VERSION: "5.9"
+        # Xcode's macOS app template sets this and XcodeGen does not. Today the
+        # SPM products link statically (a verified build emits no
+        # Contents/Frameworks), so it is inert — but it is the rpath a
+        # dynamically-linked dependency would need, and omitting it is how a
+        # host that later adds one ends up crashing in dyld at launch.
+        LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/../Frameworks"
+        COMBINE_HIDPI_IMAGES: YES
+        # Ad-hoc signing so \`run macos\`/\`build macos\` work with no Apple
+        # Developer team configured. Change CODE_SIGN_STYLE to Automatic and
+        # set DEVELOPMENT_TEAM before distributing outside this machine.
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: "-"
+        DEVELOPMENT_TEAM: ""
+        ENABLE_HARDENED_RUNTIME: NO
+`)
+
+      // macos/Sources/Info.plist
+      //
+      // Every key below is live, not commented out. The iOS scaffold ships its
+      // usage descriptions inside XML comments, which means the first app that
+      // calls useCamera()/useGeolocation() crashes in TCC instead of prompting
+      // — that defect is deliberately not replicated here. Only the three
+      // descriptions the vendored macOS framework can actually reach are
+      // included: CameraModule (AVCaptureDevice), the shared AudioModule's
+      // record path (AVAudioRecorder) and the shared GeolocationModule
+      // (CLLocationManager). Contacts/Calendar/Bluetooth/Photos have no macOS
+      // code path in the framework, so shipping strings for them would be
+      // noise. LocalAuthentication (BiometryModule) and UNUserNotificationCenter
+      // (NotificationsModule) need no Info.plist string on macOS.
+      await writeFile(join(macosSrcDir, 'Info.plist'), `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleDevelopmentRegion</key>
+  <string>en</string>
+  <key>CFBundleDisplayName</key>
+  <string>${name}</string>
+  <key>CFBundleExecutable</key>
+  <string>$(EXECUTABLE_NAME)</string>
+  <key>CFBundleIconFile</key>
+  <string></string>
+  <key>CFBundleIdentifier</key>
+  <string>${bundleId}</string>
+  <key>CFBundleInfoDictionaryVersion</key>
+  <string>6.0</string>
+  <key>CFBundleName</key>
+  <string>$(PRODUCT_NAME)</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>CFBundleShortVersionString</key>
+  <string>1.0</string>
+  <key>CFBundleVersion</key>
+  <string>1</string>
+  <key>LSMinimumSystemVersion</key>
+  <string>$(MACOSX_DEPLOYMENT_TARGET)</string>
+  <key>NSPrincipalClass</key>
+  <string>NSApplication</string>
+  <key>NSHighResolutionCapable</key>
+  <true/>
+  <key>NSHumanReadableCopyright</key>
+  <string>Copyright © ${copyrightYear} ${name}. All rights reserved.</string>
+  <key>NSAppTransportSecurity</key>
+  <dict>
+    <key>NSAllowsLocalNetworking</key>
+    <true/>
+  </dict>
+  <key>NSCameraUsageDescription</key>
+  <string>${name} uses the camera to capture photos and video.</string>
+  <key>NSMicrophoneUsageDescription</key>
+  <string>${name} uses the microphone to record audio.</string>
+  <key>NSLocationUsageDescription</key>
+  <string>${name} uses your location to show location-aware content.</string>
+</dict>
+</plist>
+`)
+
+      // macos/Sources/App.entitlements
+      //
+      // Wired in through CODE_SIGN_ENTITLEMENTS, and it does real work: it pins
+      // App Sandbox off. FileSystemModule writes to arbitrary paths, the dev
+      // host opens a ws://localhost:8174 socket and CameraModule/GeolocationModule
+      // reach device hardware — under the sandbox each of those needs its own
+      // entitlement (network.client, files.user-selected.read-write,
+      // device.camera) or the call fails at runtime. Sandboxing is a
+      // distribution decision, so the scaffold states the non-sandboxed default
+      // explicitly in one editable place instead of leaving it implicit.
+      await writeFile(join(macosSrcDir, 'App.entitlements'), `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>com.apple.security.app-sandbox</key>
+  <false/>
+</dict>
+</plist>
+`)
+
+      // macos/Sources/main.swift
+      //
+      // A programmatic entry point rather than `@main` on the delegate: the
+      // generated host has no nib or storyboard, and `NSApplicationMain` would
+      // have nothing to load. This keeps the whole macOS host code-generated
+      // and diffable, with no .xib to keep in sync.
+      await writeFile(join(macosSrcDir, 'main.swift'), `import AppKit
+
+// Retained for the process lifetime: NSApplication.delegate is weak, and
+// top-level bindings in main.swift live as long as the executable does.
+let delegate = AppDelegate()
+let app = NSApplication.shared
+app.delegate = delegate
+
+// Nothing reads an activation policy out of a nib here, so state it: the app
+// owns a Dock item and should come to the front when \`vue-native run macos\`
+// launches it with \`open\`.
+app.setActivationPolicy(.regular)
+app.activate(ignoringOtherApps: true)
+app.run()
+`)
+
+      // macos/Sources/AppDelegate.swift
+      await writeFile(join(macosSrcDir, 'AppDelegate.swift'), `import AppKit
+import VueNativeMacOS
+
+/// Application delegate for the generated macOS host.
+///
+/// Subclassing \`VueNativeAppDelegate\` instead of implementing
+/// \`NSApplicationDelegate\` directly is what installs a main menu at launch.
+/// A programmatically launched \`NSApplication\` otherwise gets an *empty* menu
+/// bar, and AppKit routes key equivalents through the main menu — so without
+/// it Cmd+Q does not quit and Cmd+C/V/X/A never reach a focused \`VInput\`.
+///
+/// Override \`makeMainMenu()\` to replace or extend the standard App / Edit /
+/// View / Window / Help menu. \`useMenu()\` merges into whatever is installed.
+class AppDelegate: VueNativeAppDelegate {
+    override func createWindowController() -> VueNativeWindowController {
+        MainWindowController()
+    }
+}
+`)
+
+      // macos/Sources/MainWindowController.swift
+      await writeFile(join(macosSrcDir, 'MainWindowController.swift'), `import Foundation
+import VueNativeMacOS
+
+/// Hosts the Vue app in the application's main window.
+///
+/// \`NativeBridge.shared\` and \`JSRuntime.shared\` are process-wide singletons, so
+/// this is the app's one and only Vue surface — a second window controller
+/// would tear the first one's registry down rather than render a second app.
+final class MainWindowController: VueNativeWindowController {
+    /// Matches the resource copied in by macos/project.yml
+    /// (../dist/vue-native-bundle.js -> Contents/Resources/vue-native-bundle.js).
+    override var bundleName: String { "vue-native-bundle" }
+
+    #if DEBUG
+    /// \`vue-native dev --platform macos\` serves the rebuilt bundle here.
+    /// A production build skips the connection entirely.
+    override var devServerURL: URL? { URL(string: "ws://localhost:8174") }
+    #endif
+}
+`)
+
       // vue-native.config.ts
       await writeFile(join(dir, 'vue-native.config.ts'), `import { defineConfig } from '@thelacanians/vue-native-cli'
 
@@ -624,7 +905,7 @@ export default defineConfig({
     targetSdk: 35,
   },
   macos: {
-    deploymentTarget: '15.0',
+    deploymentTarget: '${MACOS_DEPLOYMENT_TARGET}',
   },
 })
 `)
@@ -650,6 +931,8 @@ DerivedData/
 build/
 ios/*.xcodeproj/
 ios/*.xcworkspace/
+macos/*.xcodeproj/
+macos/*.xcworkspace/
 .gradle/
 local.properties
 *.apk
@@ -676,6 +959,8 @@ local.properties
           'Run on iOS:     vue-native run ios',
           'Run on Android: vue-native run android',
           '                (or open android/ in Android Studio)',
+          'Run on macOS:   vue-native run macos',
+          '                (needs XcodeGen: brew install xcodegen)',
         ].join('\n'),
         'Next steps',
       )

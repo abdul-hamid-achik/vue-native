@@ -212,9 +212,14 @@ export const FRAMEWORK_LIMITATIONS: CapabilityLimitation[] = [
     message: 'Hot reload ships a full IIFE and resets the native/JS world. Component and router state are not preserved.',
   },
   {
-    id: 'create.noMacosScaffold',
-    status: 'manual-host',
-    message: 'vue-native create scaffolds iOS and Android hosts. A macOS app shell must be added by hand.',
+    // Was `create.noMacosScaffold` ("A macOS app shell must be added by hand"),
+    // which stopped being true when `vue-native create` began scaffolding
+    // macos/project.yml + macos/Sources. The real remaining host constraint is
+    // the one VueNativeWindowController's own docs call out, so declare that
+    // instead of leaving a stale entry behind.
+    id: 'macos.singleWindowHost',
+    status: 'single-window',
+    message: 'The macOS host is single-window. NativeBridge.shared and JSRuntime.shared are process-wide singletons, so a second VueNativeWindowController tears the first window\'s registry down instead of rendering a second Vue app.',
   },
   {
     id: 'plugins.reservedMetadata',
