@@ -55,3 +55,6 @@ native/android/platforms/
 
 # Lefthook
 .lefthook-local.yml
+
+# Agent scratch space
+.qwen/

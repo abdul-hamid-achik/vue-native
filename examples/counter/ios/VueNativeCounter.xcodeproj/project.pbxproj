@@ -15,9 +15,9 @@
 /* Begin PBXFileReference section */
 		01B5C27E45DD1F07972AF1A4 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		79058666010CB53660A5168F /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
-		7D780CBDF41000BFBE29E76B /* native */ = {isa = PBXFileReference; lastKnownFileType = folder; name = native; path = ../../../native; sourceTree = SOURCE_ROOT; };
 		9DAFB5B0819F3DE8ECEF8BF2 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 		F447D31CA35E8E0DB6C34BAC /* VueNativeCounter.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = VueNativeCounter.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		FA1FC3A31E7A29C8B0DACEF4 /* VueNativeCore */ = {isa = PBXFileReference; lastKnownFileType = folder; name = VueNativeCore; path = ../../../native/ios/VueNativeCore; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -52,7 +52,7 @@
 		8454853F8BD0D38FA6A5809B /* Packages */ = {
 			isa = PBXGroup;
 			children = (
-				7D780CBDF41000BFBE29E76B /* native */,
+				FA1FC3A31E7A29C8B0DACEF4 /* VueNativeCore */,
 			);
 			name = Packages;
 			sourceTree = "<group>";
@@ -105,7 +105,6 @@
 				};
 			};
 			buildConfigurationList = 18865C89E772251FA1F47D13 /* Build configuration list for PBXProject "VueNativeCounter" */;
-			compatibilityVersion = "Xcode 14.0";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -115,9 +114,10 @@
 			mainGroup = 5356D70600F2AF615C5869EC;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				F77A0B33DF3098965D7EA9C0 /* XCLocalSwiftPackageReference "../../../native" */,
+				71F58ED1825D92B58146C18A /* XCLocalSwiftPackageReference "../../../native/ios/VueNativeCore" */,
 			);
 			preferredProjectObjectVersion = 77;
+			productRefGroup = 30676A9A7E0C075CD0F9D613 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
@@ -350,7 +350,7 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
-		F77A0B33DF3098965D7EA9C0 /* XCLocalSwiftPackageReference "../../../native" */ = {
+		71F58ED1825D92B58146C18A /* XCLocalSwiftPackageReference "../../../native/ios/VueNativeCore" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = ../../../native/ios/VueNativeCore;
 		};
