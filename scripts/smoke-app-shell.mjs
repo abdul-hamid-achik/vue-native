@@ -13,6 +13,32 @@ import {
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const startedAt = new Date().toISOString()
 
+/**
+ * Gate ids that must reach `passed`. A skipped required gate fails the run.
+ *
+ * Without this the aggregate verdict treats a skip as a success, so a machine
+ * with no simulator, no paired device and no adb reports `ok: true` having
+ * proven nothing beyond the static fixture. CI should pass e.g.
+ * `--require=ios.simulator,macos.host`.
+ */
+const requiredGates = (() => {
+  const flag = process.argv.find(arg => arg.startsWith('--require='))
+  if (!flag) return []
+  return flag
+    .slice('--require='.length)
+    .split(',')
+    .map(id => id.trim())
+    .filter(Boolean)
+})()
+
+const unknownRequired = requiredGates.filter(
+  id => !['fixture', 'android.host', 'macos.host', 'ios.compile', 'ios.simulator', 'ios.device', 'android.device'].includes(id),
+)
+if (unknownRequired.length > 0) {
+  process.stderr.write(`Unknown gate id(s) in --require: ${unknownRequired.join(', ')}\n`)
+  process.exitCode = 1
+}
+
 function git(command) {
   try {
     return execFileSync('git', command, { cwd: root, encoding: 'utf8' }).trim()
@@ -142,8 +168,16 @@ const gates = [
   },
 ]
 
+const hostGatesPassed = gates.filter(
+  gate => gate.id !== 'fixture' && gate.status === 'passed',
+).length
+const missingRequired = requiredGates.filter((id) => {
+  const gate = gates.find(candidate => candidate.id === id)
+  return !gate || gate.status !== 'passed'
+})
+
 const receipt = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   kind: 'app-shell-smoke',
   startedAt,
   finishedAt: new Date().toISOString(),
@@ -156,7 +190,11 @@ const receipt = {
     androidDevices: androidDevice,
   },
   gates,
-  ok: gates.every(gate => gate.status === 'passed' || gate.status === 'skipped'),
+  requiredGates,
+  missingRequired,
+  hostGatesPassed,
+  ok: gates.every(gate => gate.status === 'passed' || gate.status === 'skipped')
+    && missingRequired.length === 0,
 }
 
 const artifactsDir = join(root, 'artifacts')
@@ -169,8 +207,24 @@ for (const gate of gates) {
   const extra = gate.reason ? ` (${gate.reason})` : ''
   process.stdout.write(`[${icon}] ${gate.id}${extra}\n`)
 }
+
+if (missingRequired.length > 0) {
+  process.stderr.write(
+    `Required gate(s) did not pass: ${missingRequired.join(', ')}\n`,
+  )
+}
+
+if (hostGatesPassed === 0) {
+  // A skip is not a pass. Say so loudly, because the receipt alone reads green.
+  process.stderr.write(
+    'WARNING: no host gate ran — every native gate was skipped, so this run '
+    + 'proved only that the static fixture parses. Pass --require=<gate ids> to '
+    + 'turn the skips you care about into failures.\n',
+  )
+}
+
 process.stdout.write(`Wrote ${receiptPath}\n`)
 
-if (!receipt.ok || fixtureErrors.length > 0) {
+if (!receipt.ok || fixtureErrors.length > 0 || unknownRequired.length > 0) {
   process.exitCode = 1
 }

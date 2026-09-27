@@ -7,7 +7,10 @@
     "packages/navigation": {},
     "packages/vite-plugin": {},
     "packages/cli": {},
-    "examples/*": {},
+    "examples/*": {
+      "entry": ["app/main.ts"],
+      "project": ["app/**/*.{ts,vue}"]
+    },
     "examples/native-blocks-demo": {
       "ignore": ["app/**"],
       "ignoreDependencies": ["@thelacanians/vue-native-runtime", "@thelacanians/vue-native-navigation"]
