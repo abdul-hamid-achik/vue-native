@@ -59,8 +59,8 @@ native/
     Sources/VueNativeMacOS/
       Bridge/                NativeBridge, JSPolyfills, VueNativeWindowController,
                              ErrorOverlayView, HotReloadManager, EventThrottle
-      Components/Factories/  28 component factories (AppKit equivalents)
-      Modules/               16 modules (12 cross-platform + 4 macOS-only)
+      Components/Factories/  31 registered components + `__ROOT__` (AppKit equivalents)
+      Modules/               30 registered modules
       Styling/               StyleEngine.swift — CSS props → LayoutNode + NSView.layer
       Layout/                LayoutNode (custom flexbox), FlippedView (isFlipped=true)
       Helpers/               ClickableView, GestureWrapper, NSColor+Hex, Extensions
@@ -254,7 +254,9 @@ cd docs && bun run build  # VuePress must build without errors
 - JS batches operations via `queueMicrotask` then calls `__VN_flushOperations(json)`
 - Each operation is `{ op: string, args: any[] }`
 - Operations are processed on the **main thread** (Swift `@MainActor` / Kotlin `mainHandler.post`)
-- Valid ops: `create`, `createText`, `setText`, `setElementText`, `updateProp`, `updateStyle`, `appendChild`, `insertBefore`, `removeChild`, `setRootView`, `addEventListener`, `removeEventListener`, `invokeNativeModule`, `invokeNativeModuleSync`
+- Valid ops: `create`, `createText`, `setText`, `setElementText`, `updateProp`, `updateStyle`, `appendChild`, `insertBefore`, `removeChild`, `setRootView`, `addEventListener`, `removeEventListener`, `invokeNativeModule`, `createTeleport`, `removeTeleport`, `teleportTo`
+- `invokeNativeModuleSync` is **not** a live op: it is deprecated and aliases the async path on the JS side, so it never reaches the bridge. Do not add it back to this list.
+- Component and module parity across platforms is enforced by `scripts/check-native-contracts.mjs` (`bun run contracts:check`), not by the counts quoted in the repository-layout section above — those drift, so re-verify with `grep -c 'register("' …/ComponentRegistry.swift` if a number matters.
 
 ### Thread model — iOS
 - `JSRuntime` runs the JSContext on a dedicated serial `jsQueue` (DispatchQueue)

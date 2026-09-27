@@ -91,14 +91,27 @@ const confirmed = ref(false)
       <VModal v-if="showConfirm" @close="showConfirm = false">
         <VText>Are you sure you want to delete this item?</VText>
         <VView :style="{ flexDirection: 'row', gap: 12 }">
-          <VButton 
-            title="Cancel" 
-            @press="() => showConfirm = false" 
+          <VButton
+            title="Cancel"
+            :style="{
+              flex: 1,
+              backgroundColor: '#E5E5EA',
+              padding: 12,
+              borderRadius: 8,
+            }"
+            :titleStyle="{ color: '#1C1C1E' }"
+            @press="() => showConfirm = false"
           />
-          <VButton 
-            title="Delete" 
-            variant="danger"
-            @press="() => { confirmed = true; showConfirm = false }" 
+          <VButton
+            title="Delete"
+            :style="{
+              flex: 1,
+              backgroundColor: '#FF3B30',
+              padding: 12,
+              borderRadius: 8,
+            }"
+            :titleStyle="{ color: '#FFFFFF', fontWeight: '600' }"
+            @press="() => { confirmed = true; showConfirm = false }"
           />
         </VView>
       </VModal>
@@ -106,6 +119,10 @@ const confirmed = ref(false)
   </VView>
 </template>
 ```
+
+::: warning VButton has no `variant` prop
+`VButton` accepts `title`, `titleStyle`, `style`, `disabled`, `activeOpacity`, `onPress`, `onLongPress`, and the four `accessibility*` props — nothing else. There is no `variant`, so "danger", "secondary", and similar looks are expressed through `style` / `titleStyle` (or a `createStyleSheet` entry you reuse). See [VButton](../components/VButton.md).
+:::
 
 ### Toast Notification
 
@@ -162,14 +179,19 @@ import { ref } from '@thelacanians/vue-native-runtime'
 
 const showSheet = ref(false)
 const options = ['Option 1', 'Option 2', 'Option 3']
+
+function select(option) {
+  console.log(option)
+  showSheet.value = false
+}
 </script>
 
 <template>
   <VView>
     <VButton title="Show Options" @press="() => showSheet = true" />
-    
+
     <Teleport to="modal">
-      <VView 
+      <VView
         v-if="showSheet"
         :style="{
           position: 'absolute',
@@ -186,27 +208,35 @@ const options = ['Option 1', 'Option 2', 'Option 3']
         <VText :style="{ fontSize: 18, fontWeight: 'bold', marginBottom: 16 }">
           Select an Option
         </VText>
-        
-        <VList 
-          :data="options" 
-          :renderItem="(item) => (
-            <VButton 
-              title={item} 
-              onPress={() => { console.log(item); showSheet = false }} 
+
+        <VList :data="options" :style="{ flex: 1 }">
+          <template #item="{ item }">
+            <VButton
+              :title="item"
+              :style="{ paddingVertical: 12 }"
+              @press="() => select(item)"
             />
-          )" 
-        />
-        
-        <VButton 
-          title="Cancel" 
-          variant="secondary"
-          @press="() => showSheet = false" 
+          </template>
+        </VList>
+
+        <VButton
+          title="Cancel"
+          :style="{
+            backgroundColor: '#E5E5EA',
+            padding: 12,
+            borderRadius: 8,
+            marginTop: 12,
+          }"
+          :titleStyle="{ color: '#1C1C1E' }"
+          @press="() => showSheet = false"
         />
       </VView>
     </Teleport>
   </VView>
 </template>
 ```
+
+`VList` renders each row from its `#item` scoped slot — it does **not** take a `renderItem` prop, and the slot body must be a Vue template, not JSX. See [VList](../components/VList.md).
 
 ## How It Works
 

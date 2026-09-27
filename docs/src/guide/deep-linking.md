@@ -368,19 +368,21 @@ createApp(App).use(router).start()
 
 ```vue
 <script setup>
-import { ref, watchEffect } from '@thelacanians/vue-native-runtime'
+import { ref, watchEffect, useHttp } from '@thelacanians/vue-native-runtime'
 import { useRoute } from '@thelacanians/vue-native-navigation'
-import { useHttp } from '@thelacanians/vue-native-runtime'
 
 const route = useRoute()
-const { request } = useHttp()
+// useHttp() returns { loading, error, get, post, put, patch, delete }.
+// There is no public `request` method — that is an internal helper.
+const { get } = useHttp({ baseURL: 'https://api.example.com' })
 const user = ref(null)
 
 watchEffect(async () => {
   const id = route.value.params.id
   if (id) {
-    const response = await request(`https://api.example.com/users/${id}`)
-    user.value = response.data
+    const response = await get(`/users/${id}`)
+    // `data` is `T | undefined` — 204/205 responses have no body.
+    user.value = response.data ?? null
   }
 })
 </script>

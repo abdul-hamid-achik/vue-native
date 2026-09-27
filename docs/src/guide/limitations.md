@@ -128,30 +128,34 @@ Any library that imports or accesses browser APIs at the module level will fail:
 | vue-router | Depends on browser History API | `@thelacanians/vue-native-navigation` |
 | async-storage (React Native) | Different bridge protocol | `useAsyncStorage` (built-in) |
 
-## Platform Differences (iOS vs Android)
+## Platform Differences (iOS vs Android vs macOS)
 
-While Vue Native abstracts most platform details, certain behaviors differ between iOS and Android.
+While Vue Native abstracts most platform details, certain behaviors differ between iOS, Android, and macOS.
 
 ### Keyboard Handling
 
-| Behavior | iOS | Android |
-|---|---|---|
-| Default resize behavior | Content pushed up automatically | Requires `android:windowSoftInputMode="adjustResize"` in manifest |
-| `VKeyboardAvoiding` behavior prop | `"padding"` (recommended) | `"padding"` or `"height"` |
-| Keyboard dismiss | Tap outside input | Back button or tap outside |
+| Behavior | iOS | Android | macOS |
+|---|---|---|---|
+| Default resize behavior | Content pushed up automatically | Requires `android:windowSoftInputMode="adjustResize"` in manifest | N/A — a hardware keyboard never covers content |
+| `VKeyboardAvoiding` behavior prop | `"padding"` (recommended) | `"padding"` or `"height"` | Ignored — the factory is a pass-through container that only applies styles |
+| Keyboard dismiss | Tap outside input | Back button or tap outside | N/A — no on-screen keyboard |
 
 ### Status Bar
 
-| Behavior | iOS | Android |
-|---|---|---|
-| Light/dark text | `VStatusBar barStyle="light-content"` | Same API, but may require `android:windowLightStatusBar` |
-| Translucent | Translucent by default | Must set `translucent={true}` explicitly |
-| Background color | Not directly settable (use `VView` behind it) | Settable via `backgroundColor` prop |
+`VStatusBar` declares exactly three props: `barStyle` (`'default' | 'light-content' | 'dark-content'`), `hidden`, and `animated`. Bind them with Vue syntax (`:hidden="true"`), not JSX (`hidden={true}`).
+
+| Behavior | iOS | Android | macOS |
+|---|---|---|---|
+| Light/dark text | `barStyle="light-content"` — forwarded to the root view controller's `preferredStatusBarStyle` | Same API, applied through `WindowInsetsController` on API 30+ and `systemUiVisibility` flags below | No-op — macOS has no app status bar; the factory returns a hidden zero-size view |
+| Hiding the bar | `:hidden="true"` | `:hidden="true"` (adds `FLAG_FULLSCREEN`) | No-op |
+| Translucency | Decided by the system. There is **no** `translucent` prop on any platform | A window-level concern — configure it on the host Activity's theme/window flags, not on `VStatusBar` | N/A |
+| Background color | Not supported. The factory only handles `barStyle`, `hidden`, and `animated` | Not a declared prop. The native factory *does* read a `backgroundColor` prop (it sets `window.statusBarColor`), and it can reach native via Vue attribute fallthrough — but that is undocumented, untyped, and unsupported on iOS/macOS. Put a `VView` behind the bar instead | N/A |
 
 ### Safe Areas & Notch
 
 - **iOS:** `VSafeArea` insets for notch, Dynamic Island, and home indicator.
 - **Android:** `VSafeArea` insets for status bar and navigation bar. Cutout (notch) handling depends on `android:windowLayoutInDisplayCutoutMode`.
+- **macOS:** `VSafeArea` is a pass-through container. There are no notches or system bars to inset for, so it applies styles and reports no insets. Use `VToolbar` / window chrome instead.
 
 ### Back Navigation
 
@@ -163,11 +167,13 @@ While Vue Native abstracts most platform details, certain behaviors differ betwe
 
 - **iOS:** Uses `shadowColor`, `shadowOffset`, `shadowOpacity`, `shadowRadius` (Core Animation).
 - **Android:** Uses `elevation` (Material Design shadow). The four iOS shadow properties are ignored on Android.
+- **macOS:** Uses the same Core Animation properties as iOS (`shadowColor`, `shadowOffset`, `shadowOpacity`, `shadowRadius`), applied to the view's `CALayer`. `elevation` is ignored.
 
 ### Permissions
 
 - **iOS:** Permissions are requested via system dialogs. Denied permissions can only be changed in Settings. The `Info.plist` must include usage description strings.
 - **Android:** Permissions use the runtime permission model (API 23+). Denied permissions can be re-requested unless "Don't ask again" was selected. The `AndroidManifest.xml` must declare permissions.
+- **macOS:** Same `usePermissions` API, backed by TCC prompts for camera, microphone, notifications, location, contacts, and calendar. The app host must declare the matching `Info.plist` usage-description keys and, for sandboxed apps, the corresponding entitlements.
 
 ## Performance Boundaries
 

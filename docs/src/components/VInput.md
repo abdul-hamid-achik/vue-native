@@ -32,6 +32,7 @@ const text = ref('')
 | `returnKeyType` | `'done'` \| `'go'` \| `'next'` \| `'search'` \| `'send'` | `'done'` | Return key label |
 | `multiline` | `boolean` | `false` | Multi-line text input (uses UITextView on iOS) |
 | `maxLength` | `number` | -- | Maximum character count |
+| `autoFocus` | `boolean` | `false` | Focus the field automatically once it is attached to a window. **macOS only** -- iOS and Android accept and ignore it |
 | `style` | `StyleProp` | -- | Layout + appearance styles |
 | `accessibilityLabel` | `string` | -- | Accessible description |
 | `accessibilityRole` | `string` | -- | Accessibility role |
@@ -122,6 +123,6 @@ const styles = createStyleSheet({
 
 | Platform | Support |
 |----------|---------|
-| iOS      | Full (`UITextField` / `UITextView` for multiline) |
-| Android  | Full (`EditText`) |
-| macOS    | Full (`NSTextField`; secure entry swaps in an `NSSecureTextFieldCell`) |
+| iOS      | Full (`UITextField` / `UITextView` for multiline), except `autoFocus` |
+| Android  | Full (`EditText`), except `autoFocus` |
+| macOS    | `NSTextField`; secure entry swaps in an `NSSecureTextFieldCell`. Supports `keyboardType` (numeric), `autoCorrect`, and `autoFocus`. `returnKeyType` and `autoCapitalize` are accepted but not applied -- AppKit has no direct equivalent -- and a debug build logs a warning saying so. |

@@ -26,7 +26,16 @@ A scrollable container component. Maps to `UIScrollView` on iOS and `ScrollView`
 
 ### Pull to Refresh
 
-Use the `refreshing` prop and `@refresh` event for pull-to-refresh:
+Use the `refreshing` prop and `@refresh` event for pull-to-refresh.
+
+::: warning Mobile only
+Pull-to-refresh is implemented on iOS and Android. On macOS `VScrollView`
+accepts `refreshing` and `@refresh` but neither does anything — the event never
+fires — and a debug build logs a warning telling you so. There is no
+pull-to-refresh gesture on desktop; render an explicit refresh control (a
+`VButton` in a header, for example) and gate it with `usePlatform()` if you need
+one on macOS.
+:::
 
 ```vue
 <template>
@@ -77,7 +86,7 @@ async function onRefresh() {
 | Event | Payload | Description |
 |-------|---------|-------------|
 | `scroll` | `{ x, y, contentWidth, contentHeight, layoutWidth, layoutHeight }` | Fired on scroll with current offset and content/layout dimensions |
-| `refresh` | — | Fired when the user pulls to refresh |
+| `refresh` | — | Fired when the user pulls to refresh. iOS and Android only; never fires on macOS |
 
 ## Platform Support
 
@@ -85,4 +94,4 @@ async function onRefresh() {
 |----------|---------|
 | iOS      | Full (`UIScrollView`) |
 | Android  | Full (`ScrollView`) |
-| macOS    | Full (`NSScrollView`; children are added to its document view, an `NSClipView`-hosted `FlippedView`) |
+| macOS    | Scrolling is full (`NSScrollView`; children are added to its document view, an `NSClipView`-hosted `FlippedView`). Pull-to-refresh is **not** supported: `refreshing` and `@refresh` are accepted and ignored, with a debug-build warning. |

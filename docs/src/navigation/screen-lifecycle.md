@@ -23,7 +23,7 @@ import { onScreenFocus } from '@thelacanians/vue-native-navigation'
 
 ```vue
 <script setup>
-import { ref } from 'vue'
+import { ref } from '@thelacanians/vue-native-runtime'
 import { onScreenFocus } from '@thelacanians/vue-native-navigation'
 
 const messages = ref([])
@@ -120,7 +120,7 @@ Both hooks must be called inside a component rendered by `RouterView`. They rely
 
 ```vue
 <script setup>
-import { ref } from 'vue'
+import { ref } from '@thelacanians/vue-native-runtime'
 import { onScreenFocus, onScreenBlur } from '@thelacanians/vue-native-navigation'
 
 const data = ref(null)
@@ -149,15 +149,18 @@ onScreenBlur(stopPolling)
 
 ```vue
 <script setup>
-import { onScreenFocus } from '@thelacanians/vue-native-navigation'
-import { useRoute } from '@thelacanians/vue-native-navigation'
+import {
+  onScreenFocus,
+  useRoute,
+} from '@thelacanians/vue-native-navigation'
 
+// useRoute() returns a ComputedRef<RouteLocation> — read it through `.value`.
 const route = useRoute()
 
 onScreenFocus(() => {
   analytics.track('screen_view', {
-    screen: route.name,
-    params: route.params,
+    screen: route.value.name,
+    params: route.value.params,
     timestamp: Date.now(),
   })
 })
@@ -168,7 +171,7 @@ onScreenFocus(() => {
 
 ```vue
 <script setup>
-import { ref } from 'vue'
+import { ref } from '@thelacanians/vue-native-runtime'
 import { onScreenBlur } from '@thelacanians/vue-native-navigation'
 
 const draft = ref('')
@@ -183,8 +186,7 @@ onScreenBlur(() => {
 <template>
   <VView :style="{ flex: 1, padding: 20 }">
     <VInput
-      :value="draft"
-      :onChangeText="(t) => (draft = t)"
+      v-model="draft"
       placeholder="Write something..."
       multiline
       :style="{
@@ -205,28 +207,49 @@ onScreenBlur(() => {
 
 ```vue
 <script setup>
-import { ref } from 'vue'
+import { ref } from '@thelacanians/vue-native-runtime'
 import {
   onScreenFocus,
   onScreenBlur,
 } from '@thelacanians/vue-native-navigation'
 import { useAnimation } from '@thelacanians/vue-native-runtime'
 
-const { start, stop } = useAnimation()
+// useAnimation() is imperative and per-call: every method animates one target
+// view once and resolves when the native animation finishes. There is no
+// start()/stop() pair and nothing to "pause" — kick off a new animation from
+// each lifecycle hook instead.
+const { fadeIn, timing } = useAnimation()
+
+const banner = ref() // template ref on the VView below
 const focusCount = ref(0)
 
 onScreenFocus(() => {
   focusCount.value++
-  start() // resume animations
   console.log(`Screen focused (visit #${focusCount.value})`)
+  // Settle the view back in. `void` marks the promise as intentionally
+  // unawaited — a lifecycle callback is not async.
+  void fadeIn(banner, 200)
 })
 
 onScreenBlur(() => {
-  stop() // pause animations to save resources
   console.log('Screen blurred')
+  // Dim it while another screen is on top.
+  void timing(banner, { opacity: 0.4 }, { duration: 150, easing: 'easeOut' })
 })
 </script>
+
+<template>
+  <VView ref="banner" :style="{ flex: 1, padding: 16, justifyContent: 'center' }">
+    <VText :style="{ fontSize: 18, fontWeight: 'bold' }">
+      Focused {{ focusCount }} times
+    </VText>
+  </VView>
+</template>
 ```
+
+::: warning There is no `useAnimation().start()` / `.stop()`
+`useAnimation()` returns `timing`, `spring`, `keyframe`, `sequence`, `parallel`, `fadeIn`, `fadeOut`, `slideInFromRight`, `slideOutToRight`, `resolveId`, and `Easing`. Animations are one-shot promises driven by native `UIView`/`ObjectAnimator` calls, so "pause on blur" means animating to a resting state (as above) — not stopping a running loop. If you need something that genuinely runs on a schedule, own the timer yourself with `setInterval` and clear it in `onScreenBlur`, as in [Polling with Start/Stop](#polling-with-start-stop). See [useAnimation](../composables/useAnimation.md).
+:::
 
 ## Comparison with Vue Lifecycle
 

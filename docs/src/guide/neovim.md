@@ -4,11 +4,21 @@ Vue Native provides an official Neovim plugin with LuaSnip snippets, nvim-cmp co
 
 ## Installation
 
+The plugin lives at `tools/nvim-plugin/` inside the monorepo, not at the repo
+root, so a plugin manager cannot resolve it from the repo slug alone. Clone the
+repo once, then point your manager at that subdirectory.
+
+```bash
+git clone https://github.com/abdul-hamid-achik/vue-native \
+  ~/.local/share/vue-native-src
+```
+
 ### lazy.nvim (recommended)
 
 ```lua
 {
-  'thelacanians/vue-native',
+  dir = vim.fn.expand('~/.local/share/vue-native-src/tools/nvim-plugin'),
+  name = 'vue-native',
   config = function()
     require('vue-native').setup()
   end,
@@ -24,7 +34,7 @@ Vue Native provides an official Neovim plugin with LuaSnip snippets, nvim-cmp co
 
 ```lua
 use {
-  'thelacanians/vue-native',
+  '~/.local/share/vue-native-src/tools/nvim-plugin',
   config = function()
     require('vue-native').setup()
   end,
@@ -36,14 +46,19 @@ use {
 }
 ```
 
-### Manual
+### Manual (no plugin manager)
+
+Symlink it into Neovim's native package path:
 
 ```bash
-git clone https://github.com/thelacanians/vue-native \
-  ~/.config/nvim/pack/plugins/start/vue-native
+mkdir -p ~/.config/nvim/pack/plugins/start
+ln -s ~/.local/share/vue-native-src/tools/nvim-plugin \
+      ~/.config/nvim/pack/plugins/start/vue-native
 ```
 
-Then add to your `init.lua`:
+That is the whole install. `plugin/vue-native.vim` calls
+`require('vue-native').setup()` on `VimEnter`, so no `init.lua` line is needed.
+Add one only if you want to pass options:
 
 ```lua
 require('vue-native').setup()
@@ -86,7 +101,7 @@ Type a prefix and press your LuaSnip expand key (usually `<Tab>`) to expand. Use
 | `vn-input` | VInput with v-model |
 | `vn-image` | VImage with source and resizeMode |
 | `vn-scrollview` | VScrollView |
-| `vn-list` | VList with data and renderItem |
+| `vn-list` | VList with `:data` and `:keyExtractor` |
 | `vn-safearea` | VSafeArea |
 | `vn-switch` | VSwitch |
 | `vn-slider` | VSlider |
@@ -98,6 +113,20 @@ Type a prefix and press your LuaSnip expand key (usually `<Tab>`) to expand. Use
 | `vn-radio` | VRadio |
 | `vn-dropdown` | VDropdown |
 | `vn-video` | VVideo |
+
+::: warning `VList` has no `renderItem` prop
+`VList` renders each row through its `#item` scoped slot. `renderItem` is the React Native idiom — in this framework it belongs to [`VFlatList`](../components/VFlatList.md), not `VList`. If your `vn-list` / `vn-list-template` expansion contains `:renderItem="..."`, delete it: `VList` ignores that prop and every row renders blank. Use the slot form instead:
+
+```vue
+<VList :data="items" :keyExtractor="(item) => item.id">
+  <template #item="{ item }">
+    <VView :style="styles.item">
+      <VText>{{ item.title }}</VText>
+    </VView>
+  </template>
+</VList>
+```
+:::
 
 **Composable snippets:**
 
@@ -112,7 +141,7 @@ Type a prefix and press your LuaSnip expand key (usually `<Tab>`) to expand. Use
 | `vn-websocket` | useWebSocket |
 | `vn-database` | useDatabase |
 
-See the full list in the [plugin README](https://github.com/thelacanians/vue-native/tree/main/tools/nvim-plugin).
+See the full list in the [plugin README](https://github.com/abdul-hamid-achik/vue-native/tree/main/tools/nvim-plugin).
 
 ### Completions
 

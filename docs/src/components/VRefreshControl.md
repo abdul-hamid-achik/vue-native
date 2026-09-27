@@ -66,7 +66,7 @@ async function handleRefresh() {
 |----------|---------|
 | iOS      | Full (`UIRefreshControl`) |
 | Android  | Full (`SwipeRefreshLayout`) |
-| macOS    | No-op -- pull-to-refresh is a mobile pattern that doesn't exist on desktop. `VRefreshControl` renders as a hidden, zero-size placeholder for API compatibility; it does not crash or warn. |
+| macOS    | No-op -- pull-to-refresh is a mobile pattern that doesn't exist on desktop. `VRefreshControl` renders as a hidden, zero-size placeholder for API compatibility. It does not crash, but a debug build logs a warning when you set a prop or listener on it, so the no-op is not silent. |
 
 ## Notes
 

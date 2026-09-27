@@ -65,6 +65,10 @@ All snippets use the `vn-` prefix. Type `vn-` in a `.vue` file to see all availa
 | `vn-video` | VVideo |
 | `vn-errorboundary` | VErrorBoundary |
 
+::: warning `VList` has no `renderItem` prop
+`VList` renders each row through its `#item` scoped slot. If your `vn-list` / `vn-list-template` expansion contains `:renderItem="..."`, delete it — `VList` ignores that prop and every row renders blank. `renderItem` belongs to [`VFlatList`](../components/VFlatList.md), the React Native-compatible component. See [VList](../components/VList.md) for the slot form.
+:::
+
 ### Navigation
 
 | Prefix | Description |

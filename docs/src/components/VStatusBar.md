@@ -17,6 +17,7 @@ VStatusBar is a non-visual component -- it renders nothing on screen but configu
 | `barStyle` | `'default' \| 'light-content' \| 'dark-content'` | `'default'` | Status bar text/icon color scheme |
 | `hidden` | `boolean` | `false` | Hide the status bar entirely |
 | `animated` | `boolean` | `true` | Animate style and visibility changes |
+| `backgroundColor` | `string` | -- | Status bar background colour. **Android only** |
 
 ### Bar Styles
 
@@ -82,8 +83,8 @@ const styles = createStyleSheet({
 
 | Platform | Support |
 |----------|---------|
-| iOS      | Full (root view controller `preferredStatusBarStyle` / `prefersStatusBarHidden`) |
-| Android  | Full (`WindowInsetsController`) |
+| iOS      | Full (`barStyle`, `hidden`, `animated` via the root view controller's `preferredStatusBarStyle` / `prefersStatusBarHidden` / `preferredStatusBarUpdateAnimation`). `backgroundColor` is ignored -- the iOS status bar is a transparent overlay tinted by the view behind it. |
+| Android  | Full (`WindowInsetsController`), including `backgroundColor`. |
 | macOS    | No-op -- macOS has no app status bar. `VStatusBar` renders as a hidden, zero-size placeholder for cross-platform API compatibility. |
 
 ## Notes

@@ -63,15 +63,24 @@ Vue Native already batches bridge operations per microtask cycle, but reducing t
 
 ### 2. Use `VList` for Long Lists
 
-`VList` uses native `UITableView`/`RecyclerView` for virtualized rendering. Only visible items are rendered.
+`VList` uses native `UITableView`/`RecyclerView`/`NSTableView` for virtualized rendering. Only a window of rows (visible items plus a `windowSize` buffer) is mounted as native views.
 
 ```vue
 <VList
   :data="items"
-  :renderItem="renderItem"
   :keyExtractor="(item) => item.id"
-/>
+  :estimatedItemHeight="72"
+  :style="{ flex: 1 }"
+>
+  <template #item="{ item }">
+    <VView :style="{ padding: 16 }">
+      <VText>{{ item.title }}</VText>
+    </VView>
+  </template>
+</VList>
 ```
+
+Rows come from the `#item` scoped slot — `VList` has no `renderItem` prop (that is the React Native idiom; the React Native-compatible [`VFlatList`](../components/VFlatList.md) is the component that takes one).
 
 Never render long lists with `v-for` inside `VScrollView` -- this creates all views upfront and causes memory issues.
 

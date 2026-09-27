@@ -264,53 +264,88 @@ function handleSubmit() {
 
 ```vue
 <script setup>
-import { ref, watchDebounced } from '@thelacanians/vue-native-runtime'
+import {
+  ref,
+  watch,
+  onUnmounted,
+  useHttp,
+} from '@thelacanians/vue-native-runtime'
 
 const search = ref('')
 const results = ref([])
+const { get } = useHttp({ baseURL: 'https://api.example.com' })
 
-watchDebounced(search, async (query) => {
-  if (query.length > 2) {
-    const response = await fetch(`/search?q=${query}`)
-    results.value = await response.json()
+// Vue Native does not ship a `watchDebounced` (that is a VueUse API, and
+// VueUse targets the DOM). Debounce with a plain timer — no extra dependency.
+let debounceTimer = null
+
+watch(search, (query) => {
+  if (debounceTimer !== null) clearTimeout(debounceTimer)
+
+  if (query.length < 3) {
+    results.value = []
+    return
   }
-}, { debounce: 300 })
+
+  debounceTimer = setTimeout(async () => {
+    debounceTimer = null
+    const response = await get('/search', { params: { q: query } })
+    results.value = response.data ?? []
+  }, 300)
+})
+
+// Don't leave a timer pending after the screen goes away.
+onUnmounted(() => {
+  if (debounceTimer !== null) clearTimeout(debounceTimer)
+})
 </script>
 
 <template>
-  <VView>
-    <VInput 
+  <VView :style="{ flex: 1 }">
+    <VInput
       v-model="search"
       placeholder="Search..."
-      :clearButtonMode="'while-editing'"
+      returnKeyType="search"
+      :autoCorrect="false"
     />
-    <VList 
+    <VList
       :data="results"
-      :renderItem="(item) => <VText>{{ item.name }}</VText>"
-    />
+      :keyExtractor="(item) => item.id"
+      :style="{ flex: 1 }"
+    >
+      <template #item="{ item }">
+        <VText :style="{ padding: 12 }">{{ item.name }}</VText>
+      </template>
+    </VList>
   </VView>
 </template>
 ```
+
+::: warning Props `VInput` does not have
+`VInput` accepts `modelValue` (`v-model`), `placeholder`, `secureTextEntry`, `keyboardType`, `returnKeyType`, `autoCapitalize`, `autoCorrect`, `maxLength`, `multiline`, `style`, and the four `accessibility*` props. There is no `clearButtonMode` — the native side never implemented it — and no `renderItem` on `VList`, which renders rows through its `#item` slot. See [VInput](../components/VInput.md) and [VList](../components/VList.md).
+:::
 
 ### Login Form
 
 ```vue
 <script setup>
-import { ref } from '@thelacanians/vue-native-runtime'
+import { ref, useHttp } from '@thelacanians/vue-native-runtime'
 
 const email = ref('')
 const password = ref('')
-const loading = ref(false)
+
+// `loading` and `error` are reactive refs owned by useHttp — there is no
+// global `$fetch` in Vue Native (that is a Nuxt/ofetch API).
+const { loading, error, post } = useHttp({ baseURL: 'https://api.example.com' })
 
 async function login() {
-  loading.value = true
   try {
-    await $fetch('/api/login', {
-      method: 'POST',
-      body: { email: email.value, password: password.value }
+    await post('/api/login', {
+      email: email.value,
+      password: password.value,
     })
-  } finally {
-    loading.value = false
+  } catch {
+    // `error` is already populated by useHttp; surface it in the template.
   }
 }
 </script>
@@ -318,13 +353,14 @@ async function login() {
 <template>
   <VView>
     <VInput v-model="email" placeholder="Email" keyboardType="email-address" />
-    <VInput 
-      v-model="password" 
-      placeholder="Password" 
+    <VInput
+      v-model="password"
+      placeholder="Password"
       secureTextEntry
       @submit="login"
     />
-    <VButton 
+    <VText v-if="error" :style="{ color: '#FF3B30' }">{{ error }}</VText>
+    <VButton
       :title="loading ? 'Logging in...' : 'Login'"
       @press="login"
       :disabled="loading"
@@ -339,7 +375,7 @@ async function login() {
 
 **Problem:** Input value doesn't update when the bound value changes.
 
-**Solution:** Make sure you're using the correct prop name. Some components might use `value` while others use `modelValue`.
+**Solution:** Every form component (`VInput`, `VSwitch`, `VSlider`, `VCheckbox`, `VRadio`, `VDropdown`, `VPicker`) uses `modelValue` + `update:modelValue`, so bind with `v-model`. `:value="..."` does nothing — the only exception is `VPicker`, which still accepts `value` as a legacy alias for `modelValue`.
 
 ### Number modifier not working
 

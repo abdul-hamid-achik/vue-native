@@ -284,8 +284,8 @@ Every Vue Native component has fully typed props. Your editor will provide autoc
 
 ```vue
 <script setup lang="ts">
-import { ref } from 'vue'
 import {
+  ref,
   VView,
   VText,
   VInput,
@@ -301,42 +301,39 @@ const sliderValue = ref(0.5)
 </script>
 
 <template>
-  <!-- VInput: value, onChangeText, placeholder, secureTextEntry, etc. -->
+  <!-- VInput: modelValue (v-model), placeholder, secureTextEntry, keyboardType,
+       returnKeyType, autoCapitalize, autoCorrect, maxLength, multiline -->
   <VInput
-    :value="text"
-    :onChangeText="(t: string) => (text = t)"
+    v-model="text"
     placeholder="Type here..."
     :maxLength="100"
     keyboardType="email-address"
   />
 
-  <!-- VSwitch: value (boolean), onValueChange, trackColor, thumbColor -->
+  <!-- VSwitch: modelValue (v-model), disabled, onTintColor, thumbTintColor -->
   <VSwitch
-    :value="isEnabled"
-    :onValueChange="(v: boolean) => (isEnabled = v)"
-    trackColor="#007AFF"
-    thumbColor="#fff"
+    v-model="isEnabled"
+    onTintColor="#007AFF"
+    thumbTintColor="#fff"
   />
 
-  <!-- VImage: source (string | { uri: string }), resizeMode -->
+  <!-- VImage: source is an object — { uri } for remote, { asset } for bundled -->
   <VImage
-    source="logo.png"
+    :source="{ asset: 'logo' }"
     resizeMode="contain"
     :style="{ width: 120, height: 120 }"
   />
 
-  <!-- VSlider: value, onValueChange, minimumValue, maximumValue -->
+  <!-- VSlider: modelValue (v-model), min, max -->
   <VSlider
-    :value="sliderValue"
-    :onValueChange="(v: number) => (sliderValue = v)"
-    :minimumValue="0"
-    :maximumValue="1"
-    :step="0.01"
+    v-model="sliderValue"
+    :min="0"
+    :max="1"
   />
 </template>
 ```
 
-TypeScript will flag errors like passing a number where a string is expected, or using an invalid `keyboardType` value.
+TypeScript will flag errors like passing a number where a string is expected, or misspelling a prop name. Note that loosely-typed props such as `keyboardType` are declared as plain `string` on the component, so invalid *values* are not caught at compile time — check the component reference pages for the accepted values.
 
 ## Composable Return Types
 
@@ -344,41 +341,69 @@ All composables return properly typed refs, reactive objects, and functions. Thi
 
 ```vue
 <script setup lang="ts">
-import { useDeviceInfo } from '@thelacanians/vue-native-runtime'
+import { useDeviceInfo, usePlatform } from '@thelacanians/vue-native-runtime'
 import { useRouter, useRoute } from '@thelacanians/vue-native-navigation'
 
-// useDeviceInfo returns typed refs
+// useDeviceInfo returns typed refs. Values are empty/0 until the native
+// DeviceInfo module resolves on mount — gate on `isLoaded`.
 const {
-  platform,   // Ref<'ios' | 'android'>
-  osVersion,  // Ref<string>
-  deviceModel, // Ref<string>
-  screenWidth, // Ref<number>
-  screenHeight, // Ref<number>
+  model,          // Ref<string>  — e.g. "iPhone15,2", "Pixel 7"
+  systemName,     // Ref<string>  — e.g. "iOS", "Android", "macOS"
+  systemVersion,  // Ref<string>  — e.g. "17.4"
+  name,           // Ref<string>  — user-assigned device name
+  screenWidth,    // Ref<number>
+  screenHeight,   // Ref<number>
+  scale,          // Ref<number>  — pixel density (3 for @3x Retina)
+  isLoaded,       // Ref<boolean>
+  fetchInfo,      // () => Promise<void>
 } = useDeviceInfo()
 
-// useRouter returns typed navigation functions
-const router = useRouter()
-// router.push(route: string | RouteLocation): void
-// router.replace(route: string | RouteLocation): void
-// router.back(): void
+// Platform detection lives in usePlatform(), not useDeviceInfo().
+const {
+  platform,  // 'ios' | 'android' | 'macos'
+  isIOS,
+  isAndroid,
+  isMacOS,
+  isApple,   // iOS or macOS
+  isDesktop, // macOS
+  isMobile,  // iOS or Android
+} = usePlatform()
 
-// useRoute returns the current route as a typed reactive object
+// useRouter returns the RouterInstance. Routes are addressed by NAME — there is
+// no path/URL string form. Every navigation method returns a Promise.
+const router = useRouter()
+// router.push(name: string, params?: RouteParams, options?: NavigateOptions): Promise<void>
+// router.navigate(...) — same signature; `push` is the preferred alias
+// router.replace(name: string, params?: RouteParams): Promise<void>
+// router.reset(name: string, params?: RouteParams): Promise<void>
+// router.goBack(): Promise<void>   — `pop()` is the preferred alias
+// router.canGoBack: ComputedRef<boolean>
+
+// useRoute returns a ComputedRef<RouteLocation>.
 const route = useRoute()
-// route.path: string
-// route.params: Record<string, string>
-// route.query: Record<string, string>
-// route.name: string | undefined
+// route.value.name: string
+// route.value.params: RouteParams      // Record<string, unknown>
+// route.value.options: RouteOptions    // { title?, headerShown?, animation?, ... }
+// There is no `path` and no `query` — deep links are mapped to route names by
+// the router's `linking` config, and any values they carry arrive in `params`.
 </script>
 ```
+
+::: tip No `back()`, no `route.path`
+`goBack()` (alias `pop()`) is the only way back — there is no `router.back()`. And because `RouteLocation` is `{ name, params, options }`, reading `route.value.path` or `route.value.query` is `undefined` at runtime and a type error under `strict`. See [Navigation](../navigation/README.md) and [useDeviceInfo](../composables/useDeviceInfo.md).
+:::
 
 ### Typing Custom Composables
 
 When building your own composables, leverage Vue Native's types:
 
 ```ts
-import { ref, onMounted } from 'vue'
-import { useHttp } from '@thelacanians/vue-native-runtime'
-import type { Ref } from 'vue'
+import {
+  ref,
+  onMounted,
+  useHttp,
+  type Ref,
+} from '@thelacanians/vue-native-runtime'
 
 interface User {
   id: number
@@ -404,7 +429,8 @@ export function useUsers(): UseUsersReturn {
     error.value = null
     try {
       const response = await get<User[]>('https://api.example.com/users')
-      users.value = response.data
+      // `data` is `T | undefined` — 204/205 responses legitimately have no body.
+      users.value = response.data ?? []
     } catch (e) {
       error.value = (e as Error).message
     } finally {
@@ -460,19 +486,29 @@ Event callbacks from components are typed. Use them directly or extract the type
 
 ```vue
 <script setup lang="ts">
-import { VButton, VInput, VList } from '@thelacanians/vue-native-runtime'
+import { ref } from '@thelacanians/vue-native-runtime'
+import { VButton, VInput, VList, VText, VView } from '@thelacanians/vue-native-runtime'
 
-// onPress receives no arguments
+interface Item {
+  id: string
+  name: string
+}
+
+const text = ref('')
+const items = ref<Item[]>([])
+
+// VButton's onPress receives no arguments
 function handlePress(): void {
   console.log('Button pressed')
 }
 
-// onChangeText receives the new text as a string
-function handleTextChange(text: string): void {
-  console.log('New text:', text)
+// VInput is v-model based: it emits `update:modelValue` with the new string.
+// There is no `onChangeText` prop.
+function handleTextChange(next: string): void {
+  text.value = next
 }
 
-// VList onEndReached receives no arguments
+// VList's `endReached` event receives no arguments
 function handleEndReached(): void {
   console.log('Load more items')
 }
@@ -483,38 +519,57 @@ function handleEndReached(): void {
     <VText>Tap Me</VText>
   </VButton>
 
-  <VInput :onChangeText="handleTextChange" placeholder="Type..." />
+  <VInput
+    :modelValue="text"
+    placeholder="Type..."
+    @update:modelValue="handleTextChange"
+  />
 
-  <VList :data="items" :renderItem="renderItem" :onEndReached="handleEndReached" />
+  <!-- VList renders rows through its `#item` scoped slot. It has no
+       `renderItem` prop — that is the React Native (and VFlatList) API. -->
+  <VList
+    :data="items"
+    :keyExtractor="(item: Item) => item.id"
+    @endReached="handleEndReached"
+  >
+    <template #item="{ item }">
+      <VView :style="{ padding: 12 }">
+        <VText>{{ (item as Item).name }}</VText>
+      </VView>
+    </template>
+  </VList>
 </template>
 ```
 
 ## Generic Components
 
-When building reusable components, use TypeScript generics for type-safe data flow:
+When building reusable components, use TypeScript generics for type-safe data flow. Because `VList` renders rows through a scoped slot rather than a render prop, a generic wrapper forwards that slot and narrows `item` back to `T`:
 
 ```vue
 <!-- TypedList.vue -->
 <script setup lang="ts" generic="T extends { id: string | number }">
-import { VList, VView, VText } from '@thelacanians/vue-native-runtime'
+import { VList } from '@thelacanians/vue-native-runtime'
 
-const props = defineProps<{
+defineProps<{
   items: T[]
-  renderItem: (item: T, index: number) => any
-  keyExtractor?: (item: T) => string | number
+  keyExtractor?: (item: T, index: number) => string
 }>()
 
-function defaultKeyExtractor(item: T): string | number {
-  return item.id
+function defaultKeyExtractor(item: T): string {
+  return String(item.id)
 }
 </script>
 
 <template>
   <VList
     :data="items"
-    :renderItem="renderItem"
     :keyExtractor="keyExtractor ?? defaultKeyExtractor"
-  />
+    :style="{ flex: 1 }"
+  >
+    <template #item="{ item, index }">
+      <slot name="item" :item="item as T" :index="index" />
+    </template>
+  </VList>
 </template>
 ```
 
@@ -523,6 +578,7 @@ Usage:
 ```vue
 <script setup lang="ts">
 import TypedList from './TypedList.vue'
+import { VText, VView } from '@thelacanians/vue-native-runtime'
 
 interface Task {
   id: number
@@ -534,15 +590,17 @@ const tasks: Task[] = [
   { id: 1, title: 'Learn Vue Native', done: false },
   { id: 2, title: 'Build an app', done: false },
 ]
-
-// TypeScript knows `task` is of type Task
-function renderTask(task: Task, index: number) {
-  // ...
-}
 </script>
 
 <template>
-  <TypedList :items="tasks" :renderItem="renderTask" />
+  <!-- `item` is inferred as Task because TypedList is generic over T -->
+  <TypedList :items="tasks">
+    <template #item="{ item, index }">
+      <VView :style="{ padding: 12, flexDirection: 'row' }">
+        <VText>{{ index + 1 }}. {{ item.title }}</VText>
+      </VView>
+    </template>
+  </TypedList>
 </template>
 ```
 

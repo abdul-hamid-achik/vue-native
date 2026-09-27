@@ -344,26 +344,44 @@ On iOS, VoiceOver users can swipe up/down with the rotor set to "Headings" to ju
 
 ## RTL and Internationalization
 
-Vue Native's `useI18n` composable provides an `isRTL` ref that you can use to flip layouts for right-to-left languages. Accessibility labels should also be localized:
+Vue Native's `useI18n` composable returns exactly two refs — `locale` and `isRTL` — so you can flip layouts for right-to-left languages. It does **not** provide a translation function: there is no `t()` in this framework, and no string catalog ships with the runtime. Localizing your accessibility labels (and every other user-facing string) is your app's responsibility — read `locale` and pick the string yourself, or plug in your own i18n library.
 
 ```vue
 <script setup>
-import { useI18n } from '@thelacanians/vue-native-runtime'
+import { computed, useI18n } from '@thelacanians/vue-native-runtime'
 import { VButton, VText } from '@thelacanians/vue-native-runtime'
+import { useRouter } from '@thelacanians/vue-native-navigation'
 
-const { t, isRTL } = useI18n()
+const router = useRouter()
+const { locale, isRTL } = useI18n()
+
+// Your own catalog. useI18n() gives you `locale`; it does not translate.
+// `locale` can be a full tag like "en-US", so match on the language prefix —
+// the same way useI18n detects RTL internally.
+const catalog = {
+  en: { goBack: 'Go back' },
+  es: { goBack: 'Volver' },
+  ar: { goBack: 'رجوع' },
+}
+
+const strings = computed(() => {
+  const lang = Object.keys(catalog).find((key) => locale.value.startsWith(key))
+  return catalog[lang ?? 'en']
+})
 </script>
 
 <template>
   <VButton
-    :onPress="goBack"
-    :accessibilityLabel="t('common.goBack')"
+    :onPress="() => router.pop()"
+    :accessibilityLabel="strings.goBack"
     :style="{ flexDirection: isRTL ? 'row-reverse' : 'row' }"
   >
     <VText>{{ isRTL ? '→' : '←' }}</VText>
   </VButton>
 </template>
 ```
+
+See [useI18n](../composables/useI18n.md) for the full return shape and the list of detected RTL language prefixes.
 
 ## Testing Accessibility
 

@@ -387,8 +387,8 @@ const styles = createStyleSheet({
 You've built an app with components, navigation, and data fetching. Here's where to go next:
 
 - **[Styling Guide](/guide/styling.md)** — Units, colors, Flexbox patterns, dark mode
-- **[Components](/components/)** — All 40 built-in components with examples
-- **[Composables](/composables/)** — 37+ native API wrappers (camera, storage, sensors, etc.)
+- **[Components](/components/)** — All 40 built-in components with examples (the reference index has 39 pages because `VDrawerItem` and `VDrawerSection` are documented on the `VDrawer` page)
+- **[Composables](/composables/)** — 47 native API wrappers (camera, storage, sensors, etc.)
 - **[Navigation](/navigation/)** — Tabs, drawer, guards, deep linking, state persistence
 - **[Deployment](/guide/deployment.md)** — Ship to App Store and Play Store
 
