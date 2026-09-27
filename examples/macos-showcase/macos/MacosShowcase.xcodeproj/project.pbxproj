@@ -1,0 +1,365 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		64E9B27E7CFFB73FE34B9A87 /* MainWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6992C3DB46B63412FC96A76 /* MainWindowController.swift */; };
+		A50A08D331BE0EB868BE5D7D /* vue-native-bundle.js in Resources */ = {isa = PBXBuildFile; fileRef = 336B9DB651438F3738308A3D /* vue-native-bundle.js */; };
+		A9DCFA9DEF7AFA5FEC5C16BA /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = E891334BC57C43C1FE5844C2 /* main.swift */; };
+		CA8B0C53343EEA88EC46F087 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C97C95E34A645494DBF52D1 /* AppDelegate.swift */; };
+		FC2736ECC634759DCB2896C0 /* VueNativeMacOS in Frameworks */ = {isa = PBXBuildFile; productRef = A7CB3CF3FF125128C5FF0236 /* VueNativeMacOS */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		336B9DB651438F3738308A3D /* vue-native-bundle.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = "vue-native-bundle.js"; sourceTree = "<group>"; };
+		42B66437E2DDE10BAF7D690F /* VueNativeMacOS */ = {isa = PBXFileReference; lastKnownFileType = folder; name = VueNativeMacOS; path = ../../../native/macos/VueNativeMacOS; sourceTree = SOURCE_ROOT; };
+		9C97C95E34A645494DBF52D1 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		C225E34561FBF6A5A04B5D92 /* MacosShowcase.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MacosShowcase.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		E6992C3DB46B63412FC96A76 /* MainWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainWindowController.swift; sourceTree = "<group>"; };
+		E891334BC57C43C1FE5844C2 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		B6923CD9B13466DB823D2038 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				FC2736ECC634759DCB2896C0 /* VueNativeMacOS in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		028B30AFC3D602BADFD07C3B = {
+			isa = PBXGroup;
+			children = (
+				DE8B85AC611C6613ECFCC6C1 /* dist */,
+				3DDBBA1935D0D402FC2972EA /* Packages */,
+				F8D34838026B3CFF4897D26D /* Sources */,
+				925F9EA823695981873587F8 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		3DDBBA1935D0D402FC2972EA /* Packages */ = {
+			isa = PBXGroup;
+			children = (
+				42B66437E2DDE10BAF7D690F /* VueNativeMacOS */,
+			);
+			name = Packages;
+			sourceTree = "<group>";
+		};
+		925F9EA823695981873587F8 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				C225E34561FBF6A5A04B5D92 /* MacosShowcase.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		DE8B85AC611C6613ECFCC6C1 /* dist */ = {
+			isa = PBXGroup;
+			children = (
+				336B9DB651438F3738308A3D /* vue-native-bundle.js */,
+			);
+			name = dist;
+			path = ../dist;
+			sourceTree = "<group>";
+		};
+		F8D34838026B3CFF4897D26D /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				9C97C95E34A645494DBF52D1 /* AppDelegate.swift */,
+				E891334BC57C43C1FE5844C2 /* main.swift */,
+				E6992C3DB46B63412FC96A76 /* MainWindowController.swift */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		49D578D1C13D2E196069D2DD /* MacosShowcase */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B9EE65E51F822257BB6F8E06 /* Build configuration list for PBXNativeTarget "MacosShowcase" */;
+			buildPhases = (
+				3105DE66B33EC476C9B62BE9 /* Sources */,
+				1E186D1C7D43A776E03C5F0E /* Resources */,
+				B6923CD9B13466DB823D2038 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = MacosShowcase;
+			packageProductDependencies = (
+				A7CB3CF3FF125128C5FF0236 /* VueNativeMacOS */,
+			);
+			productName = MacosShowcase;
+			productReference = C225E34561FBF6A5A04B5D92 /* MacosShowcase.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		5681DDB6D3C5A458E6589877 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1500;
+				TargetAttributes = {
+					49D578D1C13D2E196069D2DD = {
+						DevelopmentTeam = "";
+						ProvisioningStyle = Manual;
+					};
+				};
+			};
+			buildConfigurationList = FA31B8F7173EAB5E020046A4 /* Build configuration list for PBXProject "MacosShowcase" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 028B30AFC3D602BADFD07C3B;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				7A634BC20D3B872B3E43B98D /* XCLocalSwiftPackageReference "../../../native/macos/VueNativeMacOS" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 925F9EA823695981873587F8 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				49D578D1C13D2E196069D2DD /* MacosShowcase */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		1E186D1C7D43A776E03C5F0E /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A50A08D331BE0EB868BE5D7D /* vue-native-bundle.js in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		3105DE66B33EC476C9B62BE9 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CA8B0C53343EEA88EC46F087 /* AppDelegate.swift in Sources */,
+				64E9B27E7CFFB73FE34B9A87 /* MainWindowController.swift in Sources */,
+				A9DCFA9DEF7AFA5FEC5C16BA /* main.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		058042CE940A47FC0BA1FDE0 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		31785E28B716B2AA8DD14690 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		ECEA9E79CCB96CBA299BAF81 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Sources/App.entitlements;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				COMBINE_HIDPI_IMAGES = YES;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_HARDENED_RUNTIME = NO;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Sources/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.vuenative.macosshowcase;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.9;
+			};
+			name = Debug;
+		};
+		F13FD4B6AF08F82D889C5750 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Sources/App.entitlements;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				COMBINE_HIDPI_IMAGES = YES;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_HARDENED_RUNTIME = NO;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Sources/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.vuenative.macosshowcase;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.9;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		B9EE65E51F822257BB6F8E06 /* Build configuration list for PBXNativeTarget "MacosShowcase" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				ECEA9E79CCB96CBA299BAF81 /* Debug */,
+				F13FD4B6AF08F82D889C5750 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		FA31B8F7173EAB5E020046A4 /* Build configuration list for PBXProject "MacosShowcase" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				31785E28B716B2AA8DD14690 /* Debug */,
+				058042CE940A47FC0BA1FDE0 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		7A634BC20D3B872B3E43B98D /* XCLocalSwiftPackageReference "../../../native/macos/VueNativeMacOS" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../../../native/macos/VueNativeMacOS;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		A7CB3CF3FF125128C5FF0236 /* VueNativeMacOS */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = VueNativeMacOS;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 5681DDB6D3C5A458E6589877 /* Project object */;
+}

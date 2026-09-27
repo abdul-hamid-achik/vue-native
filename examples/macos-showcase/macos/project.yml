@@ -1,0 +1,62 @@
+name: MacosShowcase
+options:
+  bundleIdPrefix: com.vuenative
+  deploymentTarget:
+    macOS: "15.0"
+  xcodeVersion: "15.0"
+
+packages:
+  # Vendored copy, not a git URL: VueNativeMacOS depends on VueNativeShared by
+  # local path (../../shared/VueNativeShared), which only resolves inside the
+  # native/ tree that create copies into this project.
+  VueNativeMacOS:
+    path: ../../../native/macos/VueNativeMacOS
+
+targets:
+  MacosShowcase:
+    type: application
+    platform: macOS
+    sources:
+      # Info.plist and App.entitlements are consumed through build settings
+      # (INFOPLIST_FILE / CODE_SIGN_ENTITLEMENTS). Excluding them here keeps
+      # XcodeGen from also adding them to Copy Bundle Resources, which would
+      # make two build steps produce the same file.
+      - path: Sources
+        excludes:
+          - Info.plist
+          - App.entitlements
+      # The Vite output, copied into Contents/Resources so JSRuntime's
+      # Bundle.main lookup for "vue-native-bundle.js" succeeds.
+      - path: ../dist/vue-native-bundle.js
+        buildPhase: resources
+        optional: true
+    # An explicit scheme block makes XcodeGen write a shared scheme into the
+    # generated .xcodeproj. Without it the only scheme is the one Xcode
+    # autocreates into xcuserdata on first use, so `xcodebuild -scheme MacosShowcase`
+    # depends on state that a fresh clone and CI do not have.
+    scheme: {}
+    dependencies:
+      - package: VueNativeMacOS
+        product: VueNativeMacOS
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.vuenative.macosshowcase
+        INFOPLIST_FILE: Sources/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Sources/App.entitlements
+        GENERATE_INFOPLIST_FILE: false
+        MACOSX_DEPLOYMENT_TARGET: "15.0"
+        SWIFT_VERSION: "5.9"
+        # Xcode's macOS app template sets this and XcodeGen does not. Today the
+        # SPM products link statically (a verified build emits no
+        # Contents/Frameworks), so it is inert — but it is the rpath a
+        # dynamically-linked dependency would need, and omitting it is how a
+        # host that later adds one ends up crashing in dyld at launch.
+        LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/../Frameworks"
+        COMBINE_HIDPI_IMAGES: YES
+        # Ad-hoc signing so `run macos`/`build macos` work with no Apple
+        # Developer team configured. Change CODE_SIGN_STYLE to Automatic and
+        # set DEVELOPMENT_TEAM before distributing outside this machine.
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: "-"
+        DEVELOPMENT_TEAM: ""
+        ENABLE_HARDENED_RUNTIME: NO

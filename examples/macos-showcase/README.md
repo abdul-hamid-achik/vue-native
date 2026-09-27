@@ -2,19 +2,13 @@
 
 Demonstrates macOS-specific features and desktop patterns.
 
-> **Requires a native host.** This directory ships Vue source and build config
-> only — there is no `ios/`, `android/`, or `macos/` app shell here. `bun run
-> dev:ios`, `dev:android` and `dev:macos` build the JS bundle but have nothing
-> to run it in. To see this app on a device or simulator:
->
-> ```bash
-> bunx vue-native create my-app   # scaffolds iOS + Android hosts
-> ```
->
-> Then copy `app/`, `vite.config.ts` and `env.d.ts` from this example over the
-> scaffold's equivalents, run `bun run build` here, and open the generated
-> project in Xcode or Android Studio. `vue-native create` does not scaffold a
-> macOS shell yet.
+> **macOS host included; iOS and Android are not.** This directory ships a
+> runnable `macos/` XcodeGen host (`macos/project.yml` is the source of truth;
+> `macos/*.xcodeproj` is generated and gitignored). There is no `ios/` or
+> `android/` shell here, so `dev:ios` and `dev:android` build a bundle with
+> nothing to run it in — this example targets desktop patterns. To see the same
+> UI on mobile, copy `app/`, `vite.config.ts` and `env.d.ts` into a scaffolded
+> project (`bunx vue-native create my-app`) and drop the macOS-only pieces.
 
 ## What It Demonstrates
 
@@ -49,13 +43,23 @@ demonstrated yet — see the note above.
 
 ```bash
 cd examples/macos-showcase
-bun install
-bun run dev:macos
+bun run build          # produces dist/vue-native-bundle.js, which the host copies
+cd macos && xcodegen generate && cd ..
+open macos/MacosShowcase.xcodeproj   # then Cmd+R on a macOS destination
 ```
 
-This directory contains the macOS Vue source and build configuration, not an
-Xcode app shell. Copy it into a project with a `VueNativeWindowController`
-macOS host before launching it. Vue Native's macOS runtime requires macOS 15+.
+Or from the repo root, once the bundle exists:
+
+```bash
+cd macos && xcodebuild -project MacosShowcase.xcodeproj -scheme MacosShowcase \
+  -destination 'platform=macOS' build
+```
+
+`macos/project.yml` declares the host: it points at the repo's
+`native/macos/VueNativeMacOS` package (which resolves `VueNativeShared` by local
+path, so a remote git URL would not work), copies `../dist/vue-native-bundle.js`
+into `Contents/Resources`, and ad-hoc signs so no Apple Developer team is needed.
+Vue Native's macOS runtime requires macOS 15+.
 
 ## Key Concepts
 
