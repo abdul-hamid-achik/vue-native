@@ -606,6 +606,23 @@ jobs:
         run: ./gradlew :VueNativeCore:compileDebugKotlin :VueNativeCore:assembleRelease
         working-directory: native/android
 
+      # Play requires 16 KB page alignment for apps targeting Android 15+, and
+      # every consumer inherits our native dependencies' .so files. No test in
+      # this repo loads one — Robolectric never touches native libraries — so
+      # J2V8 6.2.1 shipped three misaligned ABIs for years with CI green. The
+      # build step above puts the AAR in the Gradle cache; parse its ELF
+      # program headers and fail on any misaligned PT_LOAD.
+      - name: Assert 16 KB page alignment of bundled native libraries
+        run: |
+          AAR=$(find "$HOME/.gradle" -path "*com.eclipsesource.j2v8*" -name "j2v8-*.aar" | head -1)
+          if [ -z "$AAR" ]; then
+            echo "::error::no j2v8 AAR found in the Gradle cache; the alignment check must not pass vacuously"
+            exit 1
+          fi
+          echo "checking $AAR"
+          node ../../scripts/check-16kb-alignment.mjs "$AAR"
+        working-directory: native/android
+
       - name: Test VueNativeCore
         run: ./gradlew :VueNativeCore:testDebugUnitTest :VueNativeCore:testReleaseUnitTest
         working-directory: native/android
