@@ -355,11 +355,15 @@ class BluetoothModule : NativeModule {
         }
     }
 
+    // BLUETOOTH_SCAN / BLUETOOTH_CONNECT are host-provided (see the opt-in
+    // snippet in VueNativeCore/src/main/AndroidManifest.xml). Every entry point
+    // checks them at runtime before reaching the platform APIs; teardown cannot,
+    // so it is suppressed wholesale — close()/disconnect() on an already-closed
+    // GATT is safe and must not throw during Activity destruction.
+    @Suppress("MissingPermission")
     override fun destroy() {
-        @Suppress("MissingPermission")
         scanner?.stopScan(scanCallback)
         gattConnections.values.forEach {
-            @Suppress("MissingPermission")
             it.disconnect()
             it.close()
         }

@@ -5,12 +5,15 @@ plugins {
 
 android {
     namespace = "com.vuenative.example.counter"
-    compileSdk = 34
+    // Aligned with :VueNativeCore through gradle/libs.versions.toml. This module
+    // used to be on 34 while the library compiled against 35, which AGP silently
+    // papered over via android.suppressUnsupportedCompileSdk.
+    compileSdk = libs.versions.compileSdk.get().toInt()
 
     defaultConfig {
         applicationId = "com.vuenative.example.counter"
-        minSdk = 21
-        targetSdk = 34
+        minSdk = libs.versions.minSdk.get().toInt()
+        targetSdk = libs.versions.targetSdk.get().toInt()
         versionCode = 1
         versionName = "1.0"
     }
@@ -40,6 +43,6 @@ android {
 
 dependencies {
     implementation(project(":VueNativeCore"))
-    implementation("androidx.core:core-ktx:1.12.0")
-    implementation("androidx.appcompat:appcompat:1.6.1")
+    implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.appcompat)
 }

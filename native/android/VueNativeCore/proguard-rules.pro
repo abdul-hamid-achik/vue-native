@@ -26,6 +26,23 @@
 -keep public class com.vuenative.core.NativeModule { *; }
 -keep public class com.vuenative.core.NativeModuleRegistry { *; }
 
+# WorkManager — VueNativeWorker is constructed reflectively by
+# PeriodicWorkRequestBuilder / OneTimeWorkRequestBuilder (BackgroundTaskModule).
+# NOTE: this file only applies when the *library* is minified, and
+# isMinifyEnabled is false. The rules that actually protect a minified HOST
+# build live in consumer-rules.pro — keep the two in sync.
+-keep class * extends androidx.work.Worker
+-keep class * extends androidx.work.ListenableWorker
+-keep public class * extends androidx.work.Worker {
+    public <init>(android.content.Context, androidx.work.WorkerParameters);
+}
+-keep class com.vuenative.core.VueNativeWorker { <init>(...); }
+
+# Component factories and modules are resolved by string name at runtime, so
+# nothing references them statically.
+-keep class * implements com.vuenative.core.NativeComponentFactory { *; }
+-keep class * implements com.vuenative.core.NativeModule { *; }
+
 # Biometric
 -keep class androidx.biometric.** { *; }
 

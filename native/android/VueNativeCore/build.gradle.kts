@@ -24,11 +24,11 @@ val publishedVersion: String = run {
 
 android {
     namespace = "com.vuenative.core"
-    compileSdk = 35
+    compileSdk = libs.versions.compileSdk.get().toInt()
 
     defaultConfig {
-        minSdk = 21
-        targetSdk = 35
+        minSdk = libs.versions.minSdk.get().toInt()
+        targetSdk = libs.versions.targetSdk.get().toInt()
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         consumerProguardFiles("consumer-rules.pro")
@@ -36,6 +36,10 @@ android {
 
     buildTypes {
         release {
+            // Deliberately false: an Android *library* must not be minified —
+            // that would rename the API host apps compile against. The rules that
+            // protect a minified HOST build are in consumer-rules.pro, which
+            // ships inside the AAR.
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -57,9 +61,26 @@ android {
         freeCompilerArgs += listOf("-opt-in=androidx.camera.core.ExperimentalGetImage")
     }
 
-    // Allow lint checks to pass without strict enforcement during development
     lint {
-        abortOnError = false
+        // Lint is a real gate now. It used to be abortOnError = false, which is
+        // exactly why a NewApi violation (ConnectivityManager.getActiveNetwork()
+        // on API 23 with minSdk 21, in NetworkModule) shipped unnoticed — and CI
+        // never ran Android Lint at all.
+        abortOnError = true
+        warningsAsErrors = false
+        // Pre-existing findings that are not fixed in this pass are recorded here
+        // so the build stays green while new violations fail. Regenerate with:
+        //   ./gradlew :VueNativeCore:updateLintBaseline
+        // Do not add NewApi to the baseline without an explicit SDK_INT guard.
+        baseline = file("lint-baseline.xml")
+        checkReleaseBuilds = true
+        // androidx.camera.core.ExperimentalGetImage is opted into module-wide via
+        // kotlinc's -opt-in flag (see kotlinOptions above). Lint's
+        // UnsafeOptInUsage check does not read that compiler argument and
+        // re-reports every ImageProxy.image call site up the whole call chain, so
+        // it is disabled here rather than baselined — baseline entries for it
+        // just move whenever the chain changes.
+        disable += "UnsafeOptInUsageError"
     }
 
     testOptions {
@@ -71,76 +92,85 @@ android {
 
 dependencies {
     // AndroidX Core
-    implementation("androidx.core:core-ktx:1.12.0")
-    implementation("androidx.appcompat:appcompat:1.6.1")
-    implementation("com.google.android.material:material:1.11.0")
-    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
-    implementation("androidx.recyclerview:recyclerview:1.3.2")
-    implementation("androidx.webkit:webkit:1.10.0")
-    implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
+    implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.appcompat)
+    implementation(libs.material)
+    implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.androidx.recyclerview)
+    implementation(libs.androidx.webkit)
+    implementation(libs.androidx.swiperefreshlayout)
 
     // J2V8 — JavaScript engine (V8 for Android)
+    //
+    // Deliberately NOT in gradle/libs.versions.toml, and deliberately pinned at
+    // 6.2.1 for now:
+    //   * the `@aar` artifact-only notation cannot be expressed in a version
+    //     catalog, and dropping it would start resolving J2V8's transitive
+    //     dependencies into every host app;
+    //   * a J2V8 upgrade swaps the bundled V8 native library under the whole
+    //     bridge, so it needs full device re-verification on iOS-parity flows
+    //     and is tracked as its own change rather than riding along here.
     implementation("com.eclipsesource.j2v8:j2v8:6.2.1@aar")
 
     // FlexboxLayout — CSS Flexbox for Android views
-    implementation("com.google.android.flexbox:flexbox:3.0.0")
+    implementation(libs.flexbox)
 
     // Coil — Image loading
-    implementation("io.coil-kt:coil:2.7.0")
+    implementation(libs.coil)
 
     // AndroidSVG — SVG rendering (VSVG component)
-    implementation("com.caverock:androidsvg:1.4")
+    implementation(libs.androidsvg)
 
     // OkHttp — HTTP for fetch polyfill
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation(libs.okhttp)
 
     // Kotlin Coroutines
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+    implementation(libs.kotlinx.coroutines.android)
 
     // Lifecycle Process (for ProcessLifecycleOwner)
-    implementation("androidx.lifecycle:lifecycle-process:2.7.0")
+    implementation(libs.androidx.lifecycle.process)
 
     // WorkManager (for BackgroundTaskModule)
-    implementation("androidx.work:work-runtime-ktx:2.8.1")
+    implementation(libs.androidx.work.runtime.ktx)
 
     // Location (for GeolocationModule)
-    implementation("com.google.android.gms:play-services-location:21.1.0")
+    implementation(libs.play.services.location)
 
     // Biometry (for BiometryModule)
-    implementation("androidx.biometric:biometric:1.1.0")
+    implementation(libs.androidx.biometric)
 
     // Secure Storage (for SecureStorageModule)
-    implementation("androidx.security:security-crypto:1.1.0-alpha06")
+    implementation(libs.androidx.security.crypto)
 
     // Google Play Billing (for IAPModule)
-    implementation("com.android.billingclient:billing:7.0.0")
+    implementation(libs.billing)
 
     // Credential Manager + Google Identity (for SocialAuthModule)
-    implementation("androidx.credentials:credentials:1.2.2")
-    implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
+    implementation(libs.androidx.credentials)
+    implementation(libs.googleid)
 
     // CameraX — live preview + frame analysis for Camera.scanQRCode.
     // Pinned to 1.4.2 (not the newer 1.5.x/1.6.x lines): those require
     // compileSdk 36 and AGP 8.9+, both ahead of this project's compileSdk 35 /
     // AGP 8.2.2. 1.4.2 is the latest stable release compatible with both.
-    implementation("androidx.camera:camera-camera2:1.4.2")
-    implementation("androidx.camera:camera-lifecycle:1.4.2")
-    implementation("androidx.camera:camera-view:1.4.2")
+    implementation(libs.androidx.camera.camera2)
+    implementation(libs.androidx.camera.lifecycle)
+    implementation(libs.androidx.camera.view)
 
     // ML Kit Barcode Scanning — bundled model, no Google Play Services required
     // (see https://developers.google.com/ml-kit/vision/barcode-scanning/android)
-    implementation("com.google.mlkit:barcode-scanning:17.3.0")
+    implementation(libs.mlkit.barcode.scanning)
 
     // Testing
-    testImplementation("junit:junit:4.13.2")
-    testImplementation("org.robolectric:robolectric:4.11.1")
-    testImplementation("androidx.test:core:1.5.0")
-    testImplementation("androidx.test.ext:junit:1.1.5")
-    testImplementation("io.mockk:mockk:1.13.9")
-    testImplementation("com.google.truth:truth:1.1.5")
+    testImplementation(libs.junit)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.core)
+    testImplementation(libs.androidx.test.ext.junit)
+    testImplementation(libs.mockk)
+    testImplementation(libs.truth)
     // Host-boot tests evaluate the committed JS fixture on the JVM. J2V8's
     // Android AAR cannot create a V8 isolate here.
-    testImplementation("org.mozilla:rhino:1.7.15")
+    testImplementation(libs.rhino)
 }
 
 ktlint {
@@ -149,6 +179,22 @@ ktlint {
     ignoreFailures.set(false)
     filter {
         exclude("**/generated/**")
+    }
+}
+
+// The documented Android gate (AGENTS.md, root `bun run test:android`) is
+// `:VueNativeCore:testDebugUnitTest`, which does NOT depend on lint — that is why
+// turning abortOnError on would still have caught nothing in CI, and why the
+// NetworkModule NewApi violation shipped. Wire lint into the test task so the
+// gate that runs in CI is the gate that fails.
+//
+// Skip it locally with: ./gradlew :VueNativeCore:testDebugUnitTest -x lintDebug
+//
+// configureEach rather than tasks.named: AGP creates the unit-test tasks after
+// this script is evaluated, so an eager lookup fails configuration.
+tasks.configureEach {
+    if (name == "testDebugUnitTest") {
+        dependsOn("lintDebug")
     }
 }
 

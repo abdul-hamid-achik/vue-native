@@ -107,10 +107,10 @@ class JSPolyfillsTest {
         val rafCallbacks = callbacksField.get(null) as MutableMap<Int, Any>
         assertTrue("RAF callbacks should be empty after reset", rafCallbacks.isEmpty())
 
-        val postedField = JSPolyfills::class.java.getDeclaredField("rafChoreographerPosted")
+        val postedField = JSPolyfills::class.java.getDeclaredField("rafFrameScheduled")
         postedField.isAccessible = true
         val posted = postedField.getBoolean(null)
-        assertTrue("rafChoreographerPosted should be false after reset", !posted)
+        assertTrue("rafFrameScheduled should be false after reset", !posted)
     }
 
     // -------------------------------------------------------------------------

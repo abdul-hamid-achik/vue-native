@@ -3,7 +3,9 @@ package com.vuenative.core
 import android.content.Context
 import android.util.Log
 import androidx.work.*
+import java.lang.ref.WeakReference
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * Native module for scheduling background tasks using WorkManager.
@@ -144,7 +146,11 @@ class BackgroundTaskModule : NativeModule {
     }
 
     override fun destroy() {
-        VueNativeWorker.bridgeRef = null
+        // Only clear the process-wide Worker slot if this module still owns it —
+        // a replacement host may have already installed its own bridge.
+        bridgeRef?.let { VueNativeWorker.clearBridge(it) }
+        bridgeRef = null
+        appContext = null
     }
 }
 
@@ -153,8 +159,38 @@ class BackgroundTaskModule : NativeModule {
  */
 class VueNativeWorker(context: Context, params: WorkerParameters) : Worker(context, params) {
     companion object {
-        @Volatile
-        var bridgeRef: NativeBridge? = null
+        private val bridgeSlot = AtomicReference<WeakReference<NativeBridge>?>(null)
+
+        /**
+         * The bridge a running Worker dispatches `background:taskExecute` to.
+         *
+         * Held **weakly** on purpose: [NativeBridge] retains its host Activity,
+         * this slot is a process-wide static, and WorkManager can run a Worker
+         * long after that Activity was destroyed. A strong reference here leaks
+         * the whole Activity (and its view tree) for the life of the process.
+         * Readers must tolerate `null` — that just means "no live host".
+         */
+        var bridgeRef: NativeBridge?
+            get() = bridgeSlot.get()?.get()
+            set(value) {
+                bridgeSlot.set(value?.let { WeakReference(it) })
+            }
+
+        /**
+         * Clear the slot only when it still points at [bridge]. A retiring host
+         * must not wipe the reference a replacement host already installed.
+         *
+         * Written as an explicit CAS loop rather than
+         * `AtomicReference.updateAndGet`, which is a `java.util.concurrent`
+         * default method and only exists on API 24+ (minSdk here is 21).
+         */
+        fun clearBridge(bridge: NativeBridge) {
+            while (true) {
+                val current = bridgeSlot.get() ?: return
+                if (current.get() !== bridge) return
+                if (bridgeSlot.compareAndSet(current, null)) return
+            }
+        }
     }
 
     override fun doWork(): Result {

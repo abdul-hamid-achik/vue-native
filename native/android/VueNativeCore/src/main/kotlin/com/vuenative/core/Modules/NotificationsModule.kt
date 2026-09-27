@@ -118,6 +118,13 @@ class NotificationsModule : NativeModule {
     // Module invocation
     // -------------------------------------------------------------------------
 
+    // POST_NOTIFICATIONS is host-provided (see the opt-in snippet in
+    // VueNativeCore/src/main/AndroidManifest.xml) and only exists on API 33+.
+    // The notify() call below is wrapped in an explicit
+    // `SDK_INT < TIRAMISU || checkSelfPermission(POST_NOTIFICATIONS) == GRANTED`
+    // test; lint cannot follow that guard because it lives inside a Runnable
+    // posted to a handler.
+    @Suppress("MissingPermission")
     override fun invoke(
         method: String,
         args: List<Any?>,

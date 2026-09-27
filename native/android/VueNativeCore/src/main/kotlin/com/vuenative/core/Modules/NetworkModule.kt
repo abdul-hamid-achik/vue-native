@@ -6,12 +6,18 @@ import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import android.os.Build
+import android.util.Log
+import androidx.annotation.RequiresApi
 
 class NetworkModule : NativeModule {
     override val moduleName = "Network"
     private var connectivityManager: ConnectivityManager? = null
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
     private var bridge: NativeBridge? = null
+
+    private companion object {
+        const val TAG = "VueNative-Network"
+    }
 
     override fun initialize(context: Context, bridge: NativeBridge) {
         this.bridge = bridge
@@ -44,11 +50,31 @@ class NetworkModule : NativeModule {
     }
 
     private fun dispatchStatus(cm: ConnectivityManager, bridge: NativeBridge) {
-        val info = getStatus(cm)
+        // The NetworkCallback runs on ConnectivityManager's own binder thread.
+        // Nothing between here and the framework catches a Throwable, so a
+        // platform error would take the whole process down with it.
+        val info = try {
+            getStatus(cm)
+        } catch (e: Throwable) {
+            Log.e(TAG, "Failed to read network status", e)
+            return
+        }
         bridge.dispatchGlobalEvent("network:change", info)
     }
 
-    private fun getStatus(cm: ConnectivityManager): Map<String, Any> {
+    internal fun getStatus(cm: ConnectivityManager): Map<String, Any> {
+        // ConnectivityManager.getActiveNetwork() only exists on API 23+, while
+        // this library's minSdk is 21. Calling it on API 21/22 throws
+        // NoSuchMethodError — an Error, so no catch (e: Exception) upstream
+        // would stop it. Fall back to the deprecated activeNetworkInfo there.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            return getStatusApi23(cm)
+        }
+        return getStatusLegacy(cm)
+    }
+
+    @RequiresApi(Build.VERSION_CODES.M)
+    private fun getStatusApi23(cm: ConnectivityManager): Map<String, Any> {
         val network = cm.activeNetwork
         val caps = network?.let { cm.getNetworkCapabilities(it) }
         val isConnected = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
@@ -57,6 +83,25 @@ class NetworkModule : NativeModule {
             caps?.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) == true -> "cellular"
             caps?.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) == true -> "ethernet"
             else -> "none"
+        }
+        return mapOf("isConnected" to isConnected, "connectionType" to type)
+    }
+
+    @Suppress("DEPRECATION")
+    private fun getStatusLegacy(cm: ConnectivityManager): Map<String, Any> {
+        val info = cm.activeNetworkInfo
+        val isConnected = info?.isConnected == true
+        // Mirror the API 23+ path, which reports "none" whenever there is no
+        // active network — a disconnected interface still carries a type.
+        val type = if (!isConnected) {
+            "none"
+        } else {
+            when (info?.type) {
+                ConnectivityManager.TYPE_WIFI -> "wifi"
+                ConnectivityManager.TYPE_MOBILE -> "cellular"
+                ConnectivityManager.TYPE_ETHERNET -> "ethernet"
+                else -> "none"
+            }
         }
         return mapOf("isConnected" to isConnected, "connectionType" to type)
     }

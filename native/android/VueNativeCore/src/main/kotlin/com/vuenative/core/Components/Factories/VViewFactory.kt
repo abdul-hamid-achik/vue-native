@@ -90,7 +90,7 @@ class VViewFactory : NativeComponentFactory {
     override fun addEventListener(view: View, event: String, handler: (Any?) -> Unit) {
         when (event) {
             "press" -> view.setOnClickListener { handler(null) }
-            "longPress" -> view.setOnLongClickListener {
+            "longPress", "longpress" -> view.setOnLongClickListener {
                 handler(null)
                 true
             }
@@ -292,7 +292,7 @@ class VViewFactory : NativeComponentFactory {
     override fun removeEventListener(view: View, event: String) {
         when (event) {
             "press" -> view.setOnClickListener(null)
-            "longPress" -> view.setOnLongClickListener(null)
+            "longPress", "longpress" -> view.setOnLongClickListener(null)
             "itemLayout" -> view.setTag(Tags.FLAT_LIST_HANDLER, null)
             else -> view.setOnTouchListener(null)
         }

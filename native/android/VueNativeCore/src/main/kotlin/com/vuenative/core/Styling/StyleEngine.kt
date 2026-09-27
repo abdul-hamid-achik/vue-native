@@ -143,7 +143,16 @@ object StyleEngine {
             "borderBottomLeftRadius", "borderBottomRightRadius" -> {
                 val px = dpToPx(ctx, toFloat(value, 0f))
                 val bg = ensureBackground(view)
-                val radii = bg.cornerRadii ?: FloatArray(8) { 0f }
+                // GradientDrawable.getCornerRadii() only exists on API 24
+                // (minSdk is 21), and calling it below that throws
+                // NoSuchMethodError. Without the getter we cannot read back the
+                // other three corners, so on API 21-23 per-corner radii start
+                // from zero — the last per-corner prop applied wins.
+                val radii = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                    bg.cornerRadii ?: FloatArray(8) { 0f }
+                } else {
+                    FloatArray(8) { 0f }
+                }
                 when (key) {
                     "borderTopLeftRadius" -> {
                         radii[0] = px
@@ -1031,6 +1040,13 @@ object StyleEngine {
         else -> JustifyContent.FLEX_START
     }
 
+    // FlexboxLayout declares AlignSelf.FLEX_START..STRETCH as duplicates of the
+    // AlignItems constants, but its @IntDef references the AlignItems symbols, so
+    // lint's WrongConstant check compares by symbol identity and rejects the
+    // AlignSelf aliases. Verified identical values (javap on flexbox-3.0.0:
+    // AlignSelf.FLEX_START..STRETCH = 0..4 == AlignItems.FLEX_START..STRETCH,
+    // AlignSelf.AUTO = -1), so this is a false positive, not a wrong constant.
+    @Suppress("WrongConstant")
     private fun parseAlignSelf(value: Any?) = when (value) {
         "flex-start" -> AlignSelf.FLEX_START
         "flex-end" -> AlignSelf.FLEX_END

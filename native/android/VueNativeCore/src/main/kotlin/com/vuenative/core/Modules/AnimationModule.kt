@@ -7,6 +7,7 @@ import android.animation.Keyframe
 import android.animation.ObjectAnimator
 import android.animation.PropertyValuesHolder
 import android.content.Context
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.view.View
@@ -113,7 +114,13 @@ class AnimationModule : NativeModule {
             set.playTogether(animators)
             set.duration = duration
             set.startDelay = delay
-            set.interpolator = interpolator
+            // AnimatorSet.setInterpolator takes a TimeInterpolator, and the
+            // android.view.animation interpolators only implement that interface
+            // from API 22. On API 21 the assignment is an invalid upcast that
+            // throws at runtime, so fall back to the default interpolator there.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP_MR1) {
+                set.interpolator = interpolator
+            }
             set.addListener(object : AnimatorListenerAdapter() {
                 override fun onAnimationEnd(a: Animator) {
                     callback(true, null)

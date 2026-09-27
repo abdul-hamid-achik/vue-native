@@ -1,0 +1,609 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<issues format="6" by="lint 8.2.2" type="baseline" client="gradle" dependencies="false" name="AGP (8.2.2)" variant="all" version="8.2.2">
+
+    <issue
+        id="ApplySharedPref"
+        message="Consider using `apply()` instead; `commit` writes its data to persistent storage immediately, whereas `apply` will handle it in the background"
+        errorLine1="                .commit()"
+        errorLine2="                 ~~~~~~~~">
+        <location
+            file="src/main/kotlin/com/vuenative/core/Modules/OTAModule.kt"
+            line="85"
+            column="18"/>
+    </issue>
+
+    <issue
+        id="ApplySharedPref"
+        message="Consider using `apply()` instead; `commit` writes its data to persistent storage immediately, whereas `apply` will handle it in the background"
+        errorLine1="            .commit()"
+        errorLine2="             ~~~~~~~~">
+        <location
+            file="src/main/kotlin/com/vuenative/core/Modules/OTAModule.kt"
+            line="644"
+            column="14"/>
+    </issue>
+
+    <issue
+        id="InlinedApi"
+        message="Field requires API level 29 (current min is 21): `android.Manifest.permission#ACCESS_BACKGROUND_LOCATION`"
+        errorLine1="        &quot;locationAlways&quot; -> Manifest.permission.ACCESS_BACKGROUND_LOCATION"
+        errorLine2="                            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/kotlin/com/vuenative/core/Modules/PermissionsModule.kt"
+            line="200"
+            column="29"/>
+    </issue>
+
+    <issue
+        id="InlinedApi"
+        message="Field requires API level 23 (current min is 21): `android.view.View#SYSTEM_UI_FLAG_LIGHT_STATUS_BAR`"
+        errorLine1="                        &quot;dark-content&quot; -> flags or View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR"
+        errorLine2="                                                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/kotlin/com/vuenative/core/Components/Factories/VStatusBarFactory.kt"
+            line="30"
+            column="52"/>
+    </issue>
+
+    <issue
+        id="InlinedApi"
+        message="Field requires API level 23 (current min is 21): `android.view.View#SYSTEM_UI_FLAG_LIGHT_STATUS_BAR`"
+        errorLine1="                        &quot;dark-content&quot; -> flags or View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR"
+        errorLine2="                                                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/kotlin/com/vuenative/core/Components/Factories/VStatusBarFactory.kt"
+            line="30"
+            column="52"/>
+    </issue>
+
+    <issue
+        id="InlinedApi"
+        message="Field requires API level 23 (current min is 21): `android.view.View#SYSTEM_UI_FLAG_LIGHT_STATUS_BAR`"
+        errorLine1="                        &quot;light-content&quot; -> flags and View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR.inv()"
+        errorLine2="                                                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/kotlin/com/vuenative/core/Components/Factories/VStatusBarFactory.kt"
+            line="31"
+            column="54"/>
+    </issue>
+
+    <issue
+        id="InlinedApi"
+        message="Field requires API level 23 (current min is 21): `android.view.View#SYSTEM_UI_FLAG_LIGHT_STATUS_BAR`"
+        errorLine1="                        &quot;light-content&quot; -> flags and View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR.inv()"
+        errorLine2="                                                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/kotlin/com/vuenative/core/Components/Factories/VStatusBarFactory.kt"
+            line="31"
+            column="54"/>
+    </issue>
+
+    <issue
+        id="AppCompatCustomView"
+        message="This custom view should extend `androidx.appcompat.widget.AppCompatTextView` instead"
+        errorLine1="class VTextNodeView(context: Context) : TextView(context) {"
+        errorLine2="                                        ~~~~~~~~">
+        <location
+            file="src/main/kotlin/com/vuenative/core/Components/VTextNodeView.kt"
+            line="12"
+            column="41"/>
+    </issue>
+
+    <issue
+        id="GradleDependency"
+        message="A newer version of androidx.core:core-ktx than 1.12.0 is available: 1.19.1"
+        errorLine1="androidxCore = &quot;1.12.0&quot;"
+        errorLine2="               ~~~~~~~~">
+        <location
+            file="$HOME/projects/vue-native/native/android/gradle/libs.versions.toml"
+            line="25"
+            column="16"/>
+    </issue>
+
+    <issue
+        id="GradleDependency"
+        message="A newer version of androidx.appcompat:appcompat than 1.6.1 is available: 1.8.0"
+        errorLine1="androidxAppcompat = &quot;1.6.1&quot;"
+        errorLine2="                    ~~~~~~~">
+        <location
+            file="$HOME/projects/vue-native/native/android/gradle/libs.versions.toml"
+            line="26"
+            column="21"/>
+    </issue>
+
+    <issue
+        id="GradleDependency"
+        message="A newer version of androidx.lifecycle:lifecycle-process than 2.7.0 is available: 2.11.0"
+        errorLine1="androidxLifecycle = &quot;2.7.0&quot;"
+        errorLine2="                    ~~~~~~~">
+        <location
+            file="$HOME/projects/vue-native/native/android/gradle/libs.versions.toml"
+            line="27"
+            column="21"/>
+    </issue>
+
+    <issue
+        id="GradleDependency"
+        message="A newer version of androidx.lifecycle:lifecycle-runtime-ktx than 2.7.0 is available: 2.11.0"
+        errorLine1="androidxLifecycle = &quot;2.7.0&quot;"
+        errorLine2="                    ~~~~~~~">
+        <location
+            file="$HOME/projects/vue-native/native/android/gradle/libs.versions.toml"
+            line="27"
+            column="21"/>
+    </issue>
+
+    <issue
+        id="GradleDependency"
+        message="A newer version of androidx.recyclerview:recyclerview than 1.3.2 is available: 1.4.0"
+        errorLine1="androidxRecyclerview = &quot;1.3.2&quot;"
+        errorLine2="                       ~~~~~~~">
+        <location
+            file="$HOME/projects/vue-native/native/android/gradle/libs.versions.toml"
+            line="28"
+            column="24"/>
+    </issue>
+
+    <issue
+        id="GradleDependency"
+        message="A newer version of androidx.webkit:webkit than 1.10.0 is available: 1.17.1"
+        errorLine1="androidxWebkit = &quot;1.10.0&quot;"
+        errorLine2="                 ~~~~~~~~">
+        <location
+            file="$HOME/projects/vue-native/native/android/gradle/libs.versions.toml"
+            line="29"
+            column="18"/>
+    </issue>
+
+    <issue
+        id="GradleDependency"
+        message="A newer version of androidx.swiperefreshlayout:swiperefreshlayout than 1.1.0 is available: 1.2.0"
+        errorLine1="androidxSwiperefreshlayout = &quot;1.1.0&quot;"
+        errorLine2="                             ~~~~~~~">
+        <location
+            file="$HOME/projects/vue-native/native/android/gradle/libs.versions.toml"
+            line="30"
+            column="30"/>
+    </issue>
+
+    <issue
+        id="GradleDependency"
+        message="A newer version of androidx.work:work-runtime-ktx than 2.8.1 is available: 2.12.0"
+        errorLine1="androidxWork = &quot;2.8.1&quot;"
+        errorLine2="               ~~~~~~~">
+        <location
+            file="$HOME/projects/vue-native/native/android/gradle/libs.versions.toml"
+            line="31"
+            column="16"/>
+    </issue>
+
+    <issue
+        id="GradleDependency"
+        message="A newer version of androidx.security:security-crypto than 1.1.0-alpha06 is available: 1.1.0"
+        errorLine1="androidxSecurityCrypto = &quot;1.1.0-alpha06&quot;"
+        errorLine2="                         ~~~~~~~~~~~~~~~">
+        <location
+            file="$HOME/projects/vue-native/native/android/gradle/libs.versions.toml"
+            line="33"
+            column="26"/>
+    </issue>
+
+    <issue
+        id="GradleDependency"
+        message="A newer version of androidx.credentials:credentials than 1.2.2 is available: 1.6.0"
+        errorLine1="androidxCredentials = &quot;1.2.2&quot;"
+        errorLine2="                      ~~~~~~~">
+        <location
+            file="$HOME/projects/vue-native/native/android/gradle/libs.versions.toml"
+            line="34"
+            column="23"/>
+    </issue>
+
+    <issue
+        id="GradleDependency"
+        message="A newer version of androidx.camera:camera-camera2 than 1.4.2 is available: 1.6.2"
+        errorLine1="androidxCamera = &quot;1.4.2&quot;"
+        errorLine2="                 ~~~~~~~">
+        <location
+            file="$HOME/projects/vue-native/native/android/gradle/libs.versions.toml"
+            line="36"
+            column="18"/>
+    </issue>
+
+    <issue
+        id="GradleDependency"
+        message="A newer version of androidx.camera:camera-lifecycle than 1.4.2 is available: 1.6.2"
+        errorLine1="androidxCamera = &quot;1.4.2&quot;"
+        errorLine2="                 ~~~~~~~">
+        <location
+            file="$HOME/projects/vue-native/native/android/gradle/libs.versions.toml"
+            line="36"
+            column="18"/>
+    </issue>
+
+    <issue
+        id="GradleDependency"
+        message="A newer version of androidx.camera:camera-view than 1.4.2 is available: 1.6.2"
+        errorLine1="androidxCamera = &quot;1.4.2&quot;"
+        errorLine2="                 ~~~~~~~">
+        <location
+            file="$HOME/projects/vue-native/native/android/gradle/libs.versions.toml"
+            line="36"
+            column="18"/>
+    </issue>
+
+    <issue
+        id="GradleDependency"
+        message="A newer version of com.google.android.material:material than 1.11.0 is available: 1.14.0"
+        errorLine1="material = &quot;1.11.0&quot;"
+        errorLine2="           ~~~~~~~~">
+        <location
+            file="$HOME/projects/vue-native/native/android/gradle/libs.versions.toml"
+            line="39"
+            column="12"/>
+    </issue>
+
+    <issue
+        id="GradleDependency"
+        message="A newer version of org.jetbrains.kotlinx:kotlinx-coroutines-android than 1.7.3 is available: 1.8.1"
+        errorLine1="kotlinxCoroutines = &quot;1.7.3&quot;"
+        errorLine2="                    ~~~~~~~">
+        <location
+            file="$HOME/projects/vue-native/native/android/gradle/libs.versions.toml"
+            line="44"
+            column="21"/>
+    </issue>
+
+    <issue
+        id="GradleDependency"
+        message="A newer version of com.google.android.gms:play-services-location than 21.1.0 is available: 21.4.0"
+        errorLine1="playServicesLocation = &quot;21.1.0&quot;"
+        errorLine2="                       ~~~~~~~~">
+        <location
+            file="$HOME/projects/vue-native/native/android/gradle/libs.versions.toml"
+            line="45"
+            column="24"/>
+    </issue>
+
+    <issue
+        id="GradleDependency"
+        message="A newer version of com.android.billingclient:billing than 7.0.0 is available: 9.1.0"
+        errorLine1="billing = &quot;7.0.0&quot;"
+        errorLine2="          ~~~~~~~">
+        <location
+            file="$HOME/projects/vue-native/native/android/gradle/libs.versions.toml"
+            line="46"
+            column="11"/>
+    </issue>
+
+    <issue
+        id="GradleDependency"
+        message="A newer version of com.google.android.libraries.identity.googleid:googleid than 1.1.1 is available: 1.2.1"
+        errorLine1="googleId = &quot;1.1.1&quot;"
+        errorLine2="           ~~~~~~~">
+        <location
+            file="$HOME/projects/vue-native/native/android/gradle/libs.versions.toml"
+            line="47"
+            column="12"/>
+    </issue>
+
+    <issue
+        id="GradleDependency"
+        message="A newer version of androidx.test:core than 1.5.0 is available: 1.7.0"
+        errorLine1="androidxTestCore = &quot;1.5.0&quot;"
+        errorLine2="                   ~~~~~~~">
+        <location
+            file="$HOME/projects/vue-native/native/android/gradle/libs.versions.toml"
+            line="53"
+            column="20"/>
+    </issue>
+
+    <issue
+        id="GradleDependency"
+        message="A newer version of androidx.test.ext:junit than 1.1.5 is available: 1.3.0"
+        errorLine1="androidxTestJunit = &quot;1.1.5&quot;"
+        errorLine2="                    ~~~~~~~">
+        <location
+            file="$HOME/projects/vue-native/native/android/gradle/libs.versions.toml"
+            line="54"
+            column="21"/>
+    </issue>
+
+    <issue
+        id="DiscouragedApi"
+        message="Use of this function is discouraged because resource reflection makes it harder to perform build optimizations and compile-time verification of code. It is much more efficient to retrieve resources by identifier (e.g. `R.foo.bar`) than by name (e.g. `getIdentifier(&quot;bar&quot;, &quot;foo&quot;, null)`)."
+        errorLine1="        val resId = context.resources.getIdentifier(asset, &quot;drawable&quot;, context.packageName)"
+        errorLine2="                                      ~~~~~~~~~~~~~">
+        <location
+            file="src/main/kotlin/com/vuenative/core/Components/Factories/VImageFactory.kt"
+            line="88"
+            column="39"/>
+    </issue>
+
+    <issue
+        id="SetJavaScriptEnabled"
+        message="Using `setJavaScriptEnabled` can introduce XSS vulnerabilities into your application, review carefully"
+        errorLine1="            settings.javaScriptEnabled = true"
+        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/kotlin/com/vuenative/core/Components/Factories/VWebViewFactory.kt"
+            line="22"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="DrawAllocation"
+        message="Avoid object allocations during draw/layout operations (preallocate and reuse instead)"
+        errorLine1="            canvas.drawBitmap(tinted, null, RectF(0f, 0f, width.toFloat(), height.toFloat()), bitmapPaint)"
+        errorLine2="                                            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/kotlin/com/vuenative/core/Components/Factories/VSVGFactory.kt"
+            line="70"
+            column="45"/>
+    </issue>
+
+    <issue
+        id="ObsoleteSdkInt"
+        message="Unnecessary; SDK_INT is always >= 21"
+        errorLine1="                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {"
+        errorLine2="                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/kotlin/com/vuenative/core/Styling/StyleEngine.kt"
+            line="599"
+            column="21"/>
+    </issue>
+
+    <issue
+        id="StaticFieldLeak"
+        message="Do not place Android context classes in static fields (static reference to `JSRuntime` which has field `context` pointing to `Context`); this is a memory leak"
+        errorLine1="    @Volatile private var activeRuntime: JSRuntime? = null"
+        errorLine2="    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/kotlin/com/vuenative/core/Bridge/JSPolyfills.kt"
+            line="41"
+            column="5"/>
+    </issue>
+
+    <issue
+        id="StaticFieldLeak"
+        message="Do not place Android context classes in static fields (static reference to `NativeModuleRegistry` which has field `context` pointing to `Context`); this is a memory leak"
+        errorLine1="        @Volatile private var instance: NativeModuleRegistry? = null"
+        errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/kotlin/com/vuenative/core/Modules/NativeModuleRegistry.kt"
+            line="8"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="StaticFieldLeak"
+        message="Do not place Android context classes in static fields (static reference to `NotificationsModule` which has field `context` pointing to `Context`); this is a memory leak"
+        errorLine1="        /** Singleton reference so FirebaseMessagingService can call into this module. */"
+        errorLine2="        ^">
+        <location
+            file="src/main/kotlin/com/vuenative/core/Modules/NotificationsModule.kt"
+            line="52"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="UseTomlInstead"
+        message="Use version catalog instead"
+        errorLine1="    implementation(&quot;com.eclipsesource.j2v8:j2v8:6.2.1@aar&quot;)"
+        errorLine2="                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="build.gradle.kts"
+            line="113"
+            column="21"/>
+    </issue>
+
+    <issue
+        id="ClickableViewAccessibility"
+        message="Custom view `TouchableView` overrides `onTouchEvent` but not `performClick`"
+        errorLine1="    override fun onTouchEvent(event: MotionEvent): Boolean {"
+        errorLine2="                 ~~~~~~~~~~~~">
+        <location
+            file="src/main/kotlin/com/vuenative/core/Helpers/TouchableView.kt"
+            line="62"
+            column="18"/>
+    </issue>
+
+    <issue
+        id="ClickableViewAccessibility"
+        message="Custom view `PressableView` overrides `onTouchEvent` but not `performClick`"
+        errorLine1="    override fun onTouchEvent(event: MotionEvent): Boolean {"
+        errorLine2="                 ~~~~~~~~~~~~">
+        <location
+            file="src/main/kotlin/com/vuenative/core/Components/Factories/VPressableFactory.kt"
+            line="94"
+            column="18"/>
+    </issue>
+
+    <issue
+        id="ClickableViewAccessibility"
+        message="Custom view ``FrameLayout`` has `setOnTouchListener` called on it but does not override `performClick`"
+        errorLine1="            scroll.setOnTouchListener(null)"
+        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/kotlin/com/vuenative/core/Components/Factories/VScrollViewFactory.kt"
+            line="83"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="ClickableViewAccessibility"
+        message="Custom view ``FrameLayout`` has `setOnTouchListener` called on it but does not override `performClick`"
+        errorLine1="            scroll.setOnTouchListener { _, _ -> true }"
+        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/kotlin/com/vuenative/core/Components/Factories/VScrollViewFactory.kt"
+            line="85"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="ClickableViewAccessibility"
+        message="`onTouch` lambda should call `View#performClick` when a click is detected"
+        errorLine1="            scroll.setOnTouchListener { _, _ -> true }"
+        errorLine2="                                      ~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/kotlin/com/vuenative/core/Components/Factories/VScrollViewFactory.kt"
+            line="85"
+            column="39"/>
+    </issue>
+
+    <issue
+        id="ClickableViewAccessibility"
+        message="`onTouch` lambda should call `View#performClick` when a click is detected"
+        errorLine1="                view.setOnTouchListener { _, motionEvent ->"
+        errorLine2="                                        ^">
+        <location
+            file="src/main/kotlin/com/vuenative/core/Components/Factories/VViewFactory.kt"
+            line="167"
+            column="41"/>
+    </issue>
+
+    <issue
+        id="ClickableViewAccessibility"
+        message="`onTouch` lambda should call `View#performClick` when a click is detected"
+        errorLine1="                view.setOnTouchListener { _, motionEvent ->"
+        errorLine2="                                        ^">
+        <location
+            file="src/main/kotlin/com/vuenative/core/Components/Factories/VViewFactory.kt"
+            line="190"
+            column="41"/>
+    </issue>
+
+    <issue
+        id="ClickableViewAccessibility"
+        message="`onTouch` lambda should call `View#performClick` when a click is detected"
+        errorLine1="                view.setOnTouchListener { _, motionEvent ->"
+        errorLine2="                                        ^">
+        <location
+            file="src/main/kotlin/com/vuenative/core/Components/Factories/VViewFactory.kt"
+            line="205"
+            column="41"/>
+    </issue>
+
+    <issue
+        id="ClickableViewAccessibility"
+        message="`onTouch` lambda should call `View#performClick` when a click is detected"
+        errorLine1="                view.setOnTouchListener { _, motionEvent ->"
+        errorLine2="                                        ^">
+        <location
+            file="src/main/kotlin/com/vuenative/core/Components/Factories/VViewFactory.kt"
+            line="220"
+            column="41"/>
+    </issue>
+
+    <issue
+        id="ClickableViewAccessibility"
+        message="`onTouch` lambda should call `View#performClick` when a click is detected"
+        errorLine1="                view.setOnTouchListener { _, motionEvent ->"
+        errorLine2="                                        ^">
+        <location
+            file="src/main/kotlin/com/vuenative/core/Components/Factories/VViewFactory.kt"
+            line="235"
+            column="41"/>
+    </issue>
+
+    <issue
+        id="ClickableViewAccessibility"
+        message="`onTouch` lambda should call `View#performClick` when a click is detected"
+        errorLine1="                view.setOnTouchListener { _, motionEvent ->"
+        errorLine2="                                        ^">
+        <location
+            file="src/main/kotlin/com/vuenative/core/Components/Factories/VViewFactory.kt"
+            line="263"
+            column="41"/>
+    </issue>
+
+    <issue
+        id="ClickableViewAccessibility"
+        message="`onTouch` lambda should call `View#performClick` when a click is detected"
+        errorLine1="                view.setOnTouchListener { _, motionEvent ->"
+        errorLine2="                                        ^">
+        <location
+            file="src/main/kotlin/com/vuenative/core/Components/Factories/VViewFactory.kt"
+            line="284"
+            column="41"/>
+    </issue>
+
+    <issue
+        id="SetTextI18n"
+        message="String literal in `setText` can not be translated. Use Android resources instead."
+        errorLine1="                text = &quot;Vue Native JS Error&quot;"
+        errorLine2="                        ~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/kotlin/com/vuenative/core/Bridge/ErrorOverlayView.kt"
+            line="118"
+            column="25"/>
+    </issue>
+
+    <issue
+        id="SetTextI18n"
+        message="Do not concatenate text displayed with `setText`. Use resource string with placeholders."
+        errorLine1="                    text = &quot;Component: ${parsed.componentName}&quot;"
+        errorLine2="                           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/kotlin/com/vuenative/core/Bridge/ErrorOverlayView.kt"
+            line="130"
+            column="28"/>
+    </issue>
+
+    <issue
+        id="SetTextI18n"
+        message="String literal in `setText` can not be translated. Use Android resources instead."
+        errorLine1="                    text = &quot;Component: ${parsed.componentName}&quot;"
+        errorLine2="                            ~~~~~~~~~~~">
+        <location
+            file="src/main/kotlin/com/vuenative/core/Bridge/ErrorOverlayView.kt"
+            line="130"
+            column="29"/>
+    </issue>
+
+    <issue
+        id="SetTextI18n"
+        message="String literal in `setText` can not be translated. Use Android resources instead."
+        errorLine1="                text = &quot;Reload&quot;"
+        errorLine2="                        ~~~~~~">
+        <location
+            file="src/main/kotlin/com/vuenative/core/Bridge/ErrorOverlayView.kt"
+            line="175"
+            column="25"/>
+    </issue>
+
+    <issue
+        id="SetTextI18n"
+        message="String literal in `setText` can not be translated. Use Android resources instead."
+        errorLine1="                text = &quot;Dismiss&quot;"
+        errorLine2="                        ~~~~~~~">
+        <location
+            file="src/main/kotlin/com/vuenative/core/Bridge/ErrorOverlayView.kt"
+            line="188"
+            column="25"/>
+    </issue>
+
+    <issue
+        id="SetTextI18n"
+        message="String literal in `setText` can not be translated. Use Android resources instead."
+        errorLine1="            text = &quot;Point the camera at a QR code&quot;"
+        errorLine2="                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/kotlin/com/vuenative/core/Modules/QRScannerActivity.kt"
+            line="134"
+            column="21"/>
+    </issue>
+
+    <issue
+        id="SetTextI18n"
+        message="String literal in `setText` can not be translated. Use Android resources instead."
+        errorLine1="            text = &quot;Close&quot;"
+        errorLine2="                    ~~~~~">
+        <location
+            file="src/main/kotlin/com/vuenative/core/Modules/QRScannerActivity.kt"
+            line="149"
+            column="21"/>
+    </issue>
+
+</issues>

@@ -15,6 +15,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -776,6 +777,73 @@ class NativeBridgeTest {
             field.isAccessible = true
             assertTrue((field.get(bridge) as Map<*, *>).isEmpty())
         }
+    }
+
+    @Test
+    fun testTeleportToAppliesInBatchOrderNotAfterLaterOps() {
+        bridge.processOperations(
+            """[
+                {"op":"create","args":[1,"VView"]},
+                {"op":"setRootView","args":[1]},
+                {"op":"create","args":[2,"VView"]},
+                {"op":"appendChild","args":[1,2]},
+                {"op":"create","args":[3,"VView"]}
+            ]""",
+        )
+        flush()
+
+        val root = bridge.nodeViews[1] as ViewGroup
+        val teleported = bridge.nodeViews[2]!!
+        val appendedLater = bridge.nodeViews[3]!!
+        assertEquals(1, root.childCount)
+
+        // handleTeleportTo used to defer its body through mainHandler.post even
+        // though processOperations already runs on the main thread. The teleport
+        // therefore landed *after* the appendChild that followed it in the same
+        // batch, leaving the two children in the wrong order.
+        bridge.processOperations(
+            """[
+                {"op":"teleportTo","args":["root",2]},
+                {"op":"appendChild","args":[1,3]}
+            ]""",
+        )
+        flush()
+
+        assertEquals(2, root.childCount)
+        assertTrue(
+            "teleportTo must apply before the ops that follow it in the same batch",
+            root.indexOfChild(teleported) < root.indexOfChild(appendedLater),
+        )
+    }
+
+    @Test
+    fun testRemoveTeleportDetachesContainerInTheSameBatch() {
+        bridge.processOperations(
+            """[
+                {"op":"create","args":[1,"VView"]},
+                {"op":"createTeleport","args":[1,10,11]}
+            ]""",
+        )
+        flush()
+
+        val parent = bridge.nodeViews[1] as ViewGroup
+        assertEquals(1, parent.childCount)
+
+        bridge.processOperations(
+            """[
+                {"op":"removeTeleport","args":[1]},
+                {"op":"create","args":[2,"VView"]},
+                {"op":"appendChild","args":[1,2]}
+            ]""",
+        )
+        flush()
+
+        assertEquals(
+            "the teleport container must be detached by the time the batch finishes",
+            1,
+            parent.childCount,
+        )
+        assertSame(bridge.nodeViews[2], parent.getChildAt(0))
     }
 
     // -------------------------------------------------------------------------

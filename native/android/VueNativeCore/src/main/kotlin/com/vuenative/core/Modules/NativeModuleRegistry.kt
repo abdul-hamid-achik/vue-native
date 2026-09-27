@@ -58,16 +58,33 @@ class NativeModuleRegistry private constructor(private val context: Context) {
     }
 
     /**
-     * Destroy and unregister every module owned by this process-wide registry.
+     * Destroy and unregister every module owned by the host identified by [owner].
      * Activities call this before releasing their JS runtime so observers,
      * sockets, sensors, and media resources do not survive host recreation.
+     *
+     * [owner] is mandatory: an older Activity may finish after a replacement
+     * Activity has already installed a new bridge, and it must not tear down the
+     * new host's modules. Callers that legitimately need an unguarded teardown
+     * (an *incoming* host replacing the previous snapshot) use
+     * [destroyPreviousSnapshot] instead.
      */
     @Synchronized
-    fun destroyAll(owner: NativeBridge? = null) {
-        // An older Activity may finish after a replacement Activity has already
-        // installed a new bridge. It must not tear down the new host's modules.
-        if (owner != null && activeBridge !== owner) return
+    fun destroyAll(owner: NativeBridge) {
+        if (activeBridge !== owner) return
+        destroyPreviousSnapshot()
+    }
 
+    /**
+     * Unconditionally destroy the current module snapshot and forget the active
+     * bridge. Only valid while holding the monitor, from a code path that is
+     * installing a replacement snapshot — the stale-host guard in [destroyAll]
+     * protects an *outgoing* host, which is not the situation here.
+     *
+     * `internal` (not public) so a consumer app cannot bypass the stale-host
+     * guard by accident; unit tests in this module use it to reset state.
+     */
+    @Synchronized
+    internal fun destroyPreviousSnapshot() {
         val registeredModules = modules.values.toSet()
         modules.clear()
         activeBridge = null
@@ -86,7 +103,7 @@ class NativeModuleRegistry private constructor(private val context: Context) {
     fun registerDefaults(bridge: NativeBridge, hostContext: Context = context) {
         // Reinitialization must be an exact snapshot. This also removes a
         // generated module that disappeared since the previous host started.
-        destroyAll()
+        destroyPreviousSnapshot()
         activeBridge = bridge
         listOf(
             HapticsModule(),
@@ -190,7 +207,12 @@ class NativeModuleRegistry private constructor(private val context: Context) {
         }
         try {
             module.invoke(methodName, args, bridge, callback)
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
+            // Throwable, not Exception: modules reach into platform APIs whose
+            // absence on an older device surfaces as NoSuchMethodError, and an
+            // uncaught Error here would terminate the process instead of
+            // rejecting one JS promise.
+            Log.e("NativeModuleRegistry", "Module $moduleName.$methodName failed", e)
             callback(null, e.message ?: "Module error")
         }
     }

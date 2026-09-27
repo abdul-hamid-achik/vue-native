@@ -23,6 +23,115 @@ class VInputFactory : NativeComponentFactory {
     private val blurHandlers = mutableMapOf<EditText, (Any?) -> Unit>()
     private val textWatchers = mutableMapOf<EditText, TextWatcher>()
 
+    /**
+     * Accumulated `inputType` contributors per EditText.
+     *
+     * `keyboardType`, `secureTextEntry`, `multiline`, `autoCapitalize` and
+     * `autoCorrect` all write `EditText.inputType`, and each one used to
+     * overwrite the others. Vue does not guarantee prop order inside a single
+     * bridge batch, so `<VInput secureTextEntry keyboardType="email-address">`
+     * produced either a plain-text keyboard or a *visible* password depending on
+     * which prop arrived last. Every prop now mutates this state and the
+     * resulting `inputType` is recomputed from scratch, making the outcome
+     * order-independent.
+     */
+    private class InputTypeState {
+        var typeClass: Int = InputType.TYPE_CLASS_TEXT
+        var variation: Int = 0
+        var capFlag: Int = 0
+        var autoCorrect: Boolean? = null
+        var secure = false
+        var multiline = false
+
+        /** Flags this class does not model (e.g. NO_SUGGESTIONS) — preserved verbatim. */
+        var extraFlags: Int = 0
+
+        companion object {
+            private val CAP_MASK = InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS or
+                InputType.TYPE_TEXT_FLAG_CAP_WORDS or
+                InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+            private val MODELLED_FLAGS = CAP_MASK or
+                InputType.TYPE_TEXT_FLAG_AUTO_CORRECT or
+                InputType.TYPE_TEXT_FLAG_MULTI_LINE
+
+            /**
+             * Seed the state from the editor's current `inputType` so the first
+             * prop we handle does not silently drop the platform default (an
+             * `EditText` created in code is multi-line text) or a flag set
+             * through [StyleEngine].
+             */
+            fun from(inputType: Int): InputTypeState = InputTypeState().apply {
+                typeClass = inputType and InputType.TYPE_MASK_CLASS
+                val variationBits = inputType and InputType.TYPE_MASK_VARIATION
+                secure = variationBits == InputType.TYPE_TEXT_VARIATION_PASSWORD ||
+                    variationBits == InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD
+                variation = if (secure) 0 else variationBits
+                multiline = inputType and InputType.TYPE_TEXT_FLAG_MULTI_LINE != 0
+                // The text and number flag namespaces overlap by design
+                // (CAP_WORDS == NUMBER_FLAG_DECIMAL == 0x2000), so cap flags must
+                // only be read out of a text-class type — otherwise a number
+                // keyboard's DECIMAL flag would resurface as CAP_WORDS if a later
+                // keyboardType switched the field back to text.
+                capFlag = if (typeClass == InputType.TYPE_CLASS_TEXT) {
+                    inputType and CAP_MASK
+                } else {
+                    0
+                }
+                autoCorrect =
+                    if (inputType and InputType.TYPE_TEXT_FLAG_AUTO_CORRECT != 0) true else null
+                extraFlags = inputType and InputType.TYPE_MASK_FLAGS and MODELLED_FLAGS.inv()
+            }
+        }
+    }
+
+    private val inputTypeStates = mutableMapOf<EditText, InputTypeState>()
+
+    private fun stateFor(et: EditText): InputTypeState =
+        inputTypeStates.getOrPut(et) { InputTypeState.from(et.inputType) }
+
+    /**
+     * Fold [state] into a single `inputType` and apply it. Text-only flags
+     * (capitalization, autocorrect, multiline, password variation) are dropped
+     * for non-text classes such as `TYPE_CLASS_NUMBER` / `TYPE_CLASS_PHONE`,
+     * where Android ignores or misbehaves on them.
+     */
+    private fun applyInputType(et: EditText, state: InputTypeState) {
+        var type = state.typeClass or state.extraFlags
+        if (state.typeClass == InputType.TYPE_CLASS_TEXT) {
+            // Secure entry *replaces* the variation rather than adding to it —
+            // PASSWORD (0x80) and e.g. EMAIL_ADDRESS (0x20) are mutually
+            // exclusive values of the same 0xff0 field, so ORing both would
+            // produce 0xA0, which is not a variation Android recognises and
+            // leaves the password visible.
+            type = type or if (state.secure) {
+                InputType.TYPE_TEXT_VARIATION_PASSWORD
+            } else {
+                state.variation
+            }
+            if (state.multiline) type = type or InputType.TYPE_TEXT_FLAG_MULTI_LINE
+            type = type or state.capFlag
+            when (state.autoCorrect) {
+                true -> type = type or InputType.TYPE_TEXT_FLAG_AUTO_CORRECT
+                false -> type = type and InputType.TYPE_TEXT_FLAG_AUTO_CORRECT.inv()
+                null -> Unit
+            }
+        } else {
+            type = type or state.variation
+        }
+        et.inputType = type
+        // TextView.setInputType() derives single-line mode from
+        // TYPE_TEXT_FLAG_MULTI_LINE, so isSingleLine must not be assigned
+        // separately — doing so would strip/add MULTILINE behind this state's
+        // back and reintroduce the order dependency this class removes.
+    }
+
+    /** Mutate the accumulated state and recompute `inputType` in one step. */
+    private fun updateInputType(et: EditText, mutate: InputTypeState.() -> Unit) {
+        val state = stateFor(et)
+        state.mutate()
+        applyInputType(et, state)
+    }
+
     override fun createView(context: Context): View {
         val density = context.resources.displayMetrics.density
         val baseUnderline = (1 * density).toInt().coerceAtLeast(1)
@@ -54,9 +163,27 @@ class VInputFactory : NativeComponentFactory {
         when (key) {
             "text", "value" -> {
                 val newText = value?.toString() ?: ""
-                if (et.text.toString() != newText) {
+                val oldText = et.text?.toString() ?: ""
+                if (oldText != newText) {
+                    // setText() collapses the selection to offset 0. Vue re-sends
+                    // `text` on every controlled update (i.e. after every
+                    // keystroke), so unconditionally calling
+                    // setSelection(newText.length) yanks the caret to the end
+                    // while the user is editing mid-string. Only restore the
+                    // end position when the caret was already there; otherwise
+                    // clamp the previous selection into the new text.
+                    val selStart = et.selectionStart
+                    val selEnd = et.selectionEnd
+                    val caretWasAtEnd = selStart == oldText.length && selEnd == oldText.length
                     et.setText(newText)
-                    et.setSelection(newText.length)
+                    if (caretWasAtEnd) {
+                        et.setSelection(newText.length)
+                    } else {
+                        et.setSelection(
+                            selStart.coerceIn(0, newText.length),
+                            selEnd.coerceIn(0, newText.length),
+                        )
+                    }
                 }
             }
             "placeholder" -> et.hint = value?.toString()
@@ -65,27 +192,35 @@ class VInputFactory : NativeComponentFactory {
                 if (color != null) et.setHintTextColor(color)
             }
             "editable" -> et.isEnabled = value != false && value != "false"
-            "keyboardType" -> {
-                et.inputType = when (value) {
-                    "numeric", "number-pad", "decimal-pad" ->
-                        InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
-                    "email-address", "email" ->
-                        InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS
-                    "phone-pad", "phone" -> InputType.TYPE_CLASS_PHONE
-                    "url" -> InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
-                    else -> InputType.TYPE_CLASS_TEXT
+            "keyboardType" -> updateInputType(et) {
+                when (value) {
+                    "numeric", "number-pad", "decimal-pad" -> {
+                        typeClass = InputType.TYPE_CLASS_NUMBER
+                        variation = InputType.TYPE_NUMBER_FLAG_DECIMAL
+                    }
+                    "email-address", "email" -> {
+                        typeClass = InputType.TYPE_CLASS_TEXT
+                        variation = InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS
+                    }
+                    "phone-pad", "phone" -> {
+                        typeClass = InputType.TYPE_CLASS_PHONE
+                        variation = 0
+                    }
+                    "url" -> {
+                        typeClass = InputType.TYPE_CLASS_TEXT
+                        variation = InputType.TYPE_TEXT_VARIATION_URI
+                    }
+                    else -> {
+                        typeClass = InputType.TYPE_CLASS_TEXT
+                        variation = 0
+                    }
                 }
             }
-            "secureTextEntry" -> {
-                if (value == true || value == "true") {
-                    et.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
-                }
+            "secureTextEntry" -> updateInputType(et) {
+                secure = value == true || value == "true"
             }
-            "multiline" -> {
-                if (value == true || value == "true") {
-                    et.inputType = et.inputType or InputType.TYPE_TEXT_FLAG_MULTI_LINE
-                    et.isSingleLine = false
-                }
+            "multiline" -> updateInputType(et) {
+                multiline = value == true || value == "true"
             }
             "returnKeyType" -> {
                 et.imeOptions = when (value) {
@@ -106,25 +241,20 @@ class VInputFactory : NativeComponentFactory {
                     et.filters = et.filters.filter { it !is InputFilter.LengthFilter }.toTypedArray()
                 }
             }
-            "autoCapitalize", "autocapitalize" -> {
-                // Clear existing cap flags first
-                val baseType = et.inputType and
-                    (InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS or
-                     InputType.TYPE_TEXT_FLAG_CAP_WORDS or
-                     InputType.TYPE_TEXT_FLAG_CAP_SENTENCES).inv()
-                et.inputType = when (value) {
-                    "characters", "allCharacters" -> baseType or InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS
-                    "words" -> baseType or InputType.TYPE_TEXT_FLAG_CAP_WORDS
-                    "sentences" -> baseType or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
-                    "none" -> baseType
-                    else -> baseType or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+            "autoCapitalize", "autocapitalize" -> updateInputType(et) {
+                capFlag = when (value) {
+                    "characters", "allCharacters" -> InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS
+                    "words" -> InputType.TYPE_TEXT_FLAG_CAP_WORDS
+                    "sentences" -> InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+                    "none" -> 0
+                    else -> InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
                 }
             }
-            "autoCorrect", "autocorrect" -> {
-                if (value == true || value == "true") {
-                    et.inputType = et.inputType or InputType.TYPE_TEXT_FLAG_AUTO_CORRECT
-                } else if (value == false || value == "false") {
-                    et.inputType = et.inputType and InputType.TYPE_TEXT_FLAG_AUTO_CORRECT.inv()
+            "autoCorrect", "autocorrect" -> updateInputType(et) {
+                autoCorrect = when (value) {
+                    true, "true" -> true
+                    false, "false" -> false
+                    else -> autoCorrect
                 }
             }
             "textAlign", "textAlignment" -> {
@@ -235,5 +365,6 @@ class VInputFactory : NativeComponentFactory {
         submitHandlers.remove(et)
         focusHandlers.remove(et)
         blurHandlers.remove(et)
+        inputTypeStates.remove(et)
     }
 }

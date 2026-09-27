@@ -62,7 +62,7 @@ class NotificationsModuleTest {
 
     @After
     fun tearDown() {
-        registry.destroyAll()
+        registry.destroyPreviousSnapshot()
         PermissionsModule.setActivity(null)
         PermissionsModule.pendingCallbacks.clear()
         setCachedFcmToken(null)

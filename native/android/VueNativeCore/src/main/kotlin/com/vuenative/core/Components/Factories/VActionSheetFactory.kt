@@ -81,7 +81,10 @@ class VActionSheetFactory : NativeComponentFactory {
             .create()
 
         dialog.setOnDismissListener {
-            dialogs.remove(view, dialog)
+            // Map.remove(key, value) is a java.util.Map default method that only
+            // exists on API 24+ (minSdk here is 21), so remove by identity
+            // instead. A newer dialog may already own this view's entry.
+            if (dialogs[view] === dialog) dialogs.remove(view)
         }
         dialogs[view] = dialog
         dialog.show()

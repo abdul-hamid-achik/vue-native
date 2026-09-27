@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Debug-only: allow cleartext to the local Vite dev server so hot reload can
+  connect over ws://. 10.0.2.2 is the emulator alias for the host machine's
+  loopback interface. This file overrides src/main/res/xml/ for debug builds
+  only and must never be copied to src/main.
+-->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">localhost</domain>
+        <domain includeSubdomains="true">127.0.0.1</domain>
+        <domain includeSubdomains="true">10.0.2.2</domain>
+    </domain-config>
+</network-security-config>

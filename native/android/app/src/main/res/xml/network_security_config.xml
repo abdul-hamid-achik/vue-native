@@ -1,8 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Release/default network security policy: NO cleartext.
+
+  The debug source set overrides this file (app/src/debug/res/xml/) with one
+  that permits cleartext to localhost / 127.0.0.1 / 10.0.2.2 so the Vite dev
+  server and hot reload work over ws://. Keeping the permissive version in
+  src/main meant every release build of the example shipped with cleartext
+  enabled. Matches what `vue-native create` scaffolds.
+-->
 <network-security-config>
-    <domain-config cleartextTrafficPermitted="true">
-        <domain includeSubdomains="true">localhost</domain>
-        <domain includeSubdomains="true">127.0.0.1</domain>
-        <domain includeSubdomains="true">10.0.2.2</domain>
-    </domain-config>
+    <base-config cleartextTrafficPermitted="false" />
 </network-security-config>

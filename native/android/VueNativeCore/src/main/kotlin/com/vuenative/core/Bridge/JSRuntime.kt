@@ -63,7 +63,7 @@ class JSRuntime(private val context: Context) {
                             "__VN_handleEvent($nodeId,${encodeJs(eventName)},$payloadJson)"
                         )
                     }
-                } catch (e: Exception) {
+                } catch (e: Throwable) {
                     Log.e(TAG, "Error dispatching event $eventName to JS", e)
                 }
             }
@@ -111,8 +111,22 @@ class JSRuntime(private val context: Context) {
                 isInitialized = true
                 Log.d(TAG, "V8 runtime initialized")
                 mainHandler.post { completion?.invoke() }
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
+                // V8.createV8Runtime() loads libj2v8 through System.loadLibrary
+                // and fails with UnsatisfiedLinkError when the ABI is missing —
+                // an Error, not an Exception. An uncaught Throwable on this
+                // HandlerThread kills the whole process, so catch broadly.
+                //
+                // The failure branch must still invoke `completion`: the host
+                // waits on it to load a bundle, and skipping it leaves the app
+                // permanently blank with no diagnostic at all.
                 Log.e(TAG, "Failed to initialize V8 runtime", e)
+                val message = "Failed to initialize the JavaScript engine: " +
+                    "${e.javaClass.simpleName}: ${e.message ?: "unknown error"}"
+                mainHandler.post {
+                    ErrorOverlayView.show(context, message)
+                    completion?.invoke()
+                }
             }
         }
     }
@@ -121,11 +135,26 @@ class JSRuntime(private val context: Context) {
      *  @param onComplete Optional callback invoked on main thread: (success, errorMessage). */
     fun loadBundle(bundleCode: String, onComplete: ((Boolean, String?) -> Unit)? = null) {
         jsHandler.post {
+            val engine = v8
+            if (engine == null) {
+                // initialize() failed (missing V8 native library, OOM, …). Report
+                // the failure instead of silently succeeding on a null runtime.
+                val msg = "JavaScript runtime is not available; the bundle was not evaluated"
+                Log.e(TAG, msg)
+                mainHandler.post {
+                    ErrorOverlayView.show(context, msg)
+                    onComplete?.invoke(false, msg)
+                }
+                return@post
+            }
             try {
-                v8?.executeVoidScript(bundleCode)
+                engine.executeVoidScript(bundleCode)
                 Log.d(TAG, "Bundle loaded successfully")
                 mainHandler.post { onComplete?.invoke(true, null) }
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
+                // Throwable, not Exception: a JS stack overflow surfaces as
+                // StackOverflowError from V8's JNI layer and would otherwise
+                // escape on the jsThread and terminate the process.
                 Log.e(TAG, "Error loading bundle", e)
                 val msg = describeJsError(e)
                 mainHandler.post {
@@ -150,7 +179,7 @@ class JSRuntime(private val context: Context) {
         jsHandler.post {
             val token = try {
                 v8?.executeStringScript("String(globalThis.__HOT_RELOAD_TOKEN__ || '')") ?: ""
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 Log.w(TAG, "Failed to read hot reload token: ${e.message}")
                 ""
             }
@@ -213,7 +242,7 @@ class JSRuntime(private val context: Context) {
         jsHandler.post {
             try {
                 v8?.executeVoidScript(script)
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 Log.e(TAG, "Script error: ${e.message}")
             }
         }
@@ -231,7 +260,7 @@ class JSRuntime(private val context: Context) {
                     "typeof __VN_handleGlobalEvent==='function' && " +
                         "__VN_handleGlobalEvent(${encodeJs(eventName)},${encodeJs(payloadJson)}) === true"
                 ) ?: false
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 Log.e(TAG, "Error dispatching global event $eventName", e)
                 false
             }
@@ -277,10 +306,17 @@ class JSRuntime(private val context: Context) {
     /** Release the V8 runtime. */
     fun release() {
         jsHandler.post {
-            JSPolyfills.reset(this)
-            v8?.release(true)
-            v8 = null
-            isInitialized = false
+            try {
+                JSPolyfills.reset(this)
+                v8?.release(true)
+            } catch (e: Throwable) {
+                // A throwing native release must not escape on the jsThread —
+                // that terminates the process during Activity teardown.
+                Log.w(TAG, "Error releasing V8 runtime: ${e.message}")
+            } finally {
+                v8 = null
+                isInitialized = false
+            }
         }
         jsThread.quitSafely()
     }

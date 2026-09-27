@@ -3,6 +3,7 @@ package com.vuenative.core
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import android.view.Choreographer
 import com.eclipsesource.v8.JavaCallback
 import com.eclipsesource.v8.JavaVoidCallback
 import java.io.IOException
@@ -28,10 +29,15 @@ object JSPolyfills {
     private val timers = mutableMapOf<Int, Runnable>()
     private var nextTimerId = 1
 
-    // RAF — accessed from JS thread only
+    // RAF — the pending-callback set is accessed from the JS thread only.
+    // rafFrameScheduled is written from both the JS thread (when a callback is
+    // registered) and the UI thread (when a frame fires), so it is volatile.
     private val rafCallbacks = mutableMapOf<Int, Any>()
     private var nextRafId = 1
-    private var rafChoreographerPosted = false
+
+    @Volatile
+    private var rafFrameScheduled = false
+
     @Volatile private var activeRuntime: JSRuntime? = null
 
     fun register(runtime: JSRuntime) {
@@ -69,7 +75,7 @@ object JSPolyfills {
 
         // Clear RAF state
         rafCallbacks.clear()
-        rafChoreographerPosted = false
+        rafFrameScheduled = false
 
         // Reset counters
         nextTimerId = 1
@@ -253,8 +259,8 @@ object JSPolyfills {
                     val rafId = nextRafId++
                     rafCallbacks[rafId] = true
 
-                    if (!rafChoreographerPosted) {
-                        rafChoreographerPosted = true
+                    if (!rafFrameScheduled) {
+                        rafFrameScheduled = true
                         postRAFChoreographer(runtime)
                     }
                     return@JavaCallback rafId
@@ -284,34 +290,66 @@ object JSPolyfills {
         }
     }
 
+    /**
+     * Schedule exactly one vsync-aligned rAF frame.
+     *
+     * This used to be `mainHandler.post { jsThread { … } }` re-posted
+     * immediately whenever any `__vnRafCb_*` global existed. A JS rAF loop
+     * therefore became an unthrottled main↔JS ping-pong: it ran as fast as the
+     * two handlers could bounce (hundreds of times per second, far above the
+     * display refresh rate) and every tick scanned *all* V8 globals with
+     * `Object.keys(this).filter(…)`.
+     *
+     * [Choreographer] paces it to one callback per frame, and the pending set is
+     * tracked explicitly in [rafCallbacks] instead of by scanning globals —
+     * the same pattern [PerformanceModule] already uses for FPS.
+     */
     private fun postRAFChoreographer(runtime: JSRuntime) {
+        // Choreographer.getInstance() is thread-local, so it must be acquired on
+        // the thread whose frames we want — the UI thread's.
         mainHandler.post {
-            val now = System.currentTimeMillis()
-            runtime.runOnJsThread {
-                val v8 = runtime.v8() ?: return@runOnJsThread
-                try {
-                    // Fire all pending RAF callbacks
-                    v8.executeVoidScript("""
-                        (function() {
-                            var keys = Object.keys(this).filter(function(k){ return k.startsWith('__vnRafCb_'); });
-                            var cbs = {};
-                            keys.forEach(function(k){ cbs[k] = this[k]; delete this[k]; }.bind(this));
-                            keys.forEach(function(k){ if(typeof cbs[k]==='function') cbs[k]($now); });
-                        }).call(this);
-                    """)
-                    // Check if more RAF callbacks were registered
-                    val hasMore = v8.executeBooleanScript(
-                        "Object.keys(this).some(function(k){ return k.startsWith('__vnRafCb_'); })"
+            Choreographer.getInstance().postFrameCallback { frameTimeNanos ->
+                runRafFrame(runtime, frameTimeNanos)
+            }
+        }
+    }
+
+    /** Invoke every callback registered for this frame, on the JS thread. */
+    private fun runRafFrame(runtime: JSRuntime, frameTimeNanos: Long) {
+        rafFrameScheduled = false
+        runtime.runOnJsThread {
+            val v8 = runtime.v8() ?: run {
+                rafCallbacks.clear()
+                return@runOnJsThread
+            }
+
+            // Snapshot and clear before invoking: a callback that re-registers
+            // itself (the normal rAF loop) lands in the *next* frame, and a
+            // callback that throws cannot leave a stale entry behind.
+            val pending = if (rafCallbacks.isEmpty()) emptyList() else rafCallbacks.keys.toList()
+            rafCallbacks.clear()
+            if (pending.isEmpty()) return@runOnJsThread
+
+            val timestampMs = frameTimeNanos / 1_000_000.0
+            try {
+                pending.forEach { id ->
+                    v8.executeVoidScript(
+                        "if(typeof __vnRafCb_$id==='function'){" +
+                            "var __vnRafFn=__vnRafCb_$id;" +
+                            "delete __vnRafCb_$id;" +
+                            "__vnRafFn($timestampMs);}"
                     )
-                    if (hasMore) {
-                        postRAFChoreographer(runtime)
-                    } else {
-                        rafChoreographerPosted = false
-                    }
-                } catch (e: Exception) {
-                    rafChoreographerPosted = false
-                    Log.e(TAG, "RAF error", e)
                 }
+            } catch (e: Throwable) {
+                // Throwable: a JS stack overflow surfaces as StackOverflowError
+                // from V8 and would otherwise kill the jsThread.
+                Log.e(TAG, "RAF error", e)
+            }
+
+            // Callbacks registered while this frame was running queue the next one.
+            if (rafCallbacks.isNotEmpty() && !rafFrameScheduled) {
+                rafFrameScheduled = true
+                postRAFChoreographer(runtime)
             }
         }
     }

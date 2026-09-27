@@ -1,6 +1,7 @@
 package com.vuenative.core
 
 import android.content.Intent
+import android.content.pm.ApplicationInfo
 import android.content.res.Configuration
 import android.graphics.Color
 import android.os.Build
@@ -9,20 +10,62 @@ import android.util.Log
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 
 /**
  * Base Activity class for all Vue Native apps.
  *
- * Subclass this and override getBundleAssetPath() to provide the JS bundle.
- * Optionally override getDevServerUrl() to enable hot reload.
+ * Subclass this and override [getBundleAssetPath] to provide the JS bundle.
+ * Optionally override [getDevServerUrl] to enable hot reload in debug builds.
  *
- * Example:
  * ```kotlin
  * class MainActivity : VueNativeActivity() {
  *     override fun getBundleAssetPath() = "vue-native-bundle.js"
  * }
  * ```
+ *
+ * ## Manifest requirements for a hand-written host
+ *
+ * The CLI scaffold (`vue-native create <name>`) writes these for you. If you
+ * declare the Activity by hand you must match them:
+ *
+ * ```xml
+ * <activity
+ *     android:name=".MainActivity"
+ *     android:exported="true"
+ *     android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|keyboard|locale|layoutDirection|fontScale|uiMode|density"
+ *     android:windowSoftInputMode="adjustResize">
+ *     <intent-filter>
+ *         <action android:name="android.intent.action.MAIN" />
+ *         <category android:name="android.intent.category.LAUNCHER" />
+ *     </intent-filter>
+ * </activity>
+ * ```
+ *
+ * **`android:configChanges` is not optional.** Without it Android destroys and
+ * recreates the Activity on rotation, dark-mode switch, locale change, keyboard
+ * attach and font-scale change — and because the Vue app lives in a V8 isolate
+ * owned by this Activity, *every bit of JS state is wiped*: component state,
+ * Pinia/Vuex stores, in-flight promises and the whole navigation stack. The app
+ * visibly restarts at its root route. Declaring the list above makes Android
+ * deliver [onConfigurationChanged] instead, which keeps the same runtime and
+ * re-emits `dimensionsChange` / `colorScheme:change` to your composables.
+ *
+ * **`android:windowSoftInputMode="adjustResize"`** is what lets the IME insets
+ * applied in [onCreate] shrink the content instead of covering the focused
+ * input. This Activity draws edge-to-edge (`setDecorFitsSystemWindows(false)` on
+ * API 30+), which makes plain `adjustResize` a no-op on its own — the Activity
+ * compensates by padding the root container with the IME bottom inset, and that
+ * path relies on the soft-input mode being `adjustResize` rather than
+ * `adjustNothing`/`adjustPan`. `VKeyboardAvoiding` also depends on it.
+ *
+ * Hosts that need permissions for camera, microphone, location, contacts,
+ * calendar, notifications, media or Bluetooth must declare them in their own
+ * manifest — VueNativeCore no longer merges them in. See the opt-in snippet in
+ * `VueNativeCore/src/main/AndroidManifest.xml`.
  */
 abstract class VueNativeActivity : AppCompatActivity() {
 
@@ -41,7 +84,23 @@ abstract class VueNativeActivity : AppCompatActivity() {
     protected open fun readEmbeddedBundle(): String =
         assets.open(getBundleAssetPath()).bufferedReader().readText()
 
-    /** Return WebSocket URL of the Vite dev server for hot reload, or null to disable. */
+    /**
+     * Return the WebSocket URL of the Vite dev server for hot reload, or null to
+     * disable it.
+     *
+     * Hot reload opens a **plaintext** `ws://` socket and evaluates whatever
+     * JavaScript arrives on it with full native-module privileges, so it is only
+     * ever honoured when *both* of the following hold:
+     *
+     * 1. this build is debuggable (`ApplicationInfo.FLAG_DEBUGGABLE`), and
+     * 2. the URL points at a loopback / private-network address (see
+     *    [DevServerPolicy]).
+     *
+     * A release APK that returns a URL here logs an error and loads the embedded
+     * (or OTA) bundle instead. Put the override in `src/debug` so a release
+     * variant cannot even be compiled with it — that is what the repo's own
+     * example app does.
+     */
     open fun getDevServerUrl(): String? = null
 
     /**
@@ -77,6 +136,30 @@ abstract class VueNativeActivity : AppCompatActivity() {
     private lateinit var rootContainer: FrameLayout
     private var hotReloadManager: HotReloadManager? = null
 
+    /**
+     * Routes hardware/gesture back through the JS `hardware:backPress` event that
+     * `useBackHandler` subscribes to.
+     *
+     * Registered with [OnBackPressedDispatcher] rather than by overriding the
+     * deprecated `Activity.onBackPressed`: the dispatcher is what AndroidX and
+     * the predictive-back gesture actually invoke, and it keeps the existing
+     * contract intact — JS still gets the event first and [performDefaultBackAction]
+     * still runs only when JS did not handle it.
+     */
+    private val vueNativeBackCallback = object : OnBackPressedCallback(true) {
+        override fun handleOnBackPressed() {
+            if (!::runtime.isInitialized) {
+                performDefaultBackAction()
+                return
+            }
+            runtime.dispatchGlobalEvent("hardware:backPress", "{}") { handled ->
+                if (!handled) {
+                    performDefaultBackAction()
+                }
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -101,6 +184,21 @@ abstract class VueNativeActivity : AppCompatActivity() {
             )
         }
 
+        // Drawing edge-to-edge makes android:windowSoftInputMode="adjustResize" a
+        // no-op on API 30+ (nothing resizes the window any more), which left the
+        // soft keyboard covering the focused input. VKeyboardAvoidingFactory has
+        // always relied on adjustResize for this, so pad the root container by
+        // the IME bottom inset ourselves. Insets are returned unconsumed so
+        // children (and any host-provided inset handling) still see them.
+        ViewCompat.setOnApplyWindowInsetsListener(rootContainer) { view, insets ->
+            val imeBottom = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom
+            if (view.paddingBottom != imeBottom) {
+                view.setPadding(view.paddingLeft, view.paddingTop, view.paddingRight, imeBottom)
+            }
+            insets
+        }
+        ViewCompat.requestApplyInsets(rootContainer)
+
         // Initialize runtime and bridge
         runtime = JSRuntime(this)
         runtime.bridge.hostContainer = rootContainer
@@ -121,6 +219,8 @@ abstract class VueNativeActivity : AppCompatActivity() {
             linkingModule?.initialURL = url
         }
 
+        onBackPressedDispatcher.addCallback(this, vueNativeBackCallback)
+
         // Initialize JS engine then load bundle
         runtime.initialize {
             loadBundle()
@@ -128,7 +228,7 @@ abstract class VueNativeActivity : AppCompatActivity() {
     }
 
     private fun loadBundle() {
-        val devUrl = getDevServerUrl()
+        val devUrl = resolveDevServerUrl()
         if (devUrl != null) {
             val manager = HotReloadManager { bundleCode ->
                 // Properly sequence reload steps to avoid races between threads.
@@ -302,14 +402,63 @@ abstract class VueNativeActivity : AppCompatActivity() {
         PermissionsModule.onPermissionsResult(requestCode, permissions, grantResults)
     }
 
-    override fun onBackPressed() {
-        runtime.dispatchGlobalEvent("hardware:backPress", "{}") { handled ->
-            if (!handled) {
-                performDefaultBackAction()
+    /**
+     * Apply the two hot-reload safety gates to [getDevServerUrl].
+     *
+     * Returns the URL only when this build is debuggable *and* the URL points at
+     * a loopback / private-network dev server. Otherwise returns null, which
+     * makes [loadBundle] fall through to the embedded/OTA bundle.
+     *
+     * Without the debuggable gate a release APK built from the documented host
+     * pattern connected to a plaintext `ws://` endpoint and evaluated whatever
+     * JavaScript arrived there, with full native-module privileges — the same
+     * path iOS gates behind `#if DEBUG`, and the same flag [ErrorOverlayView]
+     * and [HotReloadStatusView] already check.
+     */
+    private fun resolveDevServerUrl(): String? {
+        val configured = getDevServerUrl() ?: return null
+
+        val isDebuggable =
+            (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
+
+        return when (DevServerPolicy.evaluate(configured, isDebuggable)) {
+            DevServerPolicy.Verdict.ALLOWED -> configured
+            DevServerPolicy.Verdict.ALLOWED_UNVERIFIED_HOSTNAME -> {
+                Log.w(
+                    TAG,
+                    "Hot reload dev server '$configured' is a hostname, not a private IP " +
+                        "literal; connecting because this build is debuggable.",
+                )
+                configured
+            }
+            DevServerPolicy.Verdict.REJECTED_NOT_DEBUGGABLE -> {
+                Log.e(
+                    TAG,
+                    "Ignoring getDevServerUrl() = $configured: hot reload requires a debuggable " +
+                        "build. Loading the embedded/OTA bundle instead.",
+                )
+                null
+            }
+            DevServerPolicy.Verdict.REJECTED_PUBLIC_ADDRESS -> {
+                Log.e(
+                    TAG,
+                    "Refusing hot reload dev server '$configured': the host is not a loopback " +
+                        "or private-network address. Hot reload evaluates unauthenticated " +
+                        "JavaScript with native-module privileges.",
+                )
+                null
+            }
+            DevServerPolicy.Verdict.REJECTED_UNPARSEABLE -> {
+                Log.e(TAG, "Refusing hot reload dev server '$configured': not a parseable URL.")
+                null
             }
         }
     }
 
+    /**
+     * Default back action, invoked when JS did not consume `hardware:backPress`.
+     * Override to change what "back" does when the Vue app has no handler for it.
+     */
     protected open fun performDefaultBackAction() {
         if (!isFinishing) {
             finish()

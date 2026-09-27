@@ -14,6 +14,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.CameraSelector
+import androidx.camera.core.ExperimentalGetImage
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
@@ -175,6 +176,9 @@ class QRScannerActivity : AppCompatActivity() {
         }
     }
 
+    // The `::analyzeFrame` method reference below propagates analyzeFrame's
+    // @ExperimentalGetImage requirement to this caller.
+    @ExperimentalGetImage
     private fun startScanning() {
         val options = BarcodeScannerOptions.Builder()
             .setBarcodeFormats(SUPPORTED_FORMATS.first(), *SUPPORTED_FORMATS.drop(1).toIntArray())
@@ -208,6 +212,11 @@ class QRScannerActivity : AppCompatActivity() {
         )
     }
 
+    // ImageProxy.getImage() is CameraX's experimental accessor. The module-level
+    // `-opt-in=androidx.camera.core.ExperimentalGetImage` compiler arg satisfies
+    // kotlinc, but lint's UnsafeOptInUsage check needs the marker on the
+    // declaration itself.
+    @ExperimentalGetImage
     private fun analyzeFrame(imageProxy: ImageProxy) {
         val mediaImage = imageProxy.image
         val currentScanner = scanner

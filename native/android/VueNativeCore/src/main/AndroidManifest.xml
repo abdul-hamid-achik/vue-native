@@ -1,22 +1,71 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Permissions used by native modules -->
+    <!--
+      ────────────────────────────────────────────────────────────────────────
+      PERMISSION POLICY (BREAKING CHANGE — read before upgrading)
+      ────────────────────────────────────────────────────────────────────────
+      This manifest used to inject 15 permissions into EVERY consumer app,
+      including CAMERA, location, contacts, calendar, notifications and media
+      access. Every one of those is a "dangerous" runtime permission that shows
+      up in the Play Console data-safety form, so a to-do app built on Vue
+      Native was declaring camera + contacts + calendar + location it never used.
+
+      The library now declares ONLY the permissions that are:
+        (a) protection level "normal" (no runtime prompt, no data-safety entry), AND
+        (b) required by a module that cannot function without them.
+
+      Every dangerous/runtime permission is now HOST-PROVIDED. If your app uses
+      the matching module you must declare it in your own AndroidManifest.xml —
+      see the opt-in snippet at the bottom of this file and the "Permissions"
+      section of native/android/README.md. Requests still go through
+      PermissionsModule.request(); only the manifest entry moved.
+    -->
+
+    <!-- fetch polyfill, HttpModule, WebSocketModule, HotReloadManager, OTAModule -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- NetworkModule connectivity callbacks -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- HapticsModule -->
     <uses-permission android:name="android.permission.VIBRATE" />
-    <uses-permission android:name="android.permission.CAMERA" />
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- BiometryModule. Both are protection level "normal" (no runtime prompt). -->
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
     <uses-permission android:name="android.permission.USE_FINGERPRINT" />
-    <uses-permission android:name="android.permission.READ_CONTACTS" />
-    <uses-permission android:name="android.permission.WRITE_CONTACTS" />
-    <uses-permission android:name="android.permission.READ_CALENDAR" />
-    <uses-permission android:name="android.permission.WRITE_CALENDAR" />
+    <!-- IAPModule. Protection level "normal"; required before Play will talk to
+         BillingClient at all, so declaring it costs a host nothing. -->
+    <uses-permission android:name="com.android.vending.BILLING" />
+
+    <!--
+      Package visibility (Android 11+, API 30+). Without a matching <queries>
+      entry, PackageManager.resolveActivity()/queryIntentActivities() return null
+      for an invisible package, so LinkingModule.canOpenURL() used to report
+      `false` for URLs the device could perfectly well open. These four cover
+      the schemes Linking.canOpenURL is realistically asked about.
+
+      ESCAPE HATCH for your own deep-link schemes (myapp://, whatsapp://, …):
+      add an <intent> block for them to YOUR manifest — <queries> entries from
+      the library and the app are merged — or call
+      `LinkingModule.registerOpenableSchemes("myapp")` from your Application
+      class to have canOpenURL answer `true` without a PackageManager query.
+    -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="http" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="mailto" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="tel" />
+        </intent>
+    </queries>
 
     <application>
         <!--
@@ -50,5 +99,55 @@
                 android:resource="@xml/vuenative_file_paths" />
         </provider>
     </application>
+
+    <!--
+      ────────────────────────────────────────────────────────────────────────
+      HOST OPT-IN SNIPPET — copy the lines your app actually needs into your
+      own app/src/main/AndroidManifest.xml. Nothing here is merged in for you
+      any more.
+      ────────────────────────────────────────────────────────────────────────
+
+      CameraModule (launchCamera, captureVideo, scanQRCode) and VCamera:
+        <uses-permission android:name="android.permission.CAMERA" />
+        <uses-feature android:name="android.hardware.camera" android:required="false" />
+
+      AudioModule recording (startRecording) and PermissionsModule "microphone":
+        <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
+      GeolocationModule / PermissionsModule "location" and "locationAlways":
+        <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+        <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+        (ACCESS_BACKGROUND_LOCATION is what PermissionsModule maps "locationAlways" to;
+         it needs its own Play Console justification.)
+        <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+
+      ContactsModule:
+        <uses-permission android:name="android.permission.READ_CONTACTS" />
+        <uses-permission android:name="android.permission.WRITE_CONTACTS" />
+
+      CalendarModule:
+        <uses-permission android:name="android.permission.READ_CALENDAR" />
+        <uses-permission android:name="android.permission.WRITE_CALENDAR" />
+
+      NotificationsModule (required on API 33+; without it POST is silently denied):
+        <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+      ImagePickerModule / CameraModule media access:
+        <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+        <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+        (READ_EXTERNAL_STORAGE is for API 32 and below only.)
+        <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+            android:maxSdkVersion="32" />
+
+      BluetoothModule (API 31+; without these every call reports unauthorized):
+        <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
+            android:usesPermissionFlags="neverForLocation" />
+        <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+        (BLUETOOTH / BLUETOOTH_ADMIN are for API 30 and below only.)
+        <uses-permission android:name="android.permission.BLUETOOTH"
+            android:maxSdkVersion="30" />
+        <uses-permission android:name="android.permission.BLUETOOTH_ADMIN"
+            android:maxSdkVersion="30" />
+    -->
 
 </manifest>

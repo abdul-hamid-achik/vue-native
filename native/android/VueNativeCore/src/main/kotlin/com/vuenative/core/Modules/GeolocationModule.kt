@@ -30,6 +30,12 @@ class GeolocationModule : NativeModule {
         fusedClient = LocationServices.getFusedLocationProviderClient(context.applicationContext)
     }
 
+    // ACCESS_FINE_LOCATION is host-provided (see the opt-in snippet in
+    // VueNativeCore/src/main/AndroidManifest.xml). Both getCurrentPosition and
+    // startWatch check ContextCompat.checkSelfPermission and bail out with an
+    // explicit error before touching the FusedLocationProviderClient; lint's
+    // dataflow does not follow the guard through the early-return `run {}`.
+    @Suppress("MissingPermission")
     override fun invoke(
         method: String,
         args: List<Any?>,
@@ -75,6 +81,9 @@ class GeolocationModule : NativeModule {
         }
     }
 
+    // See the note on invoke(): startWatch re-checks ACCESS_FINE_LOCATION and
+    // returns an explicit error before requesting updates.
+    @Suppress("MissingPermission")
     private fun startWatch(callback: (Any?, String?) -> Unit) {
         val ctx = context ?: run {
             callback(null, "Not initialized")

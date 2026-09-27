@@ -479,11 +479,13 @@ class NativeBridge(private val context: Context) {
     private fun handleRemoveTeleport(args: JSONArray) {
         val parentId = args.getInt(0)
 
-        // Remove teleport container
+        // Remove the teleport container inline. processOperations already runs on
+        // the main thread and every other tree handler mutates inline; deferring
+        // through mainHandler.post reordered this op behind the rest of its own
+        // batch, so [teleportTo, appendChild, removeChild] applied the teleport
+        // last and then acted on a childView.parent that had already changed.
         teleportContainers.remove(parentId)?.let { container ->
-            mainHandler.post {
-                (container.parent as? ViewGroup)?.removeView(container)
-            }
+            (container.parent as? ViewGroup)?.removeView(container)
         }
 
         // Clean up markers
@@ -506,12 +508,10 @@ class NativeBridge(private val context: Context) {
             return
         }
 
-        // Move view to teleport target
-        mainHandler.post {
-            (childView.parent as? ViewGroup)?.removeView(childView)
-            targetView.addView(childView)
-            childView.requestLayout()
-        }
+        // Move view to teleport target — inline, see handleRemoveTeleport.
+        (childView.parent as? ViewGroup)?.removeView(childView)
+        targetView.addView(childView)
+        childView.requestLayout()
 
         Log.d(TAG, "Teleported node $nodeId to target '$target'")
     }

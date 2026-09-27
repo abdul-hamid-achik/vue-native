@@ -110,7 +110,7 @@ class NativeModuleRegistryTest {
         registry.register(first)
         registry.register(second)
 
-        registry.destroyAll()
+        registry.destroyPreviousSnapshot()
 
         assertEquals(1, first.destroyCount)
         assertEquals(1, second.destroyCount)
