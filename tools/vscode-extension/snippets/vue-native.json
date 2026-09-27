@@ -141,24 +141,28 @@
     "body": [
       "<VList",
       "  :data=\"${1:items}\"",
-      "  :renderItem=\"(item) => h(VView, { style: styles.item }, [",
-      "    h(VText, {}, () => item.${2:title})",
-      "  ])\"",
-      "  :keyExtractor=\"(item) => item.${3:id}\"",
-      "/>"
+      "  :keyExtractor=\"(item) => item.${2:id}\"",
+      ">",
+      "  <template #item=\"{ item }\">",
+      "    <VView :style=\"${3:styles.item}\">",
+      "      <VText>{{ item.${4:title} }}</VText>",
+      "    </VView>",
+      "  </template>",
+      "</VList>"
     ],
-    "description": "VList — virtualized list (maps to UITableView / RecyclerView)"
+    "description": "VList — virtualized list (maps to UITableView / RecyclerView). Rows come from the #item slot; VList has no renderItem prop."
   },
-  "VList Template": {
-    "prefix": "vn-list-template",
+  "VFlatList": {
+    "prefix": "vn-flatlist",
     "body": [
-      "<VList",
+      "<VFlatList",
       "  :data=\"${1:items}\"",
       "  :renderItem=\"renderItem\"",
       "  :keyExtractor=\"(item) => item.${2:id}\"",
+      "  :estimatedItemHeight=\"${3:64}\"",
       "/>"
     ],
-    "description": "VList with external renderItem function"
+    "description": "VFlatList — variable-height virtualized list. This is the component that takes a renderItem function."
   },
   "VSafeArea": {
     "prefix": "vn-safearea",
@@ -174,7 +178,8 @@
     "body": [
       "<VSwitch",
       "  v-model=\"${1:isEnabled}\"",
-      "  trackColor=\"${2:#4f46e5}\"",
+      "  onTintColor=\"${2:#4f46e5}\"",
+      "  thumbTintColor=\"${3:#ffffff}\"",
       "/>"
     ],
     "description": "VSwitch — toggle switch"
@@ -184,12 +189,11 @@
     "body": [
       "<VSlider",
       "  v-model=\"${1:value}\"",
-      "  :minimumValue=\"${2:0}\"",
-      "  :maximumValue=\"${3:100}\"",
-      "  minimumTrackTintColor=\"${4:#4f46e5}\"",
+      "  :min=\"${2:0}\"",
+      "  :max=\"${3:100}\"",
       "/>"
     ],
-    "description": "VSlider — range slider"
+    "description": "VSlider — range slider (modelValue, min, max)"
   },
   "VActivityIndicator": {
     "prefix": "vn-activity",
@@ -201,7 +205,7 @@
   "VModal": {
     "prefix": "vn-modal",
     "body": [
-      "<VModal :visible=\"${1:showModal}\" :onRequestClose=\"() => ${1:showModal} = false\">",
+      "<VModal :visible=\"${1:showModal}\" @dismiss=\"${1:showModal} = false\">",
       "  <VView :style=\"${2:styles.modalContent}\">",
       "    ${0}",
       "  </VView>",
@@ -217,12 +221,14 @@
       "  title=\"${2:Alert}\"",
       "  message=\"${3:Are you sure?}\"",
       "  :buttons=\"[",
-      "    { text: 'Cancel', style: 'cancel', onPress: () => ${1:showAlert} = false },",
-      "    { text: 'OK', onPress: () => { ${0}; ${1:showAlert} = false } },",
+      "    { label: 'Cancel', style: 'cancel' },",
+      "    { label: 'OK' },",
       "  ]\"",
+      "  @cancel=\"${1:showAlert} = false\"",
+      "  @action=\"onAlertAction\"",
       "/>"
     ],
-    "description": "VAlertDialog — native alert dialog"
+    "description": "VAlertDialog — native alert dialog. Buttons are { label, style? } only; taps arrive via the @action event ({ index, label }) plus @confirm/@cancel, not via a per-button onPress."
   },
   "VActionSheet": {
     "prefix": "vn-actionsheet",
@@ -231,12 +237,14 @@
       "  :visible=\"${1:showSheet}\"",
       "  title=\"${2:Choose an action}\"",
       "  :actions=\"[",
-      "    { text: '${3:Option 1}', onPress: () => { ${0} } },",
-      "    { text: 'Cancel', style: 'cancel', onPress: () => ${1:showSheet} = false },",
+      "    { label: '${3:Option 1}' },",
+      "    { label: 'Cancel', style: 'cancel' },",
       "  ]\"",
+      "  @action=\"onAction\"",
+      "  @cancel=\"${1:showSheet} = false\"",
       "/>"
     ],
-    "description": "VActionSheet — native action sheet"
+    "description": "VActionSheet — native action sheet. Actions are { label, style? } only; the selection arrives via @action ({ label }), not a per-action onPress."
   },
   "VStatusBar": {
     "prefix": "vn-statusbar",
@@ -258,38 +266,40 @@
   "VProgressBar": {
     "prefix": "vn-progress",
     "body": [
-      "<VProgressBar :progress=\"${1:0.5}\" trackColor=\"${2:#e0e0e0}\" progressColor=\"${3:#4f46e5}\" />"
+      "<VProgressBar :progress=\"${1:0.5}\" trackTintColor=\"${2:#e0e0e0}\" progressTintColor=\"${3:#4f46e5}\" />"
     ],
-    "description": "VProgressBar — progress indicator"
+    "description": "VProgressBar — progress indicator (progress, trackTintColor, progressTintColor, animated)"
   },
   "VPicker": {
     "prefix": "vn-picker",
     "body": [
       "<VPicker",
-      "  v-model=\"${1:selected}\"",
-      "  :items=\"${2:['Option 1', 'Option 2', 'Option 3']}\"",
+      "  mode=\"${1|date,time,datetime|}\"",
+      "  v-model=\"${2:selectedDate}\"",
+      "  :minimumDate=\"${3:Date.now()}\"",
       "/>"
     ],
-    "description": "VPicker — native picker / dropdown"
+    "description": "VPicker — native date/time picker. modelValue is epoch milliseconds. For a list of choices use VDropdown."
   },
   "VSegmentedControl": {
     "prefix": "vn-segmented",
     "body": [
       "<VSegmentedControl",
-      "  v-model=\"${1:selectedIndex}\"",
+      "  :selectedIndex=\"${1:0}\"",
       "  :values=\"${2:['First', 'Second', 'Third']}\"",
+      "  @change=\"(e) => ${3:tab} = e.selectedIndex\"",
       "/>"
     ],
-    "description": "VSegmentedControl — segmented control"
+    "description": "VSegmentedControl — segmented control. Driven by :selectedIndex plus the @change event ({ selectedIndex, value }); it has no modelValue, so v-model does nothing."
   },
   "VKeyboardAvoiding": {
     "prefix": "vn-keyboard",
     "body": [
-      "<VKeyboardAvoiding :style=\"{ flex: 1 }\" behavior=\"${1|padding,height|}\">",
+      "<VKeyboardAvoiding :style=\"{ flex: 1 }\">",
       "  ${0}",
       "</VKeyboardAvoiding>"
     ],
-    "description": "VKeyboardAvoiding — adjust layout when keyboard appears"
+    "description": "VKeyboardAvoiding — adjust layout when the keyboard appears. Props are style and testID only; there is no behavior prop."
   },
   "VRefreshControl": {
     "prefix": "vn-refresh",
@@ -346,12 +356,17 @@
     "body": [
       "<VSectionList",
       "  :sections=\"${1:sections}\"",
-      "  :renderItem=\"${2:renderItem}\"",
-      "  :renderSectionHeader=\"${3:renderSectionHeader}\"",
-      "  :keyExtractor=\"(item) => item.${4:id}\"",
-      "/>"
+      "  :keyExtractor=\"(item) => item.${2:id}\"",
+      ">",
+      "  <template #sectionHeader=\"{ section }\">",
+      "    <VText :style=\"${3:styles.header}\">{{ section.${4:title} }}</VText>",
+      "  </template>",
+      "  <template #item=\"{ item }\">",
+      "    <VText>{{ item.${5:title} }}</VText>",
+      "  </template>",
+      "</VSectionList>"
     ],
-    "description": "VSectionList — grouped list with section headers"
+    "description": "VSectionList — grouped list. Rows and headers come from the #item / #sectionHeader slots (also #header, #footer, #sectionFooter, #empty); there are no renderItem or renderSectionHeader props."
   },
   "VVideo": {
     "prefix": "vn-video",
@@ -367,11 +382,17 @@
   "VErrorBoundary": {
     "prefix": "vn-errorboundary",
     "body": [
-      "<VErrorBoundary :fallback=\"${1:ErrorFallback}\">",
+      "<VErrorBoundary :resetKeys=\"${1:[route.name]}\">",
+      "  <template #fallback=\"{ error, reset }\">",
+      "    <VView :style=\"${2:styles.error}\">",
+      "      <VText>{{ error.message }}</VText>",
+      "      <VButton title=\"Retry\" @press=\"reset\" />",
+      "    </VView>",
+      "  </template>",
       "  ${0}",
       "</VErrorBoundary>"
     ],
-    "description": "VErrorBoundary — catch and display errors"
+    "description": "VErrorBoundary — catch and display errors. The fallback is a slot (receiving error, errorInfo and reset), not a prop; the props are onError and resetKeys."
   },
   "RouterView": {
     "prefix": "vn-routerview",

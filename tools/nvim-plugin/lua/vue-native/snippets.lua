@@ -200,32 +200,31 @@ function M.setup()
     t({ "", "</VScrollView>" }),
   }))
 
+  -- VList renders rows from the #item scoped slot ({ item, index }).
+  -- VList has NO renderItem prop — that belongs to VFlatList.
   table.insert(snippets, s("vn-list", {
-    t({ "<VList", "" }),
-    t('  :data="'),
+    t({ "<VList", '  :data="' }),
     i(1, "items"),
-    t({ '"', "" }),
-    t('  :renderItem="(item) => h(VView, { style: styles.item }, ['),
-    t({ "", "    h(VText, {}, () => item." }),
-    i(2, "title"),
-    t({ ")", "" }),
-    t({ '  ])"', "" }),
-    t('  :keyExtractor="(item) => item.'),
-    i(3, "id"),
-    t({ '"', "" }),
-    t("/>"),
+    t({ '"', '  :keyExtractor="(item) => item.' }),
+    i(2, "id"),
+    t({ '"', ">", '  <template #item="{ item }">', '    <VView :style="' }),
+    i(3, "styles.item"),
+    t({ '">', "      <VText>{{ item." }),
+    i(4, "title"),
+    t({ " }}</VText>", "    </VView>", "  </template>", "</VList>" }),
   }))
 
-  table.insert(snippets, s("vn-list-template", {
-    t({ "<VList", "" }),
-    t('  :data="'),
+  -- VFlatList is the component that takes a renderItem function.
+  table.insert(snippets, s("vn-flatlist", {
+    t({ "<VFlatList", '  :data="' }),
     i(1, "items"),
-    t({ '"', "" }),
-    t('  :renderItem="renderItem"'),
-    t({ "", '  :keyExtractor="(item) => item.' }),
-    i(2, "id"),
-    t({ '"', "" }),
-    t("/>"),
+    t({ '"', '  :renderItem="' }),
+    i(2, "renderItem"),
+    t({ '"', '  :keyExtractor="(item) => item.' }),
+    i(3, "id"),
+    t({ '"', '  :estimatedItemHeight="' }),
+    i(4, "64"),
+    t({ '"', "/>" }),
   }))
 
   table.insert(snippets, s("vn-safearea", {
@@ -237,30 +236,33 @@ function M.setup()
     t({ "", "</VSafeArea>" }),
   }))
 
+  -- VSwitch props are onTintColor / thumbTintColor — there is no trackColor.
   table.insert(snippets, s("vn-switch", {
     t({ "<VSwitch", "" }),
     t('  v-model="'),
     i(1, "isEnabled"),
     t({ '"', "" }),
-    t('  trackColor="'),
+    t('  onTintColor="'),
     i(2, "#4f46e5"),
+    t({ '"', "" }),
+    t('  thumbTintColor="'),
+    i(3, "#ffffff"),
     t({ '"', "" }),
     t("/>"),
   }))
 
+  -- VSlider props are min / max — there is no minimumValue, maximumValue or
+  -- minimumTrackTintColor (VSlider exposes no tint props at all).
   table.insert(snippets, s("vn-slider", {
     t({ "<VSlider", "" }),
     t('  v-model="'),
     i(1, "value"),
     t({ '"', "" }),
-    t("  :minimumValue=\""),
+    t('  :min="'),
     i(2, "0"),
     t({ '"', "" }),
-    t("  :maximumValue=\""),
+    t('  :max="'),
     i(3, "100"),
-    t({ '"', "" }),
-    t('  minimumTrackTintColor="'),
-    i(4, "#4f46e5"),
     t({ '"', "" }),
     t("/>"),
   }))
@@ -272,10 +274,11 @@ function M.setup()
     t(" />"),
   }))
 
+  -- VModal emits `dismiss`; it has no onRequestClose prop.
   table.insert(snippets, s("vn-modal", {
     t('<VModal :visible="'),
     i(1, "showModal"),
-    t('" :onRequestClose="() => '),
+    t('" @dismiss="'),
     i(2, "showModal"),
     t({ ' = false">', "" }),
     t('  <VView :style="'),
@@ -350,35 +353,51 @@ function M.setup()
     t("/>"),
   }))
 
+  -- VProgressBar uses trackTintColor / progressTintColor — not trackColor /
+  -- progressColor. It also accepts `animated` (default true).
   table.insert(snippets, s("vn-progress", {
     t('<VProgressBar :progress="'),
     i(1, "0.5"),
-    t('" trackColor="'),
+    t('" trackTintColor="'),
     i(2, "#e0e0e0"),
-    t('" progressColor="'),
+    t('" progressTintColor="'),
     i(3, "#4f46e5"),
     t('" />'),
   }))
 
+  -- VPicker is a DATE/TIME picker (modelValue is epoch milliseconds). It has no
+  -- `items` prop — for a list of choices use VDropdown.
   table.insert(snippets, s("vn-picker", {
     t({ "<VPicker", "" }),
-    t('  v-model="'),
-    i(1, "selected"),
+    t('  mode="'),
+    c(1, {
+      t("date"),
+      t("time"),
+      t("datetime"),
+    }),
     t({ '"', "" }),
-    t("  :items=\""),
-    i(2, "['Option 1', 'Option 2', 'Option 3']"),
+    t('  v-model="'),
+    i(2, "selectedDate"),
+    t({ '"', "" }),
+    t('  :minimumDate="'),
+    i(3, "Date.now()"),
     t({ '"', "" }),
     t("/>"),
   }))
 
+  -- VSegmentedControl has NO modelValue, so v-model silently does nothing.
+  -- Drive it with :selectedIndex and listen to @change ({ selectedIndex, value }).
   table.insert(snippets, s("vn-segmented", {
     t({ "<VSegmentedControl", "" }),
-    t('  v-model="'),
-    i(1, "selectedIndex"),
+    t('  :selectedIndex="'),
+    i(1, "0"),
     t({ '"', "" }),
-    t("  :values=\""),
+    t('  :values="'),
     i(2, "['First', 'Second', 'Third']"),
     t({ '"', "" }),
+    t('  @change="(e) => '),
+    i(3, "tab"),
+    t({ ' = e.selectedIndex"', "" }),
     t("/>"),
   }))
 
@@ -464,21 +483,26 @@ function M.setup()
     t("/>"),
   }))
 
+  -- VSectionList renders rows/headers from slots: #header, #empty,
+  -- #sectionHeader ({ section, index }), #item ({ item, index, section }),
+  -- #sectionFooter, #footer. There are no renderItem/renderSectionHeader props.
   table.insert(snippets, s("vn-sectionlist", {
-    t({ "<VSectionList", "" }),
-    t('  :sections="'),
+    t({ "<VSectionList", '  :sections="' }),
     i(1, "sections"),
-    t({ '"', "" }),
-    t('  :renderItem="'),
-    i(2, "renderItem"),
-    t({ '"', "" }),
-    t('  :renderSectionHeader="'),
-    i(3, "renderSectionHeader"),
-    t({ '"', "" }),
-    t('  :keyExtractor="(item) => item.'),
-    i(4, "id"),
-    t({ '"', "" }),
-    t("/>"),
+    t({ '"', '  :keyExtractor="(item) => item.' }),
+    i(2, "id"),
+    t({
+      '"',
+      ">",
+      '  <template #sectionHeader="{ section }">',
+      '    <VText :style="',
+    }),
+    i(3, "styles.header"),
+    t({ '">{{ section.' }),
+    i(4, "title"),
+    t({ " }}</VText>", "  </template>", '  <template #item="{ item }">', "    <VText>{{ item." }),
+    i(5, "title"),
+    t({ " }}</VText>", "  </template>", "</VSectionList>" }),
   }))
 
   table.insert(snippets, s("vn-video", {
@@ -493,11 +517,15 @@ function M.setup()
     t("/>"),
   }))
 
+  -- VErrorBoundary's fallback is a SLOT ({ error, errorInfo, reset }), not a
+  -- prop. The only props are onError and resetKeys.
   table.insert(snippets, s("vn-errorboundary", {
-    t('<VErrorBoundary :fallback="'),
-    i(1, "ErrorFallback"),
-    t({ '">', "" }),
-    t("  "),
+    t('<VErrorBoundary :resetKeys="'),
+    i(1, "[route.name]"),
+    t({ '">', '  <template #fallback="{ error, reset }">', '    <VView :style="' }),
+    i(2, "styles.error"),
+    t({ '">', "      <VText>{{ error.message }}</VText>", '      <VButton title="Retry" @press="reset" />', "" }),
+    t({ "    </VView>", "  </template>", "  " }),
     i(0),
     t({ "", "</VErrorBoundary>" }),
   }))

@@ -9,10 +9,15 @@ M.config = {
   diagnostics = true,
 }
 
+--- True once setup() has run. Lets plugin/vue-native.vim auto-configure a
+--- native pack/ install without overriding opts passed by a plugin manager.
+M.did_setup = false
+
 --- Setup the Vue Native plugin
 ---@param opts? table Configuration options
 function M.setup(opts)
   M.config = vim.tbl_deep_extend("force", M.config, opts or {})
+  M.did_setup = true
 
   if M.config.snippets then
     local ok, snippets = pcall(require, "vue-native.snippets")
