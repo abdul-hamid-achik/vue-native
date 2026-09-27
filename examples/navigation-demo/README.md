@@ -20,26 +20,25 @@ Comprehensive navigation example demonstrating stack navigation, params, and gua
 
 - **Components:** VView, VText, VButton, VInput, VScrollView
 - **Composables:** `useRouter`, `useRoute`, `useDrawer`
-- **Navigation:** `createRouter`, `createTabNavigator`, `createDrawerNavigator`, `RouterView`
+- **Navigation:** `createRouter`, `createDrawerNavigator`, `RouterView`
 - **Patterns:**
   - Stack navigation with route params (`router.push('Detail', { id })`)
   - Deep-link configuration (`navdemo://` prefixes)
   - An `afterEach` navigation guard that logs every transition
-  - Tab and drawer navigators
+  - A drawer navigator whose main screen hosts the `RouterView`, composing
+    drawer and stack navigation
 
-> ⚠️ **Known broken — the drawer body never mounts.** `DrawerNavigator` calls its
-> default slot only to scan for declarative `<DrawerScreen>` children and then
-> renders its own fixed tree, so the `<template #default>` content (the
-> `TabNavigator` and `RouterView`) is discarded. `RouterView` also cannot sit
-> beside the tabs: it renders every stack entry as an absolutely-positioned
-> full-bleed overlay, so it would permanently cover them. The screens therefore
-> come only from `:screens="drawerScreens"`.
->
-> Fixing this means choosing which navigator owns the root — `RouterView` with
-> the drawer as one of its routes, or the drawer with a tab host as its main
-> screen. Relatedly, `onScreenFocus` / `onScreenBlur` in `HomeScreen.vue` and
-> `SearchScreen.vue` are no-ops because those screens are rendered by the
-> navigators, not by `RouterView`, so the route entry they inject is absent.
+> **How the drawer composes with the stack.** `DrawerNavigator` renders each
+> screen from its `component` prop; its default slot is only scanned for
+> declarative `<DrawerScreen>` vnodes and is never mounted. The `main` drawer
+> screen is therefore the `RouterView` itself, so `HomeScreen`'s
+> `router.push('Detail', …)` swaps content inside the drawer's content area.
+> Screens reached through the drawer directly (`search`, `profile`, `settings`)
+> are not route entries, so `onScreenFocus` / `onScreenBlur` are no-ops in those
+> three and work in `HomeScreen` / `DetailScreen`, which the router renders.
+> Tab navigation is demonstrated in `examples/social` instead — nesting a
+> `TabNavigator` beside a `RouterView` does not compose, because `RouterView`
+> renders stack entries as absolutely-positioned full-bleed overlays.
 
 ## Key Features
 

@@ -1,38 +1,27 @@
 <script setup lang="ts">
-import { createStyleSheet } from '@thelacanians/vue-native-runtime'
 import {
-  createTabNavigator,
   createDrawerNavigator,
   RouterView,
 } from '@thelacanians/vue-native-navigation'
-import HomeScreen from './screens/HomeScreen.vue'
 import SearchScreen from './screens/SearchScreen.vue'
 import ProfileScreen from './screens/ProfileScreen.vue'
 import SettingsScreen from './screens/SettingsScreen.vue'
-
-// ─── Tab Navigator ───────────────────────────────────────────────────────────
-
-const { TabNavigator } = createTabNavigator()
-
-const tabScreens = [
-  { name: 'home', label: 'Home', icon: '🏠', component: HomeScreen },
-  { name: 'search', label: 'Search', icon: '🔍', component: SearchScreen },
-  { name: 'profile', label: 'Profile', icon: '👤', component: ProfileScreen },
-]
 
 // ─── Drawer Navigator ────────────────────────────────────────────────────────
 
 const { DrawerNavigator } = createDrawerNavigator()
 
+// `main` hosts the RouterView so the stack demo (HomeScreen pushing Detail)
+// renders inside the drawer's content area. DrawerScreen reads its `component`
+// prop and renders it; anything placed in the navigator's default slot is only
+// scanned for DrawerScreen vnodes and is never mounted, so screen content must
+// always arrive through `component`.
 const drawerScreens = [
-  { name: 'main', label: 'Main', icon: '🏠', component: HomeScreen },
-  { name: 'settings', label: 'Settings', icon: '⚙️', component: SettingsScreen },
+  { name: 'main', label: 'Browse', icon: '🏠', component: RouterView },
+  { name: 'search', label: 'Search', icon: '🔍', component: SearchScreen },
   { name: 'profile', label: 'Profile', icon: '👤', component: ProfileScreen },
+  { name: 'settings', label: 'Settings', icon: '⚙️', component: SettingsScreen },
 ]
-
-const styles = createStyleSheet({
-  container: { flex: 1 },
-})
 </script>
 
 <template>
@@ -41,18 +30,5 @@ const styles = createStyleSheet({
     :drawer-width="280"
     drawer-position="left"
     drawer-background-color="#FFFFFF"
-  >
-    <template #default>
-      <VView :style="styles.container">
-        <TabNavigator
-          :screens="tabScreens"
-          active-color="#007AFF"
-          inactive-color="#8E8E93"
-          tab-bar-background-color="#F9F9F9"
-        />
-        <!-- RouterView handles Detail push within the stack -->
-        <RouterView />
-      </VView>
-    </template>
-  </DrawerNavigator>
+  />
 </template>
