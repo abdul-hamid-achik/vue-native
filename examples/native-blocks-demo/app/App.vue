@@ -1,5 +1,5 @@
 <template>
-  <VView :style="styles.container">
+  <VSafeArea :style="styles.container">
     <VView :style="styles.header">
       <VText :style="styles.title">Native Blocks Demo</VText>
       <VText :style="styles.subtitle">Vue Native Code Generation</VText>
@@ -71,7 +71,7 @@
         />
       </VView>
     </VScrollView>
-  </VView>
+  </VSafeArea>
 </template>
 
 <script setup lang="ts">
@@ -132,7 +132,6 @@ const styles = createStyleSheet({
   },
   header: {
     padding: 24,
-    paddingTop: 60,
     backgroundColor: '#007AFF',
   },
   title: {

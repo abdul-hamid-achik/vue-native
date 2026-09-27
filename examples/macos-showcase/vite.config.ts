@@ -10,13 +10,4 @@ export default defineConfig({
       globalName: 'MacOSShowcaseApp',
     }),
   ],
-  build: {
-    lib: {
-      entry: 'app/main.ts',
-      formats: ['iife'],
-      name: 'MacOSShowcaseApp',
-      fileName: () => 'vue-native-bundle.js',
-    },
-    outDir: 'dist',
-  },
 })

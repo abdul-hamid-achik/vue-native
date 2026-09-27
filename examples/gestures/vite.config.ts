@@ -9,13 +9,4 @@ export default defineConfig({
       globalName: 'GesturesApp',
     }),
   ],
-  build: {
-    lib: {
-      entry: 'app/main.ts',
-      formats: ['iife'],
-      name: 'GesturesApp',
-      fileName: () => 'vue-native-bundle.js',
-    },
-    outDir: 'dist',
-  },
 })

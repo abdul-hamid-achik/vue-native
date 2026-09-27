@@ -12,13 +12,4 @@ export default defineConfig({
       globalName: 'CounterApp',
     }),
   ],
-  build: {
-    lib: {
-      entry: 'app/main.ts',
-      formats: ['iife'],
-      name: 'CounterApp',
-      fileName: () => 'vue-native-bundle.js',
-    },
-    outDir: 'dist',
-  },
 })

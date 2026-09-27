@@ -8,7 +8,7 @@
     "dev:ios": "vue-native dev --platform ios",
     "dev:android": "vue-native dev --platform android",
     "dev:macos": "vue-native dev --platform macos",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "vue-tsc --noEmit"
   },
   "dependencies": {
     "@thelacanians/vue-native-runtime": "workspace:*"
@@ -19,6 +19,7 @@
     "@vitejs/plugin-vue": "^6.0.5",
     "vite": "^8.0.0",
     "vue": "3.5.40",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "vue-tsc": "^2.2.0"
   }
 }

@@ -8,6 +8,8 @@ const activeTab = ref<'video' | 'audio' | 'web'>('video')
 const videoMuted = ref(false)
 const videoPaused = ref(false)
 const webUrl = ref('https://vuejs.org')
+// The WebView only navigates when this changes, so "Go" commits the typed URL.
+const loadedUrl = ref(webUrl.value)
 
 // ─── Audio ───────────────────────────────────────────────────────────────────
 
@@ -76,7 +78,7 @@ function onVideoProgress(event: any) {
   }
 }
 
-const videoWidth = computed(() => Math.min(dimensions.window.value.width - 40, 400))
+const videoWidth = computed(() => Math.min(dimensions.width.value - 40, 400))
 
 // ─── Styles ──────────────────────────────────────────────────────────────────
 
@@ -86,7 +88,7 @@ const styles = createStyleSheet({
     backgroundColor: '#1C1C1E',
   },
   header: {
-    paddingTop: 56,
+    paddingTop: 16,
     paddingHorizontal: 20,
     paddingBottom: 16,
   },
@@ -295,7 +297,7 @@ const styles = createStyleSheet({
 </script>
 
 <template>
-  <VView :style="styles.container">
+  <VSafeArea :style="styles.container">
     <VView :style="styles.header">
       <VText :style="styles.title">Media Player</VText>
       <VView :style="styles.tabBar">
@@ -398,9 +400,8 @@ const styles = createStyleSheet({
             <VText :style="styles.volumeIcon">🔈</VText>
             <VSlider
               :model-value="audioVolume"
-              :minimum-value="0"
-              :maximum-value="100"
-              :step="1"
+              :min="0"
+              :max="100"
               :style="styles.volumeSlider"
               @update:model-value="onVolumeChange"
             />
@@ -422,17 +423,16 @@ const styles = createStyleSheet({
             :style="styles.webInput"
             auto-capitalize="none"
           />
-          <VButton :style="styles.webGoButton" :on-press="() => webUrl = webUrl">
+          <VButton :style="styles.webGoButton" :on-press="() => loadedUrl = webUrl">
             <VText :style="styles.webGoText">Go</VText>
           </VButton>
         </VView>
 
         <VWebView
-          :source="{ uri: webUrl }"
+          :source="{ uri: loadedUrl }"
           :style="styles.webView"
-          accessibility-label="Embedded web browser"
         />
       </VView>
     </VScrollView>
-  </VView>
+  </VSafeArea>
 </template>

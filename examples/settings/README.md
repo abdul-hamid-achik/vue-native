@@ -2,23 +2,32 @@
 
 A settings screen demonstrating form controls, pickers, and persistent storage.
 
+> **Requires a native host for Android and macOS.** An `ios/` XcodeGen project
+> is included, but there is no `android/` or `macos/` shell — so `bun run
+> dev:android` and `bun run dev:macos` have nothing to run in. Scaffold one with
+> `bunx vue-native create my-app` and copy `app/`, `vite.config.ts` and
+> `env.d.ts` into it to target those platforms.
+
 ## What It Demonstrates
 
-- **Components:** VView, VText, VButton, VSwitch, VInput, VPicker, VScrollView
-- **Composables:** `useAsyncStorage` for persistence, `useHaptics` for feedback
+- **Components:** VView, VText, VButton, VSwitch, VScrollView, VActivityIndicator
+- **Composables:** `useColorScheme`, `useDeviceInfo`
 - **Patterns:**
-  - Form state management
-  - Settings persistence
-  - Picker controls
-  - Toggle switches
+  - Grouped settings rows with toggle switches
+  - Light / dark switching via `useColorScheme`
+  - Real device metadata (model, system name, system version, screen size, scale) via `useDeviceInfo`
+  - A simulated save action with an activity indicator
+
+Settings are held in local `ref` state — this example does not persist them.
 
 ## Key Features
 
-- User preferences form
-- Theme selection (light/dark)
-- Notification settings
-- Profile information
-- Auto-save functionality
+- Grouped preference rows with toggles
+- Light / dark appearance switching
+- Live device information (model, OS, screen size, scale)
+- Simulated save with an activity indicator
+
+Preferences are held in component state; nothing is persisted.
 
 ## How to Run
 

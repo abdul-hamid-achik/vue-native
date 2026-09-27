@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { createStyleSheet, useAsyncStorage, useHaptics } from '@thelacanians/vue-native-runtime'
+import { createStyleSheet, useAsyncStorage, useHaptics, useSecureStorage } from '@thelacanians/vue-native-runtime'
 import { useRouter } from '@thelacanians/vue-native-navigation'
 
 const router = useRouter()
+// The token is a secret, so it goes to Keychain (iOS) / EncryptedSharedPreferences
+// (Android). AsyncStorage is plaintext — only the non-sensitive profile lives there.
+const { setItem: setSecret } = useSecureStorage()
 const { setItem } = useAsyncStorage()
-const { vibrate } = useHaptics()
+const { notificationFeedback } = useHaptics()
 
 const email = ref('')
 const password = ref('')
@@ -17,12 +20,12 @@ async function handleLogin() {
 
   if (!email.value.trim()) {
     errorMessage.value = 'Please enter your email'
-    vibrate('error')
+    notificationFeedback('error')
     return
   }
   if (!password.value.trim()) {
     errorMessage.value = 'Please enter your password'
-    vibrate('error')
+    notificationFeedback('error')
     return
   }
 
@@ -34,13 +37,13 @@ async function handleLogin() {
   // Mock authentication — accept any non-empty credentials
   const token = `token_${Date.now()}`
   try {
-    await setItem('auth_token', token)
+    await setSecret('auth_token', token)
     await setItem('auth_user', JSON.stringify({ email: email.value.trim() }))
-    vibrate('success')
+    notificationFeedback('success')
     await router.reset('Home')
   } catch {
     errorMessage.value = 'Failed to save login state'
-    vibrate('error')
+    notificationFeedback('error')
   } finally {
     loading.value = false
   }

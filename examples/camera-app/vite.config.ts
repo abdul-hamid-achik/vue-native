@@ -9,13 +9,4 @@ export default defineConfig({
       globalName: 'CameraApp',
     }),
   ],
-  build: {
-    lib: {
-      entry: 'app/main.ts',
-      formats: ['iife'],
-      name: 'CameraApp',
-      fileName: () => 'vue-native-bundle.js',
-    },
-    outDir: 'dist',
-  },
 })

@@ -2,25 +2,48 @@
 
 Demonstrates macOS-specific features and desktop patterns.
 
+> **Requires a native host.** This directory ships Vue source and build config
+> only — there is no `ios/`, `android/`, or `macos/` app shell here. `bun run
+> dev:ios`, `dev:android` and `dev:macos` build the JS bundle but have nothing
+> to run it in. To see this app on a device or simulator:
+>
+> ```bash
+> bunx vue-native create my-app   # scaffolds iOS + Android hosts
+> ```
+>
+> Then copy `app/`, `vite.config.ts` and `env.d.ts` from this example over the
+> scaffold's equivalents, run `bun run build` here, and open the generated
+> project in Xcode or Android Studio. `vue-native create` does not scaffold a
+> macOS shell yet.
+
 ## What It Demonstrates
 
-- **Components:** VToolbar, VSplitView, VOutlineView, VView, VText
-- **Composables:** `useWindow`, `useMenu`, `useFileDialog`, `useDragDrop`
+- **Components:** VView, VText, VButton, VCheckbox, VRadio, VDropdown, VSegmentedControl, VSlider, VScrollView
+- **Composables:** `useWindow`, `useMenu`, `useFileDialog`, `useDragDrop`, `usePlatform`
 - **Patterns:**
-  - macOS native components
-  - Menu bar integration
-  - File dialogs
-  - Drag and drop
-  - Multi-window support
+  - App menu bar integration via `useMenu`
+  - Open / save file dialogs via `useFileDialog`
+  - Drag and drop via `useDragDrop`
+  - Window information via `useWindow`
+  - Platform branching with `usePlatform`
+  - Desktop form controls (segmented control, dropdown, radio, checkbox, slider)
+
+> ⚠️ **`VToolbar`, `VSplitView` and `VOutlineView` are not used here.** Those
+> components exist in the runtime (`packages/runtime/src/components/`) and this
+> example was meant to show them, but `app/App.vue` does not render any of them.
+> Adding them is the intended follow-up; until then the list above reflects what
+> the code actually does.
 
 ## Key Features
 
-- Native macOS toolbar
-- Split view layout
-- Outline view (sidebar)
-- Menu bar items
-- File open/save dialogs
-- Drag and drop support
+- App menu bar items via `useMenu`
+- File open / save dialogs via `useFileDialog`
+- Drag and drop via `useDragDrop`
+- Window information via `useWindow`
+- Desktop form controls
+
+Native toolbar, split view, outline view and multi-window support are **not**
+demonstrated yet — see the note above.
 
 ## How to Run
 

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { TabNavigator, tabs } from './main'
+import { TabNavigator, tabs } from './navigation'
 </script>
 
 <template>

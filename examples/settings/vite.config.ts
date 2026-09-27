@@ -9,13 +9,4 @@ export default defineConfig({
       globalName: 'SettingsApp',
     }),
   ],
-  build: {
-    lib: {
-      entry: 'app/main.ts',
-      formats: ['iife'],
-      name: 'SettingsApp',
-      fileName: () => 'vue-native-bundle.js',
-    },
-    outDir: 'dist',
-  },
 })

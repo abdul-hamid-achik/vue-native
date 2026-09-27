@@ -27,12 +27,13 @@ BUNDLE_PATH="../dist/vue-native-bundle.js"
 if [ ! -f "$BUNDLE_PATH" ]; then
     echo "Error: JS bundle not found at $BUNDLE_PATH"
     echo "Build the counter example first:"
-    echo "  cd examples/counter && npm run build"
+    echo "  cd examples/counter && bun run build"
     exit 1
 fi
 
 # Check that the native package exists
-NATIVE_PKG="../../../native/Package.swift"
+# The SwiftPM manifest lives at the repo root: examples/counter/ios -> ../../../Package.swift
+NATIVE_PKG="../../../Package.swift"
 if [ ! -f "$NATIVE_PKG" ]; then
     echo "Error: VueNativeCore package not found at $NATIVE_PKG"
     exit 1

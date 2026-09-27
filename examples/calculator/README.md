@@ -2,14 +2,20 @@
 
 A fully functional calculator demonstrating layout, state management, and computed properties.
 
+> **Requires a native host for Android and macOS.** An `ios/` XcodeGen project
+> is included, but there is no `android/` or `macos/` shell — so `bun run
+> dev:android` and `bun run dev:macos` have nothing to run in. Scaffold one with
+> `bunx vue-native create my-app` and copy `app/`, `vite.config.ts` and
+> `env.d.ts` into it to target those platforms.
+
 ## What It Demonstrates
 
-- **Components:** VView, VText, VButton, VScrollView
-- **Composables:** `useHaptics` for button press feedback
-- **Patterns:** 
-  - Grid layout with flexbox
+- **Components:** VView, VText, VButton
+- **Composables:** none — this example is pure layout and reactivity
+- **Patterns:**
+  - Flexbox grid layout for the keypad
   - Reactive state with `ref` and `computed`
-  - Event handling with `@press`
+  - Event handling with `:on-press`
   - String manipulation for expression evaluation
 
 ## Key Features

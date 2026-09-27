@@ -1,13 +1,27 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "outDir": "./dist",
     "types": [],
     "paths": {
-      "vue": ["../../packages/runtime/src"],
-      "@thelacanians/vue-native-runtime": ["../../packages/runtime/src"]
-    }
+      "vue": [
+        "../../packages/runtime/src"
+      ],
+      "@thelacanians/vue-native-runtime": [
+        "../../packages/runtime/src"
+      ]
+    },
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false,
+    "noEmit": true
   },
-  "include": ["app/**/*", "env.d.ts", "vite.config.ts"],
-  "exclude": ["node_modules", "dist"]
+  "include": [
+    "app/**/*",
+    "env.d.ts",
+    "vite.config.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist"
+  ]
 }

@@ -2,23 +2,39 @@
 
 A task management app demonstrating CRUD operations, filtering, and persistence.
 
+> **Requires a native host.** This directory ships Vue source and build config
+> only — there is no `ios/`, `android/`, or `macos/` app shell here. `bun run
+> dev:ios`, `dev:android` and `dev:macos` build the JS bundle but have nothing
+> to run it in. To see this app on a device or simulator:
+>
+> ```bash
+> bunx vue-native create my-app   # scaffolds iOS + Android hosts
+> ```
+>
+> Then copy `app/`, `vite.config.ts` and `env.d.ts` from this example over the
+> scaffold's equivalents, run `bun run build` here, and open the generated
+> project in Xcode or Android Studio. `vue-native create` does not scaffold a
+> macOS shell yet.
+
 ## What It Demonstrates
 
-- **Components:** VList, VInput, VButton, VSwitch, VView, VText, VModal
-- **Composables:** `useAsyncStorage`, `useHaptics`
+- **Components:** VView, VText, VButton, VInput, VSegmentedControl, VAlertDialog, VProgressBar, VScrollView
+- **Composables:** `useAsyncStorage`, `useColorScheme`, `useHaptics`, `useRouter`, `useRoute`
+- **Navigation:** `createRouter`
 - **Patterns:**
-  - CRUD operations
-  - Filtering and sorting
-  - Modal dialogs
-  - Bulk operations
+  - CRUD over a persisted task list (`useAsyncStorage`)
+  - Filtering with a `VSegmentedControl`
+  - Confirming destructive actions with `VAlertDialog`
+  - A detail screen reached by route params
+  - Dark mode and haptic feedback
 
 ## Key Features
 
-- Create/edit/delete tasks
-- Mark complete/incomplete
-- Filter by status
-- Search functionality
-- Persistent storage
+- Create, edit and delete tasks
+- Mark complete / incomplete
+- Filter by status with a segmented control
+- Confirm deletes with an alert dialog
+- Persistent storage across restarts
 
 ## How to Run
 

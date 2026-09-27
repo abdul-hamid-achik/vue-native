@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { createStyleSheet, useAsyncStorage, useHaptics } from '@thelacanians/vue-native-runtime'
+import { createStyleSheet, useAsyncStorage, useHaptics, useSecureStorage } from '@thelacanians/vue-native-runtime'
 import { useRouter } from '@thelacanians/vue-native-navigation'
 
 const router = useRouter()
 const { getItem, removeItem } = useAsyncStorage()
-const { vibrate } = useHaptics()
+// The token lives in secure storage, so logout must clear it from there.
+const { removeItem: removeSecret } = useSecureStorage()
+const { notificationFeedback } = useHaptics()
 
 const userEmail = ref('')
 
@@ -23,9 +25,9 @@ onMounted(async () => {
 
 async function handleLogout() {
   try {
-    await removeItem('auth_token')
+    await removeSecret('auth_token')
     await removeItem('auth_user')
-    vibrate('success')
+    notificationFeedback('success')
     await router.reset('Login')
   } catch {
     // Best-effort cleanup
@@ -41,7 +43,7 @@ const styles = createStyleSheet({
   header: {
     backgroundColor: '#007AFF',
     paddingHorizontal: 24,
-    paddingTop: 60,
+    paddingTop: 24,
     paddingBottom: 32,
   },
   welcomeLabel: {
@@ -122,7 +124,7 @@ const styles = createStyleSheet({
 </script>
 
 <template>
-  <VView :style="styles.container">
+  <VSafeArea :style="styles.container">
     <!-- Header -->
     <VView :style="styles.header">
       <VText :style="styles.welcomeLabel">Welcome back,</VText>
@@ -175,5 +177,5 @@ const styles = createStyleSheet({
     <VButton :style="styles.logoutButton" :on-press="handleLogout">
       <VText :style="styles.logoutButtonText">Log Out</VText>
     </VButton>
-  </VView>
+  </VSafeArea>
 </template>

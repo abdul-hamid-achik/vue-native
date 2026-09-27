@@ -51,7 +51,7 @@ const isFormValid = computed(() => {
 
 function handleSubmit() {
   if (!isFormValid.value) return
-  haptics.notification('success')
+  haptics.notificationFeedback('success')
   keyboard.dismiss()
 }
 
@@ -64,7 +64,7 @@ function handleReset() {
   category.value = ''
   volume.value = 50
   notificationsEnabled.value = true
-  haptics.impact('light')
+  haptics.vibrate('light')
 }
 
 // ─── Styles ──────────────────────────────────────────────────────────────────
@@ -274,9 +274,8 @@ const styles = createStyleSheet({
           </VView>
           <VSlider
             v-model="volume"
-            :minimum-value="0"
-            :maximum-value="100"
-            :step="1"
+            :min="0"
+            :max="100"
             accessibility-label="Volume slider"
           />
         </VView>

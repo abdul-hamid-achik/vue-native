@@ -2,23 +2,53 @@
 
 Comprehensive navigation example demonstrating stack navigation, params, and guards.
 
+> **Requires a native host.** This directory ships Vue source and build config
+> only — there is no `ios/`, `android/`, or `macos/` app shell here. `bun run
+> dev:ios`, `dev:android` and `dev:macos` build the JS bundle but have nothing
+> to run it in. To see this app on a device or simulator:
+>
+> ```bash
+> bunx vue-native create my-app   # scaffolds iOS + Android hosts
+> ```
+>
+> Then copy `app/`, `vite.config.ts` and `env.d.ts` from this example over the
+> scaffold's equivalents, run `bun run build` here, and open the generated
+> project in Xcode or Android Studio. `vue-native create` does not scaffold a
+> macOS shell yet.
+
 ## What It Demonstrates
 
-- **Components:** VView, VText, VButton, VNavigationBar
-- **Navigation:** 
-  - Stack navigation
-  - Route params
-  - Navigation guards
-  - Programmatic navigation
-- **Composables:** `useRouter`, `useRoute`, `useBackHandler`
+- **Components:** VView, VText, VButton, VInput, VScrollView
+- **Composables:** `useRouter`, `useRoute`, `useDrawer`
+- **Navigation:** `createRouter`, `createTabNavigator`, `createDrawerNavigator`, `RouterView`
+- **Patterns:**
+  - Stack navigation with route params (`router.push('Detail', { id })`)
+  - Deep-link configuration (`navdemo://` prefixes)
+  - An `afterEach` navigation guard that logs every transition
+  - Tab and drawer navigators
+
+> ⚠️ **Known broken — the drawer body never mounts.** `DrawerNavigator` calls its
+> default slot only to scan for declarative `<DrawerScreen>` children and then
+> renders its own fixed tree, so the `<template #default>` content (the
+> `TabNavigator` and `RouterView`) is discarded. `RouterView` also cannot sit
+> beside the tabs: it renders every stack entry as an absolutely-positioned
+> full-bleed overlay, so it would permanently cover them. The screens therefore
+> come only from `:screens="drawerScreens"`.
+>
+> Fixing this means choosing which navigator owns the root — `RouterView` with
+> the drawer as one of its routes, or the drawer with a tab host as its main
+> screen. Relatedly, `onScreenFocus` / `onScreenBlur` in `HomeScreen.vue` and
+> `SearchScreen.vue` are no-ops because those screens are rendered by the
+> navigators, not by `RouterView`, so the route entry they inject is absent.
 
 ## Key Features
 
-- Multi-screen navigation
-- Pass parameters between screens
-- Navigation guards (beforeEach)
-- Back button handling
-- Nested navigation
+- Multi-screen navigation with route params
+- Deep-link configuration
+- An `afterEach` guard logging every transition
+- Tab and drawer navigators
+
+Back-button handling (`useBackHandler`) is not demonstrated here.
 
 ## Screenshots
 

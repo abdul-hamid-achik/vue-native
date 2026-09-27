@@ -315,7 +315,7 @@ const styles = computed(() => createStyleSheet({
               <VText :style="[styles.taskTitle, task.done && styles.taskTitleDone]">
                 {{ task.title }}
               </VText>
-              <VText v-if="task.notes" :style="styles.taskNotes" number-of-lines="1">
+              <VText v-if="task.notes" :style="styles.taskNotes" :number-of-lines="1">
                 {{ task.notes }}
               </VText>
               <VView :style="styles.taskMeta">

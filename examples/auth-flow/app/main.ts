@@ -16,9 +16,10 @@ router.beforeEach(async (to, _from, next) => {
     return
   }
 
-  // Check for stored auth token via NativeBridge
+  // Check for stored auth token via NativeBridge.
+  // SecureStorage's native method names are get/set/remove/clear.
   try {
-    const token = await NativeBridge.invokeNativeModule('AsyncStorage', 'getItem', ['auth_token'])
+    const token = await NativeBridge.invokeNativeModule('SecureStorage', 'get', ['auth_token'])
     if (token) {
       next()
     } else {

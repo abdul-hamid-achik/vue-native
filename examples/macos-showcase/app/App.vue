@@ -527,8 +527,9 @@ const styles = createStyleSheet({
           <VView :style="styles.controlRow">
             <VText :style="styles.controlLabel">View Mode</VText>
             <VSegmentedControl
-              v-model="segmentIndex"
-              :segments="['Day', 'Week', 'Month']"
+              :values="['Day', 'Week', 'Month']"
+              :selected-index="segmentIndex"
+              @change="(e: any) => segmentIndex = e.selectedIndex"
             />
           </VView>
 
@@ -540,10 +541,8 @@ const styles = createStyleSheet({
             </VView>
             <VSlider
               v-model="sliderValue"
-              :minimum-value="0"
-              :maximum-value="100"
-              :step="1"
-              minimum-track-tint-color="#007AFF"
+              :min="0"
+              :max="100"
             />
           </VView>
         </VView>

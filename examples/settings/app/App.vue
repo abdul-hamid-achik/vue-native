@@ -3,7 +3,7 @@ import { ref } from 'vue'
 import { createStyleSheet, useColorScheme, useDeviceInfo } from '@thelacanians/vue-native-runtime'
 
 const { isDark, colorScheme } = useColorScheme()
-const { model, systemVersion, brand } = useDeviceInfo()
+const { model, systemVersion, systemName } = useDeviceInfo()
 
 // --- State ---
 
@@ -244,7 +244,7 @@ const sections: Section[] = [
         </VView>
         <VView :style="styles.labelGroup">
           <VText :style="styles.rowLabel">OS Version</VText>
-          <VText :style="styles.rowSubtitle">{{ brand }} {{ systemVersion }}</VText>
+          <VText :style="styles.rowSubtitle">{{ systemName }} {{ systemVersion }}</VText>
         </VView>
       </VView>
       <VView :style="styles.row">

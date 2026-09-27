@@ -9,13 +9,4 @@ export default defineConfig({
       globalName: 'MediaPlayerApp',
     }),
   ],
-  build: {
-    lib: {
-      entry: 'app/main.ts',
-      formats: ['iife'],
-      name: 'MediaPlayerApp',
-      fileName: () => 'vue-native-bundle.js',
-    },
-    outDir: 'dist',
-  },
 })

@@ -85,7 +85,7 @@ const styles = createStyleSheet({
   header: {
     backgroundColor: '#007AFF',
     paddingHorizontal: 16,
-    paddingTop: 56,
+    paddingTop: 14,
     paddingBottom: 14,
     flexDirection: 'row',
     alignItems: 'center',
@@ -242,7 +242,7 @@ const styles = createStyleSheet({
 </script>
 
 <template>
-  <VView :style="styles.container">
+  <VSafeArea :style="styles.container">
     <!-- Header -->
     <VView :style="styles.header">
       <VText :style="styles.headerTitle">Chat</VText>
@@ -321,5 +321,5 @@ const styles = createStyleSheet({
         </VButton>
       </VView>
     </VKeyboardAvoiding>
-  </VView>
+  </VSafeArea>
 </template>

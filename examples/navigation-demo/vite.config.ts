@@ -9,13 +9,4 @@ export default defineConfig({
       globalName: 'NavigationDemoApp',
     }),
   ],
-  build: {
-    lib: {
-      entry: 'app/main.ts',
-      formats: ['iife'],
-      name: 'NavigationDemoApp',
-      fileName: () => 'vue-native-bundle.js',
-    },
-    outDir: 'dist',
-  },
 })

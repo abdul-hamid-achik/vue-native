@@ -44,7 +44,7 @@ const haptics = useHaptics()
 
 function handleRefresh() {
   isRefreshing.value = true
-  haptics.impact('medium')
+  haptics.vibrate('medium')
   // Simulate a network refresh
   setTimeout(() => {
     isRefreshing.value = false
@@ -95,7 +95,7 @@ const styles = createStyleSheet({
     backgroundColor: '#F2F2F7',
   },
   header: {
-    paddingTop: 56,
+    paddingTop: 16,
     paddingHorizontal: 20,
     paddingBottom: 12,
     backgroundColor: '#FFFFFF',
@@ -129,8 +129,33 @@ const styles = createStyleSheet({
   tabTextActive: {
     color: '#FFFFFF',
   },
-  listContainer: {
-    flex: 1,
+  // Shared #header for all three lists. Kept at ~50pt tall so it matches the
+  // :header-height VFlatList needs (its header is absolutely positioned).
+  listHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    backgroundColor: '#F2F2F7',
+  },
+  listHeaderText: {
+    fontSize: 13,
+    color: '#8E8E93',
+    flexShrink: 1,
+  },
+  refreshButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    backgroundColor: '#007AFF',
+    flexShrink: 0,
+  },
+  refreshButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
   sectionHeader: {
     paddingHorizontal: 16,
@@ -176,17 +201,11 @@ const styles = createStyleSheet({
     fontSize: 16,
     color: '#1C1C1E',
   },
-  counter: {
-    textAlign: 'center',
-    fontSize: 13,
-    color: '#8E8E93',
-    paddingVertical: 12,
-  },
 })
 </script>
 
 <template>
-  <VView :style="styles.container">
+  <VSafeArea :style="styles.container">
     <!-- Header with tab bar -->
     <VView :style="styles.header">
       <VText :style="styles.title">Lists</VText>
@@ -204,76 +223,91 @@ const styles = createStyleSheet({
       </VView>
     </VView>
 
+    <!--
+      Each list below is the scrolling root (flex: 1). VFlatList, VSectionList
+      and VList are all UITableView/RecyclerView-backed, so wrapping one in a
+      VScrollView defeats virtualization and risks the re-entrant layout loop
+      described in AGENTS.md. Header content goes through the list's own
+      #header slot instead of an outer scroll view.
+    -->
+
     <!-- VFlatList — Virtualized, 500 items -->
-    <VView v-if="activeTab === 'flat'" :style="styles.listContainer">
-      <VFlatList
-        :data="flatListData"
-        :render-item="renderItem"
-        :item-height="56"
-        :style="{ flex: 1 }"
-        @end-reached="loadMore"
-      >
-        <template #header>
-          <VView :style="{ padding: 16, backgroundColor: '#F2F2F7' }">
-            <VText :style="{ fontSize: 13, color: '#8E8E93' }">
-              Showing {{ flatListData.length }} of {{ allContacts.length }} contacts (virtualized)
+    <VFlatList
+      v-if="activeTab === 'flat'"
+      :data="flatListData"
+      :render-item="renderItem"
+      :item-height="56"
+      :header-height="50"
+      :style="{ flex: 1 }"
+      @end-reached="loadMore"
+    >
+      <!-- #header is absolutely positioned, so :header-height must match the
+           header's real height or it overlays the first rows. -->
+      <template #header>
+        <VView :style="styles.listHeader">
+          <VText :style="styles.listHeaderText">
+            Showing {{ flatListData.length }} of {{ allContacts.length }} contacts (virtualized)
+          </VText>
+        </VView>
+      </template>
+    </VFlatList>
+
+    <!-- VSectionList — Grouped contacts -->
+    <VSectionList
+      v-else-if="activeTab === 'section'"
+      :sections="sections"
+      :estimated-item-height="48"
+      :style="{ flex: 1 }"
+    >
+      <template #header>
+        <VView :style="styles.listHeader">
+          <VText :style="styles.listHeaderText">{{ sections.length }} groups, {{ allContacts.length }} contacts</VText>
+          <VButton :style="styles.refreshButton" :on-press="handleRefresh">
+            <VText :style="styles.refreshButtonText">
+              {{ isRefreshing ? 'Refreshing…' : 'Refresh' }}
             </VText>
+          </VButton>
+        </VView>
+      </template>
+      <template #sectionHeader="{ section }">
+        <VView :style="styles.sectionHeader">
+          <VText :style="styles.sectionHeaderText">{{ section.title }}</VText>
+        </VView>
+      </template>
+      <template #item="{ item }">
+        <VView :style="styles.sectionItem">
+          <VText :style="styles.sectionAvatar">{{ (item as Contact).avatar }}</VText>
+          <VView>
+            <VText :style="styles.sectionName">{{ (item as Contact).name }}</VText>
+            <VText :style="styles.sectionPhone">{{ (item as Contact).phone }}</VText>
           </VView>
-        </template>
-      </VFlatList>
-    </VView>
+        </VView>
+      </template>
+    </VSectionList>
 
-    <!-- VSectionList — Grouped contacts with pull-to-refresh -->
-    <VView v-else-if="activeTab === 'section'" :style="styles.listContainer">
-      <VScrollView :style="{ flex: 1 }">
-        <VRefreshControl
-          :refreshing="isRefreshing"
-          :on-refresh="handleRefresh"
-          tint-color="#007AFF"
-          title="Pull to refresh..."
-        />
-        <VSectionList
-          :sections="sections"
-          :estimated-item-height="48"
-          :style="{ flex: 1 }"
-        >
-          <template #sectionHeader="{ section }">
-            <VView :style="styles.sectionHeader">
-              <VText :style="styles.sectionHeaderText">{{ section.title }}</VText>
-            </VView>
-          </template>
-          <template #item="{ item }">
-            <VView :style="styles.sectionItem">
-              <VText :style="styles.sectionAvatar">{{ (item as Contact).avatar }}</VText>
-              <VView>
-                <VText :style="styles.sectionName">{{ (item as Contact).name }}</VText>
-                <VText :style="styles.sectionPhone">{{ (item as Contact).phone }}</VText>
-              </VView>
-            </VView>
-          </template>
-        </VSectionList>
-      </VScrollView>
-    </VView>
-
-    <!-- VList — Basic list -->
-    <VView v-else :style="styles.listContainer">
-      <VScrollView :style="{ flex: 1 }">
-        <VRefreshControl
-          :refreshing="isRefreshing"
-          :on-refresh="handleRefresh"
-          tint-color="#007AFF"
-        />
-        <VList :style="{ flex: 1 }">
-          <VView
-            v-for="(item, idx) in basicItems"
-            :key="idx"
-            :style="styles.basicItem"
-          >
-            <VText :style="styles.basicItemText">{{ item }}</VText>
-          </VView>
-        </VList>
-        <VText :style="styles.counter">{{ basicItems.length }} items</VText>
-      </VScrollView>
-    </VView>
-  </VView>
+    <!-- VList — Basic list. VList is data-driven: pass :data and render each row
+         through #item. It has no default slot, so v-for children render nothing. -->
+    <VList
+      v-else
+      :data="basicItems"
+      :estimated-item-height="45"
+      :style="{ flex: 1 }"
+    >
+      <template #header>
+        <VView :style="styles.listHeader">
+          <VText :style="styles.listHeaderText">{{ basicItems.length }} items</VText>
+          <VButton :style="styles.refreshButton" :on-press="handleRefresh">
+            <VText :style="styles.refreshButtonText">
+              {{ isRefreshing ? 'Refreshing…' : 'Refresh' }}
+            </VText>
+          </VButton>
+        </VView>
+      </template>
+      <template #item="{ item }">
+        <VView :style="styles.basicItem">
+          <VText :style="styles.basicItemText">{{ item }}</VText>
+        </VView>
+      </template>
+    </VList>
+  </VSafeArea>
 </template>

@@ -3,8 +3,17 @@
   "compilerOptions": {
     "baseUrl": ".",
     "paths": {
-      "@/*": ["app/*"]
-    }
+      "@/*": [
+        "app/*"
+      ]
+    },
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false,
+    "noEmit": true
   },
-  "include": ["app/**/*", "env.d.ts"]
+  "include": [
+    "app/**/*",
+    "env.d.ts"
+  ]
 }

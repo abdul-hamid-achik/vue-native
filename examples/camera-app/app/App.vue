@@ -111,7 +111,7 @@ const styles = createStyleSheet({
   header: {
     backgroundColor: '#1C1C1E',
     paddingHorizontal: 16,
-    paddingTop: 56,
+    paddingTop: 14,
     paddingBottom: 14,
     flexDirection: 'row',
     alignItems: 'center',
@@ -308,7 +308,7 @@ const styles = createStyleSheet({
 </script>
 
 <template>
-  <VView :style="styles.container">
+  <VSafeArea :style="styles.container">
     <!-- Header -->
     <VView :style="styles.header">
       <VText :style="styles.headerTitle">Camera</VText>
@@ -414,5 +414,5 @@ const styles = createStyleSheet({
     <VView v-if="loading" :style="styles.loadingOverlay">
       <VActivityIndicator size="large" color="#FFFFFF" />
     </VView>
-  </VView>
+  </VSafeArea>
 </template>

@@ -2,15 +2,21 @@
 
 A simple todo list demonstrating CRUD operations, local storage, and list rendering.
 
+> **Requires a native host for Android and macOS.** An `ios/` XcodeGen project
+> is included, but there is no `android/` or `macos/` shell — so `bun run
+> dev:android` and `bun run dev:macos` have nothing to run in. Scaffold one with
+> `bunx vue-native create my-app` and copy `app/`, `vite.config.ts` and
+> `env.d.ts` into it to target those platforms.
+
 ## What It Demonstrates
 
-- **Components:** VView, VText, VButton, VInput, VList, VSwitch
-- **Composables:** `useAsyncStorage` for persistence, `useHaptics` for feedback
+- **Components:** VView, VText, VButton, VInput, VScrollView
+- **Composables:** `useAsyncStorage`
 - **Patterns:**
-  - List rendering with `v-for`
+  - List rendering with `v-for` inside a `VScrollView`
   - Two-way binding with `v-model`
-  - Persistent storage
-  - Toggle completion state
+  - Add / toggle / delete over persisted state
+  - Storage that survives an app restart
 
 ## Key Features
 

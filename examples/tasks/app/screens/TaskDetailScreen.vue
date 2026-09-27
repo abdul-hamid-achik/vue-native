@@ -16,7 +16,7 @@ const router = useRouter()
 const route = useRoute()
 const { getItem, setItem } = useAsyncStorage()
 const { isDark } = useColorScheme()
-const { vibrate } = useHaptics()
+const { notificationFeedback } = useHaptics()
 
 const taskId = computed(() => route.value.params.taskId as number)
 const task = ref<Task | null>(null)
@@ -56,7 +56,7 @@ async function saveTask() {
         await setItem('tasks_v1', JSON.stringify(tasks))
       }
     }
-    vibrate('success')
+    notificationFeedback('success')
     saved.value = true
     setTimeout(() => {
       saved.value = false

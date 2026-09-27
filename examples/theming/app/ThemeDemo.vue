@@ -17,6 +17,15 @@ const { theme, colorScheme, toggleColorScheme } = useTheme()
 const systemScheme = useColorScheme()
 const i18n = useI18n()
 
+// useI18n() exposes `locale`/`isRTL` refs that it fills from DeviceInfo on
+// mount; there is no setLocale() API. This demo drives the refs directly so both
+// layout directions can be previewed without changing the device locale.
+const RTL_LOCALES = ['ar', 'he', 'fa', 'ur']
+function previewLocale(next: string) {
+  i18n.locale.value = next
+  i18n.isRTL.value = RTL_LOCALES.some(l => next.startsWith(l))
+}
+
 // ─── Error Boundary demo ────────────────────────────────────────────────────
 
 const crashCount = ref(0)
@@ -272,9 +281,8 @@ const styles = createDynamicStyleSheet(theme, t => ({
           </VView>
           <VSlider
             v-model="fontSize"
-            :minimum-value="12"
-            :maximum-value="24"
-            :step="1"
+            :min="12"
+            :max="24"
             accessibility-label="Adjust font size"
             accessibility-role="adjustable"
           />
@@ -306,14 +314,14 @@ const styles = createDynamicStyleSheet(theme, t => ({
         <VView :style="{ flexDirection: 'row', gap: 8, marginTop: 8 }">
           <VButton
             :style="styles.rtlButton"
-            :on-press="() => i18n.setLocale('en')"
+            :on-press="() => previewLocale('en')"
             accessibility-label="Set English locale"
           >
             <VText :style="styles.rtlButtonText">English (LTR)</VText>
           </VButton>
           <VButton
             :style="styles.rtlButton"
-            :on-press="() => i18n.setLocale('ar')"
+            :on-press="() => previewLocale('ar')"
             accessibility-label="Set Arabic locale"
           >
             <VText :style="styles.rtlButtonText">Arabic (RTL)</VText>

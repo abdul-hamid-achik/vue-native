@@ -2,15 +2,35 @@
 
 Demonstrates theming, dark mode, and dynamic styles.
 
+> **Requires a native host.** This directory ships Vue source and build config
+> only — there is no `ios/`, `android/`, or `macos/` app shell here. `bun run
+> dev:ios`, `dev:android` and `dev:macos` build the JS bundle but have nothing
+> to run it in. To see this app on a device or simulator:
+>
+> ```bash
+> bunx vue-native create my-app   # scaffolds iOS + Android hosts
+> ```
+>
+> Then copy `app/`, `vite.config.ts` and `env.d.ts` from this example over the
+> scaffold's equivalents, run `bun run build` here, and open the generated
+> project in Xcode or Android Studio. `vue-native create` does not scaffold a
+> macOS shell yet.
+
 ## What It Demonstrates
 
-- **Components:** VView, VText, VButton, VSwitch, VPicker
-- **Composables:** `useColorScheme`, `createTheme`, `createDynamicStyleSheet`
+- **Components:** VView, VText, VButton, VSwitch, VSlider, VScrollView
+- **Composables:** `useTheme`, `useColorScheme`, `useI18n`
+- **APIs:** `createTheme`, `createDynamicStyleSheet`, `ErrorBoundary`
 - **Patterns:**
-  - Theme provider pattern
-  - Dynamic styles
-  - Dark mode support
-  - Color scheme detection
+  - Theme provider pattern with design tokens
+  - Dynamic style sheets derived from the active theme
+  - System color-scheme detection and manual override
+  - An `ErrorBoundary` around a deliberately crashing subtree, with reset
+  - RTL / LTR layout preview
+
+`useI18n()` returns read-only `locale` and `isRTL` refs that it fills from
+DeviceInfo on mount — there is no `setLocale()`. The RTL buttons here drive those
+refs directly through a local `previewLocale()` helper.
 
 ## Key Features
 
