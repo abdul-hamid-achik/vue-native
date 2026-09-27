@@ -209,46 +209,119 @@ describe('Integration: full Vue render cycle', () => {
     expect(reCreateOps.some(o => o.args[1] === 'VText')).toBe(true)
   })
 
-  it('handles list rendering', async () => {
+  /**
+   * Replay a bridge op stream against the native child order it describes.
+   *
+   * Asserting `.some(op => …)` on a reorder proves almost nothing: a stream
+   * that inserts every node at the wrong index would satisfy it. Replaying the
+   * stream and comparing the resulting order to what Vue intended is the
+   * observable contract the three native platforms all depend on.
+   */
+  function replayChildOrder(
+    initialOrder: number[],
+    ops: Array<{ op: string, args: unknown[] }>,
+  ): number[] {
+    const order = [...initialOrder]
+    for (const { op, args } of ops) {
+      const [, childId, anchorId] = args as number[]
+      if (op === 'removeChild') {
+        const at = order.indexOf(childId)
+        if (at !== -1) order.splice(at, 1)
+      } else if (op === 'appendChild') {
+        const at = order.indexOf(childId)
+        if (at !== -1) order.splice(at, 1)
+        order.push(childId)
+      } else if (op === 'insertBefore') {
+        const at = order.indexOf(childId)
+        if (at !== -1) order.splice(at, 1)
+        const anchorAt = order.indexOf(anchorId)
+        order.splice(anchorAt === -1 ? order.length : anchorAt, 0, childId)
+      }
+    }
+    return order
+  }
+
+  it('reorders a keyed list with moves only, and the op stream reproduces the new order', async () => {
     const root = createNativeNode('__ROOT__')
-    const items = ref(['Apple', 'Banana', 'Cherry'])
+    const items = ref(['A', 'B', 'C'])
 
     const App = defineComponent({
       setup() {
-        return () => h('VView', {},
-          items.value.map(item =>
-            h('VText', { key: item }, item),
-          ),
-        )
+        return () => h('VView', {}, items.value.map(item => h('VText', { key: item }, item)))
       },
     })
 
     render(h(App), root)
     await nextTick()
 
-    const createOps = mockBridge.getOpsByType('create')
-    const textCreates = createOps.filter(o => o.args[1] === 'VText')
-    expect(textCreates.length).toBe(3)
+    // Map each item to the native node id Vue created for it, in render order.
+    const initialCreates = mockBridge.getOpsByType('create').filter(o => o.args[1] === 'VText')
+    const idOf = new Map(initialCreates.map((op, index) => [items.value[index], op.args[0] as number]))
+    const initialOrder = ['A', 'B', 'C'].map(name => idOf.get(name)!)
 
     mockBridge.reset()
 
-    // Add an item
-    items.value = ['Apple', 'Banana', 'Cherry', 'Date']
+    items.value = ['C', 'A', 'B']
     await vueNextTick()
     await nextTick()
 
-    const newCreates = mockBridge.getOpsByType('create')
-    expect(newCreates.some(o => o.args[1] === 'VText')).toBe(true)
+    const ops = mockBridge.getOps()
 
+    // A pure reorder must not destroy or recreate any row: native list
+    // factories recycle views, and a create here would mean a remount.
+    expect(ops.filter(o => o.op === 'create')).toEqual([])
+    expect(ops.filter(o => o.op === 'removeChild')).toEqual([])
+
+    const moved = ops.filter(o => o.op === 'insertBefore' || o.op === 'appendChild')
+    expect(moved.length).toBeGreaterThan(0)
+    // Every anchor must be a real node in the list, never the parent or unknown.
+    for (const op of moved.filter(o => o.op === 'insertBefore')) {
+      expect(initialOrder).toContain(op.args[2])
+    }
+
+    expect(replayChildOrder(initialOrder, ops)).toEqual(['C', 'A', 'B'].map(name => idOf.get(name)!))
+  })
+
+  it('never anchors an insertion at a comment node', async () => {
+    // `v-if` false renders a comment vnode. Comments are never sent to native,
+    // so an insertBefore whose anchor is a comment would name an id the native
+    // side has never seen; renderer.findNextNonComment exists to resolve that.
+    const root = createNativeNode('__ROOT__')
+    const showExtra = ref(false)
+
+    const App = defineComponent({
+      setup() {
+        return () => h('VView', {}, [
+          h('VText', { key: 'first' }, 'first'),
+          showExtra.value ? h('VText', { key: 'extra' }, 'extra') : null,
+        ])
+      },
+    })
+
+    render(h(App), root)
+    await nextTick()
+
+    const firstId = mockBridge.getOpsByType('create').find(o => o.args[1] === 'VText')!.args[0] as number
     mockBridge.reset()
 
-    // Remove an item
-    items.value = ['Apple', 'Cherry', 'Date']
+    // The new node lands where the comment is; there is no native sibling after
+    // it, so the stream must append rather than anchor at a phantom id.
+    showExtra.value = true
     await vueNextTick()
     await nextTick()
 
-    const removeOps = mockBridge.getOpsByType('removeChild')
-    expect(removeOps.length).toBeGreaterThanOrEqual(1)
+    const ops = mockBridge.getOps()
+    const extraCreate = ops.find(o => o.op === 'create' && o.args[1] === 'VText')
+    expect(extraCreate).toBeDefined()
+    const extraId = extraCreate!.args[0] as number
+
+    const placements = ops.filter(o => o.op === 'insertBefore' || o.op === 'appendChild')
+    expect(placements.length).toBe(1)
+    if (placements[0].op === 'insertBefore') {
+      // An anchor is only legal if it is a node native actually has.
+      expect([firstId]).toContain(placements[0].args[2])
+    }
+    expect(replayChildOrder([firstId], ops)).toEqual([firstId, extraId])
   })
 
   it('patches style diffs correctly on state change', async () => {
