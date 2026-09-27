@@ -102,15 +102,24 @@ dependencies {
 
     // J2V8 — JavaScript engine (V8 for Android)
     //
-    // Deliberately NOT in gradle/libs.versions.toml, and deliberately pinned at
-    // 6.2.1 for now:
-    //   * the `@aar` artifact-only notation cannot be expressed in a version
-    //     catalog, and dropping it would start resolving J2V8's transitive
-    //     dependencies into every host app;
-    //   * a J2V8 upgrade swaps the bundled V8 native library under the whole
-    //     bridge, so it needs full device re-verification on iOS-parity flows
-    //     and is tracked as its own change rather than riding along here.
-    implementation("com.eclipsesource.j2v8:j2v8:6.2.1@aar")
+    // Deliberately NOT in gradle/libs.versions.toml: the `@aar` artifact-only
+    // notation cannot be expressed in a version catalog, and dropping it would
+    // start resolving J2V8's transitive dependencies into every host app.
+    //
+    // Bumped 6.2.1 -> 6.3.4 because 6.2.1's native libraries violate the 16 KB
+    // page alignment Google Play requires for apps targeting Android 15+: of its
+    // four ABIs, armeabi-v7a, x86 and x86_64 carry PT_LOAD segments whose file
+    // offset and virtual address disagree modulo 16384 (verified by parsing the
+    // ELF program headers of both published AARs; only arm64-v8a passed, which
+    // is why this went unnoticed on real devices). 6.3.4 — the release upstream
+    // made for exactly this, its issue #614 — aligns all four.
+    //
+    // Residual risk, stated plainly: this swaps the bundled V8 native library
+    // under the whole bridge, and no test here executes it (Robolectric cannot
+    // create a V8 isolate on the JVM and the app-shell smoke substitutes Rhino),
+    // so compile + the Robolectric suite prove the Kotlin side only. Device
+    // verification of JS execution remains outstanding.
+    implementation("com.eclipsesource.j2v8:j2v8:6.3.4@aar")
 
     // FlexboxLayout — CSS Flexbox for Android views
     implementation(libs.flexbox)
