@@ -55,6 +55,68 @@ describe('useGesture', () => {
       expect(addOps[0].args).toEqual([42, 'pan'])
     })
 
+    it('defers attachment until an initially-empty template ref is populated', async () => {
+      // Template refs are null during setup() and filled after the first render.
+      // This used to throw from resolveViewId, and the documented "or use a ref"
+      // guidance in the not-attached warning was therefore wrong.
+      let nodeRef: ReturnType<typeof ref<{ id: number } | null>>
+      await withSetup(() => {
+        nodeRef = ref<{ id: number } | null>(null)
+        expect(() => useGesture(nodeRef, { pan: true })).not.toThrow()
+        return {}
+      })
+
+      await nextTick()
+      // Nothing to attach to yet, so nothing was registered.
+      expect(mockBridge.getOpsByType('addEventListener').length).toBe(0)
+
+      nodeRef!.value = { id: 77 }
+      await nextTick()
+
+      const addOps = mockBridge.getOpsByType('addEventListener')
+      expect(addOps.length).toBe(1)
+      expect(addOps[0].args).toEqual([77, 'pan'])
+    })
+
+    it('useComposedGestures accepts an empty ref, exposes attach/detach, and registers once', async () => {
+      let nodeRef: ReturnType<typeof ref<{ id: number } | null>>
+      let composed: ReturnType<typeof useComposedGestures> | undefined
+      await withSetup(() => {
+        nodeRef = ref<{ id: number } | null>(null)
+        // Required-argument useComposedGestures(viewRef) used to throw here.
+        expect(() => {
+          composed = useComposedGestures(nodeRef, { pan: true, pinch: true, rotate: false })
+        }).not.toThrow()
+        return {}
+      })
+
+      await nextTick()
+      expect(mockBridge.getOpsByType('addEventListener').length).toBe(0)
+      expect(typeof composed!.attach).toBe('function')
+      expect(typeof composed!.detach).toBe('function')
+
+      nodeRef!.value = { id: 91 }
+      await nextTick()
+
+      const addOps = mockBridge.getOpsByType('addEventListener')
+      expect(addOps.map(o => o.args)).toEqual([[91, 'pan'], [91, 'pinch']])
+
+      // Detaching must unregister; re-attaching must not double-register.
+      composed!.detach()
+      await nextTick()
+      const removeOps = mockBridge.getOpsByType('removeEventListener')
+      expect(removeOps.length).toBe(2)
+
+      // The mock bridge accumulates ops for the whole test, so clear it before
+      // measuring the re-attach phase.
+      mockBridge.reset()
+      composed!.attach(92)
+      await nextTick()
+      const reattached = mockBridge.getOpsByType('addEventListener')
+      expect(reattached.length).toBe(2)
+      expect(reattached.map(o => o.args[0])).toEqual([92, 92])
+    })
+
     it('marks native-driven gestures via the nativeDrivenGestures prop', async () => {
       await withSetup(() => {
         const nodeRef = ref({ id: 42 })

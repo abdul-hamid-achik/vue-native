@@ -1,4 +1,4 @@
-import { ref, onUnmounted, type Ref } from '@vue/runtime-core'
+import { ref, watch, onUnmounted, type Ref } from '@vue/runtime-core'
 import { NativeBridge } from '../bridge'
 import type { NativeNode } from '../node'
 
@@ -95,10 +95,21 @@ function isGestureRef(target: GestureTarget): target is GestureTargetRef {
   return typeof target === 'object' && target !== null && 'value' in target
 }
 
-function resolveViewId(target: GestureTarget): number {
+/**
+ * Resolve a target to a native view id, or `null` when the target is a template
+ * ref that has not been populated yet.
+ *
+ * A null ref during `setup()` is a timing fact, not a mistake: Vue fills template
+ * refs after the first render. The old `resolveViewId` threw here, so the
+ * documented `useGesture(viewRef)` / `useComposedGestures(viewRef)` pattern
+ * crashed during setup instead of waiting for the view to exist. Callers now
+ * defer and retry through a watcher.
+ */
+function tryResolveViewId(target: GestureTarget): number | null {
   if (typeof target === 'number') return target
   if (isGestureRef(target)) {
     const val = target.value
+    if (val == null) return null
     if (hasViewId(val)) return val.id
     throw new Error('[useGesture] Target ref has no .value.id — is the ref attached to a component?')
   }
@@ -112,8 +123,14 @@ class GestureManager {
   private disposables: Array<() => void> = []
   private nativeDriven: Set<string> = new Set()
 
-  attach(target: GestureTarget): void {
-    this.nodeId = resolveViewId(target)
+  /**
+   * Bind to a target. Returns false when the target is a template ref that is
+   * not populated yet, so the caller can defer instead of losing its listeners.
+   */
+  attach(target: GestureTarget): boolean {
+    const id = tryResolveViewId(target)
+    this.nodeId = id
+    return id !== null
   }
 
   /** Push the set of native-driven gesture names to the view as a prop. */
@@ -250,12 +267,42 @@ export function useGesture(target?: GestureTarget, options: UseGestureOptions = 
   const manager = new GestureManager()
   const cleanupFns: Array<() => void> = []
 
+  let stopTargetWatch: (() => void) | null = null
+  let listenersActive = false
+
   function attach(t: GestureTarget): void {
-    manager.attach(t)
+    if (!manager.attach(t)) {
+      // Template ref not populated yet. Vue fills refs after the first render, so
+      // retry when the view appears instead of registering listeners against a
+      // null node id — manager.on() hands back a no-op disposer in that case, so
+      // the bindings would be lost permanently even after a later attach.
+      if (isGestureRef(t)) watchTarget(t)
+      return
+    }
+    activateListeners()
+  }
+
+  function watchTarget(t: GestureTargetRef): void {
+    stopTargetWatch?.()
+    stopTargetWatch = watch(t, (value) => {
+      if (value == null || !manager.attach(t)) return
+      stopTargetWatch?.()
+      stopTargetWatch = null
+      activateListeners()
+    })
+  }
+
+  /** Register the native listeners exactly once per attach cycle. */
+  function activateListeners(): void {
+    if (listenersActive) return
+    listenersActive = true
     setupListeners()
   }
 
   function detach(): void {
+    stopTargetWatch?.()
+    stopTargetWatch = null
+    listenersActive = false
     for (const fn of cleanupFns) fn()
     cleanupFns.length = 0
     manager.detach()
@@ -464,10 +511,27 @@ export interface ComposedGesture {
   isGesturing: Ref<boolean>
   isPinchingAndRotating: Ref<boolean>
   isPanningAndPinching: Ref<boolean>
+  /**
+   * Bind to a view after construction, for when the target is not known during
+   * setup. Passing an unpopulated template ref to the constructor also attaches
+   * automatically once the view exists.
+   */
+  attach: (target: GestureTarget) => void
+  detach: () => void
 }
 
+/**
+ * Pan + pinch + rotate on a single view, with the combined states precomputed.
+ *
+ * `target` is optional and may be a template ref that is still null during
+ * `setup()`. It used to be required and attached eagerly, so
+ * `useComposedGestures(viewRef)` threw during setup — and because
+ * `GestureManager.on()` returns a no-op disposer while unattached, the pan,
+ * pinch and rotate listeners were discarded permanently even once the view
+ * appeared. Attachment is now deferred and retried through a watcher.
+ */
 export function useComposedGestures(
-  target: GestureTarget,
+  target?: GestureTarget,
   options: GestureCompositionOptions & UseGestureOptions = {},
 ): ComposedGesture {
   const pan = ref<PanGestureState | null>(null)
@@ -480,49 +544,97 @@ export function useComposedGestures(
   const isPanningAndPinching = ref(false)
 
   const manager = new GestureManager()
-  manager.attach(target)
 
   const panConfig = typeof options.pan === 'object' ? options.pan : {}
   const pinchConfig = typeof options.pinch === 'object' ? options.pinch : {}
   const rotateConfig = typeof options.rotate === 'object' ? options.rotate : {}
 
   const cleanupFns: Array<() => void> = []
+  let stopTargetWatch: (() => void) | null = null
+  let listenersActive = false
 
-  if (options.pan !== false) {
-    cleanupFns.push(manager.on('pan', (state) => {
-      pan.value = state
-      gestureState.value = state
-      activeGesture.value = 'pan'
-      isGesturing.value = state.state === 'began' || state.state === 'changed'
-      isPanningAndPinching.value = pinch.value !== null && (state.state === 'began' || state.state === 'changed')
-    }, panConfig))
+  function setupListeners(): void {
+    if (options.pan !== false) {
+      cleanupFns.push(manager.on('pan', (state) => {
+        pan.value = state
+        gestureState.value = state
+        activeGesture.value = 'pan'
+        isGesturing.value = state.state === 'began' || state.state === 'changed'
+        isPanningAndPinching.value = pinch.value !== null && (state.state === 'began' || state.state === 'changed')
+      }, panConfig))
+    }
+
+    if (options.pinch !== false) {
+      cleanupFns.push(manager.on('pinch', (state) => {
+        pinch.value = state
+        gestureState.value = state
+        activeGesture.value = 'pinch'
+        isGesturing.value = state.state === 'began' || state.state === 'changed'
+        isPinchingAndRotating.value = rotate.value !== null && (state.state === 'began' || state.state === 'changed')
+        isPanningAndPinching.value = pan.value !== null && (state.state === 'began' || state.state === 'changed')
+      }, pinchConfig))
+    }
+
+    if (options.rotate !== false) {
+      cleanupFns.push(manager.on('rotate', (state) => {
+        rotate.value = state
+        gestureState.value = state
+        activeGesture.value = 'rotate'
+        isGesturing.value = state.state === 'began' || state.state === 'changed'
+        isPinchingAndRotating.value = pinch.value !== null && (state.state === 'began' || state.state === 'changed')
+      }, rotateConfig))
+    }
   }
 
-  if (options.pinch !== false) {
-    cleanupFns.push(manager.on('pinch', (state) => {
-      pinch.value = state
-      gestureState.value = state
-      activeGesture.value = 'pinch'
-      isGesturing.value = state.state === 'began' || state.state === 'changed'
-      isPinchingAndRotating.value = rotate.value !== null && (state.state === 'began' || state.state === 'changed')
-      isPanningAndPinching.value = pan.value !== null && (state.state === 'began' || state.state === 'changed')
-    }, pinchConfig))
+  /** Register the native listeners exactly once per attach cycle. */
+  function activateListeners(): void {
+    if (listenersActive) return
+    listenersActive = true
+    setupListeners()
   }
 
-  if (options.rotate !== false) {
-    cleanupFns.push(manager.on('rotate', (state) => {
-      rotate.value = state
-      gestureState.value = state
-      activeGesture.value = 'rotate'
-      isGesturing.value = state.state === 'began' || state.state === 'changed'
-      isPinchingAndRotating.value = pinch.value !== null && (state.state === 'began' || state.state === 'changed')
-    }, rotateConfig))
+  function attach(t: GestureTarget): void {
+    if (!manager.attach(t)) {
+      if (isGestureRef(t)) watchTarget(t)
+      return
+    }
+    activateListeners()
+  }
+
+  function watchTarget(t: GestureTargetRef): void {
+    stopTargetWatch?.()
+    stopTargetWatch = watch(t, (value) => {
+      if (value == null || !manager.attach(t)) return
+      stopTargetWatch?.()
+      stopTargetWatch = null
+      activateListeners()
+    })
+  }
+
+  function detach(): void {
+    stopTargetWatch?.()
+    stopTargetWatch = null
+    listenersActive = false
+    for (const fn of cleanupFns) fn()
+    cleanupFns.length = 0
+    manager.detach()
+    pan.value = null
+    pinch.value = null
+    rotate.value = null
+    gestureState.value = null
+    activeGesture.value = null
+    isGesturing.value = false
+    isPinchingAndRotating.value = false
+    isPanningAndPinching.value = false
   }
 
   onUnmounted(() => {
-    for (const fn of cleanupFns) fn()
-    manager.detach()
+    detach()
   })
+
+  if (target !== undefined) {
+    attach(target)
+  }
 
   return {
     pan,
@@ -533,5 +645,7 @@ export function useComposedGestures(
     isGesturing,
     isPinchingAndRotating,
     isPanningAndPinching,
+    attach,
+    detach,
   }
 }
