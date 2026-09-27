@@ -574,9 +574,12 @@ android.nonTransitiveRClass=true
 `)
 
       // android/gradle/wrapper/gradle-wrapper.properties
+      // AGP 8.7.x (declared in the top-level build.gradle.kts above) requires
+      // Gradle 8.9 or newer; 8.6 made every scaffolded Android app fail its first
+      // build with "Minimum supported Gradle version is 8.9".
       await writeFile(join(androidGradleWrapperDir, 'gradle-wrapper.properties'), `distributionBase=GRADLE_USER_HOME
 distributionPath=wrapper/dists
-distributionUrl=https\\://services.gradle.org/distributions/gradle-8.6-bin.zip
+distributionUrl=https\\://services.gradle.org/distributions/gradle-8.11.1-bin.zip
 networkTimeout=10000
 zipStoreBase=GRADLE_USER_HOME
 zipStorePath=wrapper/dists

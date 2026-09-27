@@ -857,7 +857,78 @@ describe('create command', () => {
         ([path]: any[]) => path.endsWith('gradle-wrapper.properties'),
       )
       expect(wrapperCall).toBeDefined()
-      expect((wrapperCall![1] as string)).toContain('gradle-8.6-bin.zip')
+      expect((wrapperCall![1] as string)).toMatch(/gradle-\d+\.\d+(\.\d+)?-bin\.zip/)
+    })
+
+    /**
+     * Minimum Gradle version required by each Android Gradle Plugin release.
+     *
+     * A literal `toContain('gradle-8.6-bin.zip')` assertion used to live here and
+     * froze an AGP 8.7.3 + Gradle 8.6 combination that cannot build — AGP 8.7
+     * requires Gradle 8.9 — so every scaffolded Android app failed its first
+     * build while this suite stayed green. Comparing the two generated versions
+     * against each other is what actually catches the drift. An unknown AGP
+     * release fails on purpose, forcing this table to be updated on a bump.
+     */
+    const MIN_GRADLE_FOR_AGP: Record<string, string> = {
+      '8.0': '8.0',
+      '8.1': '8.0',
+      '8.2': '8.2',
+      '8.3': '8.4',
+      '8.4': '8.6',
+      '8.5': '8.7',
+      '8.6': '8.7',
+      '8.7': '8.9',
+      '8.8': '8.10.2',
+      '8.9': '8.11.1',
+      '8.10': '8.11.1',
+      '8.11': '8.13',
+      '8.12': '8.13',
+      '8.13': '8.13',
+    }
+
+    function compareVersions(a: string, b: string): number {
+      const pa = a.split('.').map(Number)
+      const pb = b.split('.').map(Number)
+      for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+        const diff = (pa[i] ?? 0) - (pb[i] ?? 0)
+        if (diff !== 0) return diff < 0 ? -1 : 1
+      }
+      return 0
+    }
+
+    it('scaffolds a Gradle wrapper new enough for the AGP version it declares', async () => {
+      await runCreate('my-app')
+
+      const rootGradleCall = mockWriteFile.mock.calls.find(
+        ([path]: any[]) => path.endsWith('android/build.gradle.kts'),
+      )
+      const wrapperCall = mockWriteFile.mock.calls.find(
+        ([path]: any[]) => path.endsWith('gradle-wrapper.properties'),
+      )
+      expect(rootGradleCall).toBeDefined()
+      expect(wrapperCall).toBeDefined()
+
+      const agpMatch = /id\("com\.android\.application"\) version "(\d+\.\d+)(?:\.\d+)?"/
+        .exec(rootGradleCall![1] as string)
+      expect(agpMatch, 'could not find the AGP version in the generated build file').not.toBeNull()
+      const agpMinor = agpMatch![1]
+
+      const gradleMatch = /gradle-(\d+\.\d+(?:\.\d+)?)-bin\.zip/
+        .exec(wrapperCall![1] as string)
+      expect(gradleMatch, 'could not find the Gradle version in the wrapper properties')
+        .not.toBeNull()
+
+      const minGradle = MIN_GRADLE_FOR_AGP[agpMinor]
+      expect(
+        minGradle,
+        `AGP ${agpMinor} is not in MIN_GRADLE_FOR_AGP — add its minimum Gradle version`,
+      ).toBeDefined()
+
+      expect(
+        compareVersions(gradleMatch![1], minGradle),
+        `AGP ${agpMinor} requires Gradle >= ${minGradle} but the scaffold writes ${gradleMatch![1]}`,
+      ).toBeGreaterThanOrEqual(0)
     })
 
     it('uses compileSdk 35 and targetSdk 35', async () => {
@@ -997,6 +1068,60 @@ describe('dev command', () => {
     await new Promise(resolve => setTimeout(resolve, 10))
 
     expect(capturedWssOptions.port).toBe(9999)
+  })
+
+  it('fails loudly when the hot-reload port is already in use', async () => {
+    const child = createMockChildProcess(false)
+    mockSpawn.mockImplementation(() => child)
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
+      throw new Error('process.exit')
+    }) as () => never)
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    const devCommand = await importDevCommand()
+    void devCommand.parseAsync(['node', 'dev', '-p', '8174'])
+    await new Promise(resolve => setTimeout(resolve, 10))
+
+    // The real WebSocketServer emits 'error' asynchronously after bind fails.
+    // Previously that was logged and ignored, leaving the process alive on the
+    // Vite watcher while the UI printed "Waiting for app to connect..." forever.
+    const errorCall = mockWssOn.mock.calls.find(([event]: unknown[]) => event === 'error')
+    expect(errorCall).toBeDefined()
+    const errorHandler = errorCall![1] as (err: NodeJS.ErrnoException) => void
+
+    expect(() => {
+      errorHandler({ code: 'EADDRINUSE', message: 'listen EADDRINUSE' } as NodeJS.ErrnoException)
+    }).toThrow('process.exit')
+
+    const text = errorSpy.mock.calls.map(call => String(call[0])).join('\n')
+    expect(text).toContain('Port 8174 is already in use')
+    // Names the actual remedy rather than a generic failure.
+    expect(text).toContain('vue-native dev --port 8175')
+    // Must not orphan the Vite watcher while claiming to have exited.
+    expect(child.kill).toHaveBeenCalledWith('SIGTERM')
+    expect(exitSpy).toHaveBeenCalledWith(1)
+  })
+
+  it('exits non-zero on a non-EADDRINUSE server error', async () => {
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
+      throw new Error('process.exit')
+    }) as () => never)
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    const devCommand = await importDevCommand()
+    void devCommand.parseAsync(['node', 'dev'])
+    await new Promise(resolve => setTimeout(resolve, 10))
+
+    const errorCall = mockWssOn.mock.calls.find(([event]: unknown[]) => event === 'error')
+    const errorHandler = errorCall![1] as (err: NodeJS.ErrnoException) => void
+
+    expect(() => {
+      errorHandler({ code: 'EACCES', message: 'listen EACCES' } as NodeJS.ErrnoException)
+    }).toThrow('process.exit')
+
+    const text = errorSpy.mock.calls.map(call => String(call[0])).join('\n')
+    expect(text).toContain('Hot-reload server failed to start')
+    expect(exitSpy).toHaveBeenCalledWith(1)
   })
 
   it('rejects a non-numeric --port', async () => {
@@ -1376,7 +1501,7 @@ describe('run command', () => {
         )
 
         expect(mockExecSync).toHaveBeenCalledWith(
-          'bun run vite build',
+          'bun run vite build --mode development',
           expect.objectContaining({
             env: expect.objectContaining({ VUE_NATIVE_PLATFORM: platform }),
           }),
@@ -1403,7 +1528,7 @@ describe('run command', () => {
 
       // execSync should have been called with vite build
       expect(mockExecSync).toHaveBeenCalledWith(
-        'bun run vite build',
+        'bun run vite build --mode development',
         expect.objectContaining({ stdio: 'inherit' }),
       )
 
@@ -1428,10 +1553,51 @@ describe('run command', () => {
       await runCmd.parseAsync(['node', 'run', 'ios', '--bundle-only'])
 
       expect(mockExecSync).toHaveBeenCalledWith(
-        'bun run vite build',
+        'bun run vite build --mode development',
         expect.objectContaining({ stdio: 'inherit' }),
       )
       expect(mockSpawn).not.toHaveBeenCalled()
+    })
+
+    it('builds a development bundle by default so it cannot clobber a live dev session', async () => {
+      mockExecSync.mockImplementation(() => '')
+      mockExistsSync.mockReturnValue(false)
+
+      const runCmd = await importRunCommand()
+      await runCmd.parseAsync(['node', 'run', 'ios', '--bundle-only'])
+
+      // `run` writes the same dist/vue-native-bundle.js that `dev` watches and
+      // broadcasts. A production default silently swapped a live session's
+      // bundle for a minified, __DEV__=false, sourcemap-less one.
+      const bundleCall = mockExecSync.mock.calls.find(
+        ([command]: any[]) => String(command).includes('vite build'),
+      )
+      expect(bundleCall?.[0]).toContain('--mode development')
+      expect(bundleCall?.[0]).not.toContain('--mode production')
+    })
+
+    it('honours an explicit --mode production', async () => {
+      mockExecSync.mockImplementation(() => '')
+      mockExistsSync.mockReturnValue(false)
+
+      const runCmd = await importRunCommand()
+      await runCmd.parseAsync(['node', 'run', 'ios', '--bundle-only', '--mode', 'production'])
+
+      expect(mockExecSync).toHaveBeenCalledWith(
+        'bun run vite build --mode production',
+        expect.objectContaining({ stdio: 'inherit' }),
+      )
+    })
+
+    it('rejects an unknown --mode instead of passing it to Vite', async () => {
+      mockExecSync.mockImplementation(() => '')
+      mockExistsSync.mockReturnValue(false)
+
+      const runCmd = await importRunCommand()
+      await expect(
+        runCmd.parseAsync(['node', 'run', 'ios', '--mode', 'relase']),
+      ).rejects.toThrow(/--mode must be "development" or "production"/)
+      expect(mockExecSync).not.toHaveBeenCalled()
     })
 
     it('generates a scaffolded project.yml with XcodeGen before building', async () => {
@@ -2217,6 +2383,83 @@ describe('cli entry point', () => {
     expect(report.schemaVersion).toBe(1)
     expect(report.checks.some(check => check.id === 'native.macos')).toBe(true)
     expect(report.checks.find(check => check.id === 'xcode')?.message).toContain('linux')
+  })
+
+  it('finds adb inside an SDK that was never exported to PATH', async () => {
+    const sdk = '/fake/android-sdk'
+    mockExistsSync.mockImplementation((path: string) => {
+      const target = String(path)
+      if (target.endsWith('/android')) return true
+      // The common real-world case: platform-tools is on disk, adb is not on PATH.
+      return target === `${sdk}/platform-tools/adb`
+    })
+    mockExecFileSync.mockImplementation(() => {
+      throw new Error('command not found')
+    })
+
+    const { collectDoctorReport } = await import('../commands/doctor')
+    const report = await collectDoctorReport('/fake/project', { ANDROID_HOME: sdk }, 'linux')
+
+    const adb = report.checks.find(check => check.id === 'adb')
+    expect(adb).toBeDefined()
+    expect(adb!.ok).toBe(true)
+    expect(adb!.message).toContain(`${sdk}/platform-tools/adb`)
+  })
+
+  it('reports a missing adb as blocking when an android project is present', async () => {
+    mockExistsSync.mockImplementation((path: string) => String(path).endsWith('/android'))
+    mockExecFileSync.mockImplementation(() => {
+      throw new Error('command not found')
+    })
+
+    const { collectDoctorReport } = await import('../commands/doctor')
+    const report = await collectDoctorReport('/fake/project', {}, 'linux')
+
+    const adb = report.checks.find(check => check.id === 'adb')
+    expect(adb).toBeDefined()
+    expect(adb!.ok).toBe(false)
+    expect(adb!.level).toBe('error')
+    expect(adb!.message).toContain('vue-native run android')
+    expect(report.ok).toBe(false)
+  })
+
+  it('skips Android-only checks when there is no android project', async () => {
+    mockExistsSync.mockReturnValue(false)
+    mockExecFileSync.mockImplementation(() => {
+      throw new Error('command not found')
+    })
+
+    const { collectDoctorReport } = await import('../commands/doctor')
+    const report = await collectDoctorReport('/fake/project', {}, 'linux')
+
+    expect(report.checks.some(check => check.id === 'adb')).toBe(false)
+  })
+
+  it('checks xcodegen and the iOS Simulator runtime for an ios project on macOS', async () => {
+    mockExistsSync.mockImplementation((path: string) => String(path).endsWith('/ios'))
+    // xcodebuild and xcodegen exist; simctl reports no iOS runtime at all.
+    mockExecFileSync.mockImplementation((command: string, args?: string[]) => {
+      const name = String(command)
+      if (name === 'adb') throw new Error('command not found')
+      if (args?.includes('runtimes')) return JSON.stringify({ runtimes: [{ platform: 'iOS', isAvailable: false }] })
+      return ''
+    })
+
+    const { collectDoctorReport } = await import('../commands/doctor')
+    const report = await collectDoctorReport('/fake/project', { HOME: '/fake/home' }, 'darwin')
+
+    const xcodegen = report.checks.find(check => check.id === 'xcodegen')
+    expect(xcodegen).toBeDefined()
+    expect(xcodegen!.ok).toBe(true)
+
+    const runtime = report.checks.find(check => check.id === 'iosSimulatorRuntime')
+    expect(runtime).toBeDefined()
+    expect(runtime!.ok).toBe(false)
+    expect(runtime!.level).toBe('error')
+    // The remedy must be the runtime download, not "create a simulator in Xcode",
+    // which is impossible without a runtime and was the old dead-end message.
+    expect(runtime!.message).toContain('xcodebuild -downloadPlatform iOS')
+    expect(report.ok).toBe(false)
   })
 
   it('exports inspect command and reports missing project surfaces', async () => {

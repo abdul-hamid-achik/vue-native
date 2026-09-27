@@ -1,4 +1,20 @@
-export type PlatformSupport = 'full' | 'stub' | 'unsupported' | 'host-integration-required'
+/**
+ * `unknown` means the manifest could not read that platform's ComponentRegistry
+ * (no bundled or vendored `native/` tree was found), so support is unverified
+ * rather than assumed. It is deliberately distinct from `unsupported`.
+ *
+ * `runtime-composed` means the component is implemented entirely in TypeScript
+ * and renders down to other components, so no native factory exists or is
+ * needed. Reporting those as `unsupported` would be a lie in the opposite
+ * direction from the hardcoded `full` this manifest used to emit.
+ */
+export type PlatformSupport =
+  | 'full'
+  | 'stub'
+  | 'unsupported'
+  | 'host-integration-required'
+  | 'runtime-composed'
+  | 'unknown'
 
 export type HostPlatform = 'ios' | 'android' | 'macos'
 

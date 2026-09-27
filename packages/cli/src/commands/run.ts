@@ -89,6 +89,7 @@ export const runCommand = new Command('run')
   .option('--bundle-id <id>', 'app bundle identifier')
   .option('--package <name>', 'Android package name (auto-detected from app/build.gradle when omitted)')
   .option('--activity <name>', 'Android activity name', '.MainActivity')
+  .option('--mode <mode>', 'Vite mode for the JS bundle (development, production)', 'development')
   .option('--bundle-only', 'stop after the JS bundle; do not require a native project or artifact')
   .action(async (platformArg: string | undefined, options: {
     device?: boolean
@@ -98,6 +99,7 @@ export const runCommand = new Command('run')
     bundleId?: string
     package?: string
     activity: string
+    mode: string
     bundleOnly?: boolean
   }) => {
     const platform = await resolvePlatform(platformArg)
@@ -105,6 +107,9 @@ export const runCommand = new Command('run')
 
     const cwd = process.cwd()
     const config = await loadConfig(cwd)
+    if (options.mode !== 'development' && options.mode !== 'production') {
+      throw new ConfigError('--mode must be "development" or "production"')
+    }
     const resolvedOptions = {
       ...options,
       scheme: options.scheme ?? (platform === 'macos' ? config?.macos.scheme : config?.ios.scheme),
@@ -133,14 +138,22 @@ export const runCommand = new Command('run')
     p.log.step('Building JS bundle...')
     ensureBunAvailable(BUN_REQUIRED_MESSAGE)
     try {
-      execSync('bun run vite build', {
+      // `run` defaults to a development bundle. It writes the same
+      // dist/vue-native-bundle.js that `dev` watches and broadcasts, so building
+      // in production mode here silently replaced a live dev session's bundle
+      // with a minified, __DEV__=false, sourcemap-less one.
+      execSync(`bun run vite build --mode ${options.mode}`, {
         cwd,
         stdio: 'inherit',
         env: { ...process.env, VUE_NATIVE_PLATFORM: platform },
       })
-      p.log.success('Bundle built')
-    } catch {
-      throw new ConfigError('Bundle build failed')
+      p.log.success(`Bundle built (${options.mode})`)
+    } catch (error) {
+      throw new ConfigError(
+        'Bundle build failed. Vite reported the cause above; re-run with '
+        + `--mode ${options.mode} to reproduce, or check vite.config.ts and app/main.ts. `
+        + `(${(error as Error).message})`,
+      )
     }
 
     if (options.bundleOnly) {
@@ -183,11 +196,51 @@ function detectIOSSimulator(): string | null {
   }
 }
 
+/**
+ * Explain why no simulator could be selected.
+ *
+ * `detectIOSSimulator` swallows the underlying failure and returns null, so a
+ * missing iOS Simulator *runtime* — an ~8.5 GB download that Xcode does not
+ * bundle, and the most common first-run blocker — was reported as "Create one in
+ * Xcode", which is impossible without a runtime. That sent users down a dead end.
+ */
+function diagnoseMissingIOSSimulator(): string {
+  let raw: string
+  try {
+    raw = execFileSync('xcrun', ['simctl', 'list', 'runtimes', '--json'], { stdio: 'pipe' }).toString()
+  } catch (error) {
+    return 'Could not run `xcrun simctl`, so no iOS Simulator can be selected. '
+      + 'Xcode or its command-line tools are probably not active. Fix with: '
+      + 'sudo xcode-select -s /Applications/Xcode.app — then retry '
+      + `vue-native run ios. (xcrun failed: ${(error as Error).message})`
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as {
+      runtimes?: Array<{ platform?: string, isAvailable?: boolean }>
+    }
+    const iosRuntimes = (parsed.runtimes ?? [])
+      .filter(rt => rt.platform === 'iOS' && rt.isAvailable !== false)
+    if (iosRuntimes.length === 0) {
+      return 'No iOS Simulator runtime is installed. Xcode ships the SDK but not '
+        + 'a Simulator runtime, and it cannot create a device without one. Install '
+        + 'it with: xcodebuild -downloadPlatform iOS   (about 8.5 GB, one time) — '
+        + 'then open Xcode once and retry vue-native run ios.'
+    }
+  } catch {
+    // A parse failure is not worth masking the generic guidance below.
+  }
+
+  return 'No available iOS Simulator device was found. Create one in Xcode '
+    + '(Window > Devices and Simulators > Simulators), or target an existing one '
+    + 'with --simulator <name>. List what is installed with: '
+    + 'xcrun simctl list devices available'
+}
+
 interface PhysicalDevice {
   udid: string
   name: string
 }
-
 interface DevicectlDevice {
   identifier?: string
   hardwareProperties?: { udid?: string, productType?: string }
@@ -331,7 +384,7 @@ async function runIOS(
   const scheme = options.scheme || project.path.split('/').pop()?.replace(/\.(xcworkspace|xcodeproj)$/, '') || 'App'
   const simulatorName = options.simulator ?? detectIOSSimulator()
   if (!options.device && !simulatorName) {
-    throw new ConfigError('No iOS simulator found. Create one in Xcode or pass --simulator <name>.')
+    throw new ConfigError(diagnoseMissingIOSSimulator())
   }
   const destination = options.device
     ? 'generic/platform=iOS'
@@ -429,7 +482,7 @@ async function runIOS(
 
   // Launch on simulator
   if (!simulatorName) {
-    throw new ConfigError('No iOS simulator found. Create one in Xcode or pass --simulator <name>.')
+    throw new ConfigError(diagnoseMissingIOSSimulator())
   }
   const bundleId = options.bundleId || readBundleId(join(cwd, 'ios'))
   validateAppleBundleId(bundleId)

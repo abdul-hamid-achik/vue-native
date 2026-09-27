@@ -249,6 +249,11 @@ export const devCommand = new Command('dev')
       return false
     }
 
+    // Forward reference: the Vite watcher is spawned below, but the WebSocket
+    // server can fail to bind before that happens, and its error handler must be
+    // able to tear the child down whichever way round they occur.
+    let viteProcess: ReturnType<typeof spawn> | null = null
+
     const wss = new WebSocketServer({
       port,
       host,
@@ -293,8 +298,28 @@ export const devCommand = new Command('dev')
       })
     })
 
-    wss.on('error', (err) => {
-      console.error(pc.red(`WebSocket server error: ${err.message}`))
+    wss.on('error', (err: NodeJS.ErrnoException) => {
+      // Binding failure used to be logged and then ignored: the process stayed
+      // alive on the Vite watcher and its keep-alive interval, so the user was
+      // left staring at "Waiting for app to connect..." forever with no hot
+      // reload and no way to tell why. Fail loudly instead.
+      if (err.code === 'EADDRINUSE') {
+        console.error(pc.red(
+          `Port ${port} is already in use, so the hot-reload server could not start.`,
+        ))
+        console.error(pc.yellow(
+          `  Another \`vue-native dev\` is probably already running. Stop it, or use a\n`
+          + `  different port:\n\n`
+          + `    vue-native dev --port ${port + 1}\n\n`
+          + `  Note that the native host has the dev-server URL baked in at scaffold\n`
+          + `  time (ws://localhost:${port} on iOS, ws://10.0.2.2:${port} on Android), so a\n`
+          + `  non-default port also needs that URL updated in the host app.`,
+        ))
+      } else {
+        console.error(pc.red(`Hot-reload server failed to start: ${err.message}`))
+      }
+      viteProcess?.kill('SIGTERM')
+      process.exit(1)
     })
 
     const serverLines: string[] = [
@@ -338,6 +363,7 @@ export const devCommand = new Command('dev')
         },
       },
     )
+    viteProcess = vite
 
     vite.stdout?.on('data', (data: Buffer) => {
       const text = data.toString().trim()

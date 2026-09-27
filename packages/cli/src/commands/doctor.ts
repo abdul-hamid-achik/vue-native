@@ -75,6 +75,40 @@ export async function collectDoctorReport(
       level: xcode ? 'info' : 'error',
       message: xcode ? 'xcodebuild is available' : 'xcodebuild not found — install Xcode',
     })
+
+    if (xcode && ios) {
+      // `run ios` / `build ios` hard-require XcodeGen to generate the project
+      // (native-project.ts ensureXcodeProject), but doctor never checked for it,
+      // so it reported a healthy toolchain and the failure surfaced later as a
+      // demand to `brew install xcodegen` mid-build.
+      const xcodegen = commandExists('xcodegen')
+      checks.push({
+        id: 'xcodegen',
+        ok: xcodegen,
+        level: xcodegen ? 'info' : 'error',
+        message: xcodegen
+          ? 'xcodegen is on PATH'
+          : 'xcodegen not found — `vue-native run ios` needs it. Install with: brew install xcodegen',
+      })
+
+      // Xcode ships the iOS SDK but NOT a Simulator runtime, and cannot create a
+      // device without one. This is an ~8.5 GB one-time download and the single
+      // most common first-run blocker; without this check the user only sees
+      // "No iOS simulator found" and is told to create one in Xcode, which is
+      // impossible until the runtime exists.
+      const runtime = iosSimulatorRuntimeState()
+      checks.push({
+        id: 'iosSimulatorRuntime',
+        ok: runtime !== 'missing',
+        level: runtime === 'missing' ? 'error' : runtime === 'unknown' ? 'warn' : 'info',
+        message: runtime === 'present'
+          ? 'An iOS Simulator runtime is installed'
+          : runtime === 'unknown'
+            ? 'Could not query iOS Simulator runtimes (is Xcode selected via xcode-select?)'
+            : 'No iOS Simulator runtime installed. Xcode does not bundle one. '
+              + 'Install with: xcodebuild -downloadPlatform iOS   (about 8.5 GB, one time)',
+      })
+    }
   } else {
     checks.push({
       id: 'xcode',
@@ -101,8 +135,71 @@ export async function collectDoctorReport(
       : 'ANDROID_HOME / ANDROID_SDK_ROOT is unset (needed for Android builds)',
   })
 
+  if (android) {
+    // `run android` shells out to adb to install and launch, so a missing adb is
+    // a hard blocker rather than a nicety. It frequently exists inside an SDK
+    // that was never exported to PATH, so look in the usual locations before
+    // declaring it absent — reporting "install the SDK" when it is already on
+    // disk sends the user on a pointless multi-gigabyte download.
+    const adb = resolveAdb(env, host)
+    checks.push({
+      id: 'adb',
+      ok: adb !== null,
+      level: adb === null ? 'error' : 'info',
+      message: adb === null
+        ? 'adb not found on PATH or in a known SDK location — `vue-native run android` '
+        + 'cannot install or launch. Install platform-tools, or export ANDROID_HOME.'
+        : `adb found at ${adb}`,
+    })
+  }
+
   const ok = checks.every(check => check.ok || check.level !== 'error')
   return { schemaVersion: 1, ok, cwd, checks }
+}
+
+/** 'present' | 'missing' | 'unknown' (unknown = could not query simctl). */
+function iosSimulatorRuntimeState(): 'present' | 'missing' | 'unknown' {
+  let raw: string
+  try {
+    raw = execFileSync('xcrun', ['simctl', 'list', 'runtimes', '--json'], {
+      stdio: ['ignore', 'pipe', 'ignore'],
+      encoding: 'utf8',
+    })
+  } catch {
+    return 'unknown'
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as {
+      runtimes?: Array<{ platform?: string, isAvailable?: boolean }>
+    }
+    const iosRuntimes = (parsed.runtimes ?? [])
+      .filter(runtime => runtime.platform === 'iOS' && runtime.isAvailable !== false)
+    return iosRuntimes.length > 0 ? 'present' : 'missing'
+  } catch {
+    return 'unknown'
+  }
+}
+
+/** Absolute path to adb, or null if it cannot be found. */
+function resolveAdb(env: NodeJS.ProcessEnv, host: NodeJS.Platform): string | null {
+  if (commandExists('adb')) return 'adb (on PATH)'
+
+  const sdkRoots = [
+    env.ANDROID_HOME,
+    env.ANDROID_SDK_ROOT,
+    host === 'darwin' ? join(env.HOME ?? '', 'Library/Android/sdk') : null,
+    host === 'darwin' ? '/opt/homebrew/share/android-commandlinetools' : null,
+    host === 'win32' ? join(env.LOCALAPPDATA ?? '', 'Android/Sdk') : null,
+    host === 'linux' ? join(env.HOME ?? '', 'Android/Sdk') : null,
+  ].filter((value): value is string => Boolean(value))
+
+  const executable = host === 'win32' ? 'adb.exe' : 'adb'
+  for (const sdkRoot of sdkRoots) {
+    const candidate = join(sdkRoot, 'platform-tools', executable)
+    if (existsSync(candidate)) return candidate
+  }
+  return null
 }
 
 function commandExists(name: string): boolean {
