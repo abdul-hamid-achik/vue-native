@@ -142,7 +142,63 @@ public final class LayoutNode {
     // MARK: - View association
 
     weak var view: NSView?
+
+    /// Written by `markDirty()` and cleared at the end of a layout pass, but
+    /// deliberately **not** read to short-circuit work.
+    ///
+    /// A previous attempt to skip clean subtrees regressed layout: `isDirty` is
+    /// only raised by `StyleEngine` when a *style* changes, never when the view
+    /// tree changes (`appendChild`/`insertBefore`/`removeChild` go straight to
+    /// `NSView.addSubview` and never touch this node), so a freshly inserted
+    /// child would be skipped and never positioned. Honouring the flag safely
+    /// needs dirt to propagate upward from every tree mutation site plus a
+    /// cached `children` array invalidated at the same points — do not add a
+    /// short-circuit here without both.
     var isDirty: Bool = true
+
+    // MARK: - Content measurement
+
+    /// Content-measurement hook, the equivalent of Yoga's `YGMeasureFunc`.
+    ///
+    /// Consulted during layout whenever this node has no definite size on an
+    /// axis, so a text label or an image can size itself from its content
+    /// instead of collapsing to zero.
+    ///
+    /// - Parameter availableSize: the space the parent can offer. The component
+    ///   along the container's cross axis is the real constraint (so wrapping
+    ///   text can measure against it); the component along the main axis is
+    ///   `CGFloat.greatestFiniteMagnitude` when unbounded.
+    /// - Returns: the ideal content size in points. Negative values are clamped
+    ///   to zero.
+    public var measure: ((_ availableSize: CGSize) -> CGSize)?
+
+    /// Whether this node can report a content size at all.
+    ///
+    /// `true` when an explicit `measure` hook is installed or when the attached
+    /// view has an intrinsic content size (labels, buttons, images). Plain
+    /// container views report `false`: this engine has no bottom-up sizing, so
+    /// their content size is always zero and the cross axis keeps its legacy
+    /// "fill the parent" behaviour rather than collapsing.
+    var measuresContent: Bool {
+        if measure != nil { return true }
+        guard let view else { return false }
+        let intrinsic = view.intrinsicContentSize
+        return intrinsic.width >= 0 || intrinsic.height >= 0
+    }
+
+    /// Resolve this node's content size. Explicit `measure` hook first, then the
+    /// attached view's `fittingSize` (only for views that actually have an
+    /// intrinsic content size — a bare `FlippedView` reports `(0, 0)` and must
+    /// keep contributing zero so flex grow/shrink behaviour is unchanged).
+    func contentSize(availableSize: CGSize) -> CGSize {
+        if let measure {
+            let size = measure(availableSize)
+            return CGSize(width: Swift.max(0, size.width), height: Swift.max(0, size.height))
+        }
+        guard measuresContent, let view else { return .zero }
+        let size = view.fittingSize
+        return CGSize(width: Swift.max(0, size.width), height: Swift.max(0, size.height))
+    }
 
     // MARK: - Computed results
 
@@ -166,7 +222,16 @@ public final class LayoutNode {
 
     // MARK: - Layout algorithm
 
-    /// Perform layout calculation. Sets frames on all child views recursively.
+    /// Perform layout calculation for a *root* node: resolves this node's own
+    /// `width`/`height` against the space offered by its parent, then lays out
+    /// its children. Sets frames on all descendant views recursively.
+    ///
+    /// Children are never laid out through this entry point — the parent already
+    /// resolved their frame, so it calls ``layoutChildren(width:height:)`` with
+    /// a definite size. Going through `layout()` again would re-resolve a
+    /// percentage child against its own already-resolved size, halving it at
+    /// every level of nesting.
+    ///
     /// - Parameters:
     ///   - availableWidth: The width available from the parent.
     ///   - availableHeight: The height available from the parent.
@@ -178,6 +243,21 @@ public final class LayoutNode {
 
         let constrainedWidth = constrain(resolvedWidth, min: minWidth.resolve(relativeTo: availableWidth), max: maxWidth.resolve(relativeTo: availableWidth))
         let constrainedHeight = constrain(resolvedHeight, min: minHeight.resolve(relativeTo: availableHeight), max: maxHeight.resolve(relativeTo: availableHeight))
+
+        layoutChildren(width: constrainedWidth, height: constrainedHeight)
+    }
+
+    /// Lay out this node's children inside an already-resolved, definite box.
+    ///
+    /// `resolvedWidth`/`resolvedHeight` are final: `width`, `height` and their
+    /// min/max constraints have already been applied by whoever sized this node
+    /// (the parent's layout pass, or ``layout(availableWidth:availableHeight:)``
+    /// for a root).
+    func layoutChildren(width resolvedWidth: CGFloat, height resolvedHeight: CGFloat) {
+        guard display != .none else { return }
+
+        let constrainedWidth = resolvedWidth
+        let constrainedHeight = resolvedHeight
 
         let contentWidth = constrainedWidth - padding.horizontal
         let contentHeight = constrainedHeight - padding.vertical
@@ -205,6 +285,7 @@ public final class LayoutNode {
             var mainHypothetical: CGFloat
             var crossHypothetical: CGFloat
             var crossIsAuto: Bool
+            var mainIsAuto: Bool
             var flexBasis: CGFloat
             var mainFinal: CGFloat = 0
             var crossFinal: CGFloat = 0
@@ -215,17 +296,17 @@ public final class LayoutNode {
         }
 
         var measures: [ChildMeasure] = relativeChildren.map { child in
-            // Resolve flex basis
-            let basis: CGFloat
-            if let b = child.flexBasis.resolve(relativeTo: mainSize), !child.flexBasis.isUndefined {
-                basis = b
+            // Resolve flex basis. `nil` means "auto on the main axis" and the
+            // child must be sized from its content instead.
+            let basisExplicit: CGFloat?
+            if !child.flexBasis.isUndefined, let b = child.flexBasis.resolve(relativeTo: mainSize) {
+                basisExplicit = b
             } else if isRow, let w = child.width.resolve(relativeTo: contentWidth) {
-                basis = w
+                basisExplicit = w
             } else if !isRow, let h = child.height.resolve(relativeTo: contentHeight) {
-                basis = h
+                basisExplicit = h
             } else {
-                // Content-based sizing: use the view's fittingSize as an estimate
-                basis = 0
+                basisExplicit = nil
             }
 
             let crossResolved: CGFloat?
@@ -234,11 +315,43 @@ public final class LayoutNode {
             } else {
                 crossResolved = child.width.resolve(relativeTo: contentWidth)
             }
+
+            let mainIsAuto = basisExplicit == nil
             // `align-items: stretch` must only apply when the cross-axis size is
             // auto/undefined. A definite cross size (e.g. width: 50%) wins over
             // stretch, matching CSS/Yoga behaviour on iOS and Android.
             let crossIsAuto = crossResolved == nil
-            let crossHyp = crossResolved ?? crossSize
+
+            // Content-based sizing: ask the child to measure itself. Only done
+            // when at least one axis is auto, so a fully-sized subtree never
+            // pays for measurement. `availableSize` carries the real cross-axis
+            // constraint (wrapping text measures against it) and leaves the main
+            // axis unbounded.
+            let content: CGSize
+            if (mainIsAuto || crossIsAuto) && child.measuresContent {
+                content = child.contentSize(availableSize: CGSize(
+                    width: isRow ? CGFloat.greatestFiniteMagnitude : Swift.max(0, crossSize),
+                    height: isRow ? Swift.max(0, crossSize) : CGFloat.greatestFiniteMagnitude
+                ))
+            } else {
+                content = .zero
+            }
+
+            let basis = basisExplicit ?? (isRow ? content.width : content.height)
+
+            // A child that can report content sizes is sized to its content on
+            // the cross axis (capped so long unwrapped text cannot overflow the
+            // container). A plain container has no bottom-up sizing in this
+            // engine, so it keeps filling the available cross size.
+            let crossHyp: CGFloat
+            if let crossResolved {
+                crossHyp = crossResolved
+            } else if child.measuresContent {
+                let contentCross = isRow ? content.height : content.width
+                crossHyp = Swift.min(contentCross, Swift.max(0, crossSize))
+            } else {
+                crossHyp = crossSize
+            }
 
             let mainMarginBefore: CGFloat
             let mainMarginAfter: CGFloat
@@ -261,6 +374,7 @@ public final class LayoutNode {
                 mainHypothetical: basis,
                 crossHypothetical: crossHyp,
                 crossIsAuto: crossIsAuto,
+                mainIsAuto: mainIsAuto,
                 flexBasis: basis,
                 mainMarginBefore: mainMarginBefore,
                 mainMarginAfter: mainMarginAfter,
@@ -300,6 +414,54 @@ public final class LayoutNode {
             measures[i].mainFinal = max(0, measures[i].mainFinal)
         }
 
+        // Phase 2b: redistribute space freed (or newly consumed) by the min/max
+        // clamps above. Without this pass a `maxWidth`-capped `flex: 1` sibling
+        // leaves dead space that CSS/Yoga would hand to the other flexible
+        // siblings. Only items whose clamp did not bind participate, so the
+        // redistribution cannot violate a min/max, and it runs once (a second
+        // round could only be triggered by a clamp that the first round already
+        // excluded).
+        if !measures.isEmpty {
+            let clampedTotal = measures.reduce(CGFloat(0)) { $0 + $1.mainFinal }
+            let leftover = mainSize - clampedTotal - totalGaps - totalMargins
+            if abs(leftover) > 0.01 {
+                let candidates = measures.indices.filter { i in
+                    // Flexible, and not already pinned by a min/max clamp.
+                    let flexible = leftover > 0 ? measures[i].node.flexGrow > 0 : measures[i].node.flexShrink > 0
+                    guard flexible else { return false }
+                    let child = measures[i].node
+                    let lower = isRow
+                        ? child.minWidth.resolve(relativeTo: contentWidth)
+                        : child.minHeight.resolve(relativeTo: contentHeight)
+                    let upper = isRow
+                        ? child.maxWidth.resolve(relativeTo: contentWidth)
+                        : child.maxHeight.resolve(relativeTo: contentHeight)
+                    if leftover > 0, let upper, measures[i].mainFinal >= upper { return false }
+                    if leftover < 0, let lower, measures[i].mainFinal <= lower { return false }
+                    return true
+                }
+                if !candidates.isEmpty {
+                    let totalWeight = candidates.reduce(CGFloat(0)) { acc, i in
+                        acc + (leftover > 0 ? measures[i].node.flexGrow : measures[i].node.flexShrink * measures[i].flexBasis)
+                    }
+                    if totalWeight > 0 {
+                        for i in candidates {
+                            let weight = leftover > 0
+                                ? measures[i].node.flexGrow
+                                : measures[i].node.flexShrink * measures[i].flexBasis
+                            let child = measures[i].node
+                            let grown = measures[i].mainFinal + leftover * weight / totalWeight
+                            measures[i].mainFinal = max(0, constrain(
+                                grown,
+                                min: isRow ? child.minWidth.resolve(relativeTo: contentWidth) : child.minHeight.resolve(relativeTo: contentHeight),
+                                max: isRow ? child.maxWidth.resolve(relativeTo: contentWidth) : child.maxHeight.resolve(relativeTo: contentHeight)
+                            ))
+                        }
+                    }
+                }
+            }
+        }
+
         // Phase 3: Cross axis sizing (alignItems)
         for i in measures.indices {
             let child = measures[i].node
@@ -311,12 +473,26 @@ public final class LayoutNode {
                 measures[i].crossFinal = measures[i].crossHypothetical
             }
 
-            // Apply aspect ratio
-            if let ar = child.aspectRatio, ar > 0 {
-                if isRow {
+            // Apply aspect ratio. A definite cross size always wins (CSS: an
+            // explicit `width` in a column container is not overridden by
+            // `aspectRatio`), so the ratio is only consulted when the cross
+            // axis is auto.
+            if let ar = child.aspectRatio, ar > 0, measures[i].crossIsAuto {
+                if measures[i].mainIsAuto {
+                    // Main axis is auto too: nothing to derive from, keep the
+                    // content-based cross size.
+                } else if isRow {
                     measures[i].crossFinal = measures[i].mainFinal / ar
                 } else {
                     measures[i].crossFinal = measures[i].mainFinal * ar
+                }
+            } else if let ar = child.aspectRatio, ar > 0, measures[i].mainIsAuto {
+                // Cross size is definite and the main size is not: derive the
+                // main size from the ratio.
+                if isRow {
+                    measures[i].mainFinal = measures[i].crossFinal * ar
+                } else {
+                    measures[i].mainFinal = measures[i].crossFinal / ar
                 }
             }
 
@@ -359,13 +535,22 @@ public final class LayoutNode {
             mainSpacing = mainGap + space
         }
 
-        // Phase 5: Position children
-        var currentMain = mainOffset
-        let orderedMeasures = flexDirection.isReverse ? measures.reversed() : Array(measures)
+        // Phase 5: Position children.
+        //
+        // `mainOffset`/`mainSpacing` are expressed from *main-start*. For a
+        // `*-reverse` direction main-start is the far edge (right for
+        // row-reverse, bottom for column-reverse), so the cursor is walked from
+        // that edge and each child's leading coordinate is mirrored into the
+        // content box. Children are walked in document order either way: the
+        // first child always sits nearest main-start.
+        let isReverse = flexDirection.isReverse
+        var cursor = mainOffset
 
-        for measure in orderedMeasures {
+        for measure in measures {
             let child = measure.node
-            currentMain += measure.mainMarginBefore
+            cursor += measure.mainMarginBefore
+            let mainEnd = cursor + measure.mainFinal
+            let mainStart = isReverse ? mainSize - mainEnd : cursor
 
             let resolvedAlign = child.alignSelf == .auto ? alignItems : alignSelfToAlignItems(child.alignSelf)
 
@@ -387,13 +572,13 @@ public final class LayoutNode {
             let h: CGFloat
 
             if isRow {
-                x = padding.left + currentMain
+                x = padding.left + mainStart
                 y = padding.top + crossOffset
                 w = measure.mainFinal
                 h = measure.crossFinal
             } else {
                 x = padding.left + crossOffset
-                y = padding.top + currentMain
+                y = padding.top + mainStart
                 w = measure.crossFinal
                 h = measure.mainFinal
             }
@@ -401,10 +586,12 @@ public final class LayoutNode {
             child.computedFrame = CGRect(x: x, y: y, width: w, height: h)
             child.view?.frame = child.computedFrame
 
-            // Recurse into child
-            child.layout(availableWidth: w, availableHeight: h)
+            // Recurse with the size this pass already resolved. Going through
+            // `layout(availableWidth:availableHeight:)` would re-resolve a
+            // percentage `width`/`height` against the value it just produced.
+            child.layoutChildren(width: w, height: h)
 
-            currentMain += measure.mainFinal + measure.mainMarginAfter + mainSpacing
+            cursor = mainEnd + measure.mainMarginAfter + mainSpacing
         }
 
         // Phase 6: Absolute positioned children
@@ -430,7 +617,7 @@ public final class LayoutNode {
             child.computedFrame = CGRect(x: x, y: y, width: childW, height: childH)
             child.view?.frame = child.computedFrame
 
-            child.layout(availableWidth: childW, availableHeight: childH)
+            child.layoutChildren(width: childW, height: childH)
         }
 
         isDirty = false

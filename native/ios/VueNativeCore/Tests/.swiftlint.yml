@@ -1,0 +1,11 @@
+# SwiftLint overrides for the VueNativeCore test target.
+#
+# SwiftLint merges a config in a file's own directory with its ancestors', so this
+# narrows the parent `native/ios/.swiftlint.yml` for tests only. It is an explicit,
+# documented relaxation — not a way to turn rules off globally.
+
+# `as!` is idiomatic in XCTest: a failed forced cast should fail the test loudly at
+# the line that made the assumption, and a trap in a test process *is* a test failure.
+# 57 of the repo's force_cast hits were in this directory. Sources keep the rule on.
+disabled_rules:
+  - force_cast

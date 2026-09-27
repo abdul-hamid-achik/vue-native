@@ -141,6 +141,19 @@ final class VScrollViewFactory: NativeComponentFactory {
                 observer, .OBJC_ASSOCIATION_RETAIN_NONATOMIC
             )
 
+        case "refresh":
+            // The TS component declares `emits: ['scroll', 'refresh']`, but
+            // pull-to-refresh is a touch gesture with no AppKit counterpart:
+            // `NSScrollView` has no rubber-band drag that can trigger it, and
+            // `VRefreshControlFactory` is an explicit no-op stub. Registering
+            // the listener would silently swallow it, so it is refused loudly
+            // instead. Apps should surface an explicit refresh affordance (a
+            // toolbar item or VButton) on macOS.
+            #if DEBUG
+            NSLog("[VueNative macOS] VScrollViewFactory: the 'refresh' event is not supported on macOS (no pull-to-refresh gesture in AppKit); the listener will never fire. Trigger refresh from an explicit control instead.")
+            #endif
+            StyleEngine.setInternalPropDirect("__refreshUnsupported", value: true, on: view)
+
         default:
             break
         }
@@ -160,6 +173,9 @@ final class VScrollViewFactory: NativeComponentFactory {
                 view, &VScrollViewFactory.scrollThrottleKey,
                 nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC
             )
+
+        case "refresh":
+            StyleEngine.setInternalPropDirect("__refreshUnsupported", value: nil, on: view)
 
         default:
             break
@@ -204,21 +220,23 @@ final class VScrollViewFactory: NativeComponentFactory {
     /// .children` walks `view.subviews` directly, which stops at the
     /// (LayoutNode-less) clip view.
     ///
-    /// `LayoutNode` (unlike iOS's real Yoga) has no "measure my natural size
-    /// from content" mode -- a node's own resolved size is always derived
-    /// top-down from the size its parent hands it, never bottom-up from its
-    /// children. To approximate content-driven sizing without that
-    /// capability, `documentView` is laid out against a generous sentinel
-    /// size on the scroll axis (so children are never clipped mid-measure),
-    /// then resized to the *actual* extent its children ended up at (the max
-    /// `computedFrame` maxY/maxX among them) rather than the sentinel.
+    /// `LayoutNode` sizes *leaves* from content (a node with a `measure` hook,
+    /// or a view with an intrinsic content size, reports its own ideal size),
+    /// but it still has no bottom-up sizing for *containers*: a node's own
+    /// resolved size is always derived top-down from the size its parent hands
+    /// it, never from the union of its children. To approximate content-driven
+    /// sizing for the document view, `documentView` is laid out against a
+    /// generous sentinel size on the scroll axis (so children are never clipped
+    /// mid-measure), then resized to the *actual* extent its children ended up
+    /// at (the max `computedFrame` maxY/maxX among them) rather than the
+    /// sentinel.
     ///
     /// Caveat: a child with `flexGrow > 0` has no real "available space" to
     /// grow into inside scrollable content, so it will expand toward the
     /// sentinel instead of its intended size -- the same ambiguity Yoga
-    /// resolves with a dedicated measure pass that this simplified engine
-    /// does not implement. Fixed/percentage/auto-sized children (the common
-    /// case for scrollable content) size and position correctly; a
+    /// resolves with a dedicated container measure pass that this simplified
+    /// engine does not implement. Fixed/percentage/auto-sized children (the
+    /// common case for scrollable content) size and position correctly; a
     /// `flexGrow` child directly inside a `VScrollView` does not.
     @MainActor
     static func layoutDocumentView(for scrollView: NSScrollView) {

@@ -4,8 +4,16 @@ import FlexLayout
 
 // MARK: - VListFactory
 
-/// Factory for VList — a virtualized scrollable list backed by UITableView.
-/// Children inserted via the bridge are stored as table cells, not regular subviews.
+/// Factory for VList — a scrollable list backed by UITableView.
+///
+/// Cells are recycled by the table view, but the child views themselves are **not**
+/// virtualized: every row's `UIView` is created up front by the JS renderer and held
+/// in `VListContainerView.itemViews` for the lifetime of the list. Only the visible
+/// subset is measured with Yoga and hosted in a cell. Truly virtualizing the item
+/// views (creating/destroying them as rows scroll) is a larger change tracked
+/// separately; do not describe this component as virtualized in the meantime.
+///
+/// Children inserted via the bridge are stored as table rows, not regular subviews.
 /// Supports scroll and endReached events.
 final class VListFactory: NativeComponentFactory {
 
@@ -69,12 +77,10 @@ final class VListFactory: NativeComponentFactory {
             return
         }
         let insertIdx: Int
-        if let anchor = anchor, let idx = container.itemViews.firstIndex(where: { $0 === anchor }) {
-            container.itemViews.insert(child, at: idx)
-            insertIdx = idx
+        if let anchor = anchor, let idx = container.indexOfItem(anchor) {
+            insertIdx = container.insertItem(child, at: idx)
         } else {
-            insertIdx = container.itemViews.count
-            container.itemViews.append(child)
+            insertIdx = container.appendItem(child)
         }
         // Trigger layout so Yoga can calculate item height before the cell is displayed
         container.setNeedsLayout()
@@ -87,11 +93,11 @@ final class VListFactory: NativeComponentFactory {
             child.removeFromSuperview()
             return
         }
-        guard let idx = container.itemViews.firstIndex(where: { $0 === child }) else {
+        guard let idx = container.indexOfItem(child) else {
             child.removeFromSuperview()
             return
         }
-        container.itemViews.remove(at: idx)
+        container.removeItem(at: idx)
         // Remove from any cell it's currently displayed in
         child.removeFromSuperview()
         // Use targeted delete rather than reloadData
@@ -106,7 +112,22 @@ final class VListFactory: NativeComponentFactory {
 final class VListContainerView: UIView {
 
     let tableView: UITableView
-    var itemViews: [UIView] = []
+
+    /// One real `UIView` per row, retained for the lifetime of the list. Mutate only
+    /// through ``appendItem(_:)`` / ``insertItem(_:at:)`` / ``removeItem(at:)`` so
+    /// ``itemIndexes`` stays in sync.
+    private(set) var itemViews: [UIView] = []
+
+    /// Identity → row index for ``itemViews``, so locating a child (a removal, or an
+    /// `insertBefore` anchor) is O(1) instead of an O(n) identity scan.
+    ///
+    /// This removes the *scan*, not the array shift: `Array.insert`/`remove` still
+    /// move elements, so a mid-list edit stays O(n) and building a list purely from
+    /// anchored inserts is still O(n²). Appends — the common case — remain O(1).
+    /// Getting rid of the shift needs an order-maintenance structure, which belongs
+    /// with the deferred item-view virtualization work.
+    private var itemIndexes: [ObjectIdentifier: Int] = [:]
+
     var estimatedItemHeight: CGFloat = 44
     var onScroll: ((Any?) -> Void)?
     var scrollThrottle: EventThrottle?
@@ -115,6 +136,9 @@ final class VListContainerView: UIView {
     /// Container width at which visible row heights were last invalidated. Used
     /// to detect width changes (e.g. rotation) without an O(n) item scan.
     private var lastMeasuredWidth: CGFloat = 0
+    /// Re-entrancy guard: `reloadRows` asks for row heights, which run Yoga, which
+    /// can trigger another `layoutSubviews` before the first one returns.
+    private var isInvalidatingRowHeights = false
     private lazy var internalDelegate = VListInternalDelegate(container: self)
 
     init() {
@@ -148,12 +172,73 @@ final class VListContainerView: UIView {
         // measured heights go stale, so invalidate only the visible rows;
         // off-screen rows re-measure on demand when they scroll into view. This
         // avoids an O(n) Yoga pass over every item on the first layout pass.
-        if abs(width - lastMeasuredWidth) > 0.5 {
+        guard abs(width - lastMeasuredWidth) > 0.5 else { return }
+
+        // `reloadRows` re-enters layout: it asks for row heights, `measuredHeight`
+        // runs Yoga, and Yoga can invalidate layout again. Guard the recursion, and
+        // skip entirely while off-window — there are no visible rows to fix up and
+        // `lastMeasuredWidth` is deliberately left stale so the invalidation still
+        // happens on the next pass once the view is back in a window.
+        guard window != nil, !isInvalidatingRowHeights else { return }
+
+        let visible = tableView.indexPathsForVisibleRows ?? []
+        guard !visible.isEmpty else {
             lastMeasuredWidth = width
-            let visible = tableView.indexPathsForVisibleRows ?? []
-            if !visible.isEmpty {
-                tableView.reloadRows(at: visible, with: .none)
-            }
+            return
+        }
+
+        lastMeasuredWidth = width
+        isInvalidatingRowHeights = true
+        defer { isInvalidatingRowHeights = false }
+        tableView.reloadRows(at: visible, with: .none)
+    }
+
+    // MARK: - Item storage
+
+    /// Row index of `view`, or `nil` when it is not an item of this list.
+    /// O(1) via ``itemIndexes``; a stale entry (one whose recorded slot no longer
+    /// holds the same view) is treated as absent rather than trusted.
+    func indexOfItem(_ view: UIView) -> Int? {
+        guard let index = itemIndexes[ObjectIdentifier(view)],
+              index < itemViews.count,
+              itemViews[index] === view else {
+            return nil
+        }
+        return index
+    }
+
+    /// Append `view` as the last row. O(1) amortized — no re-indexing needed.
+    @discardableResult
+    func appendItem(_ view: UIView) -> Int {
+        let index = itemViews.count
+        itemViews.append(view)
+        itemIndexes[ObjectIdentifier(view)] = index
+        return index
+    }
+
+    /// Insert `view` before the row currently at `index` (clamped to the valid
+    /// range) and return the row it landed on.
+    @discardableResult
+    func insertItem(_ view: UIView, at index: Int) -> Int {
+        let clamped = min(max(index, 0), itemViews.count)
+        itemViews.insert(view, at: clamped)
+        rebuildItemIndexes()
+        return clamped
+    }
+
+    /// Remove and return the row at `index`. The caller must have obtained `index`
+    /// from ``indexOfItem(_:)`` so it is in range.
+    @discardableResult
+    func removeItem(at index: Int) -> UIView {
+        let removed = itemViews.remove(at: index)
+        rebuildItemIndexes()
+        return removed
+    }
+
+    private func rebuildItemIndexes() {
+        itemIndexes.removeAll(keepingCapacity: true)
+        for (index, view) in itemViews.enumerated() {
+            itemIndexes[ObjectIdentifier(view)] = index
         }
     }
 

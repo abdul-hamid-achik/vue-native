@@ -60,7 +60,7 @@ final class VPressableFactory: NativeComponentFactory {
                 handler(nil)
             }
 
-        case "longPress":
+        case "longPress", "longpress":
             pressable.onLongPress = {
                 handler(nil)
             }
@@ -86,7 +86,7 @@ final class VPressableFactory: NativeComponentFactory {
         switch event {
         case "press":
             pressable.onPress = nil
-        case "longPress":
+        case "longPress", "longpress":
             pressable.onLongPress = nil
         case "pressIn":
             pressable.onPressIn = nil

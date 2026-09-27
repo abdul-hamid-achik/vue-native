@@ -7,10 +7,27 @@ import VueNativeShared
 /// NSCache for in-memory caching, and various resize modes.
 final class VImageFactory: NativeComponentFactory {
 
-    private let urlSession: URLSession
+    /// Test seam: an explicit session to load through. `nil` in production.
+    private let urlSessionOverride: URLSession?
 
-    init(urlSession: URLSession = CertificatePinning.shared.requestSession) {
-        self.urlSession = urlSession
+    /// - Parameter urlSession: Test-only override. Production callers pass nothing so
+    ///   the session is resolved per request (see ``urlSession``).
+    init(urlSession: URLSession? = nil) {
+        self.urlSessionOverride = urlSession
+    }
+
+    /// The session to load through, resolved **per request** rather than captured at
+    /// construction time.
+    ///
+    /// This factory is built inside `ComponentRegistry.registerDefaults()`, which runs
+    /// on first bridge access — before any JS executes, and therefore before
+    /// `__VN_configurePins` can ever fire. `CertificatePinning.requestSession` returns
+    /// the plain `URLSession.shared` while `pins` is empty, so capturing it into a
+    /// `let` at init froze every image load onto the unpinned session for the whole
+    /// app lifetime, silently defeating TLS pinning for remote images. Mirrors the
+    /// same fix in the iOS `VImageFactory`.
+    private var urlSession: URLSession {
+        urlSessionOverride ?? CertificatePinning.shared.requestSession
     }
 
     // MARK: - Associated object keys

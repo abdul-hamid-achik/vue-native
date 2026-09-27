@@ -52,9 +52,46 @@ final class VTextFactory: NativeComponentFactory {
         label.lineBreakMode = .byWordWrapping
         label.maximumNumberOfLines = 0
         label.wantsLayer = true
-        // Ensure layout node is attached
-        label.ensureLayoutNode()
+        // Ensure layout node is attached, then teach the layout engine how big
+        // this label's content is. Without this a VText with no explicit
+        // `height` resolves to a zero-height main axis and is invisible.
+        let node = label.ensureLayoutNode()
+        node.measure = { [weak label] availableSize in
+            guard let label else { return .zero }
+            return VTextFactory.measureText(label, availableSize: availableSize)
+        }
         return label
+    }
+
+    /// Content size for a label, honouring word wrapping and `numberOfLines`.
+    ///
+    /// `availableSize.width` is the width the parent can offer (the cross axis
+    /// for a column container); the height is unbounded. `NSTextField
+    /// .sizeThatFits(_:)` wraps to the given width but ignores
+    /// `maximumNumberOfLines`, so the result is clamped to the configured line
+    /// budget measured from an unbounded single-line pass.
+    static func measureText(_ label: NSTextField, availableSize: CGSize) -> CGSize {
+        guard !label.stringValue.isEmpty else { return .zero }
+
+        let unbounded = CGFloat(1e7)
+        let width = availableSize.width.isFinite && availableSize.width > 0
+            ? availableSize.width
+            : unbounded
+        let fitting = label.sizeThatFits(NSSize(width: width, height: unbounded))
+        var size = CGSize(width: ceil(fitting.width), height: ceil(fitting.height))
+
+        let lineLimit = label.maximumNumberOfLines
+        if lineLimit > 0 {
+            let single = label.sizeThatFits(NSSize(width: unbounded, height: unbounded))
+            let lineHeight = ceil(single.height)
+            if lineHeight > 0 {
+                size.height = min(size.height, lineHeight * CGFloat(lineLimit))
+            }
+            if lineLimit == 1 {
+                size.width = min(size.width, ceil(single.width))
+            }
+        }
+        return CGSize(width: max(0, size.width), height: max(0, size.height))
     }
 
     func updateProp(view: NSView, key: String, value: Any?) {

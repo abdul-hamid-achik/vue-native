@@ -28,6 +28,8 @@ final class ContactsModule: NativeModule {
         CNContactNoteKey as CNKeyDescriptor,
     ]
 
+    // BASELINE: NativeModule method dispatch table — one leaf `case` per exposed API.
+    // swiftlint:disable:next cyclomatic_complexity
     func invoke(method: String, args: [Any], callback: @escaping (Any?, String?) -> Void) {
         switch method {
         case "requestAccess":

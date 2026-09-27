@@ -75,6 +75,89 @@ final class VueNativeSharedTests: XCTestCase {
         )
     }
 
+    /// A single malformed pin string used to be dropped silently, and when every
+    /// pin for a domain was malformed the merge loop then REMOVED that domain — so
+    /// a typo in a pin list quietly disabled pinning for the host it was meant to
+    /// protect. That is failing open on the control whose job is to fail closed.
+    func testMalformedPinsDoNotUnpinAPreviouslyPinnedHost() {
+        let pinning = CertificatePinning.shared
+        pinning.clearPins()
+        defer { pinning.clearPins() }
+
+        let valid = "sha256/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+        pinning.configurePins(["typo.example": [valid]])
+        XCTAssertTrue(pinning.hasPins(for: "typo.example"), "precondition: host should be pinned")
+
+        // No "sha256/" prefix — a plausible copy/paste mistake.
+        pinning.configurePins(["typo.example": ["AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="]])
+
+        XCTAssertTrue(
+            pinning.hasPins(for: "typo.example"),
+            "An all-malformed replacement must keep the previous pins, not unpin the host"
+        )
+    }
+
+    /// An explicitly empty list is still the documented way to unpin a host; the
+    /// malformed-pin guard must not break it.
+    func testEmptyPinListStillUnpinsHost() {
+        let pinning = CertificatePinning.shared
+        pinning.clearPins()
+        defer { pinning.clearPins() }
+
+        pinning.configurePins(["opt-out.example": ["sha256/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="]])
+        XCTAssertTrue(pinning.hasPins(for: "opt-out.example"))
+
+        pinning.configurePins(["opt-out.example": []])
+        XCTAssertFalse(pinning.hasPins(for: "opt-out.example"))
+    }
+
+    /// `session` used to be a `lazy var`, which Swift does not initialise
+    /// atomically. It is read from the jsQueue, the main thread and URLSession
+    /// callback threads, so concurrent first touches could build two sessions and
+    /// leak one. Hammer it from many threads and require a single identity.
+    func testConcurrentSessionAccessReturnsOneInstance() {
+        let pinning = CertificatePinning.shared
+        let lock = NSLock()
+        var identities = Set<ObjectIdentifier>()
+
+        DispatchQueue.concurrentPerform(iterations: 64) { index in
+            // Alternate between the two accessors so both paths race.
+            let session = (index % 2 == 0) ? pinning.session : pinning.requestSession
+            lock.lock()
+            identities.insert(ObjectIdentifier(session))
+            lock.unlock()
+        }
+
+        // With no pins configured every accessor returns URLSession.shared, and
+        // with pins configured they all return the one delegate session. Either
+        // way there must never be two.
+        XCTAssertLessThanOrEqual(
+            identities.count, 2,
+            "Concurrent first touches must not build and leak extra URLSessions"
+        )
+
+        let concurrent = DispatchQueue(label: "session-race", attributes: .concurrent)
+        let group = DispatchGroup()
+        var pinnedIdentities = Set<ObjectIdentifier>()
+        pinning.configurePins(["race.example": ["sha256/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="]])
+        defer { pinning.clearPins() }
+        for _ in 0..<32 {
+            group.enter()
+            concurrent.async {
+                let identity = ObjectIdentifier(pinning.requestSession)
+                lock.lock()
+                pinnedIdentities.insert(identity)
+                lock.unlock()
+                group.leave()
+            }
+        }
+        group.wait()
+        XCTAssertEqual(
+            pinnedIdentities.count, 1,
+            "With pins configured every caller must get the same delegate session"
+        )
+    }
+
     func testCertificatePinningHashesDERSubjectPublicKeyInfo() {
         // Self-signed RSA certificate generated solely for this deterministic
         // fixture. The expected pin was calculated with:

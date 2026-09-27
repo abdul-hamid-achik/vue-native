@@ -21,20 +21,39 @@ enum JSPolyfills {
     // MARK: - RAF storage
 
     private static var rafTimer: Timer?
-    private static var rafCallbacks: [String: JSValue] = [:]
+
+    /// Pending `JSValue` callbacks.
+    ///
+    /// **jsQueue-confined.** A `JSValue` retains its `JSContext`, and the
+    /// context lives on the JS queue; retaining or releasing one from another
+    /// thread is exactly what AGENTS.md's thread model forbids. The main-thread
+    /// RAF timer therefore only ever sees `rafPendingIds` (plain strings) and
+    /// hands those ids back to the JS queue, which does the lookup, the call
+    /// and the release.
+    private static var rafCallbackValues: [String: JSValue] = [:]
+
+    /// Ids scheduled to fire on the next frame. Guarded by `stateQueue` and read
+    /// from the main-thread timer.
+    private static var rafPendingIds: [String] = []
+
     private static var nextRafId: Int = 1
 
     // MARK: - Reset
 
+    /// Clear all polyfill state. Must be called on the runtime's `jsQueue`:
+    /// it drops `JSValue`s (timers and RAF callbacks), and those may only be
+    /// released on the thread their `JSContext` lives on.
     static func reset() {
         let oldTimers: [String: TimerEntry] = stateQueue.sync {
             let snapshot = timers
             timers.removeAll()
-            rafCallbacks.removeAll()
+            rafPendingIds.removeAll()
             nextTimerId = 1
             nextRafId = 1
             return snapshot
         }
+        // Already on jsQueue, so the values are released on the right thread.
+        rafCallbackValues.removeAll()
 
         DispatchQueue.main.async {
             for (_, entry) in oldTimers {
@@ -257,6 +276,7 @@ enum JSPolyfills {
 
     private static func registerRAF(in context: JSContext, runtime: JSRuntime) {
 
+        // Runs on jsQueue (JS calls it), so storing the JSValue here is safe.
         let requestAnimationFrame: @convention(block) (JSValue) -> JSValue = { [weak runtime] callback in
             guard let runtime = runtime, let context = runtime.context else {
                 return JSValue(nullIn: JSContext.current())
@@ -265,9 +285,12 @@ enum JSPolyfills {
             let rafId: String = stateQueue.sync {
                 let id = String(nextRafId)
                 nextRafId += 1
-                rafCallbacks[id] = callback
                 return id
             }
+            // Store the value *before* publishing the id, so the main-thread
+            // timer can never observe an id whose JSValue is not yet reachable.
+            rafCallbackValues[rafId] = callback
+            stateQueue.async { rafPendingIds.append(rafId) }
 
             // A main-run-loop timer provides a display-rate callback without
             // relying on the CVDisplayLink APIs deprecated in macOS 15.
@@ -283,7 +306,10 @@ enum JSPolyfills {
         let cancelAnimationFrame: @convention(block) (JSValue) -> Void = { [weak runtime] rafId in
             _ = runtime
             guard let id = rafId.toString() else { return }
-            stateQueue.async { rafCallbacks.removeValue(forKey: id) }
+            // Drop the JSValue on the jsQueue (this block runs there), then
+            // unpublish the id.
+            rafCallbackValues.removeValue(forKey: id)
+            stateQueue.async { rafPendingIds.removeAll { $0 == id } }
         }
 
         context.setObject(requestAnimationFrame, forKeyedSubscript: "requestAnimationFrame" as NSString)
@@ -311,14 +337,18 @@ enum JSPolyfills {
     }
 
     /// Fire all pending RAF callbacks. RAF is one-shot.
+    ///
+    /// Called from the main-run-loop timer. Only plain `String` ids cross the
+    /// thread boundary here — the `JSValue` lookup, the call and the release all
+    /// happen inside the `jsQueue` block.
     fileprivate static func fireRAFCallbacks(runtime: JSRuntime, timestamp: Double) {
-        let callbacks: [String: JSValue] = stateQueue.sync {
-            let snapshot = rafCallbacks
-            rafCallbacks.removeAll()
+        let pendingIds: [String] = stateQueue.sync {
+            let snapshot = rafPendingIds
+            rafPendingIds.removeAll()
             return snapshot
         }
 
-        guard !callbacks.isEmpty else {
+        guard !pendingIds.isEmpty else {
             // No pending callbacks -- stop the timer until the next request.
             DispatchQueue.main.async {
                 stopRAFTimer()
@@ -329,7 +359,9 @@ enum JSPolyfills {
         runtime.jsQueue.async { [weak runtime] in
             guard let runtime = runtime, let context = runtime.context else { return }
 
-            for (_, callback) in callbacks {
+            for id in pendingIds {
+                // `removeValue` releases the JSValue here, on the JS queue.
+                guard let callback = rafCallbackValues.removeValue(forKey: id) else { continue }
                 if !callback.isUndefined {
                     callback.call(withArguments: [timestamp])
                 }
@@ -337,7 +369,7 @@ enum JSPolyfills {
 
             context.evaluateScript("void 0;")
 
-            let isEmpty: Bool = stateQueue.sync { rafCallbacks.isEmpty }
+            let isEmpty: Bool = stateQueue.sync { rafPendingIds.isEmpty }
             if isEmpty {
                 DispatchQueue.main.async {
                     stopRAFTimer()

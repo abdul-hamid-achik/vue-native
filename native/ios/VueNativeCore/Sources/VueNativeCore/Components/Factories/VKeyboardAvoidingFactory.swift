@@ -32,6 +32,31 @@ final class VKeyboardAvoidingFactory: NativeComponentFactory {
     func destroyView(view: UIView) {
         (view as? KeyboardAvoidingView)?.removeKeyboardObservers()
     }
+
+    // MARK: - Keyboard geometry
+
+    /// How much of `view`'s height the keyboard actually covers.
+    ///
+    /// The raw `keyboardFrameEndUserInfoKey` height is the keyboard's full height in
+    /// screen coordinates and says nothing about where this view sits. Using it
+    /// verbatim over-pads any container that does not reach the bottom of the screen
+    /// (a view inset by a tab bar, a nested container, a partially covered split
+    /// layout). Pure and static so it can be unit-tested without a window.
+    ///
+    /// - Parameters:
+    ///   - viewBottom: The view's bottom edge, in the same coordinate space as
+    ///     `keyboardTop`.
+    ///   - keyboardTop: The keyboard's top edge in that space.
+    ///   - keyboardHeight: The keyboard's own height, used to clamp the result so a
+    ///     keyboard entirely above the view cannot pad by more than it is tall.
+    static func keyboardOverlapHeight(
+        viewBottom: CGFloat,
+        keyboardTop: CGFloat,
+        keyboardHeight: CGFloat
+    ) -> CGFloat {
+        guard keyboardHeight > 0 else { return 0 }
+        return min(max(0, viewBottom - keyboardTop), keyboardHeight)
+    }
 }
 
 // MARK: - KeyboardAvoidingView
@@ -74,7 +99,9 @@ private final class KeyboardAvoidingView: UIView {
             object: nil,
             queue: .main
         ) { [weak self] notification in
-            self?.handleKeyboardShow(notification)
+            Task { @MainActor [weak self] in
+                self?.handleKeyboardShow(notification)
+            }
         }
 
         hideObserver = NotificationCenter.default.addObserver(
@@ -82,7 +109,9 @@ private final class KeyboardAvoidingView: UIView {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.handleKeyboardHide()
+            Task { @MainActor [weak self] in
+                self?.handleKeyboardHide()
+            }
         }
     }
 
@@ -90,9 +119,25 @@ private final class KeyboardAvoidingView: UIView {
         guard let keyboardFrame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else {
             return
         }
-        let keyboardHeight = keyboardFrame.height
-        guard keyboardHeight > 0 else { return }
-        flex.paddingBottom(keyboardHeight)
+        guard keyboardFrame.height > 0 else { return }
+
+        // The notification reports the frame in screen coordinates; convert it into
+        // this view's space so the overlap reflects where the view actually ends.
+        // Without a window there is nothing to convert against, so fall back to the
+        // raw height rather than dropping the inset entirely.
+        let padding: CGFloat
+        if window != nil {
+            let inView = convert(keyboardFrame, from: nil)
+            padding = VKeyboardAvoidingFactory.keyboardOverlapHeight(
+                viewBottom: bounds.maxY,
+                keyboardTop: inView.minY,
+                keyboardHeight: keyboardFrame.height
+            )
+        } else {
+            padding = keyboardFrame.height
+        }
+
+        flex.paddingBottom(padding)
         triggerLayout()
     }
 
@@ -101,13 +146,16 @@ private final class KeyboardAvoidingView: UIView {
         triggerLayout()
     }
 
+    /// Ask the bridge for a full layout pass.
+    ///
+    /// This used to walk to the root superview and call `flex.layout()` on it
+    /// directly. That bypassed `NativeBridge.triggerLayout()`, so
+    /// `updateScrollViewContentSizes()` and `reportFlatListItemHeights()` never
+    /// re-ran and nested scroll views kept a stale `contentSize` after the keyboard
+    /// moved; it also wrote `frame` on the AutoLayout-pinned root view, fighting the
+    /// constraints the bridge installed.
     private func triggerLayout() {
-        // Walk up to find the root flex view and trigger layout
-        var view: UIView? = self
-        while let v = view?.superview {
-            view = v
-        }
-        view?.flex.layout()
+        NativeBridge.shared.requestLayout()
     }
 }
 #endif

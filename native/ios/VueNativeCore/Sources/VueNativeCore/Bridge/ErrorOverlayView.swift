@@ -41,7 +41,42 @@ final class ErrorOverlayView: UIView {
     /// `VueNativeViewController`) installs a handler that re-loads the bundle in
     /// a fresh JS context. When `nil`, the Reload button simply dismisses the
     /// overlay.
+    ///
+    /// Set this through ``setReloadHandler(_:owner:)`` rather than assigning
+    /// directly, so a deallocating host can clear only the handler it owns.
     static var reloadHandler: (() -> Void)?
+
+    /// The object that installed ``reloadHandler``, held weakly.
+    ///
+    /// The overlay lives on the window and this hook is process-global, so without
+    /// an owner record a host that deallocs leaves a stale `[weak self]` closure
+    /// behind: Reload then dismisses the overlay and silently does nothing, over a
+    /// screen the dead host never owned. ``clearReloadHandler(owner:)`` compares
+    /// against this so an older host cannot steal the hook from a newer one.
+    static weak var reloadHandlerOwner: AnyObject?
+
+    /// Install the Reload hook on behalf of `owner`.
+    static func setReloadHandler(_ handler: @escaping () -> Void, owner: AnyObject) {
+        reloadHandler = handler
+        reloadHandlerOwner = owner
+    }
+
+    /// Clear the Reload hook. Idempotent, and refuses to steal the hook from a host
+    /// that is still alive.
+    ///
+    /// - Parameter owner: The host clearing its own hook. Pass `nil` from a host that
+    ///   has *already* deallocated: `reloadHandlerOwner` is weak, so it reads `nil`
+    ///   by then, and the `nil` branch only clears when no live host has since taken
+    ///   over.
+    static func clearReloadHandler(owner: AnyObject? = nil) {
+        if let owner {
+            guard reloadHandlerOwner === owner else { return }
+        } else {
+            guard reloadHandlerOwner == nil else { return }
+        }
+        reloadHandler = nil
+        reloadHandlerOwner = nil
+    }
 
     // MARK: - Subviews (internal for testing)
 

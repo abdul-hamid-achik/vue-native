@@ -172,22 +172,21 @@ enum StyleEngine {
             return true
 
         case "alignContent":
+            // `LayoutNode.alignContent` is stored but never read: the engine
+            // lays out a single line, so there is no second line to distribute.
+            // Every value is therefore refused loudly rather than silently
+            // ignored — the same DEBUG path `flexWrap` uses below.
             if let str = value as? String {
                 switch str {
                 case "flex-start", "flexStart", "start": node.alignContent = .flexStart
                 case "flex-end", "flexEnd", "end": node.alignContent = .flexEnd
                 case "center": node.alignContent = .center
                 case "stretch": node.alignContent = .stretch
-                case "space-between", "spaceBetween":
-                    // The single-line LayoutNode algorithm does not distribute
-                    // wrapped lines; degrade to flexStart but warn (not silent).
-                    node.alignContent = .flexStart
-                    warnUnsupportedAlignContent(str)
-                case "space-around", "spaceAround":
-                    node.alignContent = .flexStart
-                    warnUnsupportedAlignContent(str)
+                case "space-between", "spaceBetween": node.alignContent = .flexStart
+                case "space-around", "spaceAround": node.alignContent = .flexStart
                 default: node.alignContent = .stretch
                 }
+                warnUnsupportedAlignContent(str)
             }
             node.markDirty()
             return true
@@ -195,8 +194,12 @@ enum StyleEngine {
         case "flexWrap":
             if let str = value as? String {
                 switch str {
-                case "wrap": node.flexWrap = .wrap
-                case "wrap-reverse", "wrapReverse": node.flexWrap = .wrapReverse
+                case "wrap":
+                    node.flexWrap = .wrap
+                    warnUnsupportedFlexWrap(str)
+                case "wrap-reverse", "wrapReverse":
+                    node.flexWrap = .wrapReverse
+                    warnUnsupportedFlexWrap(str)
                 default: node.flexWrap = .noWrap
                 }
             }
@@ -669,10 +672,12 @@ enum StyleEngine {
             if let colorStr = value as? String {
                 // Ignore invalid colors rather than applying transparent.
                 if let color = NSColor.fromHex(colorStr) {
-                    view.layer?.backgroundColor = color.cgColor
+                    view.layer?.backgroundColor = resolvedCGColor(color, for: view)
+                    storeDynamicColor(kind: .background, color, on: view)
                 }
             } else {
                 view.layer?.backgroundColor = nil
+                storeDynamicColor(kind: .background, nil, on: view)
             }
             return true
 
@@ -722,18 +727,23 @@ enum StyleEngine {
         case "borderColor":
             if let colorStr = value as? String {
                 if let color = NSColor.fromHex(colorStr) {
-                    view.layer?.borderColor = color.cgColor
+                    view.layer?.borderColor = resolvedCGColor(color, for: view)
+                    storeDynamicColor(kind: .border, color, on: view)
                 }
             } else {
                 view.layer?.borderColor = nil
+                storeDynamicColor(kind: .border, nil, on: view)
             }
             return true
 
         case "shadowColor":
             if let colorStr = value as? String {
                 if let color = NSColor.fromHex(colorStr) {
-                    view.layer?.shadowColor = color.cgColor
+                    view.layer?.shadowColor = resolvedCGColor(color, for: view)
+                    storeDynamicColor(kind: .shadow, color, on: view)
                 }
+            } else {
+                storeDynamicColor(kind: .shadow, nil, on: view)
             }
             return true
 
@@ -1027,12 +1037,98 @@ enum StyleEngine {
 
     // MARK: - Helpers
 
-    /// Warn (DEBUG only) when an `alignContent` distribution value cannot be
-    /// honored by the single-line LayoutNode algorithm.
+    /// Warn (DEBUG only) when an `alignContent` value is set. The single-line
+    /// `LayoutNode` engine never reads it — there is no second line to align —
+    /// so every value is refused loudly instead of being silently dropped.
     private static func warnUnsupportedAlignContent(_ value: String) {
         #if DEBUG
-        NSLog("[VueNative macOS] StyleEngine: alignContent '\(value)' is not supported by the single-line LayoutNode engine; falling back to flex-start")
+        NSLog("[VueNative macOS] StyleEngine: alignContent '\(value)' has no effect — the single-line LayoutNode engine never distributes wrapped lines")
         #endif
+    }
+
+    /// Warn (DEBUG only) when a `flexWrap` value cannot be honored. The
+    /// `LayoutNode` engine lays out a single line: `flexWrap: wrap` would
+    /// silently overflow instead of breaking into lines, so it is refused
+    /// loudly and the node is left on `.noWrap` rather than pretending to work.
+    private static func warnUnsupportedFlexWrap(_ value: String) {
+        #if DEBUG
+        NSLog("[VueNative macOS] StyleEngine: flexWrap '\(value)' is not supported by the single-line LayoutNode engine; children will overflow instead of wrapping. Use a VList/VFlatList grid or explicit rows.")
+        #endif
+    }
+
+    // MARK: - Dynamic (dark-mode) colors
+
+    /// Which `CALayer` color slot a stored dynamic color belongs to.
+    enum DynamicColorKind {
+        case background, border, shadow
+    }
+
+    private static var dynamicColorsKey: UInt8 = 0
+
+    /// Resolve an `NSColor` to a `CGColor` **in the view's current effective
+    /// appearance**.
+    ///
+    /// `CGColor` has no notion of appearance, so `layer.backgroundColor =
+    /// dynamicColor.cgColor` freezes whatever mode happened to be active when
+    /// the style was applied — the `label`/`background`/`separator` catalog
+    /// colors documented in `NSColor+Hex` would never adapt. Resolving under
+    /// `performAsCurrentDrawingAppearance` plus re-applying from
+    /// ``reapplyDynamicColors(on:)`` on every effective-appearance change is
+    /// what makes them actually dynamic.
+    static func resolvedCGColor(_ color: NSColor, for view: NSView) -> CGColor {
+        var resolved = color.cgColor
+        view.effectiveAppearance.performAsCurrentDrawingAppearance {
+            resolved = (color.usingColorSpace(.sRGB) ?? color).cgColor
+        }
+        return resolved
+    }
+
+    private static func storedDynamicColors(_ view: NSView) -> [String: NSColor] {
+        return objc_getAssociatedObject(view, &dynamicColorsKey) as? [String: NSColor] ?? [:]
+    }
+
+    private static func storeDynamicColor(kind: DynamicColorKind, _ color: NSColor?, on view: NSView) {
+        let key: String
+        switch kind {
+        case .background: key = "background"
+        case .border: key = "border"
+        case .shadow: key = "shadow"
+        }
+        var colors = storedDynamicColors(view)
+        if let color {
+            colors[key] = color
+        } else {
+            colors.removeValue(forKey: key)
+        }
+        if colors.isEmpty {
+            objc_setAssociatedObject(view, &dynamicColorsKey, nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        } else {
+            objc_setAssociatedObject(view, &dynamicColorsKey, colors, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        }
+    }
+
+    /// Whether this view carries any style color that must be re-resolved when
+    /// the appearance changes.
+    static func hasDynamicColors(_ view: NSView) -> Bool {
+        return !storedDynamicColors(view).isEmpty
+    }
+
+    /// Re-apply every stored style color against the view's *current* effective
+    /// appearance. Called from `FlippedView.viewDidChangeEffectiveAppearance`
+    /// and, as a safety net for views that are not `FlippedView` subclasses,
+    /// from `NativeBridge`'s interface-theme observer.
+    static func reapplyDynamicColors(on view: NSView) {
+        let colors = storedDynamicColors(view)
+        guard !colors.isEmpty else { return }
+        if let background = colors["background"] {
+            view.layer?.backgroundColor = resolvedCGColor(background, for: view)
+        }
+        if let border = colors["border"] {
+            view.layer?.borderColor = resolvedCGColor(border, for: view)
+        }
+        if let shadow = colors["shadow"] {
+            view.layer?.shadowColor = resolvedCGColor(shadow, for: view)
+        }
     }
 
     /// Scale a font point size by the system's preferred body-text size.

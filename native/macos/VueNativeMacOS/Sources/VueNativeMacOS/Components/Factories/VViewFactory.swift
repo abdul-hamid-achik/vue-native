@@ -172,7 +172,7 @@ final class VViewFactory: NativeComponentFactory {
 
     private func attachHoverHandler(to view: NSView, wrapper: HoverWrapper) {
         let trackingView = HoverTrackingView(wrapper: wrapper)
-        objc_setAssociatedObject(view, &hoverTrackingKey, trackingView, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        objc_setAssociatedObject(view, &VViewTrackingKeys.hover, trackingView, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
         trackingView.attach(to: view)
     }
 
@@ -180,7 +180,7 @@ final class VViewFactory: NativeComponentFactory {
 
     private func attachPressureHandler(to view: NSView, wrapper: PressureWrapper) {
         let pressureView = PressureTrackingView(wrapper: wrapper)
-        objc_setAssociatedObject(view, &pressureTrackingKey, pressureView, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        objc_setAssociatedObject(view, &VViewTrackingKeys.pressure, pressureView, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
         pressureView.attach(to: view)
     }
 
@@ -202,8 +202,13 @@ final class VViewFactory: NativeComponentFactory {
 
 // MARK: - HoverTrackingView
 
-/// Custom NSView that handles hover events via tracking area
-private class HoverTrackingView: NSView {
+/// Custom tracking view that reports hover events via a tracking area.
+///
+/// Subclasses `FlippedView` so `isFlipped == true`: the hover location is
+/// converted into the *target* view's coordinate space, and every Vue Native
+/// view is flipped. A non-flipped tracking view would report `y` measured from
+/// the bottom edge, i.e. inverted relative to what JS expects.
+private class HoverTrackingView: FlippedView {
     private let wrapper: HoverWrapper
     private weak var targetView: NSView?
     private var trackingArea: NSTrackingArea?
@@ -250,29 +255,34 @@ private class HoverTrackingView: NSView {
         }
     }
 
+    /// Hover location in the *target* view's coordinate space, matching what
+    /// `PressureTrackingView` reports and what JS-side handlers expect.
+    private func locationInTarget(for event: NSEvent) -> NSPoint? {
+        guard let target = targetView else { return nil }
+        return target.convert(event.locationInWindow, from: nil)
+    }
+
     override func mouseEntered(with event: NSEvent) {
-        guard targetView != nil else { return }
-        let location = convert(event.locationInWindow, from: nil)
+        guard let location = locationInTarget(for: event) else { return }
         wrapper.handleHover(location: location, isEntering: true)
     }
 
     override func mouseExited(with event: NSEvent) {
-        guard targetView != nil else { return }
-        let location = convert(event.locationInWindow, from: nil)
+        guard let location = locationInTarget(for: event) else { return }
         wrapper.handleHover(location: location, isEntering: false)
     }
 
     override func mouseMoved(with event: NSEvent) {
-        guard targetView != nil else { return }
-        let location = convert(event.locationInWindow, from: nil)
+        guard let location = locationInTarget(for: event) else { return }
         wrapper.handleHover(location: location, isEntering: true)
     }
 }
 
 // MARK: - PressureTrackingView
 
-/// Custom NSView that handles Force Touch / pressure events
-private class PressureTrackingView: NSView {
+/// Custom view that handles Force Touch / pressure events. Flipped for the same
+/// reason as `HoverTrackingView`.
+private class PressureTrackingView: FlippedView {
     private let wrapper: PressureWrapper
     private weak var targetView: NSView?
 
@@ -337,8 +347,16 @@ private class PressureTrackingView: NSView {
     }
 }
 
-private var hoverTrackingKey: UInt8 = 0
-private var pressureTrackingKey: UInt8 = 0
+/// Associated-object keys for the hover/pressure tracking subviews.
+///
+/// These are address-of-only storage: `objc_setAssociatedObject` needs a stable
+/// unique pointer, the value is never read. `nonisolated(unsafe)` matches the
+/// rest of the package and keeps them legal to address from any isolation
+/// domain (file-scope mutable `var`s are not).
+private enum VViewTrackingKeys {
+    nonisolated(unsafe) static var hover: UInt8 = 0
+    nonisolated(unsafe) static var pressure: UInt8 = 0
+}
 
 // MARK: - GestureStorage
 

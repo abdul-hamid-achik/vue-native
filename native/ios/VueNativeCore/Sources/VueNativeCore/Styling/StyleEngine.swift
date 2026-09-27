@@ -1,4 +1,8 @@
 #if canImport(UIKit)
+// swiftlint:disable file_length
+// BASELINE: StyleEngine is the documented single entry point for every CSS property
+// on iOS (see AGENTS.md), so it grows with the prop surface by design. Splitting it is
+// a table-driven refactor tracked separately; do not raise the threshold to absorb it.
 import UIKit
 import FlexLayout
 import ObjectiveC
@@ -99,6 +103,11 @@ enum StyleEngine {
 
     /// Apply a layout property via FlexLayout. Returns true if the key was recognized.
     @discardableResult
+    // BASELINE: the single CSS-layout-property → Yoga dispatch table. Every branch is
+    // an independent leaf keyed on the prop name; this is the documented single entry
+    // point for layout props (see AGENTS.md), so splitting it would fragment that
+    // contract. Tracked as a table-driven refactor.
+    // swiftlint:disable:next cyclomatic_complexity function_body_length
     private static func applyLayoutProp(key: String, value: Any?, to view: UIView) -> Bool {
         let flex = view.flex
 
@@ -640,6 +649,9 @@ enum StyleEngine {
 
     /// Apply a visual property directly on the UIView. Returns true if recognized.
     @discardableResult
+    // BASELINE: the single CSS-visual-property → UIKit dispatch table, mirroring
+    // `applyLayoutProp`. Same reasoning: independent leaf branches keyed on prop name.
+    // swiftlint:disable:next cyclomatic_complexity function_body_length
     private static func applyVisualProp(key: String, value: Any?, to view: UIView) -> Bool {
         switch key {
 

@@ -71,7 +71,7 @@ final class VPressableFactory: NativeComponentFactory {
                 .OBJC_ASSOCIATION_RETAIN_NONATOMIC
             )
 
-        case "longpress":
+        case "longPress", "longpress":
             pressable.onLongPress = {
                 handler(nil)
             }
@@ -117,7 +117,7 @@ final class VPressableFactory: NativeComponentFactory {
             pressable.onPress = nil
             objc_setAssociatedObject(view, &VPressableFactory.pressHandlerKey, nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
 
-        case "longpress":
+        case "longPress", "longpress":
             pressable.onLongPress = nil
             objc_setAssociatedObject(view, &VPressableFactory.longPressHandlerKey, nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
 

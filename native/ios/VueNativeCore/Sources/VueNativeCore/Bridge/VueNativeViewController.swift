@@ -88,11 +88,41 @@ open class VueNativeViewController: UIViewController {
     private var lastDimensions: ViewDimensions?
     private var hasLoadedBundle = false
     private var swipeBackGesture: UIScreenEdgePanGestureRecognizer?
+
+    /// Owns every `NotificationCenter` observer this host installs and removes
+    /// them when it is released. A separate reference type so teardown happens
+    /// deterministically from `deinit` without touching main-actor-isolated
+    /// stored properties, which a nonisolated `deinit` may not do.
+    private let observers = ObserverBag()
+
+    // MARK: - Status bar state (driven by `<VStatusBar>`)
+
+    /// Kept per-instance on purpose: a style applied by one host must not survive
+    /// that host's unmount, and a second host starts from the system defaults.
+    private var statusBarStyle: UIStatusBarStyle = .default
+    private var statusBarHidden: Bool = false
+    private var statusBarAnimated: Bool = true
+
     #if DEBUG
     /// Bottom-right connection-status badge, installed only when a dev server
     /// is configured. `nil` otherwise (production apps never allocate it).
     private var hotReloadStatusView: HotReloadStatusView?
     #endif
+
+    // MARK: - Status bar appearance
+
+    // UIKit reads status-bar appearance exclusively from the view controller, so
+    // `<VStatusBar>` cannot change the bar itself — it posts notifications that
+    // these overrides consume. Without them the component is a no-op even though
+    // the docs advertise `barStyle` / `hidden` / `animated`.
+
+    override open var preferredStatusBarStyle: UIStatusBarStyle { statusBarStyle }
+
+    override open var prefersStatusBarHidden: Bool { statusBarHidden }
+
+    override open var preferredStatusBarUpdateAnimation: UIStatusBarAnimation {
+        statusBarAnimated ? .slide : .none
+    }
 
     // MARK: - Swipe-back gesture thresholds
 
@@ -114,6 +144,8 @@ open class VueNativeViewController: UIViewController {
 
         installSwipeBackGesture()
         installErrorReloadHandler()
+        installStatusBarObservers()
+        installMemoryWarningObserver()
         #if DEBUG
         installHotReloadStatusIndicator()
         #endif
@@ -336,12 +368,81 @@ open class VueNativeViewController: UIViewController {
         }
     }
 
+    // MARK: - Status bar observers
+
+    /// Observe the notifications `VStatusBarFactory` posts and fold them into the
+    /// `preferredStatusBarStyle` / `prefersStatusBarHidden` /
+    /// `preferredStatusBarUpdateAnimation` overrides above.
+    ///
+    /// The observers are owned by ``observers`` so they are removed when this host
+    /// is released; combined with the per-instance state, a style applied by one
+    /// host cannot leak into whatever is on screen afterwards.
+    private func installStatusBarObservers() {
+        let center = NotificationCenter.default
+
+        // `queue: .main` guarantees these blocks already run on the main thread; the
+        // `Task { @MainActor }` hop is for the compiler's isolation checking, and
+        // avoids `MainActor.assumeIsolated`, which requires iOS 17.
+        observers.add(center.addObserver(
+            forName: VStatusBarNotification.styleChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            let style = notification.userInfo?[VStatusBarNotification.styleKey] as? String
+            let animated = notification.userInfo?[VStatusBarNotification.animatedKey] as? Bool
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                if let animated { self.statusBarAnimated = animated }
+                if let style { self.statusBarStyle = VStatusBarFactory.uiStyle(for: style) }
+                self.setNeedsStatusBarAppearanceUpdate()
+            }
+        })
+
+        observers.add(center.addObserver(
+            forName: VStatusBarNotification.hiddenChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            let hidden = notification.userInfo?[VStatusBarNotification.hiddenKey] as? Bool
+            let animated = notification.userInfo?[VStatusBarNotification.animatedKey] as? Bool
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                if let animated { self.statusBarAnimated = animated }
+                if let hidden { self.statusBarHidden = hidden }
+                self.setNeedsStatusBarAppearanceUpdate()
+            }
+        })
+    }
+
+    // MARK: - Memory pressure
+
+    /// Forward `UIApplication.didReceiveMemoryWarningNotification` to the bridge so the
+    /// Vue app receives the `memory:warning` global event. `NativeBridge` already
+    /// exposes `handleMemoryWarning()` for exactly this, but nothing called it, so
+    /// JS-side caches were never released under pressure.
+    private func installMemoryWarningObserver() {
+        observers.add(NotificationCenter.default.addObserver(
+            forName: UIApplication.didReceiveMemoryWarningNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.bridge.handleMemoryWarning()
+            }
+        })
+    }
+
     /// Wire the error overlay's Reload button to a full reload of the embedded
     /// bundle in a fresh JS context. A failed render can leave the old context
     /// in a mutated state, so the runtime is recreated and the bridge re-bound
     /// before re-loading — mirroring the OTA-fallback recovery path.
+    ///
+    /// The handler is registered with `self` as its owner so `deinit` can clear it:
+    /// it is process-global and the overlay is attached to the window, so leaving a
+    /// dead host's `[weak self]` closure installed turns Reload into a silent no-op
+    /// on an unrelated screen.
     private func installErrorReloadHandler() {
-        ErrorOverlayView.reloadHandler = { [weak self] in
+        ErrorOverlayView.setReloadHandler({ [weak self] in
             guard let self else { return }
             self.runtime.recreate { [weak self] in
                 guard let self else { return }
@@ -351,7 +452,7 @@ open class VueNativeViewController: UIViewController {
                     self.loadEmbeddedBundle()
                 }
             }
-        }
+        }, owner: self)
     }
 
     #if DEBUG
@@ -380,12 +481,66 @@ open class VueNativeViewController: UIViewController {
 
     deinit {
         let hostID = hostID
+        // `observers` is released with `self`, and `ObserverBag.deinit` removes every
+        // notification token, so the status-bar and memory-warning observers cannot
+        // outlive this host. `removeAll()` is called explicitly too so the tokens go
+        // away even if the bag is somehow retained elsewhere.
+        observers.removeAll()
         Task { @MainActor in
+            #if DEBUG
+            // The hot-reload socket's `URLSession` retains `HotReloadManager.shared`
+            // as its delegate and retries forever. Left connected after the host goes
+            // away it keeps calling `reloadWithBundle` on a bridge whose
+            // `rootViewController` is now nil. `connect(to:)` is DEBUG-and-dev-server
+            // gated, so the teardown is gated the same way.
+            HotReloadManager.shared.disconnect()
+            #endif
+            // The reload hook is process-global and captured `[weak self]`; without
+            // this it survives as a silent no-op. Called from the task rather than the
+            // deinit body because `ErrorOverlayView` is `@MainActor` and `deinit` is
+            // not. No owner is passed: weak references are already zeroed by the time
+            // this host deallocates, and the `nil` form refuses to clear a hook a
+            // newer live host has since installed.
+            ErrorOverlayView.clearReloadHandler()
+
             let bridge = NativeBridge.shared
             if bridge.releaseHost(hostID: hostID) {
                 JSRuntime.shared.invalidate()
             }
         }
+    }
+}
+
+// MARK: - ObserverBag
+
+/// Holds `NotificationCenter` observer tokens and removes them on release.
+///
+/// A dedicated reference type rather than a `[NSObjectProtocol]` property on the
+/// view controller: `deinit` is nonisolated and may not touch main-actor-isolated
+/// stored properties, but it does release `let` references, so the bag's own
+/// `deinit` performs the removal deterministically.
+private final class ObserverBag {
+
+    private var tokens: [NSObjectProtocol] = []
+
+    func add(_ token: NSObjectProtocol?) {
+        guard let token else { return }
+        tokens.append(token)
+    }
+
+    /// Remove every registered observer. Idempotent and safe to call more than once
+    /// (the explicit call in the owner's `deinit` plus this type's own).
+    func removeAll() {
+        guard !tokens.isEmpty else { return }
+        let pending = tokens
+        tokens = []
+        for token in pending {
+            NotificationCenter.default.removeObserver(token)
+        }
+    }
+
+    deinit {
+        removeAll()
     }
 }
 #endif

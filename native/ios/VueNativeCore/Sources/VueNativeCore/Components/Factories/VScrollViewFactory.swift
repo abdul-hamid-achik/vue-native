@@ -144,15 +144,37 @@ final class VScrollViewFactory: NativeComponentFactory {
                 scrollView.refreshControl = UIRefreshControl()
             }
             guard let refreshControl = scrollView.refreshControl else { break }
-            // Create a target helper and store it
-            let target = RefreshTarget(handler: handler)
-            objc_setAssociatedObject(
+
+            // UIControl does NOT retain its targets, so the target must outlive
+            // every `addEventListener` call. Vue re-binds a listener whenever the
+            // handler closure's identity changes (an inline arrow in a template plus
+            // any re-render, or a `v-if` toggle), so this path runs repeatedly for
+            // the same view. Creating a fresh target each time would release the
+            // previous one via the associated object while the control still held an
+            // unretained pointer to it — a dangling target and an EXC_BAD_ACCESS on
+            // the next pull. Keep ONE long-lived target per view and only swap the
+            // closure it invokes.
+            let target: RefreshTarget
+            if let existing = objc_getAssociatedObject(
                 scrollView,
-                &VScrollViewFactory.refreshTargetKey,
-                target,
-                .OBJC_ASSOCIATION_RETAIN_NONATOMIC
-            )
-            refreshControl.addTarget(target, action: #selector(RefreshTarget.handleRefresh), for: .valueChanged)
+                &VScrollViewFactory.refreshTargetKey
+            ) as? RefreshTarget {
+                target = existing
+            } else {
+                target = RefreshTarget()
+                objc_setAssociatedObject(
+                    scrollView,
+                    &VScrollViewFactory.refreshTargetKey,
+                    target,
+                    .OBJC_ASSOCIATION_RETAIN_NONATOMIC
+                )
+                refreshControl.addTarget(
+                    target,
+                    action: #selector(RefreshTarget.handleRefresh),
+                    for: .valueChanged
+                )
+            }
+            target.handler = handler
 
         default:
             break
@@ -160,14 +182,47 @@ final class VScrollViewFactory: NativeComponentFactory {
     }
 
     func removeEventListener(view: UIView, event: String) {
-        guard let scrollView = view as? UIScrollView, event == "scroll" else { return }
-        scrollView.delegate = nil
-        objc_setAssociatedObject(
-            scrollView,
-            &VScrollViewFactory.delegateProxyKey,
-            nil,
-            .OBJC_ASSOCIATION_RETAIN_NONATOMIC
-        )
+        guard let scrollView = view as? UIScrollView else { return }
+        switch event {
+        case "scroll":
+            scrollView.delegate = nil
+            objc_setAssociatedObject(
+                scrollView,
+                &VScrollViewFactory.delegateProxyKey,
+                nil,
+                .OBJC_ASSOCIATION_RETAIN_NONATOMIC
+            )
+
+        case "refresh":
+            // Unregister before dropping the retained target, otherwise the control
+            // keeps an unretained pointer to a deallocated object.
+            if let target = objc_getAssociatedObject(
+                scrollView,
+                &VScrollViewFactory.refreshTargetKey
+            ) as? RefreshTarget {
+                target.handler = nil
+                scrollView.refreshControl?.removeTarget(
+                    target,
+                    action: #selector(RefreshTarget.handleRefresh),
+                    for: .valueChanged
+                )
+            }
+            objc_setAssociatedObject(
+                scrollView,
+                &VScrollViewFactory.refreshTargetKey,
+                nil,
+                .OBJC_ASSOCIATION_RETAIN_NONATOMIC
+            )
+            objc_setAssociatedObject(
+                scrollView,
+                &VScrollViewFactory.onRefreshKey,
+                nil,
+                .OBJC_ASSOCIATION_RETAIN_NONATOMIC
+            )
+
+        default:
+            break
+        }
     }
 
     // MARK: - Child management
@@ -178,6 +233,14 @@ final class VScrollViewFactory: NativeComponentFactory {
         } else {
             parent.addSubview(child)
         }
+
+        // The bridge routes a child insertion through the *parent's* factory, so a
+        // `<VRefreshControl>` placed inside a `<VScrollView>` arrives here — not in
+        // `VRefreshControlFactory.insertChild`. Adding its hidden zero-frame wrapper
+        // as a subview is not enough: the `UIRefreshControl` it owns has to be
+        // installed on the scroll view or pull-to-refresh never appears.
+        VRefreshControlFactory.attach(wrapper: child, from: parent)
+
         // Ensure content size is recalculated after child insertion
         if let scrollView = parent.superview as? UIScrollView {
             scrollView.setNeedsLayout()
@@ -185,6 +248,9 @@ final class VScrollViewFactory: NativeComponentFactory {
     }
 
     func removeChild(_ child: UIView, from parent: UIView) {
+        // Detach before removing so a re-inserted wrapper cannot leave a stale
+        // `UIRefreshControl` on the scroll view.
+        VRefreshControlFactory.detach(wrapper: child, from: parent)
         child.removeFromSuperview()
         // Ensure content size is recalculated after child removal
         if let scrollView = parent.superview as? UIScrollView {
@@ -240,16 +306,16 @@ final class VScrollViewFactory: NativeComponentFactory {
 // MARK: - RefreshTarget
 
 /// ObjC-compatible target for UIRefreshControl value-changed actions.
+///
+/// `handler` is mutable because `UIControl` holds its targets unretained: the
+/// target instance must stay alive for as long as it is registered, so Vue's
+/// repeated `addEventListener("refresh")` rebinds swap the closure in place
+/// rather than replacing the target object.
 private final class RefreshTarget: NSObject {
-    private let handler: (Any?) -> Void
-
-    init(handler: @escaping (Any?) -> Void) {
-        self.handler = handler
-        super.init()
-    }
+    var handler: ((Any?) -> Void)?
 
     @objc func handleRefresh() {
-        handler(nil)
+        handler?(nil)
     }
 }
 

@@ -42,4 +42,16 @@ open class FlippedView: NSView {
         super.layout()
         reportFlatListItemLayoutIfNeeded()
     }
+
+    /// Re-resolve any style color that `StyleEngine` snapshotted as a `CGColor`.
+    ///
+    /// `CALayer` colors carry no appearance, so a dynamic catalog color
+    /// (`label`, `background`, `separator`, ...) freezes in whatever mode was
+    /// active when the style was applied unless it is re-resolved here. AppKit
+    /// calls this on every view whose effective appearance changed, so no
+    /// manual recursion is needed.
+    override open func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        StyleEngine.reapplyDynamicColors(on: self)
+    }
 }

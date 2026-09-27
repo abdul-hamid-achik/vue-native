@@ -1,4 +1,7 @@
 #if canImport(UIKit)
+// swiftlint:disable file_length
+// BASELINE: one file per factory would be the better shape, but this suite covers
+// every component factory and splitting it is test-only churn. Tracked separately.
 import XCTest
 import UIKit
 import FlexLayout
@@ -878,7 +881,7 @@ final class ComponentFactoryTests: XCTestCase {
 
         let item = UIView()
         item.flex.width(320).height(75)
-        container.itemViews.append(item)
+        container.appendItem(item)
 
         // The item has not been laid out yet; measuredHeight runs Yoga on demand
         // at the container width and returns the computed height.

@@ -100,7 +100,12 @@ open class VueNativeWindowController: NSWindowController {
         didStartHost = true
 
         contentView.wantsLayer = true
-        contentView.layer?.backgroundColor = NSColor.black.cgColor
+        // The platform window surface (`NSColor.windowBackgroundColor`) rather
+        // than a hardcoded black, so the app does not boot to a black window in
+        // Light Mode. Routed through StyleEngine's dynamic-color path so AppKit
+        // re-resolves it on every appearance change instead of snapshotting the
+        // mode the host happened to launch in.
+        StyleEngine.apply(key: "backgroundColor", value: "background", to: contentView)
 
         #if DEBUG
         installHotReloadStatusIndicator(in: contentView)
@@ -265,7 +270,7 @@ open class VueNativeWindowController: NSWindowController {
 
 // MARK: - VueNativeAppDelegate
 
-/// Convenience NSApplicationDelegate for single-window Vue Native apps.
+/// Convenience NSApplicationDelegate for **single-window** Vue Native apps.
 /// Subclass and override `createWindowController()` to provide your custom window controller.
 ///
 /// Usage:
@@ -277,13 +282,50 @@ open class VueNativeWindowController: NSWindowController {
 ///     }
 /// }
 /// ```
+///
+/// ## Single-window limitation (important)
+///
+/// `NativeBridge.shared` and `JSRuntime.shared` are **process-wide singletons**:
+/// there is exactly one JS context, one view registry and one module registry
+/// for the whole app. Creating a second `VueNativeWindowController` therefore
+/// does *not* give you a second Vue app — `NativeBridge.initialize` detects the
+/// differing content view, logs a diagnostic, and tears the first window's
+/// registry down before adopting the new one. The first window keeps its views
+/// on screen but stops receiving updates.
+///
+/// Multi-window support needs a per-window bridge/runtime and is not
+/// implemented. For a second window today, use `Modules/WindowModule.swift`
+/// helpers on the single hosted window, or render the extra UI as a `VModal`.
 open class VueNativeAppDelegate: NSObject, NSApplicationDelegate {
     public var windowController: VueNativeWindowController?
 
     open func applicationDidFinishLaunching(_ notification: Notification) {
+        // A programmatically launched `NSApplication` has no nib/xib, so AppKit
+        // gives it an *empty* menu bar unless one is installed. That is not
+        // merely cosmetic: AppKit routes key equivalents through the main menu,
+        // so without it Cmd+Q does not quit and Cmd+C/V/X/A never reach a
+        // focused `VInput`. Install before the window shows.
+        VueNativeAppDelegate.installMainMenuIfNeeded(makeMainMenu())
+
         let controller = createWindowController()
         controller.showWindow(nil)
         windowController = controller
+    }
+
+    /// Install `menu` as the application's main menu unless the host already has
+    /// one (an app that builds its own menu earlier, or a nib/xib-based host,
+    /// must win). Returns whether it installed.
+    ///
+    /// Exposed as a static so the "empty menu bar" fix is unit-testable without
+    /// launching a window and disturbing the single-process `NativeBridge`.
+    @discardableResult
+    public static func installMainMenuIfNeeded(
+        _ menu: NSMenu = VueNativeAppDelegate.standardMainMenu(),
+        on app: NSApplication = NSApp
+    ) -> Bool {
+        guard app.mainMenu == nil else { return false }
+        app.mainMenu = menu
+        return true
     }
 
     /// Override this to provide your custom VueNativeWindowController subclass.
@@ -291,7 +333,135 @@ open class VueNativeAppDelegate: NSObject, NSApplicationDelegate {
         return VueNativeWindowController()
     }
 
+    /// The menu installed as `NSApp.mainMenu` at launch.
+    ///
+    /// Override to replace the whole menu, or call `super` and mutate the
+    /// result to extend it. `MenuModule.setAppMenu` merges into whatever is
+    /// installed here rather than replacing it.
+    open func makeMainMenu() -> NSMenu {
+        return VueNativeAppDelegate.standardMainMenu()
+    }
+
     open func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         return true
+    }
+
+    // MARK: - Standard main menu
+
+    /// Display name used for the application menu's About item.
+    static func appName() -> String {
+        if let bundleName = (Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String)?
+            .trimmingCharacters(in: .whitespaces), !bundleName.isEmpty {
+            return bundleName
+        }
+        let process = ProcessInfo.processInfo.processName
+        return process.isEmpty ? "Vue Native" : process
+    }
+
+    /// Build the canonical App / Edit / View / Window / Help menu bar with the
+    /// standard AppKit selectors and key equivalents.
+    ///
+    /// Every item's `target` is `nil`, so the action travels the responder
+    /// chain — that is what makes Cmd+C/V/X/A work inside a focused `VInput`
+    /// (its field editor) and Cmd+W close the front window. The returned menu is
+    /// also wired into `NSApp.servicesMenu`, `NSApp.windowsMenu` and
+    /// `NSApp.helpMenu` so AppKit populates the Services/Windows/Help items and
+    /// keeps the Window menu in sync with the open windows.
+    public static func standardMainMenu() -> NSMenu {
+        let mainMenu = NSMenu()
+        mainMenu.autoenablesItems = true
+
+        // MARK: Application menu
+        // The first top-level item is always the application menu on macOS;
+        // its title is ignored by AppKit.
+        let appMenuItem = NSMenuItem()
+        mainMenu.addItem(appMenuItem)
+        let appMenu = NSMenu()
+        appMenuItem.submenu = appMenu
+
+        appMenu.addItem(withTitle: "About \(VueNativeAppDelegate.appName())",
+                        action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)),
+                        keyEquivalent: "")
+        appMenu.addItem(.separator())
+
+        let servicesItem = NSMenuItem(title: "Services", action: nil, keyEquivalent: "")
+        let servicesMenu = NSMenu(title: "Services")
+        servicesItem.submenu = servicesMenu
+        NSApp.servicesMenu = servicesMenu
+        appMenu.addItem(servicesItem)
+
+        appMenu.addItem(.separator())
+        appMenu.addItem(withTitle: "Hide",
+                        action: #selector(NSApplication.hide(_:)),
+                        keyEquivalent: "h")
+        let hideOthers = appMenu.addItem(withTitle: "Hide Others",
+                                         action: #selector(NSApplication.hideOtherApplications(_:)),
+                                         keyEquivalent: "h")
+        hideOthers.keyEquivalentModifierMask = NSEvent.ModifierFlags([.command, .option])
+        appMenu.addItem(withTitle: "Show All",
+                        action: #selector(NSApplication.unhideAllApplications(_:)),
+                        keyEquivalent: "")
+        appMenu.addItem(.separator())
+        appMenu.addItem(withTitle: "Quit",
+                        action: #selector(NSApplication.terminate(_:)),
+                        keyEquivalent: "q")
+
+        // MARK: Edit
+        let editMenuItem = NSMenuItem(title: "Edit", action: nil, keyEquivalent: "")
+        mainMenu.addItem(editMenuItem)
+        let editMenu = NSMenu(title: "Edit")
+        editMenuItem.submenu = editMenu
+
+        editMenu.addItem(withTitle: "Undo", action: NSSelectorFromString("undo:"), keyEquivalent: "z")
+        let redo = editMenu.addItem(withTitle: "Redo", action: NSSelectorFromString("redo:"), keyEquivalent: "z")
+        redo.keyEquivalentModifierMask = NSEvent.ModifierFlags([.command, .shift])
+        editMenu.addItem(.separator())
+        editMenu.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        editMenu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        editMenu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        let pasteAndMatch = editMenu.addItem(withTitle: "Paste and Match Style",
+                                             action: NSSelectorFromString("pasteAsRichText:"),
+                                             keyEquivalent: "v")
+        pasteAndMatch.keyEquivalentModifierMask = NSEvent.ModifierFlags([.command, .shift, .option])
+        editMenu.addItem(withTitle: "Delete", action: #selector(NSText.delete(_:)), keyEquivalent: "")
+        editMenu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+
+        // MARK: View
+        let viewMenuItem = NSMenuItem(title: "View", action: nil, keyEquivalent: "")
+        mainMenu.addItem(viewMenuItem)
+        let viewMenu = NSMenu(title: "View")
+        viewMenuItem.submenu = viewMenu
+
+        let fullScreen = viewMenu.addItem(withTitle: "Enter Full Screen",
+                                          action: #selector(NSWindow.toggleFullScreen(_:)),
+                                          keyEquivalent: "f")
+        fullScreen.keyEquivalentModifierMask = NSEvent.ModifierFlags([.command, .control])
+
+        // MARK: Window
+        let windowMenuItem = NSMenuItem(title: "Window", action: nil, keyEquivalent: "")
+        mainMenu.addItem(windowMenuItem)
+        let windowMenu = NSMenu(title: "Window")
+        windowMenuItem.submenu = windowMenu
+
+        windowMenu.addItem(withTitle: "Minimize",
+                           action: #selector(NSWindow.performMiniaturize(_:)),
+                           keyEquivalent: "m")
+        windowMenu.addItem(withTitle: "Zoom",
+                           action: #selector(NSWindow.performZoom(_:)),
+                           keyEquivalent: "")
+        windowMenu.addItem(.separator())
+        windowMenu.addItem(withTitle: "Close",
+                           action: #selector(NSWindow.performClose(_:)),
+                           keyEquivalent: "w")
+        NSApp.windowsMenu = windowMenu
+
+        // MARK: Help
+        let helpMenuItem = NSMenuItem(title: "Help", action: nil, keyEquivalent: "")
+        mainMenu.addItem(helpMenuItem)
+        let helpMenu = NSMenu(title: "Help")
+        helpMenuItem.submenu = helpMenu
+        NSApp.helpMenu = helpMenu
+
+        return mainMenu
     }
 }

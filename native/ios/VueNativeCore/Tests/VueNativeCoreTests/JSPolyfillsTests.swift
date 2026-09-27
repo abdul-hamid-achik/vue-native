@@ -156,9 +156,9 @@ final class JSPolyfillsTests: XCTestCase {
     }
 
     func testClearTimeoutCancelsPendingCallback() {
-        // Verify clearTimeout is callable and does not crash.
-        // We cannot reliably test cancellation timing in the simulator
-        // because JSC timer scheduling depends on the native run loop.
+        // Smoke check: clearTimeout is callable and does not crash for a timer that
+        // is still pending. The deterministic cancellation assertions live in
+        // `testClearTimeoutInSameTickPreventsCallback` below.
         let result = evalSync("""
             var __clearTestFired = false;
             var tid = setTimeout(function() { __clearTestFired = true; }, 100000);
@@ -166,6 +166,72 @@ final class JSPolyfillsTests: XCTestCase {
             typeof tid !== 'undefined';
         """)
         XCTAssertTrue(result?.toBool() == true, "clearTimeout should accept a timer ID")
+    }
+
+    /// Wait long enough for the main-queue block that arms a `Timer` to have run and
+    /// for a short timer to have fired, so an assertion afterwards is meaningful.
+    private func letTimersSettle(_ interval: TimeInterval = 0.6) {
+        let settled = expectation(description: "timer window elapsed")
+        DispatchQueue.main.asyncAfter(deadline: .now() + interval) { settled.fulfill() }
+        waitForExpectations(timeout: 15)
+    }
+
+    func testClearTimeoutInSameTickPreventsCallback() {
+        // Regression: `setTimeout` built its `Timer` inside a later
+        // `DispatchQueue.main.async` and only stored it there, while `clearTimeout`
+        // ran on the JS queue in between. The clear found nothing to remove, and the
+        // store guard `if timers[timerId] == nil` could not tell "never stored yet"
+        // from "already cleared" — so it stored the Timer and the cancelled callback
+        // fired anyway. A tombstone is now reserved synchronously at schedule time.
+        _ = evalSync("""
+            var __sameTickFired = false;
+            var __sameTickId = setTimeout(function() { __sameTickFired = true; }, 0);
+            clearTimeout(__sameTickId);
+            true;
+        """)
+
+        letTimersSettle()
+
+        let result = evalSync("__sameTickFired")
+        XCTAssertEqual(
+            result?.toBool(), false,
+            "a clearTimeout in the same JS tick as setTimeout must prevent the callback"
+        )
+    }
+
+    func testUnclearedTimeoutStillFires() {
+        // Positive control for the tombstone change: reserving the ID up front must
+        // not suppress timers that were never cleared.
+        _ = evalSync("""
+            var __controlFired = false;
+            setTimeout(function() { __controlFired = true; }, 0);
+            true;
+        """)
+
+        letTimersSettle()
+
+        let result = evalSync("__controlFired")
+        XCTAssertEqual(result?.toBool(), true, "an uncleared setTimeout must still fire")
+    }
+
+    func testClearIntervalInSameTickPreventsCallback() {
+        // `setInterval` had the same defect and stored its entry unconditionally, so
+        // a same-tick clear was discarded entirely and the interval repeated forever
+        // with no way to stop it.
+        _ = evalSync("""
+            var __sameTickTicks = 0;
+            var __sameTickInterval = setInterval(function() { __sameTickTicks++; }, 1);
+            clearInterval(__sameTickInterval);
+            true;
+        """)
+
+        letTimersSettle()
+
+        let result = evalSync("__sameTickTicks")
+        XCTAssertEqual(
+            result?.toInt32(), 0,
+            "a clearInterval in the same JS tick must stop the interval before its first tick"
+        )
     }
 
     // MARK: - setInterval Tests
@@ -293,6 +359,91 @@ final class JSPolyfillsTests: XCTestCase {
             arr.length;
         """)
         XCTAssertEqual(result?.toInt32(), 4, "getRandomValues should fill a 4-byte array")
+    }
+
+    func testCryptoGetRandomValuesActuallyRandomizes() {
+        // Guards the `SecRandomCopyBytes` status check: a discarded status would let
+        // JS receive an all-zero buffer that is indistinguishable from success, and
+        // callers use this for tokens, nonces and IVs.
+        let result = evalSync("""
+            (function() {
+                var a = new Uint8Array(32);
+                crypto.getRandomValues(a);
+                var nonzero = 0;
+                for (var i = 0; i < a.length; i++) { if (a[i] !== 0) nonzero++; }
+                return nonzero;
+            })();
+        """)
+        XCTAssertGreaterThan(
+            result?.toInt32() ?? 0, 0,
+            "getRandomValues must not hand back an unfilled (all-zero) buffer"
+        )
+    }
+
+    func testCryptoGetRandomValuesQuotaMatchesWebPlatform() {
+        XCTAssertEqual(JSPolyfills.maxRandomBytes, 65536, "the cap should be the web-platform quota")
+    }
+
+    func testCryptoGetRandomValuesRejectsOversizedLength() {
+        // Regression: the length came straight from JS with no cap, so a huge request
+        // allocated gigabytes of Swift storage and made one JSC bridge call per byte.
+        // A plain object with a large `length` exercises the guard without the test
+        // itself having to allocate the typed array.
+        let result = evalSync("""
+            (function() {
+                try {
+                    crypto.getRandomValues({ length: 1000000000 });
+                    return 'did-not-throw';
+                } catch (e) {
+                    return String(e && e.message);
+                }
+            })();
+        """)
+        let message = result?.toString() ?? ""
+        XCTAssertTrue(
+            message.contains("QuotaExceeded"),
+            "an over-quota length must throw rather than allocate; got: \(message)"
+        )
+    }
+
+    func testCryptoGetRandomValuesAcceptsExactlyTheQuota() {
+        let result = evalSync("""
+            (function() {
+                try {
+                    var a = new Uint8Array(\(JSPolyfills.maxRandomBytes));
+                    crypto.getRandomValues(a);
+                    return 'ok';
+                } catch (e) {
+                    return 'threw: ' + e.message;
+                }
+            })();
+        """)
+        XCTAssertEqual(result?.toString(), "ok", "a request exactly at the quota must succeed")
+    }
+
+    func testCryptoGetRandomValuesRejectsOneByteOverTheQuota() {
+        let result = evalSync("""
+            (function() {
+                try {
+                    crypto.getRandomValues({ length: \(JSPolyfills.maxRandomBytes + 1) });
+                    return 'did-not-throw';
+                } catch (e) {
+                    return 'threw';
+                }
+            })();
+        """)
+        XCTAssertEqual(result?.toString(), "threw", "one byte over the quota must be rejected")
+    }
+
+    func testCryptoGetRandomValuesToleratesValueWithoutLength() {
+        // `forProperty` returns an implicitly-unwrapped optional; a call with no
+        // usable length must return the argument untouched instead of trapping.
+        let result = evalSync("""
+            (function() {
+                try { crypto.getRandomValues({}); return 'ok'; } catch (e) { return 'threw'; }
+            })();
+        """)
+        XCTAssertEqual(result?.toString(), "ok")
     }
 
     // MARK: - Bridge Stubs Tests

@@ -1,4 +1,16 @@
 # SwiftLint Configuration for VueNativeCore
+#
+# CI runs this from `native/ios` (see .github/workflows/ci.yml → "Lint Swift"), so the
+# `included:` paths below are relative to this directory.
+#
+# SCOPE NOTE: this config only covers the iOS package. `native/shared/VueNativeShared`
+# and `native/macos/VueNativeMacOS` are Swift sources with no SwiftLint coverage at all
+# — there is no `.swiftlint.yml` for either, and this file's `included:` cannot reach
+# them without linting code that the iOS CI job does not own. Adding `../shared/...`
+# here was evaluated and rejected: it surfaces violations in files this job cannot fix,
+# which turns the iOS lint gate red for unrelated reasons. Closing that gap needs a
+# repo-root `.swiftlint.yml` (or a dedicated shared/macos config) wired into its own CI
+# job. Tracked separately.
 
 included:
   - VueNativeCore/Sources
@@ -8,15 +20,17 @@ excluded:
   - VueNativeCore/.build
 
 # Rules
+#
+# Nothing here is disabled to hide violations. `force_cast`, `force_try`,
+# `file_length`, `function_body_length` and `cyclomatic_complexity` were previously
+# all switched off, which made "0 violations under --strict" meaningless. They are now
+# enforced; the handful of genuine outliers carry an inline `swiftlint:disable` with a
+# reason at the offending site, and `VueNativeCore/Tests/.swiftlint.yml` relaxes
+# `force_cast` for test code only.
 disabled_rules:
   - trailing_whitespace
   - line_length
   - type_body_length
-  - file_length
-  - function_body_length
-  - cyclomatic_complexity
-  - force_cast
-  - force_try
   - trailing_comma
 
 opt_in_rules:
@@ -34,6 +48,30 @@ opt_in_rules:
   - unneeded_parentheses_in_closure_argument
 
 # Config
+
+# Prop/style routers in this codebase are long `switch` statements where each case is
+# independent, not compounding branches. Counting them inflates the metric without
+# signalling real risk, so cases are excluded; the remaining if/else complexity is
+# still measured.
+#
+# The thresholds below are a deliberate ratchet baseline, not an ideal: they are set so
+# ordinary code is held to a tight standard while the few structural outliers that
+# predate this config carry an explicit inline `swiftlint:disable` with a reason at the
+# offending site. Tighten these as those sites are refactored — do not raise them to
+# absorb a new violation.
+cyclomatic_complexity:
+  ignores_case_statements: true
+  warning: 20
+  error: 40
+
+function_body_length:
+  warning: 110
+  error: 200
+
+file_length:
+  warning: 900
+  error: 1600
+
 identifier_name:
   min_length:
     warning: 1

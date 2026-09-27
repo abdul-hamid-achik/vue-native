@@ -54,6 +54,8 @@ final class VTextFactory: NativeComponentFactory {
         return label
     }
 
+    // BASELINE: prop router for VText — one independent `case` per supported prop.
+    // swiftlint:disable:next function_body_length
     func updateProp(view: UIView, key: String, value: Any?) {
         guard let label = view as? UILabel else { return }
 

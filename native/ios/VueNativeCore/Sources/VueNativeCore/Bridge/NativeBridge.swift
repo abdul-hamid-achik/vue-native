@@ -1,4 +1,9 @@
 #if canImport(UIKit)
+// swiftlint:disable file_length
+// BASELINE: NativeBridge owns the whole op-dispatch surface (create/patch/insert/
+// remove/layout/events/modules) and is deliberately one type so the bridge protocol
+// has a single implementation. Splitting it into extensions across files is a
+// refactor tracked separately; do not raise the threshold to absorb it.
 import JavaScriptCore
 import UIKit
 import FlexLayout
@@ -1027,6 +1032,20 @@ public final class NativeBridge {
         reportFlatListItemHeights()
     }
 
+    /// Request a full layout pass from component code that changed Yoga geometry on
+    /// its own (for example `VKeyboardAvoiding` adjusting bottom padding when the
+    /// keyboard appears or disappears).
+    ///
+    /// Such code must come through here instead of calling `flex.layout()` on the
+    /// root view directly: `triggerLayout()` also re-runs
+    /// `updateScrollViewContentSizes()` and `reportFlatListItemHeights()`, which a
+    /// raw `flex.layout()` skips — leaving nested scroll views with a stale
+    /// `contentSize` and VFlatList items with stale reported heights.
+    func requestLayout() {
+        dispatchPrecondition(condition: .onQueue(.main))
+        triggerLayout()
+    }
+
     /// Attempt layout, retrying up to `remaining` times with 100ms delays if bounds are zero.
     /// Prevents unbounded retries when the root view never receives a valid frame.
     private func triggerLayoutWithRetries(remaining: Int) {
@@ -1201,18 +1220,44 @@ public final class NativeBridge {
 
         // Step 0: Call __VN_teardown on the old JS context so the Vue app can clean up
         // (cancel timers, remove listeners, unmount components) before we destroy state.
-        // This is a synchronous dispatch to the JS queue to ensure teardown completes
-        // before we clear the native registries.
-        runtime.jsQueue.sync {
-            if let context = runtime.context,
-               let teardown = context.objectForKeyedSubscript("__VN_teardown"),
-               !teardown.isUndefined {
-                teardown.call(withArguments: [])
-                // Drain microtasks so any cleanup promises resolve
-                context.evaluateScript("void 0;")
+        //
+        // This is dispatched *asynchronously* and continued on the main actor. It used
+        // to be `jsQueue.sync` from the main thread, which froze the UI for the whole
+        // duration of the app's teardown work and sat one `DispatchQueue.main.sync`
+        // away from deadlock: AudioModule, GeolocationModule, BluetoothModule and
+        // PerformanceModule all hop to main with `main.sync` from their own callback
+        // queues, so a teardown that reached any of them while main was blocked inside
+        // `jsQueue.sync` would wedge both queues permanently.
+        let runtime = self.runtime
+        runtime.jsQueue.async { [weak self] in
+            Self.runJSTeardown(on: runtime)
+            // Ordering is preserved: teardown has fully completed on the JS queue
+            // before the native registries are cleared on main.
+            Task { @MainActor [weak self] in
+                self?.continueReload(with: bundle)
             }
         }
+    }
 
+    /// Invoke `__VN_teardown` on the current JS context, then drain microtasks so any
+    /// cleanup promises settle. MUST be called on `jsQueue` — never pass the resulting
+    /// `JSValue`s off the queue.
+    nonisolated private static func runJSTeardown(on runtime: JSRuntime) {
+        dispatchPrecondition(condition: .onQueue(runtime.jsQueue))
+        guard let context = runtime.context,
+              let teardown = context.objectForKeyedSubscript("__VN_teardown"),
+              !teardown.isUndefined else {
+            return
+        }
+        teardown.call(withArguments: [])
+        // Drain microtasks so any cleanup promises resolve
+        context.evaluateScript("void 0;")
+    }
+
+    /// Second half of ``reloadWithBundle(_:)``, run on the main actor once the old
+    /// context's `__VN_teardown` has completed.
+    private func continueReload(with bundle: String) {
+        dispatchPrecondition(condition: .onQueue(.main))
         NSLog("[VueNative Bridge] reloadWithBundle: clearing view hierarchy...")
 
         // Step 1: Remove all subviews and listeners from the old native tree.

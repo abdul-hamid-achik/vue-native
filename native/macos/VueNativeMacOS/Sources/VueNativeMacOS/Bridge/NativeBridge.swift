@@ -148,6 +148,16 @@ public final class NativeBridge: @preconcurrency NativeEventDispatcher {
     // MARK: - Setup
 
     /// Initialize the bridge. Must be called after JSRuntime.initialize().
+    ///
+    /// - Warning: the bridge is a **process-wide singleton**. Calling this a
+    ///   second time with a different `contentView` (i.e. a second
+    ///   `VueNativeWindowController`) does not create a second Vue app: the
+    ///   first host's view registry is torn down, every native module is
+    ///   destroyed and re-registered, and `JSRuntime` installs a fresh context
+    ///   after running `__VN_teardown`. The first window keeps its views on
+    ///   screen but stops receiving updates. Per-window bridges are not
+    ///   implemented; this diagnostic exists so the failure is loud instead of
+    ///   looking like a random blank/frozen window.
     public func initialize(contentView: NSView, hostID: UUID? = nil) {
         // The bridge is process-wide but host windows can be replaced. Clear
         // the old hierarchy while the old contentView is still available so
@@ -155,6 +165,14 @@ public final class NativeBridge: @preconcurrency NativeEventDispatcher {
         // into the next host.
         if let currentHost = self.contentView,
            currentHost !== contentView {
+            NSLog("""
+            [VueNative macOS Bridge] WARNING: NativeBridge.initialize() was called for a second host \
+            contentView while another one was still installed. NativeBridge and JSRuntime are process \
+            singletons, so the previous window's %d registered views are being torn down, all native \
+            modules are destroyed and re-registered, and the JS context is recreated. The previous \
+            window will keep showing its last-rendered views but will no longer update. \
+            Multi-window hosting requires a per-window bridge and is not supported.
+            """, viewRegistry.count)
             clearManagedViewState()
         }
         self.contentView = contentView
@@ -699,7 +717,18 @@ public final class NativeBridge: @preconcurrency NativeEventDispatcher {
         ) { [weak self] _ in
             let isDark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
             Task { @MainActor [weak self] in
-                self?.dispatchGlobalEvent(
+                guard let self else { return }
+                // `FlippedView.viewDidChangeEffectiveAppearance` covers the
+                // flipped views that make up most of a Vue Native tree, but
+                // `NSTextField`, `NSScrollView` and friends are plain AppKit
+                // classes with no such override. Walk the registry so every
+                // managed view re-resolves its style colors.
+                for view in self.viewRegistry.values {
+                    if StyleEngine.hasDynamicColors(view) {
+                        StyleEngine.reapplyDynamicColors(on: view)
+                    }
+                }
+                self.dispatchGlobalEvent(
                     "colorScheme:change",
                     payload: ["colorScheme": isDark ? "dark" : "light"]
                 )
@@ -979,41 +1008,53 @@ public final class NativeBridge: @preconcurrency NativeEventDispatcher {
     // MARK: - Hot Reload
 
     /// Reload the app with a new JavaScript bundle string.
+    ///
+    /// The old context's `__VN_teardown` runs **asynchronously** on the JS
+    /// queue. It used to be a `jsQueue.sync` from this main-queue method with no
+    /// timeout: arbitrary user JS (a stuck promise loop, a long synchronous
+    /// cleanup) would block the main thread and beachball the whole app. The
+    /// teardown now runs on the JS queue and the main-thread half of the reload
+    /// is resumed from its completion.
     public func reloadWithBundle(_ bundle: String) {
         dispatchPrecondition(condition: .onQueue(.main))
         NSLog("[VueNative macOS Bridge] reloadWithBundle: calling __VN_teardown on old context...")
 
-        runtime.jsQueue.sync {
+        let runtime = self.runtime
+        runtime.jsQueue.async { [weak self, weak runtime] in
+            guard let runtime else { return }
             if let context = runtime.context,
                let teardown = context.objectForKeyedSubscript("__VN_teardown"),
                !teardown.isUndefined {
                 teardown.call(withArguments: [])
                 context.evaluateScript("void 0;")
             }
-        }
 
-        NSLog("[VueNative macOS Bridge] reloadWithBundle: clearing view hierarchy...")
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                NSLog("[VueNative macOS Bridge] reloadWithBundle: clearing view hierarchy...")
 
-        clearManagedViewState()
+                self.clearManagedViewState()
 
-        runtime.reload(
-            bundle: bundle,
-            teardownOldContext: false,
-            prepareContext: { [weak self] context in
-                self?.registerBridgeFunctions(on: context)
-            },
-            completion: { success in
-                guard success else {
-                    NSLog("[VueNative macOS Bridge] reloadWithBundle: runtime reload failed")
-                    DispatchQueue.main.async {
-                        ErrorOverlayView.show(error: "Hot reload failed.\n\nThe new bundle could not be evaluated. Check the terminal for the JS error.\n\nSave the file again to retry.")
+                runtime.reload(
+                    bundle: bundle,
+                    teardownOldContext: false,
+                    prepareContext: { [weak self] context in
+                        self?.registerBridgeFunctions(on: context)
+                    },
+                    completion: { success in
+                        guard success else {
+                            NSLog("[VueNative macOS Bridge] reloadWithBundle: runtime reload failed")
+                            DispatchQueue.main.async {
+                                ErrorOverlayView.show(error: "Hot reload failed.\n\nThe new bundle could not be evaluated. Check the terminal for the JS error.\n\nSave the file again to retry.")
+                            }
+                            return
+                        }
+
+                        NSLog("[VueNative macOS Bridge] reloadWithBundle: bridge re-registered on new context")
                     }
-                    return
-                }
-
-                NSLog("[VueNative macOS Bridge] reloadWithBundle: bridge re-registered on new context")
+                )
             }
-        )
+        }
     }
 
     // MARK: - Cleanup

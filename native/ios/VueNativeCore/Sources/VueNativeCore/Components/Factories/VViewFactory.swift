@@ -54,7 +54,7 @@ final class VViewFactory: NativeComponentFactory {
             GestureStorage.store(wrapper, for: view, event: event)
 
         // MARK: Long Press
-        case "longpress":
+        case "longPress", "longpress":
             let wrapper = GestureWrapper(handler: handler)
             let longPressRecognizer = UILongPressGestureRecognizer(
                 target: wrapper,
@@ -166,7 +166,7 @@ final class VViewFactory: NativeComponentFactory {
                 if let tap = recognizer as? UITapGestureRecognizer, tap.numberOfTapsRequired == 1 {
                     view.removeGestureRecognizer(recognizer)
                 }
-            case "longpress"  where recognizer is UILongPressGestureRecognizer:
+            case "longPress", "longpress"  where recognizer is UILongPressGestureRecognizer:
                 view.removeGestureRecognizer(recognizer)
             case "pan"        where recognizer is UIPanGestureRecognizer:
                 view.removeGestureRecognizer(recognizer)

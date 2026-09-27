@@ -21,6 +21,10 @@ final class FileSystemModule: NativeModule {
 
     private let fileManager = FileManager.default
 
+    // BASELINE: `invoke` is the NativeModule method dispatch table — one leaf `case`
+    // per exposed API. It is long and branchy by construction. Splitting it would
+    // scatter the module's public surface across helpers without reducing risk.
+    // swiftlint:disable:next cyclomatic_complexity function_body_length
     func invoke(method: String, args: [Any], callback: @escaping (Any?, String?) -> Void) {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self = self else { return }

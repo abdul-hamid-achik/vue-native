@@ -21,7 +21,7 @@ final class VInputFactory: NativeComponentFactory {
     // MARK: - NativeComponentFactory
 
     func createView() -> NSView {
-        let textField = NSTextField()
+        let textField = VInputTextField()
         textField.isBordered = true
         textField.isEditable = true
         textField.isSelectable = true
@@ -29,6 +29,16 @@ final class VInputFactory: NativeComponentFactory {
         // Set a sensible default height so the text field is not collapsed
         let node = textField.ensureLayoutNode()
         node.height = .points(28)
+        // When the app overrides that height with `auto`, size from content
+        // (a multiline field grows with its text) instead of collapsing to 0.
+        node.measure = { [weak textField] availableSize in
+            guard let textField else { return .zero }
+            let fitting = textField.sizeThatFits(NSSize(
+                width: availableSize.width.isFinite && availableSize.width > 0 ? availableSize.width : CGFloat(1e7),
+                height: CGFloat(1e7)
+            ))
+            return CGSize(width: ceil(fitting.width), height: max(22, ceil(fitting.height)))
+        }
         return textField
     }
 
@@ -130,9 +140,93 @@ final class VInputFactory: NativeComponentFactory {
                 }
             }
 
+        // MARK: Keyboard traits (declared on the TS component, handled on iOS/Android)
+
+        case "keyboardType":
+            applyKeyboardType(value as? String, to: textField)
+
+        case "returnKeyType":
+            // macOS has no on-screen keyboard and no return-key label, so there is
+            // no AppKit equivalent. Stored for inspection and warned about rather
+            // than silently dropped.
+            StyleEngine.setInternalPropDirect("__returnKeyType", value: value, on: view)
+            warnUnsupported("returnKeyType", value: value)
+
+        case "autoCapitalize", "autocapitalize":
+            // AppKit exposes no automatic-capitalization switch on either
+            // `NSTextField` or its field editor (`NSTextView`), so the four
+            // granularities iOS/Android honour cannot be mapped. Stored for
+            // inspection and warned about rather than silently dropped.
+            StyleEngine.setInternalPropDirect("__autoCapitalize", value: value, on: view)
+            warnUnsupported("autoCapitalize", value: value)
+
+        case "autoCorrect", "autocorrect":
+            let enabled = Self.boolValue(value)
+            StyleEngine.setInternalPropDirect("__autoCorrect", value: enabled, on: view)
+            if let input = textField as? VInputTextField {
+                input.autoCorrectEnabled = enabled
+                input.applyTextEditingTraits()
+            } else {
+                warnUnsupported("autoCorrect", value: value)
+            }
+
+        case "autoFocus":
+            let focus = Self.boolValue(value)
+            StyleEngine.setInternalPropDirect("__autoFocus", value: focus, on: view)
+            if let input = textField as? VInputTextField {
+                input.pendingAutoFocus = focus
+                if focus { input.requestAutoFocus() }
+            } else if focus {
+                DispatchQueue.main.async { [weak textField] in
+                    textField?.window?.makeFirstResponder(textField)
+                }
+            }
+
         default:
             StyleEngine.apply(key: key, value: value, to: view)
         }
+    }
+
+    // MARK: - Keyboard trait mapping
+
+    /// `keyboardType` has a partial AppKit equivalent: the numeric families are
+    /// enforced with a number formatter (there is no on-screen keyboard to
+    /// switch on desktop), the rest have no counterpart.
+    static let numericKeyboardTypes: Set<String> = [
+        "numeric", "number-pad", "numberPad", "decimal-pad", "decimalPad", "decimal",
+    ]
+
+    private func applyKeyboardType(_ value: String?, to textField: NSTextField) {
+        let kind = value ?? "default"
+        StyleEngine.setInternalPropDirect("__keyboardType", value: kind, on: textField)
+
+        if Self.numericKeyboardTypes.contains(kind) {
+            let formatter = NumberFormatter()
+            formatter.numberStyle = .decimal
+            formatter.allowsFloats = kind.contains("decimal")
+            formatter.isPartialStringValidationEnabled = false
+            textField.formatter = formatter
+        } else {
+            textField.formatter = nil
+            if kind != "default" {
+                warnUnsupported("keyboardType '\(kind)' (no AppKit counterpart)", value: kind)
+            }
+        }
+    }
+
+    private func warnUnsupported(_ what: String, value: Any?) {
+        #if DEBUG
+        NSLog("[VueNative macOS] VInputFactory: \(what) has no macOS equivalent (value: \(String(describing: value))); ignoring")
+        #endif
+    }
+
+    /// Coerce a JS boolean prop (JSON true/false, or 1/0 numbers) to Bool.
+    private static func boolValue(_ value: Any?) -> Bool {
+        if let b = value as? Bool { return b }
+        if let i = value as? Int { return i != 0 }
+        if let d = value as? Double { return d != 0 }
+        if let s = value as? String { return (s as NSString).boolValue }
+        return false
     }
 
     func addEventListener(view: NSView, event: String, handler: @escaping (Any?) -> Void) {
@@ -230,6 +324,9 @@ final class VInputFactory: NativeComponentFactory {
         let wraps = currentCell?.wraps ?? false
         let isScrollable = currentCell?.isScrollable ?? true
         let usesSingleLineMode = currentCell?.usesSingleLineMode ?? true
+        // The formatter backs `keyboardType`'s numeric enforcement and lives on
+        // the cell, so it must be carried across the swap too.
+        let formatter = currentCell?.formatter
 
         textField.cell = secure ? NSSecureTextFieldCell() : NSTextFieldCell()
 
@@ -246,6 +343,7 @@ final class VInputFactory: NativeComponentFactory {
         newCell?.wraps = wraps
         newCell?.isScrollable = isScrollable
         newCell?.usesSingleLineMode = usesSingleLineMode
+        newCell?.formatter = formatter
     }
 
     // MARK: - Multiline
@@ -303,6 +401,64 @@ final class VInputFactory: NativeComponentFactory {
 
     private func storedMaxLength(on view: NSView) -> Int? {
         return objc_getAssociatedObject(view, &VInputFactory.maxLengthKey) as? Int
+    }
+}
+
+// MARK: - VInputTextField
+
+/// `NSTextField` subclass that can honour an `autoFocus` prop.
+///
+/// The prop usually arrives while the view is still detached (the bridge creates
+/// and configures nodes before appending them), and `makeFirstResponder` is a
+/// no-op without a window. `viewDidMoveToWindow` is the reliable point at which
+/// focus can actually be taken.
+final class VInputTextField: NSTextField {
+
+    /// Set by the `autoFocus` prop; cleared once focus has been requested.
+    var pendingAutoFocus = false
+
+    /// `autoCorrect` prop. `nil` leaves AppKit's defaults alone.
+    var autoCorrectEnabled: Bool?
+
+    func requestAutoFocus() {
+        guard window != nil else { return }
+        pendingAutoFocus = false
+        // Async so the rest of the current bridge flush (append + layout)
+        // finishes first; taking focus mid-flush can be undone by AppKit.
+        DispatchQueue.main.async { [weak self] in
+            guard let self, let window = self.window else { return }
+            window.makeFirstResponder(self)
+        }
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard pendingAutoFocus, window != nil else { return }
+        requestAutoFocus()
+    }
+
+    /// `NSTextField` itself exposes no autocorrection switches — the editing is
+    /// done by the window's shared field editor (`NSTextView`), which does. The
+    /// field editor is only ours while we are first responder, so the traits
+    /// have to be pushed both when focus is taken and when the prop changes
+    /// mid-edit.
+    func applyTextEditingTraits() {
+        guard let enabled = autoCorrectEnabled,
+              let editor = window?.fieldEditor(false, for: self) as? NSTextView else { return }
+        editor.isAutomaticSpellingCorrectionEnabled = enabled
+        editor.isAutomaticTextReplacementEnabled = enabled
+    }
+
+    override func becomeFirstResponder() -> Bool {
+        let result = super.becomeFirstResponder()
+        if result {
+            if let enabled = autoCorrectEnabled,
+               let editor = window?.fieldEditor(true, for: self) as? NSTextView {
+                editor.isAutomaticSpellingCorrectionEnabled = enabled
+                editor.isAutomaticTextReplacementEnabled = enabled
+            }
+        }
+        return result
     }
 }
 

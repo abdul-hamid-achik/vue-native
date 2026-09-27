@@ -21,13 +21,28 @@ public final class CertificatePinning: NSObject, URLSessionDelegate {
     private let pinsLock = NSLock()
 
     /// A URLSession configured with this object as its delegate for TLS validation.
-    /// Lazily created so we don't pay the cost if pinning is never configured.
-    public private(set) lazy var session: URLSession = {
+    ///
+    /// Created on first use and cached behind `sessionLock`. This used to be a
+    /// `lazy var`, whose initialisation Swift does not make atomic — and
+    /// `requestSession` is read from the jsQueue (fetch polyfill), the main thread
+    /// (image factories, now per request) and URLSession callback threads, so two
+    /// concurrent first touches could build two sessions and leak one.
+    private let sessionLock = NSLock()
+    private var cachedSession: URLSession?
+
+    public var session: URLSession {
+        sessionLock.lock()
+        defer { sessionLock.unlock() }
+        if let existing = cachedSession {
+            return existing
+        }
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 30
         config.timeoutIntervalForResource = 60
-        return URLSession(configuration: config, delegate: self, delegateQueue: nil)
-    }()
+        let created = URLSession(configuration: config, delegate: self, delegateQueue: nil)
+        cachedSession = created
+        return created
+    }
 
     /// Session that fetch implementations should use for a new request.
     ///
@@ -55,14 +70,38 @@ public final class CertificatePinning: NSObject, URLSessionDelegate {
     public func configurePins(_ domainPins: [String: [String]]) {
         var normalizedPins: [String: [String]] = [:]
         for (domain, pinList) in domainPins {
-            let hashes = pinList.compactMap { pin -> String? in
+            var hashes: [String] = []
+            var malformed = 0
+            for pin in pinList {
                 // Accept "sha256/XXXXX" format — strip the prefix
                 if pin.hasPrefix("sha256/") {
-                    return String(pin.dropFirst(7))
+                    hashes.append(String(pin.dropFirst(7)))
+                } else {
+                    malformed += 1
+                    NSLog(
+                        "[VueNative] CertificatePinning: ignoring malformed pin for %@ — "
+                        + "expected the form \"sha256/<base64 SPKI hash>\"",
+                        domain
+                    )
                 }
-                return nil
             }
-            normalizedPins[domain.lowercased()] = hashes
+
+            // An explicitly empty list means "stop pinning this domain". A
+            // non-empty list that parsed to nothing is a configuration error:
+            // treating it as a removal made a single typo silently disable
+            // pinning for that host, which is failing open on the one control
+            // whose whole job is to fail closed. Keep the previous pins instead.
+            if pinList.isEmpty {
+                normalizedPins[domain.lowercased()] = []
+            } else if !hashes.isEmpty {
+                normalizedPins[domain.lowercased()] = hashes
+            } else {
+                NSLog(
+                    "[VueNative] CertificatePinning: all %d pin(s) for %@ were malformed; "
+                    + "keeping the previously configured pins rather than unpinning the host",
+                    malformed, domain
+                )
+            }
         }
 
         // URLSession invokes its delegate on a background queue, while bridge

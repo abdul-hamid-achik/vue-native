@@ -73,7 +73,7 @@ final class VButtonFactory: NativeComponentFactory {
                 handler(nil)
             }
 
-        case "longpress":
+        case "longPress", "longpress":
             touchable.onLongPress = {
                 handler(nil)
             }
@@ -90,7 +90,7 @@ final class VButtonFactory: NativeComponentFactory {
         case "press":
             touchable.onPress = nil
 
-        case "longpress":
+        case "longPress", "longpress":
             touchable.onLongPress = nil
 
         default:
