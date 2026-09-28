@@ -68,11 +68,42 @@ final class HotReloadManagerTests: XCTestCase {
 
     // MARK: - URLSessionWebSocketDelegate Conformance
 
-    func testConformsToURLSessionWebSocketDelegate() {
-        // Assigning to the protocol existential keeps this a compile-time
-        // conformance check without an always-true runtime type test.
-        let delegate: URLSessionWebSocketDelegate = manager
-        XCTAssertTrue((delegate as AnyObject) === manager)
+    /// The conformance itself is enforced at compile time by passing `manager`
+    /// where the delegate is expected; an `XCTAssertTrue(manager is
+    /// URLSessionWebSocketDelegate)` would be an always-true runtime type test
+    /// that proves nothing. What IS worth asserting is the behaviour the
+    /// delegate contract drives: a closed socket must schedule a reconnect and
+    /// report it through `onStatusChange`, because a hot-reload client that
+    /// silently stops after one disconnect looks identical to a working one
+    /// until the next edit.
+    func testSocketCloseSchedulesReconnectAndReportsConnectingStatus() {
+        var statuses: [HotReloadStatus] = []
+        manager.onStatusChange = { status in statuses.append(status) }
+
+        // scheduleReconnect() guards on a known server URL, so the manager must
+        // have been pointed at one — exactly the state a live session is in
+        // when its socket drops. Nothing is listening on this port; the
+        // connect attempt failing is irrelevant to what is under test.
+        manager.connect(to: URL(string: "ws://localhost:8174")!)
+        statuses.removeAll()
+
+        let task = URLSession.shared.webSocketTask(with: URL(string: "ws://localhost:8174")!)
+        manager.urlSession(
+            URLSession.shared,
+            webSocketTask: task,
+            didCloseWith: .goingAway,
+            reason: nil,
+        )
+
+        XCTAssertTrue(
+            statuses.contains(where: { status in
+                if case .connecting = status { return true }
+                return false
+            }),
+            "A closed socket must report a reconnect attempt, got \(statuses)",
+        )
+
+        manager.disconnect()
     }
 
     // MARK: - Connect/Disconnect Cycle
