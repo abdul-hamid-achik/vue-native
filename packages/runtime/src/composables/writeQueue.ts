@@ -11,12 +11,15 @@ export function createWriteQueue() {
     const prev = writeQueues.get(key) ?? Promise.resolve()
     const next = prev.then(fn, fn) // Continue chain even on error
     writeQueues.set(key, next)
-    // Clean up completed chains
-    next.then(() => {
+    // Clean up completed chains. The cleanup branch must handle rejection too:
+    // with only a fulfilment handler, every failed write produced a second,
+    // internal unhandled rejection on top of the one the caller sees.
+    const settle = () => {
       if (writeQueues.get(key) === next) {
         writeQueues.delete(key)
       }
-    })
+    }
+    next.then(settle, settle)
     return next
   }
 }
