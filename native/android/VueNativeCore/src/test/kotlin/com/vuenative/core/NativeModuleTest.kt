@@ -1,6 +1,7 @@
 package com.vuenative.core
 
 import android.content.Context
+import android.os.Vibrator
 import android.widget.FrameLayout
 import androidx.test.core.app.ApplicationProvider
 import org.junit.Assert.assertEquals
@@ -11,6 +12,7 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
@@ -54,15 +56,23 @@ class NativeModuleTest {
     }
 
     @Test
-    fun testHapticsModuleVibrateDoesNotCrash() {
+    fun testHapticsModuleVibrateReachesTheVibrator() {
         val module = HapticsModule()
         module.initialize(context, bridge)
 
+        var callbacks = 0
         var resultError: String? = "not_called"
         module.invoke("vibrate", listOf("medium"), bridge) { _, error ->
+            callbacks++
             resultError = error
         }
+        assertEquals(1, callbacks)
         assertNull("vibrate should not produce error", resultError)
+
+        // The callback contract is only half the behaviour: the vibration must
+        // actually reach the system service, not just complete silently.
+        val vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+        assertTrue("vibrate should drive the Vibrator", shadowOf(vibrator).isVibrating())
     }
 
     @Test
