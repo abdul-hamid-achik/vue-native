@@ -996,7 +996,9 @@ describe('create command', () => {
 
       const content = settingsCall![1] as string
       expect(content).not.toContain('maven.pkg.github.com')
-      expect(content).toContain('jitpack.io')
+      // Every dependency resolves from google() + mavenCentral(); an unused
+      // third-party repository in a generated project is supply-chain surface.
+      expect(content).not.toContain('jitpack.io')
       expect(content).toContain('include(":app")')
       expect(content).toContain('include(":VueNativeCore")')
       expect(content).toContain('file("../native/android/VueNativeCore")')
