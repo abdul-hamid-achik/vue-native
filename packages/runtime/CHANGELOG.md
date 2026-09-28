@@ -1,5 +1,36 @@
 # @thelacanians/vue-native-runtime
 
+## 0.22.0
+
+### Patch Changes
+
+- 5d0e1dc: Make `useGesture` / `useComposedGestures` attach through the documented template-ref pattern.
+
+  A template ref on a component (`<VView ref="viewRef">`) does not resolve to the
+  native node: Vue's `setRef` stores the component's public instance proxy, whose
+  `$el` is the root element. Target resolution only accepted `{ id }`, so the
+  documented `useGesture(viewRef)` pattern threw `Target ref has no .value.id` at
+  mount — and because the deferred-attach watcher rethrew on every retry, a
+  gesture could never bind through a template ref at all. Resolution now unwraps
+  `$el`, and the public `GestureTarget` type accepts the component-instance
+  shape. A new test mounts a real `VView` with a template ref and asserts the
+  listener lands on the id of the created node.
+
+  The `gestures` example renders again as part of this: its five demos were plain
+  objects with `template:` strings, which the compiler-less runtime mounts as
+  no-ops; they are now single-file components under `app/demos/`.
+
+- 3af2cea: Fix a second, internal unhandled rejection on every failed storage write.
+
+  `createWriteQueue`'s chain cleanup registered only a fulfilment handler, so a
+  rejected write produced an unhandled rejection inside the queue itself on top
+  of the one the caller observes. In JavaScriptCore and V8 that is console noise
+  at best and a termination risk at worst, and it fired on the path that matters
+  most: a Keychain or EncryptedSharedPreferences failure during a token refresh.
+  The cleanup now settles on both outcomes. `writeQueue` also gains its first
+  tests: same-key ordering, cross-key concurrency, surviving a rejection, and
+  per-backend independence for identical keys.
+
 ## 0.21.0
 
 ### Minor Changes

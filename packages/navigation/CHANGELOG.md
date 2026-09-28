@@ -1,5 +1,13 @@
 # @thelacanians/vue-native-navigation
 
+## 0.22.0
+
+### Patch Changes
+
+- Updated dependencies [5d0e1dc]
+- Updated dependencies [3af2cea]
+  - @thelacanians/vue-native-runtime@0.22.0
+
 ## 0.21.0
 
 ### Minor Changes
