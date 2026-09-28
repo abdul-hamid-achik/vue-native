@@ -47,6 +47,26 @@ open class VueNativeWindowController: NSWindowController {
         ComponentRegistry.shared.register(name, factory: factory)
     }
 
+    /// Provide the factory for an *optional* component — one whose
+    /// implementation lives in an add-on product that `VueNativeMacOS`
+    /// deliberately does not link against (`VueNativeMacOSSVG` owns `<VSVG>`, the
+    /// framework's only SVGKit consumer).
+    ///
+    /// Add-on products call this from their own bootstrap; host apps should not
+    /// need it directly — use ``registerComponent(_:factory:)`` for your own
+    /// components. Unlike that method, this one also survives being called
+    /// before the component registry exists, because the factory is recorded for
+    /// the registry's default-registration pass as well as registered
+    /// immediately when the registry is already live.
+    ///
+    /// ```swift
+    /// // What `VueNativeMacOSSVG.register()` does:
+    /// VueNativeWindowController.provideOptionalComponent("VSVG", factory: VSVGFactory())
+    /// ```
+    public static func provideOptionalComponent(_ name: String, factory: NativeComponentFactory) {
+        ComponentRegistry.provideOptionalComponent(name, factory: factory)
+    }
+
     // MARK: - Private state
 
     private let runtime = JSRuntime.shared

@@ -3,8 +3,15 @@ import UIKit
 import SVGKit
 import ObjectiveC
 import FlexLayout
+import VueNativeCore
 
 /// Factory for VSVG — renders SVG content via SVGKit.
+///
+/// Lives in the optional `VueNativeCoreSVG` product, not in `VueNativeCore`:
+/// `<VSVG>` is the framework's only SVGKit consumer, and SVGKit (last release
+/// 2020) drags in CocoaLumberjack plus a platform-floor pin no other component
+/// needs. Keeping it in its own product means an app that never renders an SVG
+/// never resolves any of it. Hosts opt in with `VueNativeCoreSVG.register()`.
 ///
 /// The `source` prop is a dictionary with exactly one of:
 /// - `svg`: inline SVG markup string (parsed synchronously)
@@ -38,7 +45,7 @@ final class VSVGFactory: NativeComponentFactory {
 
     func updateProp(view: UIView, key: String, value: Any?) {
         guard let svgView = view as? SVGKFastImageView else {
-            StyleEngine.apply(key: key, value: value, to: view)
+            VueNativeComponentSupport.applyStyle(key: key, value: value, to: view)
             return
         }
 
@@ -64,7 +71,7 @@ final class VSVGFactory: NativeComponentFactory {
             }
 
         case "tintColor":
-            if let hex = value as? String, let color = UIColor.fromHex(hex) {
+            if let hex = value as? String, let color = VueNativeComponentSupport.color(fromHex: hex) {
                 objc_setAssociatedObject(
                     svgView,
                     &VSVGFactory.tintColorKey,
@@ -87,7 +94,7 @@ final class VSVGFactory: NativeComponentFactory {
             }
 
         default:
-            StyleEngine.apply(key: key, value: value, to: view)
+            VueNativeComponentSupport.applyStyle(key: key, value: value, to: view)
         }
     }
 

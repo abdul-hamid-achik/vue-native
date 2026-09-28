@@ -244,6 +244,14 @@ options:
 packages:
   VueNativeCore:
     path: ../native/ios/VueNativeCore
+  # <VSVG> ships in its own SPM package: it is the only component that needs
+  # SVGKit, so an app that never renders an SVG can delete this entry (and the
+  # product dependency below) and never resolve SVGKit at all — nor the
+  # CocoaLumberjack pin SVGKit's stale platform floors force on every consumer
+  # of it. Like VueNativeCore it is vendored by local path, because it depends
+  # on ../VueNativeCore and on VueNativeShared by relative path.
+  VueNativeCoreSVG:
+    path: ../native/ios/VueNativeCoreSVG
 
 targets:
   ${xcodeProjectName}:
@@ -257,6 +265,14 @@ targets:
     dependencies:
       - package: VueNativeCore
         product: VueNativeCore
+      # <VSVG> ships in its own product: it is the only component that needs
+      # SVGKit, so an app that never renders an SVG can delete these two lines
+      # (and the VueNativeCoreSVG package entry above) and never resolve SVGKit
+      # at all. It is listed here so <VSVG> works out of the box in a scaffolded
+      # app; Sources/AppDelegate.swift calls VueNativeCoreSVG.register() to
+      # activate it.
+      - package: VueNativeCoreSVG
+        product: VueNativeCoreSVG
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: ${bundleId}
@@ -357,6 +373,7 @@ targets:
 
       // ios/Sources/AppDelegate.swift
       await writeFile(join(iosSrcDir, 'AppDelegate.swift'), `import UIKit
+import VueNativeCoreSVG
 
 @main
 class AppDelegate: UIResponder, UIApplicationDelegate {
@@ -364,6 +381,13 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
     ) -> Bool {
+        // <VSVG> ships in the optional VueNativeCoreSVG product so an app that
+        // never renders an SVG does not have to link SVGKit. Registering here —
+        // before the scene builds the VueNativeViewController that mounts the
+        // bundle — is what makes <VSVG> resolve to a real view. Without it the
+        // framework logs an error naming this product and renders nothing.
+        // Delete this call (and the product from ios/project.yml) if unused.
+        VueNativeCoreSVG.register()
         return true
     }
 
@@ -753,6 +777,14 @@ targets:
     dependencies:
       - package: VueNativeMacOS
         product: VueNativeMacOS
+      # <VSVG> ships in its own product: it is the only component that needs
+      # SVGKit, so an app that never renders an SVG can delete these two lines
+      # and never resolve SVGKit at all (nor the CocoaLumberjack pin SVGKit's
+      # stale platform floors force on every consumer of it). It is listed here
+      # so <VSVG> works out of the box in a scaffolded app; Sources/AppDelegate.swift
+      # calls VueNativeMacOSSVG.register() to activate it.
+      - package: VueNativeMacOS
+        product: VueNativeMacOSSVG
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: ${bundleId}
@@ -893,6 +925,7 @@ app.run()
       // macos/Sources/AppDelegate.swift
       await writeFile(join(macosSrcDir, 'AppDelegate.swift'), `import AppKit
 import VueNativeMacOS
+import VueNativeMacOSSVG
 
 /// Application delegate for the generated macOS host.
 ///
@@ -905,6 +938,17 @@ import VueNativeMacOS
 /// Override \`makeMainMenu()\` to replace or extend the standard App / Edit /
 /// View / Window / Help menu. \`useMenu()\` merges into whatever is installed.
 class AppDelegate: VueNativeAppDelegate {
+    override func applicationDidFinishLaunching(_ notification: Notification) {
+        // <VSVG> ships in the optional VueNativeMacOSSVG product so an app that
+        // never renders an SVG does not have to link SVGKit. Registering before
+        // super — which creates the window controller and mounts the bundle — is
+        // what makes <VSVG> resolve to a real view. Without it the framework
+        // logs an error naming this product and renders nothing. Delete this
+        // override (and the product from macos/project.yml) if unused.
+        VueNativeMacOSSVG.register()
+        super.applicationDidFinishLaunching(notification)
+    }
+
     override func createWindowController() -> VueNativeWindowController {
         MainWindowController()
     }

@@ -3,6 +3,7 @@ import XCTest
 import UIKit
 import SVGKit
 @testable import VueNativeCore
+@testable import VueNativeCoreSVG
 
 /// Tests for VSVGFactory.
 ///

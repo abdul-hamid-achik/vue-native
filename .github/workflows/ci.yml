@@ -450,6 +450,24 @@ jobs:
             -skipPackagePluginValidation \
             -resultBundlePath TestResults.xcresult
 
+      # The optional <VSVG> product is a sibling SPM package with its own test
+      # target (the VSVG factory tests live there), so the VueNativeCore scheme
+      # above cannot see it. Without this step a regression in the only SVGKit
+      # consumer would ship with every iOS gate green.
+      - name: Test VueNativeCoreSVG (optional VSVG product)
+        run: |
+          SIMULATOR_ID="$(
+            xcrun simctl list devices available -j |
+              python3 -c 'import json, sys; devices = json.load(sys.stdin)["devices"].values(); phones = (device for runtime in devices for device in runtime if device.get("isAvailable") and device["name"].startswith("iPhone")); print(next(phones)["udid"])'
+          )"
+          cd native/ios/VueNativeCoreSVG
+          xcodebuild test \
+            -scheme VueNativeCoreSVG \
+            -sdk iphonesimulator \
+            -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
+            -skipPackagePluginValidation \
+            -resultBundlePath TestResults.xcresult
+
       # Only test that boots a real native host. `ios.simulator` is safe to
       # require here: the `Test VueNativeCore` step above already hard-fails when
       # the image ships no iPhone simulator, so requiring it adds no new failure

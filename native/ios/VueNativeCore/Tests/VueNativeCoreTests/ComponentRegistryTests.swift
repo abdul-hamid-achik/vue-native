@@ -49,6 +49,38 @@ final class ComponentRegistryTests: XCTestCase {
         XCTAssertNil(view, "createView should return nil for unknown component types")
     }
 
+    // MARK: - Optional Components Are Not Built In
+
+    func testVSVGIsNotRegisteredByCoreDefaults() {
+        // `<VSVG>` moved to the optional VueNativeCoreSVG product so an app that
+        // never renders an SVG does not resolve SVGKit. This test target cannot
+        // import that product (it must stay SVGKit-free to prove the split), so
+        // it asserts only the core-side half: the tag is absent from the default
+        // registration. `VueNativeCoreSVGTests` covers the other half — that
+        // `VueNativeCoreSVG.register()` puts it back.
+        //
+        // The tag is deliberately NOT in `expectedTypes` above, and must not be
+        // added there.
+        XCTAssertNil(
+            registry.factory(for: "VSVG"),
+            "VueNativeCore must not register <VSVG>; it is provided by the VueNativeCoreSVG product"
+        )
+    }
+
+    func testUnregisteredOptionalComponentDiagnosticNamesTheProductAndTheCall() {
+        // createView returning nil is not a crash, so an app that linked nothing
+        // and rendered `<VSVG>` would get an invisible gap. The diagnostic has to
+        // name the missing product and the exact registration call.
+        let hint = ComponentRegistry.optionalComponentHints["VSVG"]
+        XCTAssertNotNil(hint, "<VSVG> must be listed as an optional component")
+        XCTAssertTrue(hint?.contains("VueNativeCoreSVG") == true, "the hint should name the product")
+        XCTAssertTrue(hint?.contains("register()") == true, "the hint should name the call")
+
+        let message = ComponentRegistry.unknownComponentMessage(for: "VSVG", registered: [])
+        XCTAssertTrue(message.contains("VueNativeCoreSVG"), "the message should name the product")
+        XCTAssertTrue(message.contains("register()"), "the message should name the call")
+    }
+
     // MARK: - Specific View Type Assertions
 
     func testVTextCreatesUILabel() {

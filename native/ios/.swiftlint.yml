@@ -15,9 +15,18 @@
 included:
   - VueNativeCore/Sources
   - VueNativeCore/Tests
+  # Sibling package holding `<VSVG>`, split out so consumers that never render an
+  # SVG do not resolve SVGKit. It is a separate SPM package rather than a second
+  # product of VueNativeCore (a second product renames the scheme CI tests), but
+  # it is still iOS Swift under this directory and owned by this job — unlike
+  # ../shared and ../macos above — so it is linted here rather than left
+  # uncovered.
+  - VueNativeCoreSVG/Sources
+  - VueNativeCoreSVG/Tests
 
 excluded:
   - VueNativeCore/.build
+  - VueNativeCoreSVG/.build
 
 # Rules
 #

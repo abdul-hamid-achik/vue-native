@@ -4,6 +4,18 @@ Renders Scalable Vector Graphics natively — vector-crisp at any resolution. Ba
 [SVGKit](https://github.com/SVGKit/SVGKit) on iOS/macOS and
 [AndroidSVG](https://github.com/BigBadaboom/androidsvg) on Android.
 
+## Native host setup (iOS/macOS)
+
+`<VSVG>` is the only component that needs SVGKit, so on iOS and macOS it ships in an
+optional add-on product — `VueNativeCoreSVG` / `VueNativeMacOSSVG` — instead of the core
+framework, and an app that never renders an SVG never resolves SVGKit. Projects made with
+`vue-native create` already link the product and call `VueNativeCoreSVG.register()` /
+`VueNativeMacOSSVG.register()` at launch, so they need nothing. If you integrate the
+framework by hand, add the add-on product to your app target and call its `register()`
+once before the first view (or window) is created; without it `<VSVG>` renders nothing and
+the framework logs an error naming the product and the call that fixes it. Android ships
+VSVG in the core library and needs no extra setup.
+
 ## Props
 
 | Prop | Type | Default | Description |

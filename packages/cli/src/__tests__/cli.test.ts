@@ -702,6 +702,9 @@ describe('create command', () => {
       expect(content).toContain('path: ../dist/vue-native-bundle.js')
       expect(content).toContain('buildPhase: resources')
       expect(content).not.toMatch(/^\s{4}resources:/m)
+      // <VSVG> lives in its own product so an app that never renders an SVG does
+      // not resolve SVGKit. A scaffolded app keeps it working out of the box.
+      expect(content).toContain('product: VueNativeCoreSVG')
     })
 
     it('creates ios/Sources/Info.plist', async () => {
@@ -759,6 +762,13 @@ describe('create command', () => {
       const sceneContent = sceneDelegateCall![1] as string
       expect(sceneContent).toContain('VueNativeViewController')
       expect(sceneContent).toContain('vue-native-bundle')
+
+      // <VSVG> ships in the optional VueNativeCoreSVG product, so the generated
+      // host has to bootstrap it explicitly — otherwise a scaffolded app that
+      // renders an SVG gets a blank view and a log line, not a working component.
+      const appContent = appDelegateCall![1] as string
+      expect(appContent).toContain('import VueNativeCoreSVG')
+      expect(appContent).toContain('VueNativeCoreSVG.register()')
     })
   })
 
@@ -794,6 +804,9 @@ describe('create command', () => {
       expect(content).toContain('macOS: "15.0"')
       expect(content).toContain('MACOSX_DEPLOYMENT_TARGET: "15.0"')
       expect(content).toContain('product: VueNativeMacOS')
+      // <VSVG> lives in its own product so an app that never renders an SVG does
+      // not resolve SVGKit. A scaffolded app keeps it working out of the box.
+      expect(content).toContain('product: VueNativeMacOSSVG')
     })
 
     it('copies the Vite output into the app bundle as a resource', async () => {
@@ -896,6 +909,16 @@ describe('create command', () => {
       expect(appDelegate).toContain('VueNativeAppDelegate')
       expect(appDelegate).toContain('createWindowController')
       expect(appDelegate).toContain('MainWindowController()')
+
+      // <VSVG> ships in the optional VueNativeMacOSSVG product, so the generated
+      // host bootstraps it — before super, which creates the window controller
+      // and mounts the bundle.
+      expect(appDelegate).toContain('import VueNativeMacOSSVG')
+      expect(appDelegate).toContain('VueNativeMacOSSVG.register()')
+      expect(appDelegate).toContain('super.applicationDidFinishLaunching(notification)')
+      expect(appDelegate!.indexOf('VueNativeMacOSSVG.register()')).toBeLessThan(
+        appDelegate!.indexOf('super.applicationDidFinishLaunching(notification)'),
+      )
 
       expect(windowController).toContain('VueNativeWindowController')
       expect(windowController).toContain('override var bundleName: String { "vue-native-bundle" }')

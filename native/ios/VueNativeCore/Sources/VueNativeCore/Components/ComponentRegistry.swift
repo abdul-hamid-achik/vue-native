@@ -25,6 +25,28 @@ final class ComponentRegistry {
     /// Mapping from component type strings to factory instances.
     private var factories: [String: NativeComponentFactory] = [:]
 
+    /// Factories contributed by optional add-on products, keyed by component
+    /// tag. Filled through ``provideOptionalComponent(_:factory:)`` and read by
+    /// `registerDefaults()`, so an add-on's component joins the default set
+    /// without core linking against it.
+    private static var optionalComponentFactories: [String: NativeComponentFactory] = [:]
+
+    /// Components whose factories live in optional add-on products that core
+    /// deliberately does not link against, mapped to the fix a host must apply.
+    ///
+    /// `<VSVG>` is the only entry today: it is the framework's sole consumer of
+    /// SVGKit, so an app that never renders an SVG should not have to resolve
+    /// SVGKit — nor the CocoaLumberjack pin SVGKit's stale platform floors force
+    /// on every consumer. Core keeps this table (instead of letting the add-on
+    /// supply it) precisely so an app that skipped the add-on can be told what
+    /// to do; a tag that resolves to nothing otherwise renders as an invisible
+    /// gap with no diagnostic to act on.
+    static let optionalComponentHints: [String: String] = [
+        "VSVG": "add the VueNativeCoreSVG library product to your app target and call "
+            + "VueNativeCoreSVG.register() before the first view is created (for example in "
+            + "application(_:didFinishLaunchingWithOptions:))"
+    ]
+
     // MARK: - Initialization
 
     private init() {
@@ -60,8 +82,32 @@ final class ComponentRegistry {
         register("VRadio", factory: VRadioFactory())
         register("VDropdown", factory: VDropdownFactory())
         register("VVideo", factory: VVideoFactory())
-        register("VSVG", factory: VSVGFactory())
+        // <VSVG> is not built in. Its factory ships in the optional
+        // VueNativeCoreSVG product — the only thing in the framework that needs
+        // SVGKit — and installs itself through
+        // ``provideOptionalComponent(_:factory:)``. Registering it here (rather
+        // than leaving it to the add-on alone) keeps the tag part of the default
+        // component set whenever that product is present. When it is not,
+        // `createView(type:)` reports the missing product via
+        // ``optionalComponentHints`` instead of silently rendering nothing.
+        if let svgFactory = Self.optionalComponentFactories["VSVG"] {
+            register("VSVG", factory: svgFactory)
+        }
         register("__ROOT__", factory: VRootFactory())
+    }
+
+    // MARK: - Optional (add-on) components
+
+    /// Contribute the factory for a component core does not link against.
+    ///
+    /// Add-on products call this from their own bootstrap — `VueNativeCoreSVG`
+    /// for `<VSVG>`. Safe to call before *or* after the registry is first used:
+    /// the factory is recorded for `registerDefaults()` and registered
+    /// immediately when the singleton already exists, so a host's bootstrap
+    /// order cannot silently drop a component.
+    static func provideOptionalComponent(_ type: String, factory: NativeComponentFactory) {
+        optionalComponentFactories[type] = factory
+        shared.register(type, factory: factory)
     }
 
     // MARK: - Registration
@@ -85,16 +131,7 @@ final class ComponentRegistry {
     /// so it can be retrieved later for prop updates and event handling.
     func createView(type: String) -> UIView? {
         guard let factory = factories[type] else {
-            #if DEBUG
-            let registered = factories.keys.sorted()
-            var message = "[VueNative] Warning: No factory registered for component type '\(type)'. Registered types: \(registered.joined(separator: ", "))"
-            if let suggestion = Self.suggestion(for: type, among: registered) {
-                message += ". Did you mean '\(suggestion)'?"
-            }
-            NSLog("%@", message)
-            #else
-            NSLog("[VueNative] Warning: No factory registered for component type '%@'", type)
-            #endif
+            NSLog("%@", Self.unknownComponentMessage(for: type, registered: factories.keys.sorted()))
             return nil
         }
 
@@ -163,6 +200,32 @@ final class ComponentRegistry {
     }
 
     // MARK: - Debug helpers
+
+    /// Build the diagnostic logged when a tag has no factory.
+    ///
+    /// A tag listed in ``optionalComponentHints`` is not a typo — its factory
+    /// lives in an add-on product the host has not linked or has not
+    /// bootstrapped — so the message names that product and the exact call
+    /// instead of dumping the registered list. That distinction is the whole
+    /// point of the split: `createView` returning nil is not a crash, so an
+    /// unregistered `<VSVG>` would otherwise be an invisible gap in the UI with
+    /// nothing actionable in the log.
+    static func unknownComponentMessage(for type: String, registered: [String]) -> String {
+        if let hint = optionalComponentHints[type] {
+            return "[VueNative] Error: <\(type)> is provided by an optional product that has not "
+                + "been registered, so it renders nothing. To fix: \(hint)."
+        }
+
+        #if DEBUG
+        var message = "[VueNative] Warning: No factory registered for component type '\(type)'. Registered types: \(registered.joined(separator: ", "))"
+        if let suggestion = suggestion(for: type, among: registered) {
+            message += ". Did you mean '\(suggestion)'?"
+        }
+        return message
+        #else
+        return "[VueNative] Warning: No factory registered for component type '\(type)'"
+        #endif
+    }
 
     /// Suggest a registered component type for a mistyped name. Used only for
     /// DEBUG diagnostics so an unknown component error points at the likely fix.

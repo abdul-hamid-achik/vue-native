@@ -64,3 +64,43 @@ public extension NativeComponentFactory {
         child.removeFromSuperview()
     }
 }
+
+// MARK: - VueNativeComponentSupport
+
+/// Core services a ``NativeComponentFactory`` needs but cannot reach across a
+/// module boundary: the built-in style router and the shared hex color parser.
+///
+/// This is what lets a factory live outside `VueNativeMacOS` — the optional
+/// `VueNativeMacOSSVG` product, or a host's own custom component — without
+/// losing framework behaviour. Both are `internal` in core, so without this
+/// wrapper an out-of-module factory would silently stop applying `width`,
+/// `backgroundColor`, `borderRadius` and every other prop it does not handle
+/// itself.
+///
+/// ```swift
+/// func updateProp(view: NSView, key: String, value: Any?) {
+///     switch key {
+///     case "source": render(value, into: view)
+///     default: VueNativeComponentSupport.applyStyle(key: key, value: value, to: view)
+///     }
+/// }
+/// ```
+@MainActor
+public enum VueNativeComponentSupport {
+
+    /// Apply a single built-in style prop to `view`.
+    ///
+    /// The same `StyleEngine.apply(key:value:to:)` entry point core factories
+    /// fall through to for props they do not handle. Unknown keys are ignored,
+    /// exactly as they are inside core.
+    public static func applyStyle(key: String, value: Any?, to view: NSView) {
+        StyleEngine.apply(key: key, value: value, to: view)
+    }
+
+    /// Parse a hex color string (`#rgb`, `#rrggbb`, `#rrggbbaa`, with or without
+    /// the leading `#`) exactly as the built-in factories do. Returns `nil` for
+    /// anything unparseable rather than falling back to a default color.
+    public static func color(fromHex hex: String) -> NSColor? {
+        NSColor.fromHex(hex)
+    }
+}

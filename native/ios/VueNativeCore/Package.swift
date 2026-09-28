@@ -1,4 +1,11 @@
 // swift-tools-version: 5.9
+//
+// The iOS core framework. Deliberately ONE product: Xcode auto-generates one
+// scheme per SPM product plus a `<Package>-Package` scheme, and with a single
+// product the package scheme is named after it and carries the test action —
+// which is what `xcodebuild test -scheme VueNativeCore` (CI, `bun run test:ios`,
+// AGENTS.md) relies on. Optional components that drag in heavy third-party
+// dependencies therefore live in sibling packages, not in extra products here.
 import PackageDescription
 
 let package = Package(
@@ -11,35 +18,24 @@ let package = Package(
         // Yoga layout engine — layoutBox/FlexLayout v2.x wraps Yoga 3.0.4
         // 2.1k stars, actively maintained (last release Dec 2025), full SPM support
         .package(url: "https://github.com/layoutBox/FlexLayout.git", from: "2.0.0"),
-        // SVG rendering for the VSVG component (iOS + macOS compatible)
-        .package(url: "https://github.com/SVGKit/SVGKit.git", from: "3.0.0"),
-        // SVGKit (last release 2020) declares `.iOS(.v9)` and depends on
-        // CocoaLumberjack with an open `.upToNextMajor(from: "3.7.0")` range.
-        // CocoaLumberjack 3.10 raised its own floor to iOS 15, so any FRESH
-        // resolution fails with "requires minimum platform version 15.0 … but
-        // this target supports 12.0 (in target 'SVGKit')". The tracked
-        // Package.resolved hid this for in-repo builds, which is why
-        // `xcodebuild` here succeeded while every app that consumes this package
-        // as a dependency — including `examples/counter` and anything a user
-        // scaffolds — failed. Declaring the dependency explicitly constrains the
-        // shared resolution graph to the version this package is verified
-        // against. Remove this pin only together with SVGKit itself; splitting
-        // VSVG into its own product so consumers can avoid SVGKit entirely is
-        // the real fix and is tracked separately.
-        .package(url: "https://github.com/CocoaLumberjack/CocoaLumberjack.git", .upToNextMinor(from: "3.9.1")),
         // Shared cross-platform Swift code used by both iOS and macOS
         .package(path: "../../shared/VueNativeShared")
+        //
+        // SVGKit — and the CocoaLumberjack `.upToNextMinor(from: "3.9.1")` pin
+        // that used to sit beside it — are GONE from this manifest. `<VSVG>` was
+        // the only consumer of SVGKit and it moved to the sibling
+        // ../VueNativeCoreSVG package, so nothing here references SVGKit any
+        // more. That pin's sole purpose was to survive SVGKit's stale platform
+        // floors (SVGKit declares iOS 9 while CocoaLumberjack 3.10 requires
+        // iOS 15); with SVGKit gone there is nothing left for it to constrain,
+        // so it was deleted rather than moved. Consumers of VueNativeCore now
+        // resolve FlexLayout + Yoga + VueNativeShared and nothing else.
     ],
     targets: [
         .target(
             name: "VueNativeCore",
             dependencies: [
                 .product(name: "FlexLayout", package: "FlexLayout"),
-                .product(name: "SVGKit", package: "SVGKit"),
-                // Referenced only to constrain the shared resolution graph to a
-                // CocoaLumberjack that SVGKit's iOS 9 floor can still build
-                // against; see the package declaration above.
-                .product(name: "CocoaLumberjack", package: "CocoaLumberjack"),
                 "VueNativeShared"
             ],
             path: "Sources/VueNativeCore",

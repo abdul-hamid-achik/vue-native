@@ -1,6 +1,7 @@
 import AppKit
 import XCTest
 @testable import VueNativeMacOS
+@testable import VueNativeMacOSSVG
 
 @MainActor
 final class VSVGFactoryTests: XCTestCase {

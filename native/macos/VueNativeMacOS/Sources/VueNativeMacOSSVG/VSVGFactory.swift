@@ -1,6 +1,7 @@
 import AppKit
 import ObjectiveC
 import SVGKit
+import VueNativeMacOS
 
 /// Flipped container view that hosts the NSImageView used to display a rendered
 /// SVG. The container participates in the LayoutNode flexbox system; the inner
@@ -33,6 +34,12 @@ final class VSVGView: FlippedView {
 }
 
 /// Factory for VSVG — renders Scalable Vector Graphics natively via SVGKit.
+///
+/// Lives in the optional `VueNativeMacOSSVG` product, not in `VueNativeMacOS`:
+/// `<VSVG>` is the framework's only SVGKit consumer, and SVGKit (last release
+/// 2020) drags in CocoaLumberjack plus a platform-floor pin no other component
+/// needs. Keeping it in its own product means an app that never renders an SVG
+/// never resolves any of it. Hosts opt in with `VueNativeMacOSSVG.register()`.
 ///
 /// Accepts a `source` prop with exactly one of:
 /// - `{ svg: "<svg>…</svg>" }` — inline SVG markup (parsed synchronously).
@@ -74,7 +81,7 @@ final class VSVGFactory: NativeComponentFactory {
 
     func updateProp(view: NSView, key: String, value: Any?) {
         guard let svgView = view as? VSVGView else {
-            StyleEngine.apply(key: key, value: value, to: view)
+            VueNativeComponentSupport.applyStyle(key: key, value: value, to: view)
             return
         }
 
@@ -88,7 +95,7 @@ final class VSVGFactory: NativeComponentFactory {
             applyTintColor(value, to: svgView)
 
         default:
-            StyleEngine.apply(key: key, value: value, to: view)
+            VueNativeComponentSupport.applyStyle(key: key, value: value, to: view)
         }
     }
 
@@ -351,7 +358,7 @@ final class VSVGFactory: NativeComponentFactory {
     // MARK: - Tint
 
     private func applyTintColor(_ value: Any?, to view: VSVGView) {
-        if let hex = value as? String, let color = NSColor.fromHex(hex) {
+        if let hex = value as? String, let color = VueNativeComponentSupport.color(fromHex: hex) {
             objc_setAssociatedObject(
                 view, &VSVGFactory.tintColorKey,
                 color, .OBJC_ASSOCIATION_RETAIN_NONATOMIC
