@@ -565,13 +565,95 @@ for (const key of baselinedComponentGaps) {
   }
 }
 
-if (componentDrift.length > 0) {
-  console.error(`\nComponent contract drift detected (${componentDrift.length}):`)
-  for (const contract of componentDrift) console.error(`  - ${contract}`)
+// ── Style-swallowing factory ratchet ──────────────────────────────────────
+// The bridge routes updateStyle through the factory's updateProp for every
+// node that has a registered factory, so a factory whose updateProp never
+// falls through to the platform style router silently drops ALL css for that
+// component: no crash, no warning, just an unstyled view. Four factories per
+// platform do this today by design (two present overlays whose trigger view
+// is inert, two are no-op stubs); their XCTest twins lock the behaviour in.
+// Any NEW factory doing it is drift, and a baselined one that gains a router
+// is a stale entry, so the list can only shrink.
+const styleSwallowPlatforms = {
+  android: {
+    dirs: [join(root, 'native/android/VueNativeCore/src/main/kotlin/com/vuenative/core/Components/Factories')],
+    filePattern: /Factory\.kt$/,
+    updateProp: /override fun updateProp/,
+    router: /StyleEngine\.apply/,
+  },
+  ios: {
+    dirs: [
+      join(root, 'native/ios/VueNativeCore/Sources/VueNativeCore/Components/Factories'),
+      join(root, 'native/ios/VueNativeCoreSVG/Sources/VueNativeCoreSVG'),
+    ],
+    filePattern: /Factory\.swift$/,
+    updateProp: /func updateProp/,
+    router: /StyleEngine\.apply|VueNativeComponentSupport/,
+  },
+  macos: {
+    dirs: [
+      join(root, 'native/macos/VueNativeMacOS/Sources/VueNativeMacOS/Components/Factories'),
+      join(root, 'native/macos/VueNativeMacOS/Sources/VueNativeMacOSSVG'),
+    ],
+    filePattern: /Factory\.swift$/,
+    updateProp: /func updateProp/,
+    router: /StyleEngine\.apply|VueNativeComponentSupport/,
+  },
+}
+
+const baselinedStyleSwallowers = new Set([
+  'android|VActionSheet',
+  'android|VAlertDialog',
+  'android|VRefreshControl',
+  'android|VStatusBar',
+  'ios|VActionSheet',
+  'ios|VAlertDialog',
+  'ios|VRefreshControl',
+  'ios|VStatusBar',
+  'macos|VActionSheet',
+  'macos|VAlertDialog',
+  'macos|VRefreshControl',
+  'macos|VStatusBar',
+])
+
+const styleSwallowDrift = []
+const styleSwallowSeen = new Set()
+
+for (const [platformName, config] of Object.entries(styleSwallowPlatforms)) {
+  for (const dir of config.dirs) {
+    for (const file of await readdir(dir)) {
+      if (!config.filePattern.test(file)) continue
+      const source = await readFile(join(dir, file), 'utf8')
+      if (!config.updateProp.test(source) || config.router.test(source)) continue
+      const key = `${platformName}|${file.replace(/Factory\.(swift|kt)$/, '')}`
+      if (baselinedStyleSwallowers.has(key)) {
+        styleSwallowSeen.add(key)
+      } else {
+        styleSwallowDrift.push(
+          `${platformName}: ${file} handles updateProp without falling through to the style `
+          + 'router, so every style prop it does not handle is silently dropped',
+        )
+      }
+    }
+  }
+}
+
+for (const key of baselinedStyleSwallowers) {
+  if (!styleSwallowSeen.has(key)) {
+    styleSwallowDrift.push(`stale baseline entry "${key}" — the factory now routes styles; remove it from baselinedStyleSwallowers`)
+  }
+}
+
+const contractDrift = [...componentDrift, ...styleSwallowDrift]
+
+if (contractDrift.length > 0) {
+  console.error(`\nComponent contract drift detected (${contractDrift.length}):`)
+  for (const contract of contractDrift) console.error(`  - ${contract}`)
   process.exitCode = 1
 } else {
   process.stdout.write(
     `Component registries match the runtime. ${baselinedSeen.size} known prop/event gap(s) `
-    + 'are baselined in check-native-contracts.mjs and must only shrink.\n',
+    + `and ${styleSwallowSeen.size} style-swallowing factor(y/ies) are baselined in `
+    + 'check-native-contracts.mjs and must only shrink.\n',
   )
 }
