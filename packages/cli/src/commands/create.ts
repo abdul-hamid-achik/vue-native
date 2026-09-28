@@ -38,7 +38,7 @@ const VUE_COHORT_PACKAGES = [
     : []),
 ]
 
-function getCliPackageDir(): string {
+export function getCliPackageDir(): string {
   const moduleDir = dirname(fileURLToPath(import.meta.url))
   const parentDir = dirname(moduleDir)
 

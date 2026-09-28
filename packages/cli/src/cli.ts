@@ -11,6 +11,7 @@ import { generateCommand } from './commands/generate.js'
 import { doctorCommand } from './commands/doctor.js'
 import { inspectCommand } from './commands/inspect.js'
 import { capabilitiesCommand } from './commands/capabilities.js'
+import { upgradeCommand } from './commands/upgrade.js'
 import { ConfigError } from './config.js'
 
 const cliDir = dirname(fileURLToPath(import.meta.url))
@@ -29,6 +30,7 @@ program.addCommand(generateCommand)
 program.addCommand(doctorCommand)
 program.addCommand(inspectCommand)
 program.addCommand(capabilitiesCommand)
+program.addCommand(upgradeCommand)
 
 program.parseAsync(process.argv).catch((err) => {
   if (err instanceof ConfigError) {
