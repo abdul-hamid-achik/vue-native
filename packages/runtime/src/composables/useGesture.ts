@@ -81,8 +81,13 @@ export interface GestureHandler {
 }
 
 type AnimatableNode = NativeNode | { id: number }
-type GestureTargetRef = Ref<AnimatableNode | null | undefined>
-type GestureTarget = number | GestureTargetRef | AnimatableNode
+/**
+ * The shape a template ref on a component actually resolves to: Vue's `setRef`
+ * stores the component's public instance, whose `$el` is the root native node.
+ */
+type ComponentInstanceLike = { $el: AnimatableNode | null | undefined }
+type GestureTargetRef = Ref<AnimatableNode | ComponentInstanceLike | null | undefined>
+type GestureTarget = number | GestureTargetRef | AnimatableNode | ComponentInstanceLike
 
 function hasViewId(value: unknown): value is { id: number } {
   return typeof value === 'object'
@@ -93,6 +98,24 @@ function hasViewId(value: unknown): value is { id: number } {
 
 function isGestureRef(target: GestureTarget): target is GestureTargetRef {
   return typeof target === 'object' && target !== null && 'value' in target
+}
+
+/**
+ * Extract a native view id from a resolved target value, or `null` when the
+ * value carries none.
+ *
+ * A template ref on a component (`<VView ref="viewRef">`) does not resolve to
+ * the native node: Vue's `setRef` stores the component's public instance
+ * proxy, whose `$el` is the component's root element. Accepting both shapes is
+ * what makes the documented `useGesture(viewRef)` pattern attach at all.
+ */
+function viewIdOf(value: unknown): number | null {
+  if (hasViewId(value)) return value.id
+  if (typeof value === 'object' && value !== null && '$el' in value) {
+    const el = (value as { $el?: unknown }).$el
+    if (hasViewId(el)) return el.id
+  }
+  return null
 }
 
 /**
@@ -110,10 +133,12 @@ function tryResolveViewId(target: GestureTarget): number | null {
   if (isGestureRef(target)) {
     const val = target.value
     if (val == null) return null
-    if (hasViewId(val)) return val.id
+    const id = viewIdOf(val)
+    if (id !== null) return id
     throw new Error('[useGesture] Target ref has no .value.id — is the ref attached to a component?')
   }
-  if (hasViewId(target)) return target.id
+  const id = viewIdOf(target)
+  if (id !== null) return id
   throw new Error('[useGesture] Invalid target. Pass a number, template ref, or NativeNode.')
 }
 

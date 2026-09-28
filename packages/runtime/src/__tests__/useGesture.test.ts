@@ -78,6 +78,63 @@ describe('useGesture', () => {
       expect(addOps[0].args).toEqual([77, 'pan'])
     })
 
+    it('unwraps a component public instance via $el', async () => {
+      // A template ref on a component resolves to the component's public
+      // instance proxy, not the native node; the node is its $el.
+      let nodeRef: ReturnType<typeof ref<{ $el: { id: number } } | null>>
+      await withSetup(() => {
+        nodeRef = ref<{ $el: { id: number } } | null>(null)
+        useGesture(nodeRef, { pan: true })
+        return {}
+      })
+
+      await nextTick()
+      expect(mockBridge.getOpsByType('addEventListener').length).toBe(0)
+
+      nodeRef!.value = { $el: { id: 55 } }
+      await nextTick()
+
+      const addOps = mockBridge.getOpsByType('addEventListener')
+      expect(addOps.length).toBe(1)
+      expect(addOps[0].args).toEqual([55, 'pan'])
+    })
+
+    it('attaches through a real template ref on a mounted VView', async () => {
+      // End-to-end proof of the documented pattern: <VView ref="viewRef"> +
+      // useGesture(viewRef) during setup. The ref is null during setup and
+      // holds the component proxy after mount, so attachment must survive
+      // both facts.
+      const { createApp } = await import('../index')
+      const { defineComponent, h } = await import('@vue/runtime-core')
+      const { VView } = await import('../components/VView')
+      const { resetNodeId } = await import('../node')
+
+      mockBridge.reset()
+      NativeBridge.reset()
+      resetNodeId()
+
+      let viewRef: any
+      const app = createApp(defineComponent({
+        setup() {
+          viewRef = ref(null)
+          useGesture(viewRef, { pan: true })
+          return () => h(VView, { ref: viewRef })
+        },
+      }))
+      app.start()
+      await nextTick()
+
+      const createdView = mockBridge.getOpsByType('create').find(o => o.args[1] === 'VView')
+      expect(createdView).toBeDefined()
+
+      const addOps = mockBridge.getOpsByType('addEventListener')
+      expect(addOps.length).toBe(1)
+      expect(addOps[0].args).toEqual([createdView!.args[0], 'pan'])
+
+      app.unmount()
+      await nextTick()
+    })
+
     it('useComposedGestures accepts an empty ref, exposes attach/detach, and registers once', async () => {
       let nodeRef: ReturnType<typeof ref<{ id: number } | null>>
       let composed: ReturnType<typeof useComposedGestures> | undefined

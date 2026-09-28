@@ -27,23 +27,13 @@ This example demonstrates gesture handling in Vue Native apps using `useGesture`
 
 Force touch is supported by `useGesture` but is not demoed here.
 
-> ⚠️ **Known broken — this app currently renders nothing.** Two separate defects,
-> both verified against the runtime source:
->
-> 1. The five demos are plain objects with a `template:` string. The runtime
->    re-exports `@vue/runtime-core` only and never calls
->    `registerRuntimeCompiler`, so no compiler exists to turn those strings into
->    render functions — Vue warns and mounts a no-op. They need to be `.vue` SFCs
->    or `h()` render functions.
-> 2. `useGesture(viewRef, …)` is called during `setup()`, but a template ref is
->    only assigned at mount. `resolveViewId` then throws
->    `[useGesture] Target ref has no .value.id`. `target` is optional, so the fix
->    is `useGesture(undefined, …)` plus `onMounted(() => attach(viewRef))`.
->    `useComposedGestures` attaches eagerly and returns no `attach`, so
->    `ComposedDemo` cannot be fixed from example code alone — it needs a runtime
->    change.
->
-> The same eager-attach pattern is shown in `docs/src/composables/useGesture.md`.
+> **Why the demos are SFCs.** The runtime re-exports `@vue/runtime-core` only and
+> ships no template compiler, so a plain object with a `template:` string mounts
+> a no-op. Each demo lives in `app/demos/` as a single-file component, compiled
+> at build time by `@vitejs/plugin-vue`. Gesture attachment needs no lifecycle
+> gymnastics: `useGesture(viewRef, …)` / `useComposedGestures(viewRef)` accept a
+> template ref that is still `null` during `setup()` and attach themselves once
+> the view exists.
 
 ## Running
 
