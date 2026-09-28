@@ -419,6 +419,12 @@ function exportSpecifiers(list) {
  * with the live module's own keys when it can be loaded. Returns null when the
  * dependency is not installed; the caller then skips the runtime named-import
  * check rather than guessing.
+ *
+ * The dependency is resolved through `createRequire` anchored at the runtime
+ * package, because that is the workspace that actually declares it. knip sees
+ * only the string and reports it as an unlisted root dependency, so the root
+ * workspace lists it in knip.json `ignoreDependencies` — the same escape hatch
+ * already used for `@vue/shared` in packages/runtime.
  */
 export async function collectVuePublicNames(rootDir) {
   const require = createRequire(join(rootDir, 'packages/runtime/index.js'))
