@@ -21,7 +21,16 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/layoutBox/FlexLayout.git", from: "2.0.0"),
-        .package(url: "https://github.com/SVGKit/SVGKit.git", from: "3.0.0")
+        .package(url: "https://github.com/SVGKit/SVGKit.git", from: "3.0.0"),
+        // Same constraint as native/ios/VueNativeCore/Package.swift, and for the
+        // same reason: this root manifest is what external SPM consumers resolve,
+        // and its Package.resolved is gitignored, so every consumer resolution is
+        // FRESH. SVGKit (2020, declares iOS 9 / macOS 10.13) depends on
+        // CocoaLumberjack with an open up-to-next-major range; 3.10 raised its
+        // floor to iOS 15 / macOS 12 and breaks the graph. Without this pin the
+        // consumer-facing build fails on CI even though the nested packages,
+        // whose resolved files ARE tracked, build fine locally.
+        .package(url: "https://github.com/CocoaLumberjack/CocoaLumberjack.git", .upToNextMinor(from: "3.9.1"))
     ],
     targets: [
         .target(
@@ -33,6 +42,7 @@ let package = Package(
             dependencies: [
                 .product(name: "FlexLayout", package: "FlexLayout"),
                 .product(name: "SVGKit", package: "SVGKit"),
+                .product(name: "CocoaLumberjack", package: "CocoaLumberjack"),
                 "VueNativeShared"
             ],
             path: "native/ios/VueNativeCore/Sources/VueNativeCore",
@@ -44,6 +54,7 @@ let package = Package(
             name: "VueNativeMacOS",
             dependencies: [
                 .product(name: "SVGKit", package: "SVGKit"),
+                .product(name: "CocoaLumberjack", package: "CocoaLumberjack"),
                 "VueNativeShared"
             ],
             path: "native/macos/VueNativeMacOS/Sources/VueNativeMacOS",
