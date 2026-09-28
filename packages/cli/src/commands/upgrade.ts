@@ -27,6 +27,100 @@ interface VersionStamp {
   jsDependencyRange?: string
 }
 
+interface FilePatch {
+  relativePath: string
+  content: string
+  summary: string
+}
+
+function insertAfter(lines: string[], anchor: (line: string) => boolean, insertion: string[]): string[] | null {
+  const at = lines.findIndex(anchor)
+  if (at === -1) return null
+  return [...lines.slice(0, at + 1), ...insertion, ...lines.slice(at + 1)]
+}
+
+function insertBefore(lines: string[], anchor: (line: string) => boolean, insertion: string[]): string[] | null {
+  const at = lines.findIndex(anchor)
+  if (at === -1) return null
+  return [...lines.slice(0, at), ...insertion, ...lines.slice(at)]
+}
+
+/**
+ * Host-side wiring for the optional `<VSVG>` add-on products.
+ *
+ * Re-vendoring `native/` brings the sibling `VueNativeCoreSVG` package into an
+ * upgraded project, but a host that linked the old single-product core keeps
+ * building WITHOUT it — `<VSVG>` silently degrades to a logged error and a
+ * blank view. The scaffold writes this wiring for new projects; upgrade must
+ * add it to existing ones. Patches are additive and idempotent: every edit is
+ * skipped when its marker is already present, and a file whose anchors do not
+ * match (hand-edited host) is left alone with a warning instead of a guess.
+ */
+function svgAddonPatches(projectDir: string): { patches: FilePatch[], warnings: string[] } {
+  const patches: FilePatch[] = []
+  const warnings: string[] = []
+
+  function patch(relativePath: string, edit: (lines: string[]) => { lines: string[], summary: string } | null): void {
+    const absolute = join(projectDir, relativePath)
+    if (!existsSync(absolute)) return
+    const original = readFileSync(absolute, 'utf8')
+    const result = edit(original.split('\n'))
+    if (result === null) {
+      warnings.push(`${relativePath}: recognised anchors not found; add the <VSVG> product and register() call by hand`)
+      return
+    }
+    patches.push({ relativePath, content: result.lines.join('\n'), summary: result.summary })
+  }
+
+  patch(join('ios', 'project.yml'), (lines) => {
+    if (lines.some(line => line.includes('VueNativeCoreSVG'))) return { lines, summary: '' }
+    const withPackage = insertAfter(lines, line => line.trim() === 'path: ../native/ios/VueNativeCore', [
+      '  VueNativeCoreSVG:',
+      '    path: ../native/ios/VueNativeCoreSVG',
+    ])
+    if (withPackage === null) return null
+    const withProduct = insertAfter(withPackage, line => line.trim() === 'product: VueNativeCore', [
+      '      - package: VueNativeCoreSVG',
+      '        product: VueNativeCoreSVG',
+    ])
+    if (withProduct === null) return null
+    return { lines: withProduct, summary: 'link the VueNativeCoreSVG product' }
+  })
+
+  patch(join('ios', 'Sources', 'AppDelegate.swift'), (lines) => {
+    if (lines.some(line => line.includes('VueNativeCoreSVG.register()'))) return { lines, summary: '' }
+    const withImport = insertAfter(lines, line => line.trim() === 'import UIKit', ['import VueNativeCoreSVG'])
+    if (withImport === null) return null
+    const withCall = insertAfter(withImport, line => line.trim() === ') -> Bool {', ['        VueNativeCoreSVG.register()'])
+    if (withCall === null) return null
+    return { lines: withCall, summary: 'call VueNativeCoreSVG.register() at launch' }
+  })
+
+  patch(join('macos', 'project.yml'), (lines) => {
+    if (lines.some(line => line.includes('VueNativeMacOSSVG'))) return { lines, summary: '' }
+    const withProduct = insertAfter(lines, line => line.trim() === 'product: VueNativeMacOS', [
+      '      - package: VueNativeMacOS',
+      '        product: VueNativeMacOSSVG',
+    ])
+    if (withProduct === null) return null
+    return { lines: withProduct, summary: 'link the VueNativeMacOSSVG product' }
+  })
+
+  patch(join('macos', 'Sources', 'AppDelegate.swift'), (lines) => {
+    if (lines.some(line => line.includes('VueNativeMacOSSVG.register()'))) return { lines, summary: '' }
+    const withImport = insertAfter(lines, line => line.trim() === 'import VueNativeMacOS', ['import VueNativeMacOSSVG'])
+    if (withImport === null) return null
+    // Before super: super creates the window controller and mounts the bundle.
+    const withCall = insertBefore(withImport, line => line.includes('super.applicationDidFinishLaunching'), [
+      '        VueNativeMacOSSVG.register()',
+    ])
+    if (withCall === null) return null
+    return { lines: withCall, summary: 'call VueNativeMacOSSVG.register() before super' }
+  })
+
+  return { patches: patches.filter(entry => entry.summary !== ''), warnings }
+}
+
 function readStamp(projectDir: string): VersionStamp | null {
   const stampPath = join(projectDir, STAMP_RELATIVE_PATH)
   if (!existsSync(stampPath)) return null
@@ -134,12 +228,16 @@ export const upgradeCommand = new Command('upgrade')
       }
     }
 
+    const svgWiring = svgAddonPatches(cwd)
+
     const plan = [
       `re-vendor native/ from the CLI package (${targetVersion})`,
       `rewrite ${STAMP_RELATIVE_PATH}`,
       ...dependencyEdits.map(edit => `package.json ${edit}`),
+      ...svgWiring.patches.map(entry => `${entry.relativePath}: ${entry.summary}`),
     ]
     for (const line of plan) p.log.step(`would ${line}`)
+    for (const warning of svgWiring.warnings) p.log.warn(warning)
 
     if (options.dryRun) {
       p.outro('Dry run: nothing written.')
@@ -174,6 +272,10 @@ export const upgradeCommand = new Command('upgrade')
         upgradedAt: new Date().toISOString(),
       }, null, 2)}\n`,
     )
+
+    for (const entry of svgWiring.patches) {
+      await writeFile(join(cwd, entry.relativePath), entry.content)
+    }
 
     const repository = typeof cliPackage.repository === 'object' && cliPackage.repository !== null
       ? (cliPackage.repository as { url?: string }).url

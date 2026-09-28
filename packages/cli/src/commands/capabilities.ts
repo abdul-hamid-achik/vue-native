@@ -7,6 +7,7 @@ import {
   BUILT_IN_COMPONENT_NAMES,
   FRAMEWORK_LIMITATIONS,
   NATIVE_MODULE_CAPABILITIES,
+  OPTIONAL_PRODUCT_COMPONENT_NOTES,
   type CapabilityLimitation,
   type ComponentCapability,
   type HostPlatform,
@@ -182,7 +183,8 @@ export function collectCapabilitiesReport(): CapabilitiesReport {
           platforms[platform] = STUB_COMPONENTS[name]?.[platform] ? 'stub' : 'full'
         }
       }
-      return { name, platforms }
+      const note = OPTIONAL_PRODUCT_COMPONENT_NOTES[name]
+      return note === undefined ? { name, platforms } : { name, platforms, note }
     }),
     modules: NATIVE_MODULE_CAPABILITIES,
     limitations: FRAMEWORK_LIMITATIONS,

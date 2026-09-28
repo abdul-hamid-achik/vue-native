@@ -117,6 +117,93 @@ describe('vue-native upgrade', () => {
     expect(existsSync(join(dir, 'native', 'ios', 'VueNativeCore', 'Package.swift'))).toBe(true)
   })
 
+  it('wires the optional VSVG add-on into pre-split hosts, idempotently', () => {
+    const dir = makeProject('svgwire', { schema: 1, frameworkVersion: '0.20.0' })
+    mkdirSync(join(dir, 'ios', 'Sources'), { recursive: true })
+    mkdirSync(join(dir, 'macos', 'Sources'), { recursive: true })
+    writeFileSync(join(dir, 'ios', 'project.yml'), [
+      'packages:',
+      '  VueNativeCore:',
+      '    path: ../native/ios/VueNativeCore',
+      'targets:',
+      '  App:',
+      '    dependencies:',
+      '      - package: VueNativeCore',
+      '        product: VueNativeCore',
+      '',
+    ].join('\n'))
+    writeFileSync(join(dir, 'ios', 'Sources', 'AppDelegate.swift'), [
+      'import UIKit',
+      '',
+      '@main',
+      'class AppDelegate: UIResponder, UIApplicationDelegate {',
+      '    func application(',
+      '        _ application: UIApplication,',
+      '        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?',
+      '    ) -> Bool {',
+      '        return true',
+      '    }',
+      '}',
+      '',
+    ].join('\n'))
+    writeFileSync(join(dir, 'macos', 'project.yml'), [
+      'targets:',
+      '  App:',
+      '    dependencies:',
+      '      - package: VueNativeMacOS',
+      '        product: VueNativeMacOS',
+      '',
+    ].join('\n'))
+    writeFileSync(join(dir, 'macos', 'Sources', 'AppDelegate.swift'), [
+      'import AppKit',
+      'import VueNativeMacOS',
+      '',
+      'class AppDelegate: VueNativeAppDelegate {',
+      '    override func applicationDidFinishLaunching(_ notification: Notification) {',
+      '        super.applicationDidFinishLaunching(notification)',
+      '    }',
+      '}',
+      '',
+    ].join('\n'))
+
+    // Dry run reports the wiring and writes nothing.
+    const dry = runUpgrade(dir, ['--dry-run'])
+    expect(dry.status).toBe(0)
+    expect(dry.output).toContain('would ios/project.yml: link the VueNativeCoreSVG product')
+    expect(readFileSync(join(dir, 'ios', 'project.yml'), 'utf8')).not.toContain('VueNativeCoreSVG')
+
+    expect(runUpgrade(dir, []).status).toBe(0)
+
+    const iosYml = readFileSync(join(dir, 'ios', 'project.yml'), 'utf8')
+    expect(iosYml).toContain('path: ../native/ios/VueNativeCoreSVG')
+    expect(iosYml).toContain('product: VueNativeCoreSVG')
+    const iosDelegate = readFileSync(join(dir, 'ios', 'Sources', 'AppDelegate.swift'), 'utf8')
+    expect(iosDelegate).toContain('import VueNativeCoreSVG')
+    expect(iosDelegate).toContain('VueNativeCoreSVG.register()')
+
+    const macYml = readFileSync(join(dir, 'macos', 'project.yml'), 'utf8')
+    expect(macYml).toContain('product: VueNativeMacOSSVG')
+    const macDelegate = readFileSync(join(dir, 'macos', 'Sources', 'AppDelegate.swift'), 'utf8')
+    expect(macDelegate).toContain('import VueNativeMacOSSVG')
+    // register() must run before super, which creates the window controller.
+    expect(macDelegate.indexOf('VueNativeMacOSSVG.register()')).toBeLessThan(
+      macDelegate.indexOf('super.applicationDidFinishLaunching'),
+    )
+
+    // Rewind the stamp so the wiring path runs again: existing markers must
+    // not be duplicated.
+    const stamp = JSON.parse(readFileSync(join(dir, 'native', '.vue-native-version'), 'utf8'))
+    writeFileSync(
+      join(dir, 'native', '.vue-native-version'),
+      `${JSON.stringify({ ...stamp, frameworkVersion: '0.20.0' }, null, 2)}\n`,
+    )
+    expect(runUpgrade(dir, []).status).toBe(0)
+    const iosYmlAgain = readFileSync(join(dir, 'ios', 'project.yml'), 'utf8')
+    expect(iosYmlAgain.split('VueNativeCoreSVG:').length - 1).toBe(1)
+    const iosDelegateAgain = readFileSync(join(dir, 'ios', 'Sources', 'AppDelegate.swift'), 'utf8')
+    expect(iosDelegateAgain.split('VueNativeCoreSVG.register()').length - 1).toBe(1)
+  })
+
   it('refuses to destroy local modifications in native/ without --force', () => {
     const dir = makeProject('dirty', { schema: 1, frameworkVersion: '0.20.0' })
     execFileSync('git', ['init', '-q'], { cwd: dir })

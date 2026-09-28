@@ -143,6 +143,16 @@ describe('capability manifest', () => {
     }
   })
 
+  it('flags components whose factory ships in an optional add-on product', () => {
+    // The registry source still names VSVG (core registers it when the add-on
+    // bootstraps), so platform support alone would claim `full` to a host that
+    // never linked VueNativeCoreSVG — the silent-blank-view failure mode.
+    const vsvg = byName.get('VSVG')
+    expect(vsvg?.note).toContain('VueNativeCoreSVG')
+    expect(vsvg?.note).toContain('register()')
+    expect(report.components.filter(c => c.note).map(c => c.name)).toEqual(['VSVG'])
+  })
+
   it('emits a support value for every component on every platform', () => {
     const allowed = new Set([
       'full',

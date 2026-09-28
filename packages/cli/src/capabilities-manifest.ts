@@ -21,6 +21,7 @@ export type HostPlatform = 'ios' | 'android' | 'macos'
 export interface ComponentCapability {
   name: string
   platforms: Record<HostPlatform, PlatformSupport>
+  note?: string
 }
 
 export interface ModuleCapability {
@@ -83,6 +84,19 @@ const ALL_PLATFORMS: Record<HostPlatform, PlatformSupport> = {
   ios: 'full',
   android: 'full',
   macos: 'full',
+}
+
+/**
+ * Components whose native factory ships in an optional add-on product rather
+ * than the core framework. The registry source still names them (core
+ * registers them when the add-on has bootstrapped), so registry-derived
+ * support alone would report `full` to a host that never linked the product —
+ * exactly the silent-blank-view failure the split is meant to make loud.
+ */
+export const OPTIONAL_PRODUCT_COMPONENT_NOTES: Record<string, string> = {
+  VSVG: 'iOS/macOS ship VSVG in the optional VueNativeCoreSVG / VueNativeMacOSSVG '
+    + 'products; the host must link the product and call its register() at launch. '
+    + 'Android ships it in the core library.',
 }
 
 export const NATIVE_MODULE_CAPABILITIES: ModuleCapability[] = [

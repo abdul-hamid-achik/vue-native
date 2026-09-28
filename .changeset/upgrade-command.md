@@ -18,3 +18,11 @@ plan and writes nothing. Re-vendoring overwrites rather than deleting, so
 files you added inside `native/` survive even under `--force`; files the
 framework renamed upstream do not remove themselves and the command says to
 review `git status` afterwards.
+
+Upgrading across the `<VSVG>` split also rewires the host: the command adds
+the `VueNativeCoreSVG` / `VueNativeMacOSSVG` product to `ios/project.yml` /
+`macos/project.yml` and the `register()` call to each generated `AppDelegate`
+(before `super` on macOS), because a pre-split host keeps building without the
+new sibling package and `<VSVG>` would otherwise degrade to a logged error and
+a blank view. The edits are additive and idempotent; a host file whose shape
+the command does not recognise is left untouched with a warning.
