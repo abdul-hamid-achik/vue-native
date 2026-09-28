@@ -408,17 +408,34 @@ final class NativeBridgeOperationTests: XCTestCase {
 
     // MARK: - Unknown Operation Tests
 
-    func testUnknownOperationDoesNotCrash() {
+    func testUnknownOperationIsDroppedAndTheRestOfTheBatchStillApplies() {
+        let countBefore = bridge.registeredViewCount
+
+        // The unknown op sits *before* a valid one on purpose: `processOperations`
+        // must skip an op it does not recognize and keep going, not abort the
+        // batch (which would silently drop real view work) and not mistake the
+        // op's args for a create.
         let operations: [[String: Any]] = [
             ["op": "unknownOperation", "args": [1, 2, 3]],
+            ["op": "create", "args": [7, "VView"]],
         ]
-        // Should not crash
         processBatch(operations)
+
+        XCTAssertNil(bridge.view(forNodeId: 1), "an unknown op must not register a view for its first arg")
+        XCTAssertNil(bridge.view(forNodeId: 2), "an unknown op must not register a view for its second arg")
+        XCTAssertNil(bridge.view(forNodeId: 3), "an unknown op must not register a view for its third arg")
+        XCTAssertEqual(
+            bridge.registeredViewCount, countBefore + 1,
+            "only the valid create in the batch may register a view"
+        )
+        XCTAssertNotNil(bridge.view(forNodeId: 7), "the bridge must still process valid ops after an unknown one")
     }
 
     // MARK: - Invalid Args Tests
 
-    func testInvalidArgsDoesNotCrash() {
+    func testInvalidArgsAreRejectedAndTheBridgeStaysFunctional() {
+        let countBefore = bridge.registeredViewCount
+
         // Missing args key
         let operations1: [[String: Any]] = [
             ["op": "create"],
@@ -436,6 +453,29 @@ final class NativeBridgeOperationTests: XCTestCase {
             ["op": "create", "args": []],
         ]
         processBatch(operations3)
+
+        // Each malformed create must be dropped, not half-applied: nothing may
+        // land in the view registry.
+        XCTAssertEqual(
+            bridge.registeredViewCount, countBefore,
+            "malformed create ops must not register any view"
+        )
+
+        // And the bridge must still be usable afterwards — a malformed batch
+        // that poisoned the dispatch loop would look identical to "no crash"
+        // until the next real render silently produced nothing.
+        processBatch([
+            ["op": "create", "args": [21, "VView"]],
+            ["op": "create", "args": [22, "VView"]],
+            ["op": "appendChild", "args": [21, 22]],
+        ])
+
+        XCTAssertEqual(bridge.registeredViewCount, countBefore + 2, "both valid creates must register")
+        if let parent = bridge.view(forNodeId: 21), let child = bridge.view(forNodeId: 22) {
+            XCTAssertTrue(child.isDescendant(of: parent), "appendChild must still work after malformed batches")
+        } else {
+            XCTFail("the bridge must still create and register views after malformed batches")
+        }
     }
 
     // MARK: - Reset Tests
@@ -621,8 +661,25 @@ final class NativeBridgeOperationTests: XCTestCase {
 
     // MARK: - Empty Batch
 
-    func testEmptyBatchDoesNotCrash() {
+    func testEmptyBatchLeavesStateUntouchedAndBridgeResponsive() {
+        processOp("create", args: [31, "VView"])
+        let existing = bridge.view(forNodeId: 31)
+        XCTAssertNotNil(existing, "precondition: a view is registered before the empty batch")
+        let countBefore = bridge.registeredViewCount
+
         processBatch([])
+
+        // An empty batch is what the renderer flushes when a microtask produced
+        // no operations; it must be a genuine no-op rather than a reset.
+        XCTAssertEqual(bridge.registeredViewCount, countBefore, "an empty batch must not change the registry")
+        XCTAssertTrue(
+            bridge.view(forNodeId: 31) === existing,
+            "an empty batch must not drop or replace already-registered views"
+        )
+
+        // Still functional afterwards.
+        processOp("create", args: [32, "VView"])
+        XCTAssertNotNil(bridge.view(forNodeId: 32), "the bridge must accept a new batch after an empty one")
     }
 }
 

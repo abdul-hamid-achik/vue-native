@@ -34,25 +34,74 @@ final class HotReloadManagerTests: XCTestCase {
 
     // MARK: - Initialization Tests
 
-    func testInitializationWithURL() {
+    func testConnectStartsAtAttemptZeroAndNumbersTheFirstRetryOne() {
+        var received: [HotReloadStatus] = []
+        manager.onStatusChange = { received.append($0) }
         let url = URL(string: "ws://localhost:8174")!
-        // connect should not crash
+
+        // `connect(to:)` emits synchronously, before any socket work, so the
+        // transition is observable without a dev server.
         manager.connect(to: url)
-        // Just verify it doesn't crash — we can't easily test the WebSocket connection
+        XCTAssertEqual(received, [.connecting(attempt: 0)], "connect(to:) must report the initial attempt")
+
+        // Nothing is listening on this port; the point is the bookkeeping. A
+        // socket close is what drives the retry counter, and for the retry to
+        // be scheduled at all, `connect(to:)` must have stored the server URL
+        // and reset the attempt counter to 0.
+        let task = URLSession.shared.webSocketTask(with: url)
+        manager.urlSession(URLSession.shared, webSocketTask: task, didCloseWith: .goingAway, reason: nil)
+
+        XCTAssertEqual(
+            received, [.connecting(attempt: 0), .connecting(attempt: 1)],
+            "the first reconnect after connect(to:) must be attempt 1"
+        )
+
+        manager.disconnect()
     }
 
     // MARK: - Disconnect Tests
 
-    func testDisconnectDoesNotCrash() {
-        // Disconnect without connecting first — should be safe
+    func testDisconnectWithoutConnectingSchedulesNoReconnect() {
+        var received: [HotReloadStatus] = []
+        manager.onStatusChange = { received.append($0) }
+
+        // Disconnect without connecting first — must be safe, and must leave no
+        // server URL behind. Clearing `serverURL` is the ONLY thing that stops
+        // the retry loop, so a close arriving afterwards must be inert.
         manager.disconnect()
+
+        let task = URLSession.shared.webSocketTask(with: URL(string: "ws://localhost:8174")!)
+        manager.urlSession(URLSession.shared, webSocketTask: task, didCloseWith: .goingAway, reason: nil)
+
+        XCTAssertTrue(
+            received.isEmpty,
+            "a socket close after disconnect must not schedule a reconnect, got \(received)"
+        )
     }
 
-    func testDisconnectAfterConnectDoesNotCrash() {
+    func testDisconnectAfterConnectStopsTheReconnectLoop() {
+        var received: [HotReloadStatus] = []
+        manager.onStatusChange = { received.append($0) }
         let url = URL(string: "ws://localhost:9999")!
+
         manager.connect(to: url)
+        XCTAssertEqual(received, [.connecting(attempt: 0)])
+
+        // `HotReloadStatus` has no `.disconnected` case: disconnecting is
+        // silent by design, so the contract is "no new status" plus "the loop
+        // is dead".
         manager.disconnect()
-        // Should not crash
+        XCTAssertEqual(received, [.connecting(attempt: 0)], "disconnect itself must not report a status")
+
+        // A late socket close (the server dropping after we went away) must not
+        // resurrect the retry loop and keep probing a dev server the host asked
+        // us to leave.
+        let task = URLSession.shared.webSocketTask(with: url)
+        manager.urlSession(URLSession.shared, webSocketTask: task, didCloseWith: .goingAway, reason: nil)
+        XCTAssertEqual(
+            received, [.connecting(attempt: 0)],
+            "no reconnect may be scheduled after disconnect, got \(received)"
+        )
     }
 
     // MARK: - Multiple Connect Calls
@@ -108,14 +157,33 @@ final class HotReloadManagerTests: XCTestCase {
 
     // MARK: - Connect/Disconnect Cycle
 
-    func testConnectDisconnectCycleDoesNotCrash() {
+    func testConnectDisconnectCyclesRestartAtAttemptZeroAndStayStopped() {
+        var received: [HotReloadStatus] = []
+        manager.onStatusChange = { received.append($0) }
         let url = URL(string: "ws://localhost:8174")!
 
         for _ in 0..<5 {
             manager.connect(to: url)
             manager.disconnect()
         }
-        // Multiple cycles should not crash
+
+        // Each cycle must emit exactly one synchronous `.connecting(attempt: 0)`
+        // — a counter that leaked across cycles would show up here as an
+        // increasing attempt number, and a disconnect that emitted (or
+        // scheduled) anything would add extra entries.
+        XCTAssertEqual(
+            received,
+            Array(repeating: HotReloadStatus.connecting(attempt: 0), count: 5),
+            "every connect must restart at attempt 0 and disconnect must be silent"
+        )
+
+        // After the final disconnect the retry loop must be dead.
+        let task = URLSession.shared.webSocketTask(with: url)
+        manager.urlSession(URLSession.shared, webSocketTask: task, didCloseWith: .goingAway, reason: nil)
+        XCTAssertEqual(
+            received.count, 5,
+            "a socket close after the last disconnect must not schedule a reconnect, got \(received)"
+        )
     }
 
     // MARK: - Reconnect Backoff

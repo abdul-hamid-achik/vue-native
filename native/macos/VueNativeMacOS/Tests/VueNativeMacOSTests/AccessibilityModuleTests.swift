@@ -83,10 +83,40 @@ final class AccessibilityModuleTests: XCTestCase {
         XCTAssertTrue(result.error?.contains("not found") == true)
     }
 
-    func testSetFocusWithValidNodeIdDoesNotCrash() async {
-        let module = makeModule(knownId: 42, view: NSView(frame: NSRect(x: 0, y: 0, width: 10, height: 10)))
-        let result = await invoke(module, method: "setFocus", args: [42])
-        XCTAssertNil(result.error)
+    func testSetFocusWithValidNodeIdResolvesTheViewAndSucceedsOnce() async {
+        let target = NSView(frame: NSRect(x: 0, y: 0, width: 10, height: 10))
+        var requestedIds: [Int] = []
+        let module = AccessibilityModule(viewLookup: { nodeId in
+            requestedIds.append(nodeId)
+            return nodeId == 42 ? target : nil
+        })
+
+        let responderBefore = NSApplication.shared.keyWindow?.firstResponder
+        var callbackCount = 0
+        let exp = expectation(description: "Accessibility.setFocus")
+        module.invoke(method: "setFocus", args: [42]) { result, error in
+            callbackCount += 1
+            XCTAssertNil(error, "a resolvable node id must succeed")
+            XCTAssertNil(result, "setFocus has no payload to resolve")
+            exp.fulfill()
+        }
+        await fulfillment(of: [exp], timeout: 3)
+
+        // The success path is `NSAccessibility.post(element: view,
+        // notification: .focusedUIElementChanged)`. AppKit exposes no
+        // in-process observer for that post, so what is observable — and what
+        // separates this from the two error paths above — is that the module
+        // really resolved node 42 through the view registry before reporting
+        // success, and resolved the JS callback exactly once.
+        XCTAssertEqual(requestedIds, [42], "setFocus must resolve the node id through the view lookup exactly once")
+        XCTAssertEqual(callbackCount, 1, "setFocus must resolve the JS callback exactly once")
+
+        // setFocus requests *accessibility* focus only; it must not move AppKit
+        // keyboard focus away from whatever the user was interacting with.
+        XCTAssertTrue(
+            NSApplication.shared.keyWindow?.firstResponder === responderBefore,
+            "setFocus must not change the window's first responder"
+        )
     }
 
     func testSetFocusAcceptsDoubleNodeId() async {

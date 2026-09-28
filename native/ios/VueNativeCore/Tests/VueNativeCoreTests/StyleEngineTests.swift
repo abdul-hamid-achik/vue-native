@@ -578,9 +578,62 @@ final class StyleEngineTests: XCTestCase {
 
     // MARK: - Edge Cases
 
-    func testApplyUnknownKeyDoesNotCrash() {
+    func testApplyUnknownKeyIsIgnoredRatherThanApplied() {
+        // Give the view non-default state first, so "unchanged" is measured
+        // against something a stray style write would actually disturb.
+        StyleEngine.apply(key: "backgroundColor", value: "#ff0000", to: view)
+        StyleEngine.apply(key: "opacity", value: 0.75, to: view)
+        StyleEngine.apply(key: "borderRadius", value: 6.0, to: view)
+
+        let before = visualState(of: view)
+        XCTAssertNotNil(before.backgroundColor, "precondition: the view starts out styled")
+
         // Unknown keys that don't match any category should be silently ignored
         StyleEngine.apply(key: "nonExistentProperty", value: "test", to: view)
+
+        // `apply` walks layout → visual → text and stops at the first router
+        // that claims the key; none of them may claim this one.
+        XCTAssertEqual(visualState(of: view), before, "an unrecognized key must not touch the view")
+        XCTAssertNil(
+            StyleEngine.getInternalProp("nonExistentProperty", from: view),
+            "an unrecognized key must not be stashed as an internal prop either"
+        )
+
+        // Control: the same entry point does mutate when the key is recognized,
+        // which is what makes the equality above a real assertion.
+        StyleEngine.apply(key: "backgroundColor", value: "#00ff00", to: view)
+        XCTAssertNotEqual(visualState(of: view), before, "a recognized key must still be applied")
+    }
+
+    /// The visual/layer state a stray style write would disturb, flattened to
+    /// primitives so the before/after comparison does not depend on Equatable
+    /// conformances from CoreAnimation types.
+    private struct VisualState: Equatable {
+        let backgroundColor: UIColor?
+        let alpha: CGFloat
+        let layerOpacity: Float
+        let isHidden: Bool
+        let clipsToBounds: Bool
+        let frame: CGRect
+        let cornerRadius: CGFloat
+        let borderWidth: CGFloat
+        let shadowOpacity: Float
+        let shadowRadius: CGFloat
+    }
+
+    private func visualState(of view: UIView) -> VisualState {
+        VisualState(
+            backgroundColor: view.backgroundColor,
+            alpha: view.alpha,
+            layerOpacity: view.layer.opacity,
+            isHidden: view.isHidden,
+            clipsToBounds: view.clipsToBounds,
+            frame: view.frame,
+            cornerRadius: view.layer.cornerRadius,
+            borderWidth: view.layer.borderWidth,
+            shadowOpacity: view.layer.shadowOpacity,
+            shadowRadius: view.layer.shadowRadius
+        )
     }
 
     func testBorderRadiusZeroDoesNotEnableClipping() {

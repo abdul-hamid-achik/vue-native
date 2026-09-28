@@ -96,18 +96,38 @@ final class VSVGFactoryTests: XCTestCase {
         XCTAssertNil(view.imageView.contentTintColor)
     }
 
-    func testTintColorBeforeSourceDoesNotCrash() throws {
+    func testTintColorSetBeforeSourceIsRetainedAndAppliedToTheRender() throws {
         let factory = VSVGFactory()
         let view = try XCTUnwrap(factory.createView() as? VSVGView)
+        let tint = NSColor.fromHex("#0000ff")
+        XCTAssertNotNil(tint, "precondition: the tint hex must parse")
 
         // Tint set before any source — no image yet, must not crash.
         factory.updateProp(view: view, key: "tintColor", value: "#0000ff")
         XCTAssertNil(view.imageView.image)
+        // The factory stores the parsed color on the view (associated object)
+        // *and* pushes it to the image view immediately, so a later render can
+        // pick it back up. Without that storage the tint would be silently lost
+        // for any component whose props arrive tint-before-source.
+        XCTAssertEqual(
+            view.imageView.contentTintColor, tint,
+            "a tint set before any source must be retained on the image view"
+        )
 
         // A later render should pick up the stored tint.
         factory.updateProp(view: view, key: "source", value: ["svg": validSVG])
         XCTAssertNotNil(view.imageView.image)
         XCTAssertNotNil(view.imageView.contentTintColor)
+        XCTAssertEqual(
+            view.imageView.contentTintColor, tint,
+            "the render must apply the tint that was set before the source arrived"
+        )
+        XCTAssertEqual(view.imageView.image?.isTemplate, true)
+
+        // Control: rendering a second source keeps re-applying the stored tint,
+        // i.e. it survives on the view and not just on the first image.
+        factory.updateProp(view: view, key: "source", value: ["svg": validSVG])
+        XCTAssertEqual(view.imageView.contentTintColor, tint)
         XCTAssertEqual(view.imageView.image?.isTemplate, true)
     }
 

@@ -43,34 +43,88 @@ final class JSPolyfillsTests: XCTestCase {
     }
 
     // MARK: - console Tests
+    //
+    // `JSPolyfills.registerConsole` installs one native `@convention(block)` per
+    // method; each block renders `JSContext.currentArguments()` to a string and
+    // hands it to `NSLog`. NSLog output is not capturable from an XCTest host,
+    // so the strongest observable contract per method is:
+    //
+    //   1. the method is installed as a function,
+    //   2. calling it evaluates to `undefined` (the blocks return `Void`, so a
+    //      value leaking back into JS would mean the signature changed), and
+    //   3. the argument really reaches the native side — proven by passing an
+    //      object whose `toString` is only ever called by the native formatter.
+    //
+    // (3) is what makes these tests non-vacuous: a polyfill that installed a
+    // no-op JS function, or a native block that never read `currentArguments()`,
+    // would still satisfy "did not crash" but fails the probe.
 
-    func testConsoleLogDoesNotCrash() {
-        // console.log should not throw or crash
-        let result = evalSync("console.log('test message'); true")
-        XCTAssertNotNil(result, "console.log should not crash")
-        XCTAssertTrue(result?.toBool() == true, "Script should evaluate to true")
+    /// JS that installs a counter incremented by native argument formatting.
+    private func consoleProbeScript(method: String) -> String {
+        """
+        globalThis.__consoleProbeHits = 0;
+        globalThis.__consoleProbe = { toString: function() { globalThis.__consoleProbeHits++; return 'probe'; } };
+        globalThis.__consoleProbeType = typeof console.\(method);
+        globalThis.__consoleProbeReturn = typeof console.\(method)(__consoleProbe);
+        globalThis.__consoleProbeHits;
+        """
     }
 
-    func testConsoleWarnDoesNotCrash() {
-        let result = evalSync("console.warn('warning message'); true")
-        XCTAssertNotNil(result, "console.warn should not crash")
-        XCTAssertTrue(result?.toBool() == true, "Script should evaluate to true")
+    /// Assert the routing contract for one console method.
+    private func assertConsoleMethodRoutesArguments(_ method: String, file: StaticString = #filePath, line: UInt = #line) {
+        let hits = evalSync(consoleProbeScript(method: method))
+        XCTAssertEqual(
+            hits?.toInt32(), 1,
+            "console.\(method) must pass its argument to the native sink, which stringifies it exactly once",
+            file: file, line: line
+        )
+        let typeOf = evalSync("globalThis.__consoleProbeType")
+        XCTAssertEqual(
+            typeOf?.toString(), "function",
+            "console.\(method) must be installed as a function",
+            file: file, line: line
+        )
+        let returned = evalSync("globalThis.__consoleProbeReturn")
+        XCTAssertEqual(
+            returned?.toString(), "undefined",
+            "console.\(method) must return undefined to JS",
+            file: file, line: line
+        )
+        // The runtime must still be usable afterwards.
+        let after = evalSync("1 + 1")
+        XCTAssertEqual(after?.toInt32(), 2, "the JS runtime must keep evaluating after console.\(method)", file: file, line: line)
     }
 
-    func testConsoleErrorDoesNotCrash() {
-        let result = evalSync("console.error('error message'); true")
-        XCTAssertNotNil(result, "console.error should not crash")
-        XCTAssertTrue(result?.toBool() == true, "Script should evaluate to true")
+    func testConsoleLogRoutesArgumentsToTheNativeSink() {
+        assertConsoleMethodRoutesArguments("log")
+
+        // Each method is installed from its own block object, so the five must
+        // not collapse into one shared function (they carry different log
+        // prefixes on the native side).
+        let distinct = evalSync("""
+            console.log !== console.warn && console.warn !== console.error &&
+            console.error !== console.debug && console.debug !== console.info;
+        """)
+        XCTAssertTrue(
+            distinct?.toBool() == true,
+            "each console method must be a separately installed native function"
+        )
     }
 
-    func testConsoleDebugDoesNotCrash() {
-        let result = evalSync("console.debug('debug message'); true")
-        XCTAssertNotNil(result, "console.debug should not crash")
+    func testConsoleWarnRoutesArgumentsToTheNativeSink() {
+        assertConsoleMethodRoutesArguments("warn")
     }
 
-    func testConsoleInfoDoesNotCrash() {
-        let result = evalSync("console.info('info message'); true")
-        XCTAssertNotNil(result, "console.info should not crash")
+    func testConsoleErrorRoutesArgumentsToTheNativeSink() {
+        assertConsoleMethodRoutesArguments("error")
+    }
+
+    func testConsoleDebugRoutesArgumentsToTheNativeSink() {
+        assertConsoleMethodRoutesArguments("debug")
+    }
+
+    func testConsoleInfoRoutesArgumentsToTheNativeSink() {
+        assertConsoleMethodRoutesArguments("info")
     }
 
     // MARK: - performance.now() Tests

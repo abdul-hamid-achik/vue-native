@@ -15,9 +15,19 @@ import UIKit
 @MainActor
 final class VRefreshControlFactoryTests: XCTestCase {
 
-    func testUpdatePropWithStyleDictDoesNotCrash() {
+    func testUpdatePropWithStyleDictLeavesWrapperAndControlUntouched() {
         let factory = VRefreshControlFactory()
         let view = factory.createView()
+        let control = VRefreshControlFactory.refreshControl(for: view)
+
+        // `updateProp` handles only refreshing/tintColor/title and has
+        // `default: break` — it never falls through to StyleEngine — so a
+        // `"style"` dict must leave both the wrapper and its control exactly as
+        // they were. Snapshot first so "unchanged" is measured, not assumed.
+        let backgroundBefore = view.backgroundColor
+        let alphaBefore = view.alpha
+        let tintBefore = control?.tintColor
+        let titleBefore = control?.attributedTitle
 
         factory.updateProp(view: view, key: "style", value: [
             "backgroundColor": "#ff0000",
@@ -30,19 +40,43 @@ final class VRefreshControlFactoryTests: XCTestCase {
         // tintColor/title) do.
         XCTAssertTrue(view.isHidden)
         XCTAssertEqual(view.frame, .zero)
+        XCTAssertEqual(view.backgroundColor, backgroundBefore, "the style dict must not paint the wrapper")
+        XCTAssertNotEqual(view.backgroundColor, UIColor.fromHex("#ff0000"), "backgroundColor from the dict must not land")
+        XCTAssertEqual(view.alpha, alphaBefore, accuracy: 0.001, "the style dict must not change the wrapper's alpha")
+        XCTAssertEqual(control?.tintColor, tintBefore, "the style dict must not retint the UIRefreshControl")
+        XCTAssertEqual(control?.attributedTitle, titleBefore, "the style dict must not retitle the UIRefreshControl")
+
+        // Control: the very same call path *does* mutate when the key is
+        // recognized, so the equalities above are not vacuous.
+        factory.updateProp(view: view, key: "title", value: "Loading")
+        XCTAssertEqual(control?.attributedTitle?.string, "Loading")
     }
 
-    func testUpdatePropWithFlattenedStyleKeysDoesNotCrash() {
+    func testUpdatePropWithFlattenedStyleKeysLeavesWrapperAndControlUntouched() {
         // Mirrors how `NativeBridge.handleUpdateStyle` actually delivers a
-        // style object: one `updateProp` call per key.
+        // style object: one `updateProp` call per key. None of these keys are
+        // recognized by this factory, so none of them may reach the wrapper or
+        // the control.
         let factory = VRefreshControlFactory()
         let view = factory.createView()
+        let control = VRefreshControlFactory.refreshControl(for: view)
+        let backgroundBefore = view.backgroundColor
+        let tintBefore = control?.tintColor
 
         factory.updateProp(view: view, key: "backgroundColor", value: "#ff0000")
         factory.updateProp(view: view, key: "padding", value: 8)
         factory.updateProp(view: view, key: "opacity", value: 0.5)
 
         XCTAssertTrue(view.isHidden)
+        XCTAssertEqual(view.frame, .zero, "a flattened width/padding must not resize the placeholder")
+        XCTAssertEqual(view.backgroundColor, backgroundBefore, "backgroundColor is not a prop of this factory")
+        XCTAssertNotEqual(view.backgroundColor, UIColor.fromHex("#ff0000"))
+        XCTAssertEqual(view.alpha, 1.0, accuracy: 0.001, "opacity must not be applied to the placeholder")
+        XCTAssertEqual(control?.tintColor, tintBefore, "unrecognized keys must not retint the UIRefreshControl")
+
+        // Control: recognized keys still land on the control through this path.
+        factory.updateProp(view: view, key: "tintColor", value: "#00ff00")
+        XCTAssertEqual(control?.tintColor, UIColor.fromHex("#00ff00"))
     }
 
     func testRecognizedPropsStillWorkAlongsideUnknownStyleKeys() {

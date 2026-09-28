@@ -14,16 +14,28 @@ final class NativeModuleTests: XCTestCase {
         XCTAssertEqual(module.moduleName, "Haptics", "HapticsModule should be named 'Haptics'")
     }
 
-    func testHapticsModuleVibrateDoesNotCrash() {
+    func testHapticsModuleVibrateResolvesCallbackExactlyOnceOnMainThread() {
         let module = HapticsModule()
         let expectation = self.expectation(description: "vibrate callback")
+        var callbackCount = 0
+        var deliveredOnMainThread = false
 
-        module.invoke(method: "vibrate", args: ["medium"]) { _, error in
+        module.invoke(method: "vibrate", args: ["medium"]) { result, error in
+            callbackCount += 1
+            deliveredOnMainThread = Thread.isMainThread
             XCTAssertNil(error, "vibrate should not return an error")
+            XCTAssertNil(result, "vibrate has no payload to resolve")
             expectation.fulfill()
         }
 
         waitForExpectations(timeout: 2.0)
+
+        // The impact generator itself leaves nothing observable in a headless
+        // test host, so the contract that matters is the one the bridge depends
+        // on: exactly one resolution, no error, delivered on the main thread
+        // (UIImpactFeedbackGenerator is UIKit and must be driven from main).
+        XCTAssertEqual(callbackCount, 1, "vibrate must resolve the JS callback exactly once")
+        XCTAssertTrue(deliveredOnMainThread, "the vibrate callback must be delivered on the main thread")
     }
 
     func testHapticsModuleVibrateStyles() {
@@ -374,16 +386,40 @@ final class NativeModuleTests: XCTestCase {
         XCTAssertEqual(module.moduleName, "Keyboard", "KeyboardModule should be named 'Keyboard'")
     }
 
-    func testKeyboardModuleDismissDoesNotCrash() {
+    @MainActor
+    func testKeyboardModuleDismissResolvesCallbackExactlyOnceOnMainThread() {
         let module = KeyboardModule()
-        let expectation = self.expectation(description: "dismiss callback")
 
-        module.invoke(method: "dismiss", args: []) { _, error in
+        // The visible effect of `dismiss` cannot be asserted in this test host.
+        // `KeyboardModule` dismisses via
+        // `UIApplication.shared.sendAction(#selector(UIResponder
+        // .resignFirstResponder), to: nil, from: nil, for: nil)`, which UIKit
+        // routes to the *application's* key window's first responder. Verified
+        // on the iPhone 17 simulator: inside the headless `xctest` process a
+        // `makeKeyAndVisible()` test window does report `isKeyWindow == true`
+        // and `becomeFirstResponder()` succeeds, but
+        // `UIApplication.shared.keyWindow` does not resolve to it (the host has
+        // no scene-attached app window), so `sendAction(to: nil)` returns false
+        // and nothing resigns. Asserting the resignation here would pin the
+        // test to that host quirk and fail inside a real app.
+        //
+        // What is asserted instead is the contract the bridge depends on.
+        let expectation = self.expectation(description: "dismiss callback")
+        var callbackCount = 0
+        var deliveredOnMainThread = false
+
+        module.invoke(method: "dismiss", args: []) { result, error in
+            callbackCount += 1
+            deliveredOnMainThread = Thread.isMainThread
             XCTAssertNil(error, "dismiss should not return an error")
+            XCTAssertNil(result, "dismiss has no payload to resolve")
             expectation.fulfill()
         }
 
         waitForExpectations(timeout: 2.0)
+
+        XCTAssertEqual(callbackCount, 1, "dismiss must resolve the JS callback exactly once")
+        XCTAssertTrue(deliveredOnMainThread, "the dismiss callback must be delivered on the main thread")
     }
 
     func testKeyboardModuleGetHeight() {

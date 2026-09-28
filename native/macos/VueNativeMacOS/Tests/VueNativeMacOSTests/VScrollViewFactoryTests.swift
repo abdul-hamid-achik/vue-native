@@ -138,17 +138,65 @@ final class VScrollViewFactoryTests: XCTestCase {
         XCTAssertEqual(tableView.frame, frameAfterTile, "no LayoutNode on the document view -- must be left untouched")
     }
 
-    func testMissingDocumentViewDoesNotCrash() {
+    func testMissingDocumentViewLeavesTheScrollViewAlone() {
         let scrollView = NSScrollView()
         scrollView.frame = CGRect(x: 0, y: 0, width: 200, height: 200)
+        XCTAssertNil(scrollView.documentView, "precondition: a bare NSScrollView has no document view")
+        let frameBefore = scrollView.frame
+
         VScrollViewFactory.layoutDocumentView(for: scrollView)
+
+        // The guard must bail out instead of fabricating a document view or
+        // resizing the scroll view: this is the VList/VSectionList/VOutlineView
+        // path, where the host owns its own content view.
+        XCTAssertNil(scrollView.documentView, "the pass must not install a document view")
+        XCTAssertEqual(scrollView.frame, frameBefore, "the pass must not resize the scroll view")
+
+        // Documented child routing with no document view: `insertChild` falls
+        // back to parenting the child to the scroll view itself (and giving it
+        // a LayoutNode) rather than dropping it.
+        let factory = VScrollViewFactory()
+        let child = makeChild(height: 100)
+        factory.insertChild(child, into: scrollView, before: nil)
+        XCTAssertTrue(
+            scrollView.subviews.contains(child),
+            "with no document view, children must fall back to the scroll view itself"
+        )
+        XCTAssertNotNil(child.layoutNode, "a fallback child must still get a LayoutNode")
+
+        VScrollViewFactory.layoutDocumentView(for: scrollView)
+
+        XCTAssertNil(scrollView.documentView, "still must not install a document view")
+        XCTAssertEqual(child.frame, .zero, "the pass must not lay out fallback children")
     }
 
-    func testZeroSizedViewportDoesNotCrash() {
+    func testZeroSizedViewportLeavesContentUnsized() {
         let factory = VScrollViewFactory()
         let scrollView = factory.createView() as! NSScrollView
         // Never given a frame -- viewport bounds stay zero.
+        XCTAssertEqual(
+            scrollView.contentView.bounds.size, .zero,
+            "precondition: an un-framed scroll view has a zero-sized viewport"
+        )
+        let documentView = scrollView.documentView
+        XCTAssertNotNil(documentView, "precondition: the factory always creates a document view")
+        let documentFrameBefore = documentView?.frame
+
+        let child = makeChild(height: 100)
+        factory.insertChild(child, into: scrollView, before: nil)
+
         VScrollViewFactory.layoutDocumentView(for: scrollView)
+
+        // The viewport guard must fire *before* the document view is resized to
+        // the 100_000pt sentinel. Otherwise a scroll view that is not on screen
+        // yet (zero viewport, the normal state before the first layout pass)
+        // would publish an absurd content size and a huge scroller range.
+        XCTAssertEqual(
+            scrollView.documentView?.frame, documentFrameBefore,
+            "a zero-sized viewport must leave the document view at its pre-pass frame"
+        )
+        XCTAssertEqual(child.frame, .zero, "children must not be laid out against a zero-sized viewport")
+        XCTAssertTrue(scrollView.documentView === documentView, "the document view must not be replaced")
     }
 }
 #endif

@@ -121,9 +121,30 @@ final class CertificatePinningTests: XCTestCase {
                        "clearPins should remove all configured pins")
     }
 
-    func testClearPinsOnEmptyDoesNotCrash() {
-        // Should not crash when called with no pins configured
+    func testClearPinsOnEmptyKeepsTheStoreEmptyAndUsable() {
+        // setUp() clears the shared store, so this is the "nothing configured"
+        // path. What must hold afterwards is the full post-state, not just
+        // survival: the store stays empty, requests fall back to the default
+        // (non-delegate) session, and the lock/store are still usable.
+        XCTAssertFalse(pinning.hasPins(for: "api.example.com"), "precondition: no pins are configured")
+
         pinning.clearPins()
+
+        XCTAssertFalse(pinning.hasPins(for: "api.example.com"), "clearPins on an empty store must keep it empty")
+        XCTAssertTrue(
+            pinning.requestSession === URLSession.shared,
+            "with no pins configured, requests must use URLSession.shared rather than the delegate-backed session"
+        )
+
+        // A redundant clear must not wedge the store: pinning has to keep
+        // working afterwards, otherwise a stray clearPins() would permanently
+        // disable TLS pinning for the process.
+        pinning.configurePins(["api.example.com": ["sha256/AAA="]])
+        XCTAssertTrue(pinning.hasPins(for: "api.example.com"), "the store must still accept pins after a clear")
+        XCTAssertTrue(
+            pinning.requestSession === pinning.session,
+            "once pins exist again, requests must go back to the delegate-backed session"
+        )
     }
 
     // MARK: - Session Tests
