@@ -584,14 +584,18 @@ jobs:
     name: Publish Packages
     runs-on: ubuntu-latest
     # Ceiling, not an estimate of a healthy run (~20 min). The bounded retry loop
-    # in "Verify npm release" is the dominant term: 72 attempts x (npm install of
-    # the published packages + `npm audit signatures` + 5s sleep) ~= 48 min worst
-    # case, plus `check:ts` (~12 min), the Gradle publish to GitHub Packages
-    # (~5 min) and tagging (~2 min) ~= 70 min. 90 min keeps headroom while
-    # capping a hung registry/OIDC call at a quarter of GitHub's 360 min
-    # default. Timing out here is recoverable by re-running the workflow:
-    # Changesets skips versions that already exist and the tag preflight below is
-    # idempotent, which is exactly why the retry loop is safe to bound.
+    # in "Verify npm release" is the dominant term: 30 attempts of exponential
+    # backoff (5 s doubling to a 60 s cap, ~27 min of waiting) each doing an
+    # npm install of the published packages plus `npm audit signatures`, so
+    # roughly 35-45 min worst case, plus `check:ts` (~12 min), the Gradle
+    # publish to GitHub Packages (~5 min) and tagging (~2 min). 90 min keeps
+    # headroom while capping a hung registry/OIDC call at a quarter of
+    # GitHub's 360 min default. Timing out here is recoverable by re-running
+    # the workflow: Changesets skips versions that already exist and the tag
+    # preflight below is idempotent, which is exactly why the retry loop is
+    # safe to bound. Propagation waits back off; cryptographic rejections and
+    # non-propagation install failures exit immediately instead of burning the
+    # whole window.
     timeout-minutes: 90
     needs: release-context
     if: github.event_name == 'workflow_dispatch'
@@ -745,11 +749,33 @@ jobs:
           npm init --yes >/dev/null
           mapfile -t TARGETS < targets.txt
 
+          # Propagation vs fatal. An ETARGET/E404 from `npm install` means the
+          # registry does not have the version yet and is worth waiting for;
+          # anything else (auth, tarball corruption) is not. A cryptographic
+          # verification rejection is fatal immediately — retrying it for half
+          # an hour only delays the alert. Backoff doubles to a 60 s cap, giving
+          # ~27 min of waiting across 30 attempts. The 2026-09-28 0.21.0 release
+          # died here because 72 flat 5 s sleeps (~8 min) under-ran real
+          # propagation for @thelacanians/vue-native-cli: npm had all four
+          # packages but this step still failed, leaving Maven, tags and the
+          # GitHub Release unwritten until a manual re-dispatch.
           VERIFIED=false
-          for ATTEMPT in {1..72}; do
+          DELAY=5
+          for ATTEMPT in {1..30}; do
             rm -rf node_modules package-lock.json audit.json
-            if npm install --ignore-scripts --no-audit --no-fund --save-exact "${TARGETS[@]}" &&
-               npm audit signatures --json --include-attestations > audit.json; then
+            INSTALL_LOG="$RUNNER_TEMP/npm-install-attempt-$ATTEMPT.log"
+            if ! npm install --ignore-scripts --no-audit --no-fund --save-exact "${TARGETS[@]}" >"$INSTALL_LOG" 2>&1; then
+              if grep -qE "ETARGET|E404|ENOTFOUND" "$INSTALL_LOG"; then
+                echo "attempt $ATTEMPT: registry has not propagated yet; retrying in ${DELAY}s"
+                sleep "$DELAY"
+                DELAY=$(( DELAY < 60 ? DELAY * 2 : 60 ))
+                continue
+              fi
+              echo "::error::npm install failed for a non-propagation reason"
+              tail -20 "$INSTALL_LOG"
+              exit 1
+            fi
+            if npm audit signatures --json --include-attestations > audit.json; then
               if node <<'NODE'
           const { execFileSync } = require('node:child_process')
           const { readFileSync } = require('node:fs')
@@ -828,14 +854,16 @@ jobs:
                 VERIFIED=true
                 break
               fi
+              echo "::error::cryptographic verification rejected the release; this is not propagation, not retrying"
+              exit 1
             fi
-
-            echo "npm release verification attempt $ATTEMPT did not complete; waiting for registry propagation."
-            sleep 5
+            echo "attempt $ATTEMPT: npm audit signatures failed; retrying in ${DELAY}s"
+            sleep "$DELAY"
+            DELAY=$(( DELAY < 60 ? DELAY * 2 : 60 ))
           done
 
           if [ "$VERIFIED" != "true" ]; then
-            echo "npm release verification failed after 72 attempts."
+            echo "::error::npm release verification failed after 30 attempts of exponential backoff"
             exit 1
           fi
 
