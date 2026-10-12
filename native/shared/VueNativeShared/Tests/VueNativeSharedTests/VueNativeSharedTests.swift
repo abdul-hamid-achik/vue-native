@@ -111,6 +111,74 @@ final class VueNativeSharedTests: XCTestCase {
         XCTAssertFalse(pinning.hasPins(for: "opt-out.example"))
     }
 
+    /// A host whose first configuration has only malformed pins has nothing valid
+    /// to fall back on. Falling back to default trust would fail open, so every
+    /// connection to it must be refused until a valid pin arrives.
+    func testMalformedFirstConfigurationRefusesTheHost() {
+        let pinning = CertificatePinning.shared
+        pinning.clearPins()
+        defer { pinning.clearPins() }
+
+        pinning.configurePins(["fresh.example": ["AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="]])
+
+        XCTAssertEqual(pinning.pinPolicy(forHost: "fresh.example"), .refuseAll)
+        XCTAssertTrue(pinning.hasPins(for: "fresh.example"), "a refused host still counts as pinned")
+        XCTAssertTrue(
+            pinning.requestSession === pinning.session,
+            "refusals only take effect on the delegate-backed session"
+        )
+        XCTAssertEqual(
+            pinning.pinPolicy(forHost: "other.example"),
+            .unpinned,
+            "the refusal must not leak to other hosts"
+        )
+    }
+
+    func testValidPinConfiguredLaterReplacesTheRefusal() {
+        let pinning = CertificatePinning.shared
+        pinning.clearPins()
+        defer { pinning.clearPins() }
+
+        let valid = "sha256/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+        pinning.configurePins(["fresh.example": ["AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="]])
+        XCTAssertEqual(pinning.pinPolicy(forHost: "fresh.example"), .refuseAll)
+
+        pinning.configurePins(["fresh.example": [valid]])
+        XCTAssertEqual(
+            pinning.pinPolicy(forHost: "fresh.example"),
+            .pinned(["AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="])
+        )
+    }
+
+    func testEmptyPinListLiftsARefusal() {
+        let pinning = CertificatePinning.shared
+        pinning.clearPins()
+        defer { pinning.clearPins() }
+
+        pinning.configurePins(["fresh.example": ["AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="]])
+        XCTAssertEqual(pinning.pinPolicy(forHost: "fresh.example"), .refuseAll)
+
+        pinning.configurePins(["fresh.example": []])
+        XCTAssertEqual(pinning.pinPolicy(forHost: "fresh.example"), .unpinned)
+        XCTAssertFalse(pinning.hasPins(for: "fresh.example"))
+    }
+
+    func testMalformedUpdateKeepsPreviousPinsInsteadOfRefusing() {
+        let pinning = CertificatePinning.shared
+        pinning.clearPins()
+        defer { pinning.clearPins() }
+
+        let valid = "sha256/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+        pinning.configurePins(["typo.example": [valid]])
+        pinning.configurePins(["typo.example": ["no-prefix-here"]])
+
+        XCTAssertEqual(
+            pinning.pinPolicy(forHost: "typo.example"),
+            .pinned(["AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="]),
+            "previously valid pins must keep applying, not turn into a refusal"
+        )
+    }
+
     /// `session` used to be a `lazy var`, which Swift does not initialise
     /// atomically. It is read from the jsQueue, the main thread and URLSession
     /// callback threads, so concurrent first touches could build two sessions and

@@ -61,14 +61,16 @@ final class CertificatePinningTests: XCTestCase {
                       "Should have pins with multiple hashes")
     }
 
-    func testConfigurePinsIgnoresMalformedPins() {
-        // Pins without "sha256/" prefix should be ignored
+    func testConfigurePinsRefusesAHostWhoseOnlyPinsAreMalformed() {
+        // Pins without the "sha256/" prefix are dropped. When nothing valid is left
+        // for a host that had no pins, the host is refused rather than left
+        // unpinned, so a typo cannot silently turn pinning off.
         pinning.configurePins([
             "api.example.com": ["md5/NotSupported"]
         ])
 
-        XCTAssertFalse(pinning.hasPins(for: "api.example.com"),
-                       "Malformed pins (without sha256/ prefix) should not register")
+        XCTAssertTrue(pinning.hasPins(for: "api.example.com"),
+                      "A host whose only pins are malformed must be refused, not left unpinned")
     }
 
     func testConfigurePinsIsCaseInsensitiveForDomain() {

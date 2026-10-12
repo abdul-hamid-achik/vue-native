@@ -16,7 +16,8 @@ public final class CertificatePinning: NSObject, URLSessionDelegate {
     public static let shared = CertificatePinning()
 
     /// Maps lowercase domain to an array of base64-encoded SHA-256 hashes of the
-    /// Subject Public Key Info (SPKI).
+    /// Subject Public Key Info (SPKI). A domain mapped to an empty array is a
+    /// refusal marker: its connections are cancelled, never trusted by default.
     private var pins: [String: [String]] = [:]
     private let pinsLock = NSLock()
 
@@ -69,6 +70,7 @@ public final class CertificatePinning: NSObject, URLSessionDelegate {
     /// - Parameter domainPins: Dictionary mapping domain names to arrays of pin strings.
     public func configurePins(_ domainPins: [String: [String]]) {
         var normalizedPins: [String: [String]] = [:]
+        var unparseableDomains: [String] = []
         for (domain, pinList) in domainPins {
             var hashes: [String] = []
             var malformed = 0
@@ -90,15 +92,15 @@ public final class CertificatePinning: NSObject, URLSessionDelegate {
             // non-empty list that parsed to nothing is a configuration error:
             // treating it as a removal made a single typo silently disable
             // pinning for that host, which is failing open on the one control
-            // whose whole job is to fail closed. Keep the previous pins instead.
+            // whose whole job is to fail closed.
             if pinList.isEmpty {
                 normalizedPins[domain.lowercased()] = []
             } else if !hashes.isEmpty {
                 normalizedPins[domain.lowercased()] = hashes
             } else {
+                unparseableDomains.append(domain.lowercased())
                 NSLog(
-                    "[VueNative] CertificatePinning: all %d pin(s) for %@ were malformed; "
-                    + "keeping the previously configured pins rather than unpinning the host",
+                    "[VueNative] CertificatePinning: all %d pin(s) for %@ were malformed",
                     malformed, domain
                 )
             }
@@ -116,20 +118,56 @@ public final class CertificatePinning: NSObject, URLSessionDelegate {
                 pins[domain] = hashes
             }
         }
+        for domain in unparseableDomains {
+            if pins[domain] == nil {
+                // Nothing valid to fall back on: the host would end up unpinned.
+                // Refuse its connections until a valid pin is configured instead.
+                pins[domain] = []
+                NSLog(
+                    "[VueNative] CertificatePinning: refusing all connections to %@ until a valid pin is configured",
+                    domain
+                )
+            } else {
+                NSLog(
+                    "[VueNative] CertificatePinning: keeping the previously configured pins for %@ rather than unpinning the host",
+                    domain
+                )
+            }
+        }
     }
 
-    /// Returns true if there are pins configured for the given host.
+    /// Returns true if pins are configured for the given host, including a host
+    /// whose connections are being refused.
     public func hasPins(for host: String) -> Bool {
         pinsLock.lock()
         defer { pinsLock.unlock() }
         return pins[host.lowercased()] != nil
     }
 
-    /// Remove all configured pins.
+    /// Remove all configured pins and refusals.
     public func clearPins() {
         pinsLock.lock()
         defer { pinsLock.unlock() }
         pins.removeAll()
+    }
+
+    /// What the pinner does for one host.
+    enum PinPolicy: Equatable {
+        /// No pins configured: the system's default trust evaluation applies.
+        case unpinned
+        /// Pins were configured but none parsed, and no valid pin replaced them.
+        case refuseAll
+        /// The server certificate chain must contain one of these SPKI hashes.
+        case pinned([String])
+    }
+
+    /// The pinning decision for `host`. Kept separate from the challenge callback
+    /// so the decision can be tested without a live TLS handshake.
+    func pinPolicy(forHost host: String) -> PinPolicy {
+        pinsLock.lock()
+        defer { pinsLock.unlock() }
+        guard let hashes = pins[host.lowercased()] else { return .unpinned }
+        return hashes.isEmpty ? .refuseAll : .pinned(hashes)
     }
 
     // MARK: - URLSessionDelegate
@@ -147,14 +185,17 @@ public final class CertificatePinning: NSObject, URLSessionDelegate {
 
         let host = challenge.protectionSpace.host.lowercased()
 
-        // If no pins configured for this host, use default handling
-        pinsLock.lock()
-        let expectedPins = pins[host]
-        pinsLock.unlock()
-
-        guard let expectedPins else {
+        let expectedPins: [String]
+        switch pinPolicy(forHost: host) {
+        case .unpinned:
             completionHandler(.performDefaultHandling, nil)
             return
+        case .refuseAll:
+            NSLog("[VueNative CertPin] Refusing connection to %@: no valid pin is configured", host)
+            completionHandler(.cancelAuthenticationChallenge, nil)
+            return
+        case .pinned(let hashes):
+            expectedPins = hashes
         }
 
         // Evaluate the server trust

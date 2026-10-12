@@ -1,5 +1,6 @@
 package com.vuenative.core
 
+import android.util.Base64
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 import okhttp3.CertificatePinner
@@ -29,6 +30,15 @@ class HttpModule : NativeModule {
         private val pinLock = Any()
         private val pinMap = linkedMapOf<String, List<String>>()
 
+        private const val PIN_PREFIX = "sha256/"
+
+        /**
+         * A pin no certificate can match (32 zero bytes). It is stored for a host
+         * whose pins were all malformed and had nothing valid to fall back on, so
+         * the pinning check fails every connection to that host.
+         */
+        private val REFUSE_ALL_PIN = PIN_PREFIX + Base64.encodeToString(ByteArray(32), Base64.NO_WRAP)
+
         /** Client with certificate pinning — rebuilt when pins are configured. */
         @Volatile private var pinnedClient: OkHttpClient? = null
 
@@ -36,7 +46,12 @@ class HttpModule : NativeModule {
 
         /**
          * Merge pin lists into the process-wide map (Apple semantics).
-         * An empty list for a host removes that host. Rebuilds the shared client.
+         *
+         * An empty list removes the host's pins. A non-empty list keeps only its
+         * valid `sha256/<base64>` pins. When none are valid, the host keeps its
+         * previous pins; a host with no previous pins is refused instead of being
+         * left unpinned, so a typo cannot silently disable pinning. Rebuilds the
+         * shared client.
          */
         fun configurePins(pinsMap: Map<String, List<String>>) {
             synchronized(pinLock) {
@@ -44,15 +59,31 @@ class HttpModule : NativeModule {
                     val host = domain.lowercase()
                     if (pins.isEmpty()) {
                         pinMap.remove(host)
-                    } else {
-                        pinMap[host] = pins
+                        continue
+                    }
+                    val valid = pins.filter { isValidPin(it) }
+                    when {
+                        valid.isNotEmpty() -> pinMap[host] = valid
+                        pinMap[host] == null -> pinMap[host] = listOf(REFUSE_ALL_PIN)
                     }
                 }
                 rebuildPinnedClient()
             }
         }
 
+        private fun isValidPin(pin: String): Boolean {
+            if (!pin.startsWith(PIN_PREFIX)) return false
+            val encoded = pin.substring(PIN_PREFIX.length)
+            return try {
+                encoded.isNotEmpty() && Base64.decode(encoded, Base64.DEFAULT).isNotEmpty()
+            } catch (e: IllegalArgumentException) {
+                false
+            }
+        }
+
         internal fun pinnedHosts(): Set<String> = synchronized(pinLock) { pinMap.keys.toSet() }
+
+        internal fun pinsFor(host: String): List<String>? = synchronized(pinLock) { pinMap[host.lowercase()] }
 
         internal fun resetPins() {
             synchronized(pinLock) {
