@@ -1,5 +1,129 @@
 # @thelacanians/vue-native-cli
 
+## 0.23.0
+
+### Minor Changes
+
+- 0aa3ad4: macOS: `useFileSystem()` and `useDatabase()` are confined to per-app folders.
+
+  The macOS scaffold runs without the App Sandbox, so the FileSystem roots
+  resolved to `~/Documents`, `~/Library/Caches`, `~/Library/Application Support`
+  and the shared `$TMPDIR`. JavaScript could read and write every app's data
+  there. On a non-sandboxed host the roots are now
+  `~/Library/Application Support/<bundle id>`, `~/Library/Caches/<bundle id>` and
+  `$TMPDIR/<bundle id>`, and documents live in
+  `<Application Support>/<bundle id>/Documents`. `getDocumentsPath` and
+  `getCachesPath` report the new folders, and audio recordings and captured photos
+  are written to the per-app temporary folder so their paths stay readable.
+  Sandboxed hosts and iOS are unchanged.
+
+  Breaking for existing macOS apps: files written under `~/Documents`, and
+  databases in `~/Documents/databases`, are no longer reachable from JavaScript.
+  Move them into the new folders, or set
+  `FileSystemSandbox.shared.allowsUserDocumentsDirectory = true` from Swift at
+  launch to keep using the real `~/Documents` (this also restores the old database
+  location).
+
+- 0886a44: OTA: signed release manifests, a monotonic version floor, and strict versions.
+
+  - The publisher can now sign a manifest that binds the version to the bundle:
+    the UTF-8 bytes of `vue-native-ota-v1`, the version and the lowercase SHA-256,
+    separated by newlines. A signature over the raw bundle bytes still verifies but
+    is deprecated, because it lets anyone who can serve bytes replay an old signed
+    bundle under a higher version. Hosts can refuse legacy signatures with the
+    Info.plist Boolean `VueNativeOTARequireSignedManifest` or the
+    `com.vuenative.ota.requireSignedManifest` meta-data.
+  - The anti-downgrade floor is now the highest version ever applied, stored
+    natively. Rolling back no longer lowers it, so after a rollback ship a higher
+    version.
+  - Versions must be an optional `v`, one to four dotted numbers, an optional
+    `-prerelease` and an ignored `+build`. Anything else is rejected. The old
+    comparator ranked `v1.8.0` above `1.9.0`; ordering now follows semver
+    precedence on iOS and Android.
+  - iOS accepts a base64 signature split across lines, as Android already did,
+    so a `base64` that wraps its output no longer fails verification on iOS only.
+
+### Patch Changes
+
+- 38ac9bc: `testID` reaches native views, and VCheckbox speaks on iOS.
+
+  - `testID` was declared on five components and dropped by every platform. It now
+    sets `accessibilityIdentifier` on iOS and macOS and the node's
+    `viewIdResourceName` on Android, so XCUITest, UiAutomator and Maestro can find
+    views.
+  - iOS `VCheckbox` is one VoiceOver element with a button trait, its label, a
+    checked/unchecked value, and a not-enabled trait while disabled.
+  - macOS maps `accessibilityRole: 'adjustable'` to a slider, as iOS and Android do.
+
+- 0ef62ec: `vue-native upgrade` warns outside git and records the version last.
+
+  Outside a git repository, local edits to `native/` cannot be detected, so
+  upgrade now says so before overwriting them. The version stamp is written after
+  the host patches, so a failed patch is retried on the next run.
+
+- 741f9b5: macOS: aspect-ratio flex items, menu modifiers, and `<VSVG>` loads.
+
+  - A flex item with a definite cross size and an `aspectRatio` uses the ratio as
+    its flex basis, so growing siblings no longer overflow the container.
+  - A negative menu `modifiers` value no longer crashes the app, and menu
+    rebuilds release the item proxies they replace.
+  - Remote `<VSVG>` loads honour certificate pinning, and local SVG paths are
+    confined to the FileSystem sandbox.
+
+- 4986bd1: Database: raw SQL cannot attach other files, and `VACUUM` works again on Apple.
+
+  On Android, `execute`, `query` and `executeTransaction` refuse `ATTACH`,
+  `DETACH` and `VACUUM INTO`, as Apple already did, so raw SQL cannot reach SQLite
+  files outside the database name it was given. On iOS and macOS the attach limit
+  that enforced this also broke plain `VACUUM`; it is replaced by an authorizer
+  that only permits VACUUM's private temporary database. On Android,
+  `rowsAffected` is now right for `INSERT OR IGNORE` and multi-row inserts, and
+  `REPLACE` reports `insertId`.
+
+- 0aa3ad4: FileSystem: protected trees, redirect checks, and real directory moves on Android.
+
+  `copyFile`, `moveFile` and `downloadFile` refuse to replace or move a sandbox
+  root or an ancestor of the OTA store on iOS, macOS and Android. `downloadFile`
+  re-checks every redirect, so an https download cannot be redirected to
+  cleartext. On Android, copying or moving a directory now carries its contents
+  instead of reporting success with an empty target.
+
+- 9716d11: Certificate pinning no longer fails open on a malformed first configuration.
+
+  A host whose first pin list is entirely malformed was left unpinned without an
+  error. It is now refused until a valid pin is configured; an empty list still
+  unpins the host, and a malformed update keeps the previous valid pins. On
+  Android only `sha256/` pins are valid, as on Apple.
+
+- a7d1b2f: SecureStorage: safer `setProtected`, and Android survives an Auto Backup restore.
+
+  `setProtected` validates the value before deleting the existing secret. On
+  Android the encrypted store is excluded from backup and device transfer in new
+  projects, because its Keystore key does not migrate (existing apps should add
+  the same rules, see the useSecureStorage docs). A store that still cannot be
+  decrypted is reset instead of disabling the module.
+
+- 3c58623: Fix `<VWebView :source="{ uri }">` never loading on iOS and macOS since 0.21.0.
+
+  `VWebView` sent its default `allowedOrigins: []` right after `source`, and the
+  native allowlist treated that empty list as "allow nothing". WebKit reports even
+  the initial load as a non-explicit navigation, so it was cancelled and the view
+  stayed blank. On Android the first page loaded, but messages and same-origin
+  links were refused.
+
+  The runtime now sends `allowedOrigins` only when the list is non-empty. The
+  three native policies keep the origin derived from `source` apart from the
+  host's list: a non-empty `allowedOrigins` replaces the derived origin, and an
+  empty or cleared list restores it, whatever order the props arrive in. A source
+  change now replaces the previous source's origin instead of accumulating it.
+  `allowedOrigins` must be an array of strings on iOS and macOS; a comma-separated
+  string is no longer accepted there.
+
+  On Android, page messages now go through WebView's message listener when the
+  installed WebView supports it, so the origin of every frame is checked, not just
+  the main frame's URL. Outdated WebViews keep the previous JavaScript interface
+  and log a warning.
+
 ## 0.22.0
 
 ### Minor Changes
