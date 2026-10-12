@@ -6,12 +6,12 @@ import FlexLayout
 
 /// Factory for VList — a scrollable list backed by UITableView.
 ///
-/// Cells are recycled by the table view, but the child views themselves are **not**
-/// virtualized: every row's `UIView` is created up front by the JS renderer and held
-/// in `VListContainerView.itemViews` for the lifetime of the list. Only the visible
-/// subset is measured with Yoga and hosted in a cell. Truly virtualizing the item
-/// views (creating/destroying them as rows scroll) is a larger change tracked
-/// separately; do not describe this component as virtualized in the meantime.
+/// Item windowing happens in the JS layer, not here. `VList.ts` mounts only a window
+/// of rows (the visible rows plus a buffer) once the list has more than
+/// `windowSize * 2` items, and replaces the rows outside it with spacer views sized
+/// from `estimatedItemHeight` so the native scroll extent stays correct. Lists at or
+/// below that size mount every row. Native cells are recycled by the table view, and
+/// the mounted row views are held in `VListContainerView.itemViews`.
 ///
 /// Children inserted via the bridge are stored as table rows, not regular subviews.
 /// Supports scroll and endReached events.

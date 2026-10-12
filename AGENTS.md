@@ -99,10 +99,9 @@ These notes are for agents and maintainers continuing the same branch. They shou
 
 ### Current local notes
 
-- `~/notes/projects/vue-native/progress-2026-08-17.md` (authoritative audit + implementation trail)
+- `~/notes/projects/vue-native/progress-2026-10-11.md` (latest audit, the fixes that followed it, and their validation)
 - `~/notes/projects/vue-native/open-backlog.md` (still-true findings only)
-- `~/notes/projects/vue-native/CHANGELOG-draft-2026-08-17.md`
-- Historical notes: `~/notes/projects/vue-native/archive/`
+- Historical notes: older `progress-*.md` files and `~/notes/projects/vue-native/archive/`
 
 ### When to create or update notes
 
@@ -163,9 +162,8 @@ Do not commit files from `~/notes`; they are local working notes, not repository
 
 ### Current review objectives and open risks
 
-Local `main` is origin `0.19.0` plus uncommitted work. The 2026-08-17
-audit plus this session's implementation trail live in
-`progress-2026-08-17.md`. Still-true work is in `open-backlog.md`. Remaining
+The 2026-10-11 audit and the fixes that followed it live in
+`progress-2026-10-11.md`. Still-true work is in `open-backlog.md`. Remaining
 risks are physical-device proof, live TLS pinning, and the deferred package
 split. Host-boot smoke exists (`bun run smoke:app-shell`).
 

@@ -1,6 +1,6 @@
 # VList
 
-A virtualized scrollable list backed by `UITableView` on iOS and `RecyclerView` on Android. Efficient for large datasets -- only visible rows are rendered.
+A virtualized scrollable list backed by `UITableView` on iOS and `RecyclerView` on Android. Efficient for large datasets. Windowing starts once a list is longer than `windowSize * 2` items, and only the rows near the viewport are rendered. Shorter lists mount every row.
 
 ## Usage
 
