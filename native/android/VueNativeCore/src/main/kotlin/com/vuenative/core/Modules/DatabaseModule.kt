@@ -116,27 +116,19 @@ class DatabaseModule : NativeModule {
     // -- Execute (INSERT, UPDATE, DELETE, CREATE TABLE, etc.) --
 
     private fun execute(name: String, sql: String, params: Array<Any?>, callback: (Any?, String?) -> Unit) {
+        SqlStatementGuard.requireAllowed(sql)
         val db = getOrOpen(name) ?: run {
             callback(null, "Failed to open database '$name'")
             return
         }
 
-        val stmt = db.compileStatement(sql)
-        bindParams(stmt, params)
-
-        val sqlUpper = sql.trimStart().uppercase()
-        if (sqlUpper.startsWith("INSERT")) {
-            val insertId = stmt.executeInsert()
-            callback(mapOf("rowsAffected" to 1, "insertId" to insertId), null)
-        } else {
-            val rowsAffected = stmt.executeUpdateDelete()
-            callback(mapOf("rowsAffected" to rowsAffected), null)
-        }
+        callback(runWrite(db, sql, params), null)
     }
 
     // -- Query (SELECT) --
 
     private fun query(name: String, sql: String, params: Array<String?>, callback: (Any?, String?) -> Unit) {
+        SqlStatementGuard.requireAllowed(sql)
         val db = getOrOpen(name) ?: run {
             callback(null, "Failed to open database '$name'")
             return
@@ -162,6 +154,12 @@ class DatabaseModule : NativeModule {
     // -- Transaction --
 
     private fun executeTransaction(name: String, statements: List<*>, callback: (Any?, String?) -> Unit) {
+        // Check every statement before the transaction opens, so a rejected batch
+        // runs nothing.
+        for (raw in statements) {
+            val sql = toStringKeyMap(raw)?.get("sql")?.toString() ?: continue
+            SqlStatementGuard.requireAllowed(sql)
+        }
         val db = getOrOpen(name) ?: run {
             callback(null, "Failed to open database '$name'")
             return
@@ -176,17 +174,7 @@ class DatabaseModule : NativeModule {
                 val sql = stmtData["sql"]?.toString() ?: continue
                 val params = toParamArray(stmtData["params"])
 
-                val stmt = db.compileStatement(sql)
-                bindParams(stmt, params)
-
-                val sqlUpper = sql.trimStart().uppercase()
-                if (sqlUpper.startsWith("INSERT")) {
-                    val insertId = stmt.executeInsert()
-                    results.add(mapOf("rowsAffected" to 1, "insertId" to insertId))
-                } else {
-                    val rowsAffected = stmt.executeUpdateDelete()
-                    results.add(mapOf("rowsAffected" to rowsAffected))
-                }
+                results.add(runWrite(db, sql, params))
             }
 
             db.setTransactionSuccessful()
@@ -214,6 +202,41 @@ class DatabaseModule : NativeModule {
         db.enableWriteAheadLogging()
         databases[name] = db
         return db
+    }
+
+    /**
+     * Run one write statement. INSERT and REPLACE report the new row id, and
+     * `rowsAffected` comes from `changes()`: `executeInsert` yields -1 and no row
+     * for `INSERT OR IGNORE` on a conflict, and a multi-row `INSERT ... SELECT`
+     * changes more than one row. Other statements report `executeUpdateDelete`.
+     */
+    private fun runWrite(db: SQLiteDatabase, sql: String, params: Array<Any?>): Map<String, Any> =
+        db.compileStatement(sql).use { stmt ->
+            bindParams(stmt, params)
+
+            val sqlUpper = sql.trimStart().uppercase()
+            if (sqlUpper.startsWith("INSERT") || sqlUpper.startsWith("REPLACE")) {
+                // In WAL mode a plain read can run on another connection, which reports
+                // changes() as 0. One transaction keeps the INSERT and changes() together.
+                db.inTransaction {
+                    val insertId = stmt.executeInsert()
+                    val changed = db.compileStatement("SELECT changes()").use { it.simpleQueryForLong() }
+                    mapOf("rowsAffected" to changed.toInt(), "insertId" to insertId)
+                }
+            } else {
+                mapOf("rowsAffected" to stmt.executeUpdateDelete())
+            }
+        }
+
+    private inline fun <T> SQLiteDatabase.inTransaction(block: () -> T): T {
+        beginTransaction()
+        try {
+            val result = block()
+            setTransactionSuccessful()
+            return result
+        } finally {
+            endTransaction()
+        }
     }
 
     private fun bindParams(stmt: android.database.sqlite.SQLiteStatement, params: Array<Any?>) {
@@ -261,5 +284,117 @@ class DatabaseModule : NativeModule {
     private fun toStringKeyMap(value: Any?): Map<String, Any?>? {
         val map = value as? Map<*, *> ?: return null
         return map as Map<String, Any?>
+    }
+}
+
+/**
+ * Refuses SQL that would attach another database file or write a raw copy of the
+ * database. `execute`, `query` and `executeTransaction` accept arbitrary SQL, so
+ * an `ATTACH DATABASE` could otherwise reach any path the app can write.
+ *
+ * The check tokenizes the SQL. It splits statements on `;` outside quotes and
+ * comments, then reads each statement's first keyword, skipping whitespace,
+ * comments and `(`. Quoted text and comments never count as keywords.
+ */
+internal object SqlStatementGuard {
+    const val REJECTION = "ATTACH, DETACH and VACUUM INTO are not allowed"
+
+    /** Throws [IllegalArgumentException] with [REJECTION] when [sql] holds a forbidden statement. */
+    fun requireAllowed(sql: String) {
+        if (!isAllowed(sql)) throw IllegalArgumentException(REJECTION)
+    }
+
+    fun isAllowed(sql: String): Boolean = tokenize(sql).all { isAllowedStatement(it) }
+
+    private sealed class Token {
+        data class Word(val upper: String) : Token()
+        object Paren : Token()
+        object Other : Token()
+    }
+
+    private fun isAllowedStatement(tokens: List<Token>): Boolean {
+        val start = tokens.indexOfFirst { it !is Token.Paren }
+        if (start < 0) return true
+        val first = tokens[start] as? Token.Word ?: return true
+        return when (first.upper) {
+            "ATTACH", "DETACH" -> false
+            "VACUUM" -> tokens.drop(start + 1).none { it is Token.Word && it.upper == "INTO" }
+            else -> true
+        }
+    }
+
+    private fun tokenize(sql: String): List<List<Token>> {
+        val statements = mutableListOf<List<Token>>()
+        var current = mutableListOf<Token>()
+        var index = 0
+        while (index < sql.length) {
+            val c = sql[index]
+            when {
+                c == ';' -> {
+                    statements.add(current)
+                    current = mutableListOf()
+                    index++
+                }
+                c.isWhitespace() -> index++
+                sql.startsWith("--", index) -> {
+                    val newline = sql.indexOf('\n', index)
+                    index = if (newline < 0) sql.length else newline + 1
+                }
+                sql.startsWith("/*", index) -> {
+                    val close = sql.indexOf("*/", index + 2)
+                    index = if (close < 0) sql.length else close + 2
+                }
+                c == '\'' || c == '"' || c == '`' -> {
+                    current.add(Token.Other)
+                    index = skipQuoted(sql, index, c)
+                }
+                c == '[' -> {
+                    current.add(Token.Other)
+                    val close = sql.indexOf(']', index + 1)
+                    index = if (close < 0) sql.length else close + 1
+                }
+                c == '(' -> {
+                    current.add(Token.Paren)
+                    index++
+                }
+                c == '_' || c.isLetter() -> {
+                    val end = wordEnd(sql, index)
+                    current.add(Token.Word(sql.substring(index, end).uppercase()))
+                    index = end
+                }
+                c.isDigit() -> {
+                    current.add(Token.Other)
+                    index = wordEnd(sql, index)
+                }
+                else -> {
+                    current.add(Token.Other)
+                    index++
+                }
+            }
+        }
+        statements.add(current)
+        return statements
+    }
+
+    /** Index just past a quoted run starting at [start]. A doubled quote is an escape. */
+    private fun skipQuoted(sql: String, start: Int, quote: Char): Int {
+        var index = start + 1
+        while (index < sql.length) {
+            if (sql[index] == quote) {
+                if (index + 1 < sql.length && sql[index + 1] == quote) {
+                    index += 2
+                    continue
+                }
+                return index + 1
+            }
+            index++
+        }
+        return sql.length
+    }
+
+    private fun wordEnd(sql: String, start: Int): Int {
+        var end = start
+        while (end < sql.length && (sql[end].isLetterOrDigit() || sql[end] == '_')) end++
+        return end
     }
 }

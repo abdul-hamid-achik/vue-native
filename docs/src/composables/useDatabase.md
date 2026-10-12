@@ -90,6 +90,7 @@ await db.transaction(async ({ execute, query }) => {
 |----------|---------|
 | iOS | SQLite via native Database module. |
 | Android | SQLite via native Database module. |
+| macOS | SQLite via the shared Database module. On a non-sandboxed host the files live in `<Application Support>/<bundle id>/Documents/databases`, not `~/Documents/databases`, so apps of the same user do not share them. |
 
 ## Example
 
@@ -160,3 +161,4 @@ async function deleteTodo(id: number) {
 - The database is automatically closed when the owning component unmounts. Call `close()` manually if you need to close it earlier.
 - Database files persist across app launches. Use `DROP TABLE` or delete the file to clear data.
 - Transaction isolation uses `BEGIN TRANSACTION` / `COMMIT` / `ROLLBACK` under the hood.
+- Raw SQL cannot attach other database files: `ATTACH`, `DETACH` and `VACUUM INTO` are refused on every platform. Plain `VACUUM` works.

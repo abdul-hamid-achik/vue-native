@@ -50,10 +50,11 @@ public final class DatabaseModule: NativeModule {
             return databaseDirectoryOverride
         }
 
-        let baseDirectory = FileManager.default.urls(
-            for: .documentDirectory,
-            in: .userDomainMask
-        ).first ?? FileManager.default.temporaryDirectory
+        // The sandbox's documents root: the system Documents directory on iOS and
+        // in sandboxed macOS builds, and `Application Support/<id>/Documents` on an
+        // unsandboxed macOS host, so apps of the same user do not share databases.
+        let baseDirectory = FileSystemSandbox.shared.documentsRoot()
+            ?? FileManager.default.temporaryDirectory
         let dir = baseDirectory
             .appendingPathComponent("databases", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -147,12 +148,21 @@ public final class DatabaseModule: NativeModule {
     /// `execute` and `query` accept arbitrary SQL by design (they are an ORM
     /// substrate, not a query builder), so `ATTACH DATABASE '<path>'` would
     /// otherwise give JavaScript a second write-anywhere primitive that does not
-    /// go through the validated database name. Capping attached databases at
-    /// zero removes it. Parameter binding is already safe (`bindParams` uses
-    /// `SQLITE_TRANSIENT`), so no statement-level filtering is needed.
+    /// go through the validated database name.
+    ///
+    /// Capping `SQLITE_LIMIT_ATTACHED` at zero would close that, but it also breaks
+    /// plain `VACUUM`, which attaches a private temporary database internally. The
+    /// authorizer is the enforcement point instead: it allows only the empty-name
+    /// attach that `VACUUM` uses, and denies every other `ATTACH`: a literal path,
+    /// a computed filename, and a NULL name the authorizer cannot inspect.
+    /// `VACUUM INTO <path>` goes through the same attach and is denied with it.
     private static func harden(_ db: OpaquePointer) {
         sqlite3_exec(db, "PRAGMA journal_mode=WAL", nil, nil, nil)
-        sqlite3_limit(db, SQLITE_LIMIT_ATTACHED, 0)
+        sqlite3_set_authorizer(db, { _, action, filename, _, _, _ in
+            guard action == SQLITE_ATTACH else { return SQLITE_OK }
+            guard let filename, filename.pointee == 0 else { return SQLITE_DENY }
+            return SQLITE_OK
+        }, nil)
     }
 
     // MARK: - Execute (INSERT, UPDATE, DELETE, CREATE TABLE, etc.)

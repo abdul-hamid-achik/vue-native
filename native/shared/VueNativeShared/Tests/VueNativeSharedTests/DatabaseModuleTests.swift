@@ -159,6 +159,38 @@ final class DatabaseModuleTests: XCTestCase {
         )
     }
 
+    /// Plain VACUUM must keep working, while every statement that would write to a
+    /// path chosen by the caller must stay refused. VACUUM INTO and ATTACH are the
+    /// two write-anywhere routes; a computed ATTACH filename is the bypass to guard.
+    func testVacuumWorksWhileAttachingOrWritingToOtherPathsStaysRefused() throws {
+        let module = DatabaseModule(databaseDirectory: databaseDirectory)
+        defer { module.destroy() }
+        XCTAssertNil(invoke(module, method: "open", args: ["vacuum"]).error)
+
+        let plain = invoke(module, method: "execute", args: ["vacuum", "VACUUM", []])
+        XCTAssertNil(plain.error, "plain VACUUM must succeed")
+        XCTAssertNotNil(plain.result)
+
+        let intoTarget = databaseDirectory.appendingPathComponent("vacuum-into.db").path
+        let into = invoke(module, method: "execute", args: ["vacuum", "VACUUM INTO '\(intoTarget)'", []])
+        XCTAssertNotNil(into.error, "VACUUM INTO must not write to a caller-chosen path")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: intoTarget), "VACUUM INTO created a file")
+
+        let attachTarget = databaseDirectory.appendingPathComponent("attached.sqlite").path
+        let attach = invoke(module, method: "execute", args: ["vacuum", "ATTACH DATABASE '\(attachTarget)' AS y", []])
+        XCTAssertNotNil(attach.error, "ATTACH of a path must be refused")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: attachTarget), "ATTACH created a file")
+
+        let computedTarget = databaseDirectory.appendingPathComponent("computed.db").path
+        let computed = invoke(
+            module,
+            method: "execute",
+            args: ["vacuum", "ATTACH DATABASE ('\(databaseDirectory.path)/' || 'computed.db') AS z", []]
+        )
+        XCTAssertNotNil(computed.error, "ATTACH with a computed filename must be refused")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: computedTarget), "computed ATTACH created a file")
+    }
+
     private func invoke(
         _ module: DatabaseModule,
         method: String,
