@@ -2,6 +2,7 @@ import AppKit
 import ObjectiveC
 import SVGKit
 import VueNativeMacOS
+import VueNativeShared
 
 /// Flipped container view that hosts the NSImageView used to display a rendered
 /// SVG. The container participates in the LayoutNode flexbox system; the inner
@@ -65,10 +66,19 @@ final class VSVGFactory: NativeComponentFactory {
     /// sizeless image, so we always guarantee a concrete size before exporting.
     private static let fallbackSize = CGSize(width: 100, height: 100)
 
-    private let urlSession: URLSession
+    private let urlSessionOverride: URLSession?
 
-    init(urlSession: URLSession = .shared) {
-        self.urlSession = urlSession
+    /// - Parameter urlSession: Test-only override. Production callers pass nothing so
+    ///   the session is resolved per request (see ``urlSession``).
+    init(urlSession: URLSession? = nil) {
+        self.urlSessionOverride = urlSession
+    }
+
+    /// The session remote SVGs load through, resolved **per request**. Capturing it
+    /// at construction froze the unpinned `URLSession.shared` into the factory,
+    /// bypassing TLS pinning. Mirrors `VImageFactory`.
+    var urlSession: URLSession {
+        urlSessionOverride ?? CertificatePinning.shared.requestSession
     }
 
     // MARK: - NativeComponentFactory
@@ -243,11 +253,21 @@ final class VSVGFactory: NativeComponentFactory {
             return
         }
 
-        // Local file paths (no scheme, or file://) are parsed synchronously.
+        // Local file paths (no scheme, or file://) are parsed synchronously. They
+        // are confined to the app sandbox like every other file-backed JS API, so
+        // an absolute path or file:// URI cannot read arbitrary files.
         if url.scheme == nil || url.scheme == "file" {
             let path = url.scheme == nil ? uri : url.path
+            let sandboxedURL: URL
+            do {
+                sandboxedURL = try FileSystemSandbox.shared.resolve(path)
+            } catch {
+                view.imageView.image = nil
+                fireErrorEvent(for: view, message: error.localizedDescription)
+                return
+            }
             let svgImage = parseWithWarmup {
-                SVGKImage(source: SVGKSourceLocalFile.source(fromFilename: path))
+                SVGKImage(source: SVGKSourceLocalFile.source(fromFilename: sandboxedURL.path))
             }
             guard let svgImage else {
                 view.imageView.image = nil

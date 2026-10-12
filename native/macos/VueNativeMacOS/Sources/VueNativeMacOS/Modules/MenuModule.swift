@@ -23,7 +23,7 @@ final class MenuModule: NativeModule {
     /// Retains the target-action proxies for every menu item this module built.
     /// `NSMenuItem.target` is `weak`, so without this the proxies would die
     /// immediately and no click would ever be delivered.
-    private var itemProxies: [MenuActionProxy] = []
+    private(set) var itemProxies: [MenuActionProxy] = []
 
     init(dispatcher: NativeEventDispatcher) {
         self.dispatcher = dispatcher
@@ -53,8 +53,13 @@ final class MenuModule: NativeModule {
                     let location = NSEvent.mouseLocation
                     let windowPoint = window.convertPoint(fromScreen: location)
                     let viewPoint = view.convert(windowPoint, from: nil)
+                    // `popUp` returns after tracking ends, and the click action
+                    // has already been sent by then, so the menu is disposable.
                     menu.popUp(positioning: nil, at: viewPoint, in: view)
                 }
+                // A context menu is never installed anywhere, so its proxies
+                // would otherwise be retained for the life of the module.
+                self?.releaseProxies(in: menu)
                 callback(nil, nil)
 
             default:
@@ -95,11 +100,21 @@ final class MenuModule: NativeModule {
 
             let submenu = menuItem.submenu ?? NSMenu(title: title)
             submenu.title = title
+            releaseProxies(in: submenu)
             submenu.removeAllItems()
             submenu.autoenablesItems = false
             addMenuItems(children, to: submenu)
             menuItem.submenu = submenu
         }
+    }
+
+    /// Drop the proxies of the items currently in `menu`. Call before the menu's
+    /// items are removed or the menu is discarded, so a rebuild does not keep
+    /// every previous item's proxy alive.
+    private func releaseProxies(in menu: NSMenu) {
+        let owned = menu.items.compactMap { $0.target as? MenuActionProxy }
+        guard !owned.isEmpty else { return }
+        itemProxies.removeAll { proxy in owned.contains { $0 === proxy } }
     }
 
     private func addMenuItems(_ items: [[String: Any]], to menu: NSMenu) {
@@ -164,10 +179,15 @@ final class MenuModule: NativeModule {
                 .filter { !$0.isEmpty }
         case let arr as [Any]:
             names = arr.compactMap { ($0 as? String)?.lowercased() }
+        // Raw masks are unsigned. A negative number from JS must not reach
+        // `UInt(_:)`, which traps, so it falls back to the default.
         case let num as Int:
+            guard num >= 0 else { return .command }
             return NSEvent.ModifierFlags(rawValue: UInt(num))
         case let num as NSNumber:
-            return NSEvent.ModifierFlags(rawValue: UInt(num.uint64Value))
+            let raw = num.int64Value
+            guard raw >= 0 else { return .command }
+            return NSEvent.ModifierFlags(rawValue: UInt(raw))
         case nil:
             return .command
         default:

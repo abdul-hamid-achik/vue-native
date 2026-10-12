@@ -306,6 +306,46 @@ final class MainMenuTests: XCTestCase {
         XCTAssertEqual(dispatcher.events.first?.payload["id"] as? String, "Reload", "id defaults to the title")
     }
 
+    /// A negative modifier from JS used to reach `UInt(_:)` and trap the app.
+    func testNegativeModifierMaskFallsBackToTheDefault() {
+        XCTAssertEqual(MenuModule.modifierMask(from: -1), .command)
+        XCTAssertEqual(MenuModule.modifierMask(from: NSNumber(value: -1)), .command)
+        XCTAssertEqual(MenuModule.modifierMask(from: NSNumber(value: 1 << 20)), NSEvent.ModifierFlags(rawValue: 1 << 20),
+                       "a non-negative raw mask is still honoured")
+    }
+
+    /// Rebuilding a menu must drop the proxies of the items it replaces. Before,
+    /// every rebuild appended new proxies and the old ones were never released.
+    func testRebuildingAMenuReleasesProxiesOfReplacedItems() {
+        NSApp.mainMenu = VueNativeAppDelegate.standardMainMenu()
+        let module = MenuModule(dispatcher: RecordingDispatcher())
+
+        module.invoke(method: "setAppMenu", args: [[
+            ["title": "File", "items": [["title": "Open", "id": "open"], ["title": "Save", "id": "save"]]],
+        ]]) { _, _ in }
+        XCTAssertTrue(spin { item(in: submenu(of: NSApp.mainMenu!, titled: "File"), titled: "Save") != nil })
+        XCTAssertEqual(module.itemProxies.count, 2)
+
+        module.invoke(method: "setAppMenu", args: [[
+            ["title": "File", "items": [["title": "Export", "id": "export"]]],
+        ]]) { _, _ in }
+        XCTAssertTrue(spin { item(in: submenu(of: NSApp.mainMenu!, titled: "File"), titled: "Export") != nil })
+        XCTAssertEqual(module.itemProxies.count, 1, "only the live item's proxy may be retained")
+    }
+
+    /// A context menu is never installed, so its proxies must not outlive it.
+    func testContextMenuDoesNotRetainItsProxies() {
+        let module = MenuModule(dispatcher: RecordingDispatcher())
+        var done = false
+        module.invoke(method: "showContextMenu", args: [[
+            ["title": "Copy", "id": "copy"],
+            ["title": "Paste", "id": "paste"],
+        ]]) { _, _ in done = true }
+
+        XCTAssertTrue(spin { done })
+        XCTAssertEqual(module.itemProxies.count, 0)
+    }
+
     /// Unknown methods must report an error rather than silently succeeding.
     func testUnknownMethodReportsError() {
         let module = MenuModule(dispatcher: RecordingDispatcher())

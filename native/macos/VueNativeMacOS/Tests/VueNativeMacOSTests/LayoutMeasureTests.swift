@@ -444,6 +444,39 @@ final class LayoutMeasureTests: XCTestCase {
         XCTAssertEqual(node.computedFrame.width, 120, accuracy: 0.5)
     }
 
+    /// B4-2: the ratio must feed the flex basis, so a sibling that grows into
+    /// the free space is not pushed out by an aspect-ratio size applied later.
+    func testAspectRatioSizesRowChildBeforeFlexDistribution() {
+        let parent = makeContainer(width: 300, height: 100, direction: .row)
+        let (_, ratioNode) = addBox(to: parent)
+        ratioNode.height = .points(50)
+        ratioNode.aspectRatio = 2 // row: width = height * 2
+        let (_, growNode) = addBox(to: parent)
+        growNode.flexGrow = 1
+
+        parent.layoutNode?.layout(availableWidth: 300, availableHeight: 100)
+
+        XCTAssertEqual(ratioNode.computedFrame.width, 100, accuracy: 0.5)
+        XCTAssertEqual(growNode.computedFrame.width, 200, accuracy: 0.5)
+        XCTAssertEqual(growNode.computedFrame.minX, 100, accuracy: 0.5)
+    }
+
+    /// Column variant of the B4-2 case: height = width / aspectRatio.
+    func testAspectRatioSizesColumnChildBeforeFlexDistribution() {
+        let parent = makeContainer(width: 100, height: 300, direction: .column)
+        let (_, ratioNode) = addBox(to: parent)
+        ratioNode.width = .points(50)
+        ratioNode.aspectRatio = 2 // column: height = width / 2
+        let (_, growNode) = addBox(to: parent)
+        growNode.flexGrow = 1
+
+        parent.layoutNode?.layout(availableWidth: 100, availableHeight: 300)
+
+        XCTAssertEqual(ratioNode.computedFrame.height, 25, accuracy: 0.5)
+        XCTAssertEqual(growNode.computedFrame.height, 275, accuracy: 0.5)
+        XCTAssertEqual(growNode.computedFrame.minY, 25, accuracy: 0.5)
+    }
+
     // MARK: - #16 auto cross axis must size to content, not fill
 
     /// `alignItems: center` used to give an auto cross size the full parent

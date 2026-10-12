@@ -49,6 +49,8 @@ let package = Package(
             name: "VueNativeMacOSSVG",
             dependencies: [
                 "VueNativeMacOS",
+                // Sandbox and certificate pinning for remote and local SVG loads.
+                "VueNativeShared",
                 .product(name: "SVGKit", package: "SVGKit"),
                 .product(name: "CocoaLumberjack", package: "CocoaLumberjack"),
             ],
@@ -69,7 +71,7 @@ let package = Package(
         // is what proves `<VSVG>` is absent from a core-only registration.
         .testTarget(
             name: "VueNativeMacOSSVGTests",
-            dependencies: ["VueNativeMacOSSVG"],
+            dependencies: ["VueNativeMacOSSVG", "VueNativeShared"],
             path: "Tests/VueNativeMacOSSVGTests",
             swiftSettings: [
                 .swiftLanguageMode(.v5)

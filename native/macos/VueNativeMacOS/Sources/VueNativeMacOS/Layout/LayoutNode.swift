@@ -337,7 +337,16 @@ public final class LayoutNode {
                 content = .zero
             }
 
-            let basis = basisExplicit ?? (isRow ? content.width : content.height)
+            // A definite cross size with an aspect ratio determines the main
+            // size up front. Using it as the basis keeps flex distribution
+            // (grow/shrink) aware of the real size instead of applying the
+            // ratio after the siblings were already sized.
+            let basis: CGFloat
+            if basisExplicit == nil, let ar = child.aspectRatio, ar > 0, let crossDefinite = crossResolved {
+                basis = isRow ? crossDefinite * ar : crossDefinite / ar
+            } else {
+                basis = basisExplicit ?? (isRow ? content.width : content.height)
+            }
 
             // A child that can report content sizes is sized to its content on
             // the cross axis (capped so long unwrapped text cannot overflow the
@@ -486,15 +495,10 @@ public final class LayoutNode {
                 } else {
                     measures[i].crossFinal = measures[i].mainFinal * ar
                 }
-            } else if let ar = child.aspectRatio, ar > 0, measures[i].mainIsAuto {
-                // Cross size is definite and the main size is not: derive the
-                // main size from the ratio.
-                if isRow {
-                    measures[i].mainFinal = measures[i].crossFinal * ar
-                } else {
-                    measures[i].mainFinal = measures[i].crossFinal / ar
-                }
             }
+            // A definite cross size with an auto main size is handled in Phase 1,
+            // where the ratio becomes the flex basis. Re-deriving the main size
+            // here would overwrite the flexed result and push siblings out.
 
             // Clamp cross to min/max
             if isRow {

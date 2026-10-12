@@ -1,4 +1,5 @@
 import AppKit
+import VueNativeShared
 import XCTest
 @testable import VueNativeMacOS
 @testable import VueNativeMacOSSVG
@@ -142,5 +143,70 @@ final class VSVGFactoryTests: XCTestCase {
         factory.updateProp(view: view, key: "source", value: ["svg": validSVG])
         XCTAssertNotNil(view.imageView.image)
         XCTAssertEqual(loadCount, 0, "Removed listener must not be invoked")
+    }
+
+    // MARK: - B4-6 local files are confined to the sandbox
+
+    /// A valid SVG written beside the test bundle. That directory is outside
+    /// every sandbox root, so a load from it must be refused.
+    private func writeSVGOutsideSandbox() throws -> URL {
+        let directory = Bundle(for: VSVGFactoryTests.self).bundleURL.deletingLastPathComponent()
+        let url = directory.appendingPathComponent("vsvg-outside-\(UUID().uuidString).svg")
+        try validSVG.write(to: url, atomically: true, encoding: .utf8)
+        addTeardownBlock { try? FileManager.default.removeItem(at: url) }
+        return url
+    }
+
+    func testSchemelessAndFileURIOutsideTheSandboxFireErrorWithoutRendering() throws {
+        let outside = try writeSVGOutsideSandbox()
+        for uri in [outside.path, outside.absoluteString] {
+            let factory = VSVGFactory()
+            let view = try XCTUnwrap(factory.createView() as? VSVGView)
+            var errorCount = 0
+            var loadCount = 0
+            factory.addEventListener(view: view, event: "error") { _ in errorCount += 1 }
+            factory.addEventListener(view: view, event: "load") { _ in loadCount += 1 }
+
+            factory.updateProp(view: view, key: "source", value: ["uri": uri])
+
+            XCTAssertNil(view.imageView.image, "\(uri) must not be rendered")
+            XCTAssertEqual(errorCount, 1, "\(uri) must fire the error event")
+            XCTAssertEqual(loadCount, 0)
+        }
+    }
+
+    func testLocalFileInsideTheSandboxStillRenders() throws {
+        // The sandbox's own temporary root is an allowed location, unlike the
+        // system temp directory it lives in.
+        let root = try XCTUnwrap(FileSystemSandbox.shared.allowedRoots().last)
+        let url = root.appendingPathComponent("vsvg-inside-\(UUID().uuidString).svg")
+        try validSVG.write(to: url, atomically: true, encoding: .utf8)
+        addTeardownBlock { try? FileManager.default.removeItem(at: url) }
+
+        let factory = VSVGFactory()
+        let view = try XCTUnwrap(factory.createView() as? VSVGView)
+        var loadCount = 0
+        factory.addEventListener(view: view, event: "load") { _ in loadCount += 1 }
+
+        factory.updateProp(view: view, key: "source", value: ["uri": url.path])
+
+        XCTAssertNotNil(view.imageView.image, "a sandboxed local file must still render")
+        XCTAssertEqual(loadCount, 1)
+    }
+
+    // MARK: - B4-1 remote loads use the certificate-pinned session
+
+    func testRemoteLoadsResolveTheCertificatePinnedSession() {
+        let pin = "sha256/" + Data(repeating: 7, count: 32).base64EncodedString()
+        CertificatePinning.shared.configurePins(["svg-pinned.invalid": [pin]])
+        defer { CertificatePinning.shared.clearPins() }
+        XCTAssertTrue(CertificatePinning.shared.hasPins(for: "svg-pinned.invalid"))
+
+        let factory = VSVGFactory()
+
+        // The shared session bypasses pinning. The factory must resolve the
+        // pinned session per request, as VImageFactory does.
+        XCTAssertTrue(factory.urlSession === CertificatePinning.shared.requestSession)
+        XCTAssertFalse(factory.urlSession === URLSession.shared)
     }
 }
