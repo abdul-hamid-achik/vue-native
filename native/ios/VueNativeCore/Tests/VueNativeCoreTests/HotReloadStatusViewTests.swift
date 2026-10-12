@@ -100,7 +100,9 @@ final class HotReloadStatusViewTests: XCTestCase {
         DispatchQueue.main.asyncAfter(deadline: .now() + HotReloadStatusView.autoHideDelay + 0.3) {
             expectation.fulfill()
         }
-        await fulfillment(of: [expectation], timeout: HotReloadStatusView.autoHideDelay + 1.0)
+        // The timeout only bounds a hung main queue. A loaded CI runner can run the
+        // timer above well past +0.3 s, and a tight bound made this test flaky.
+        await fulfillment(of: [expectation], timeout: HotReloadStatusView.autoHideDelay + 10.0)
 
         XCTAssertTrue(view.isHidden, "badge should auto-hide ~2s after connecting")
     }
