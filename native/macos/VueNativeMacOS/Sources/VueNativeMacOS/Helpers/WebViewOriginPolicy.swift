@@ -15,28 +15,43 @@ import WebKit
 ///
 /// ## Default behaviour
 ///
-/// Safe with zero configuration: the allowlist starts empty and is seeded with
-/// the origin of the URI the app itself passed to the `source` prop, or with
-/// `about:blank` when the app passed inline `html`. Everything else is refused.
-/// A host that needs more origins sets the `allowedOrigins` prop, which REPLACES
-/// the derived default rather than extending it.
+/// Safe with zero configuration: the origin of the URI the app itself passed to
+/// the `source` prop, or `about:blank` when the app passed inline `html`, is
+/// allowed. Everything else is refused. A host that needs more origins sets the
+/// `allowedOrigins` prop, which REPLACES the derived default rather than
+/// extending it. An empty list restores the derived default.
+///
+/// The derived origin tracks the CURRENT source only. Changing `source` replaces
+/// it, and the `allowedOrigins` prop is kept separately, so the two props can be
+/// applied in either order.
 final class WebViewOriginPolicy {
 
     /// Canonical origin string for content loaded with `loadHTMLString`.
     static let aboutBlankOrigin = "about:blank"
 
-    private(set) var allowedOrigins: Set<String> = []
+    /// Origin of the current `source`: one http(s) origin, `about:blank` for
+    /// inline html, or empty for any other scheme.
+    private(set) var derivedOrigins: Set<String> = []
+    /// Origins supplied by the `allowedOrigins` prop.
+    private(set) var hostOrigins: Set<String> = []
     private(set) var allowsAboutBlank = false
+
+    /// Origins messages and navigations are checked against: the host list when
+    /// the app set one, otherwise the origin of the current source.
+    var allowedOrigins: Set<String> {
+        hostOrigins.isEmpty ? derivedOrigins : hostOrigins
+    }
 
     // MARK: - Configuration
 
-    /// Record the origin of an explicitly requested source URI. Only http(s)
-    /// origins are recorded — an `about:` or `file:` source never widens the
-    /// message allowlist.
-    func allowOrigin(of url: URL) {
-        guard let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" else { return }
-        if let origin = Self.origin(of: url) {
-            allowedOrigins.insert(origin)
+    /// Record the origin of the requested source URI, replacing the previous
+    /// source's origin. Only http(s) origins are recorded: an `about:` or `file:`
+    /// source leaves the message allowlist empty.
+    func recordSource(of url: URL) {
+        allowsAboutBlank = false
+        derivedOrigins = []
+        if Self.isHTTP(url), let origin = Self.origin(of: url) {
+            derivedOrigins = [origin]
         }
     }
 
@@ -44,16 +59,16 @@ final class WebViewOriginPolicy {
     /// `about:blank` security origin.
     func enableAboutBlank() {
         allowsAboutBlank = true
-        allowedOrigins.insert(Self.aboutBlankOrigin)
+        derivedOrigins = [Self.aboutBlankOrigin]
     }
 
-    /// Replace the allowlist with host-supplied origins.
+    /// Replace the host-supplied origins.
     ///
     /// Entries must be full origins (`https://example.com`, `http://localhost:8080`).
     /// A trailing slash and case differences are tolerated; anything else is
-    /// dropped rather than guessed at.
+    /// dropped rather than guessed at. An empty list falls back to the source origin.
     func replaceAllowedOrigins(_ values: [String]) {
-        allowedOrigins = Set(values.compactMap { Self.normalise(originString: $0) })
+        hostOrigins = Set(values.compactMap { Self.normalise(originString: $0) })
     }
 
     // MARK: - Decisions
@@ -91,6 +106,9 @@ final class WebViewOriginPolicy {
             // Opaque origin: WebKit reports empty protocol and host.
             return allowsAboutBlank && scheme.isEmpty && host.isEmpty
         }
+        if normalised == Self.aboutBlankOrigin, allowsAboutBlank {
+            return true
+        }
         return allowedOrigins.contains(normalised)
     }
 
@@ -122,6 +140,11 @@ final class WebViewOriginPolicy {
         return isDefaultPort
             ? "\(loweredScheme)://\(loweredHost)"
             : "\(loweredScheme)://\(loweredHost):\(port)"
+    }
+
+    private static func isHTTP(_ url: URL) -> Bool {
+        let scheme = url.scheme?.lowercased()
+        return scheme == "http" || scheme == "https"
     }
 
     private static func defaultPort(for scheme: String?) -> Int {

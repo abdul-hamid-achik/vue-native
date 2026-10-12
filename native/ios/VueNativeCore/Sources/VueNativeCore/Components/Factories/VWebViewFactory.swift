@@ -64,7 +64,8 @@ final class VWebViewFactory: NativeComponentFactory {
                 }
             }
         case "allowedOrigins":
-            // Replaces (does not extend) the origin derived from `source`.
+            // Replaces (does not extend) the origin derived from `source`. An empty
+            // list, `null` or a non-array value restores that derived origin.
             policy(for: webView).replaceAllowedOrigins(Self.originValues(from: value))
         case "javaScriptEnabled":
             webView.configuration.defaultWebpagePreferences.allowsContentJavaScript = value as? Bool ?? true
@@ -148,8 +149,9 @@ final class VWebViewFactory: NativeComponentFactory {
     // MARK: - Helpers
 
     /// The policy installed by `createView`. Recreated defensively if a caller
-    /// hands us a web view this factory did not build.
-    private func policy(for webView: WKWebView) -> WebViewOriginPolicy {
+    /// hands us a web view this factory did not build. Internal so the wiring
+    /// tests can read the decisions the factory actually made.
+    func policy(for webView: WKWebView) -> WebViewOriginPolicy {
         if let existing = objc_getAssociatedObject(webView, &VWebViewFactory.policyKey) as? WebViewOriginPolicy {
             return existing
         }
@@ -164,38 +166,40 @@ final class VWebViewFactory: NativeComponentFactory {
 
     /// Load the URI the app declared through the `source` prop.
     ///
-    /// The origin is allowlisted first so the initial navigation — which comes
-    /// back through `decidePolicyFor` as a non-explicit action — is permitted,
-    /// and so messages from the app's own content work with no configuration.
-    /// Non-http(s) schemes are refused outright.
+    /// The origin is recorded first, replacing the previous source's origin, so
+    /// the initial navigation — which WebKit reports to `decidePolicyFor` as a
+    /// non-explicit action — is permitted and messages from the app's own content
+    /// work with no configuration. A host `allowedOrigins` prop replaces that
+    /// default; a prop that omits the source origin also cancels the source's own
+    /// initial navigation. Non-http(s) schemes are refused outright.
     private func loadRequestedURI(_ uri: String, in webView: WKWebView) {
         guard let url = URL(string: uri) else {
             VWebViewFactory.logBlocked("Blocked navigation to unparseable URI")
             return
         }
         let policy = self.policy(for: webView)
+        // Recorded before the scheme check, so a refused source also stops
+        // trusting the page it replaces.
+        policy.recordSource(of: url)
         guard policy.isNavigationAllowed(url, isExplicitSourceLoad: true) else {
             VWebViewFactory.logBlocked("Blocked VWebView source with disallowed scheme: \(url.absoluteString)")
             return
         }
-        policy.allowOrigin(of: url)
         webView.load(URLRequest(url: url))
     }
 
-    /// Load inline HTML. Reports an `about:blank` origin, so that origin is
-    /// allowlisted for messages.
+    /// Load inline HTML. Reports an `about:blank` origin, which becomes the
+    /// derived origin for messages and replaces any previous source origin.
     private func loadInlineHTML(_ html: String, in webView: WKWebView) {
-        policy(for: webView).enableAboutBlank()
+        policy(for: webView).recordInlineHTML()
         webView.loadHTMLString(html, baseURL: nil)
     }
 
-    /// Accept `allowedOrigins` as an array of strings or a comma-separated string.
+    /// Accept `allowedOrigins` only as an array of strings. Anything else
+    /// (`null`, `NSNull`, a bare string, a number) is an empty list.
     static func originValues(from value: Any?) -> [String] {
         if let array = value as? [String] { return array }
         if let array = value as? [Any] { return array.compactMap { $0 as? String } }
-        if let text = value as? String {
-            return text.split(separator: ",").map { String($0) }
-        }
         return []
     }
 

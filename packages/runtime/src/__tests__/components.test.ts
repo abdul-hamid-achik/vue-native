@@ -1518,6 +1518,39 @@ describe('Components', () => {
       expect(ops[javaScriptIndex]!.args[2]).toBe(false)
       expect(javaScriptIndex).toBeLessThan(sourceIndex)
     })
+
+    it('does not send allowedOrigins when only source is set', async () => {
+      renderComponent(createVNode(VWebView, { source: { uri: 'https://example.com' } }))
+      await nextTick()
+      const ops = mockBridge.getOpsByType('updateProp')
+      expect(ops.some(o => o.args[1] === 'allowedOrigins')).toBe(false)
+    })
+
+    it('forwards allowedOrigins when extra origins are given', async () => {
+      renderComponent(createVNode(VWebView, { source: { uri: 'https://example.com' }, allowedOrigins: ['https://a.com'] }))
+      await nextTick()
+      const ops = mockBridge.getOpsByType('updateProp')
+      const originsProp = ops.find(o => o.args[1] === 'allowedOrigins')
+      expect(originsProp).toBeDefined()
+      expect(originsProp!.args[2]).toEqual(['https://a.com'])
+    })
+
+    it('sends null when allowedOrigins is cleared back to empty', async () => {
+      const origins = ref<string[]>(['https://a.com'])
+      const Host = defineComponent({
+        setup: () => () => createVNode(VWebView, { source: { uri: 'https://example.com' }, allowedOrigins: origins.value }),
+      })
+      renderComponent(createVNode(Host))
+      await nextTick()
+      mockBridge.reset()
+
+      origins.value = []
+      await nextTick()
+      const ops = mockBridge.getOpsByType('updateProp')
+      const originsProp = ops.find(o => o.args[1] === 'allowedOrigins')
+      expect(originsProp).toBeDefined()
+      expect(originsProp!.args[2]).toBeNull()
+    })
   })
 
   // ---------------------------------------------------------------------------

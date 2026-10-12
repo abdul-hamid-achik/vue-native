@@ -175,7 +175,7 @@ final class VWebViewFactory: NativeComponentFactory {
 
     /// The policy installed by `createView`. Recreated defensively if a caller
     /// hands us a web view this factory did not build.
-    private func policy(for webView: WKWebView) -> WebViewOriginPolicy {
+    func policy(for webView: WKWebView) -> WebViewOriginPolicy {
         if let existing = objc_getAssociatedObject(webView, &VWebViewFactory.policyKey) as? WebViewOriginPolicy {
             return existing
         }
@@ -204,7 +204,7 @@ final class VWebViewFactory: NativeComponentFactory {
             VWebViewFactory.logBlocked("Blocked VWebView source with disallowed scheme: \(url.absoluteString)")
             return
         }
-        policy.allowOrigin(of: url)
+        policy.recordSource(of: url)
         webView.load(URLRequest(url: url))
     }
 
@@ -215,13 +215,12 @@ final class VWebViewFactory: NativeComponentFactory {
         webView.loadHTMLString(html, baseURL: nil)
     }
 
-    /// Accept `allowedOrigins` as an array of strings or a comma-separated string.
+    /// `allowedOrigins` is an array of strings. Anything else, including the
+    /// null Vue sends when the key is removed, is an empty list, which restores
+    /// the source-derived default.
     static func originValues(from value: Any?) -> [String] {
         if let array = value as? [String] { return array }
         if let array = value as? [Any] { return array.compactMap { $0 as? String } }
-        if let text = value as? String {
-            return text.split(separator: ",").map { String($0) }
-        }
         return []
     }
 

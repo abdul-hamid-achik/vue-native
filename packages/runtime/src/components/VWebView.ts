@@ -22,11 +22,12 @@ export const VWebView = defineComponent({
     style: { type: [Object, Array] as PropType<StyleProp<ViewStyle>>, default: () => ({}) },
     javaScriptEnabled: { type: Boolean, default: true },
     /**
-     * Extra origins permitted to navigate this webview and to post messages into
-     * the app, in addition to the origin of `source` (or the opaque origin of
-     * inline `html`).
+     * Origins permitted to navigate this webview and to post messages into the
+     * app. A non-empty list REPLACES the default, which is the origin of `source`
+     * (or the opaque origin of inline `html`), so include the source's own origin
+     * when it must keep working. An empty list restores the default.
      *
-     * All three native factories enforce this on every navigation, subframe and
+     * All three native factories enforce this on every navigation and
      * `postMessage`, and refuse `file:`, `javascript:` and `data:` sources. The
      * default — only the source's own origin — is already safe, so this is an
      * escape hatch for content that legitimately moves between origins.
@@ -55,7 +56,9 @@ export const VWebView = defineComponent({
         // requested JavaScript policy as well as subsequent navigations.
         javaScriptEnabled: props.javaScriptEnabled,
         source: sanitizedSource.value,
-        allowedOrigins: props.allowedOrigins,
+        // Only send the list when it adds origins. An empty list would reach
+        // native right after `source` and clear the source's own origin.
+        ...(props.allowedOrigins.length > 0 ? { allowedOrigins: props.allowedOrigins } : {}),
         style: props.style,
         onLoad: (event: unknown) => emit('load', event),
         onError: (event: unknown) => emit('error', event),

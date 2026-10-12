@@ -17,19 +17,22 @@ import android.net.Uri
  *
  * ## Default behaviour
  *
- * Safe with zero configuration: the allowlist starts empty and is seeded with
- * the origin of the URI the app itself passed to the `source` prop, or with
- * `about:blank` when the app passed inline `html`. Everything else is refused.
- * A host that needs more origins sets the `allowedOrigins` prop, which REPLACES
- * the derived default rather than extending it.
+ * Safe with zero configuration: the allowlist is seeded with the origin of the
+ * URI the app itself passed to the `source` prop (replaced on every source
+ * change), or with `about:blank` when the app passed inline `html`. Everything
+ * else is refused. A host that needs more origins sets the `allowedOrigins`
+ * prop, which REPLACES the derived default rather than extending it. An empty
+ * list restores the derived default, so the prop's position relative to `source`
+ * never changes the result.
  *
- * ## Known limitation vs. WebKit
+ * ## Frames
  *
- * `WebView.getUrl()` reports the MAIN frame URL, so a cross-origin iframe nested
- * inside an allowlisted page is not distinguishable here. `WKScriptMessage`
- * carries `frameInfo.securityOrigin`, so the Apple implementations can enforce
- * per-frame. Navigation blocking still prevents the main frame from moving to a
- * non-allowlisted origin.
+ * Messages arrive through a `WebViewCompat` web message listener, which reports
+ * each message's source origin and frame, so [isWebMessageAllowed] checks every
+ * frame. Only the legacy `addJavascriptInterface` fallback (used when the listener
+ * feature is missing) sees just the main frame's URL, so a cross-origin iframe
+ * nested in an allowlisted page cannot be told apart there. Navigation blocking
+ * still stops the main frame from moving to a non-allowlisted origin.
  */
 class WebViewOriginPolicy {
 
@@ -75,33 +78,40 @@ class WebViewOriginPolicy {
         private fun defaultPort(scheme: String): Int = if (scheme == "https") 443 else 80
     }
 
-    var allowedOrigins: MutableSet<String> = mutableSetOf()
-        private set
+    /** Origin of the CURRENT source only. Replaced, never accumulated, on every source change. */
+    private var derivedOrigins: Set<String> = emptySet()
 
-    /** Set when the app loaded inline HTML, which reports an opaque origin. */
+    /** Origins from the `allowedOrigins` prop. Empty means "use [derivedOrigins]". */
+    private var hostOrigins: Set<String> = emptySet()
+
+    /** The effective allowlist: the host prop when set, otherwise the current source's origin. */
+    val allowedOrigins: Set<String>
+        get() = if (hostOrigins.isNotEmpty()) hostOrigins else derivedOrigins
+
+    /** Set only while the current source is inline HTML, which reports an opaque origin. */
     var allowsAboutBlank: Boolean = false
         private set
 
     /**
-     * Record the origin of an explicitly requested source URI. Only http(s)
-     * origins are recorded — an `about:` or `file:` source never widens the
-     * message allowlist.
+     * Record the origin of the source URI the app requested. The previous source's
+     * origin is dropped. An `about:`, `file:` or other non-http(s) source leaves
+     * the allowlist empty, so it never widens the message allowlist.
      */
     fun allowOrigin(uri: String) {
-        val origin = originOf(uri) ?: return
-        if (origin != ABOUT_BLANK_ORIGIN) {
-            allowedOrigins.add(origin)
-        }
+        val origin = originOf(uri)
+        derivedOrigins = if (origin != null && origin != ABOUT_BLANK_ORIGIN) setOf(origin) else emptySet()
+        allowsAboutBlank = false
     }
 
-    /** Permit content loaded inline via `loadData`. */
+    /** Record inline content loaded via `loadData`, which replaces any previous source origin. */
     fun enableAboutBlank() {
+        derivedOrigins = setOf(ABOUT_BLANK_ORIGIN)
         allowsAboutBlank = true
     }
 
-    /** Replace the allowlist with host-supplied origins. */
+    /** Set the allowlist from the host-supplied `allowedOrigins` prop. An empty list restores the derived origin. */
     fun replaceAllowedOrigins(values: List<String>) {
-        allowedOrigins = values.mapNotNull { normalise(it) }.toMutableSet()
+        hostOrigins = values.mapNotNull { normalise(it) }.toSet()
     }
 
     /**
@@ -139,6 +149,22 @@ class WebViewOriginPolicy {
         // [allowsAboutBlank], so this cannot be reached by remote content.
         if (trimmed.startsWith("data:")) return allowsAboutBlank
         val origin = originOf(trimmed) ?: return allowsAboutBlank
+        return allowedOrigins.contains(origin)
+    }
+
+    /**
+     * Whether a page message from [sourceOrigin], sent from a frame that is or is
+     * not the main frame, may be forwarded to JavaScript.
+     *
+     * An opaque origin (`"null"` or empty, as reported for inline content) and
+     * `about:blank` are accepted only in the main frame of inline HTML the app
+     * loaded. Any other origin must be in the effective allowlist, in any frame.
+     */
+    fun isWebMessageAllowed(sourceOrigin: String, isMainFrame: Boolean): Boolean {
+        val trimmed = sourceOrigin.trim()
+        if (trimmed.isEmpty() || trimmed == "null") return allowsAboutBlank && isMainFrame
+        val origin = originOf(trimmed) ?: return false
+        if (origin == ABOUT_BLANK_ORIGIN) return allowsAboutBlank && isMainFrame
         return allowedOrigins.contains(origin)
     }
 }

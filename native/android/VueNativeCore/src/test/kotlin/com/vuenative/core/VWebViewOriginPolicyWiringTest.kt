@@ -2,6 +2,7 @@ package com.vuenative.core
 
 import android.content.Context
 import android.net.Uri
+import android.os.Looper
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
@@ -31,6 +32,7 @@ import org.robolectric.annotation.Config
 class VWebViewOriginPolicyWiringTest {
     private lateinit var factory: VWebViewFactory
     private lateinit var webView: WebView
+    private val extraViews = mutableListOf<WebView>()
 
     @Before
     fun setUp() {
@@ -41,7 +43,33 @@ class VWebViewOriginPolicyWiringTest {
 
     @After
     fun tearDown() {
+        extraViews.forEach { factory.destroyView(it) }
         factory.destroyView(webView)
+    }
+
+    private fun newView(vararg props: Pair<String, Any?>): WebView {
+        val wv = factory.createView(ApplicationProvider.getApplicationContext<Context>()) as WebView
+        extraViews.add(wv)
+        for ((key, value) in props) factory.updateProp(wv, key, value)
+        return wv
+    }
+
+    /** True when the web view's client refuses a main-frame navigation to [url]. */
+    private fun navigationBlocked(wv: WebView, url: String): Boolean {
+        val request = mockk<WebResourceRequest>()
+        every { request.url } returns Uri.parse(url)
+        return wv.webViewClient.shouldOverrideUrlLoading(wv, request)
+    }
+
+    /** Simulates the page calling `window.vueNative.postMessage(message)`. */
+    private fun postMessageFromPage(wv: WebView, message: String) {
+        val bridge = requireNotNull(shadowOf(wv).getJavascriptInterface("vueNative")) {
+            "vueNative bridge must be installed"
+        }
+        val method = bridge.javaClass.getMethod("postMessage", String::class.java)
+        method.isAccessible = true
+        method.invoke(bridge, message)
+        shadowOf(Looper.getMainLooper()).idle()
     }
 
     @Test
@@ -138,5 +166,73 @@ class VWebViewOriginPolicyWiringTest {
         } finally {
             factory.destroyView(replacement)
         }
+    }
+
+    // -- allowedOrigins is a replacement, not part of the source's own origin --
+
+    @Test
+    fun emptyAllowedOriginsFallsBackToTheSourceOriginForNavigationAndMessages() {
+        factory.updateProp(webView, "source", mapOf("uri" to "https://example.com/a"))
+        factory.updateProp(webView, "allowedOrigins", emptyList<String>())
+
+        assertFalse(
+            "an empty allowedOrigins must restore the source origin, not empty the allowlist",
+            navigationBlocked(webView, "https://example.com/b"),
+        )
+
+        val received = mutableListOf<Any?>()
+        factory.addEventListener(webView, "message") { received.add(it) }
+        postMessageFromPage(webView, "hello")
+        assertEquals(listOf<Any?>(mapOf("data" to "hello")), received)
+    }
+
+    @Test
+    fun allowedOriginsReplacesTheSourceOriginInEitherPropOrder() {
+        val allowedFirst = newView(
+            "allowedOrigins" to listOf("https://other.example.com"),
+            "source" to mapOf("uri" to "https://example.com/a"),
+        )
+        val sourceFirst = newView(
+            "source" to mapOf("uri" to "https://example.com/a"),
+            "allowedOrigins" to listOf("https://other.example.com"),
+        )
+        for (wv in listOf(allowedFirst, sourceFirst)) {
+            assertTrue(
+                "the source origin must not stay allowed once allowedOrigins is set",
+                navigationBlocked(wv, "https://example.com/b"),
+            )
+            assertFalse(navigationBlocked(wv, "https://other.example.com/b"))
+        }
+    }
+
+    @Test
+    fun clearingAllowedOriginsRestoresTheSourceOrigin() {
+        factory.updateProp(webView, "source", mapOf("uri" to "https://example.com/a"))
+        factory.updateProp(webView, "allowedOrigins", listOf("https://other.example.com"))
+        assertTrue(navigationBlocked(webView, "https://example.com/b"))
+
+        factory.updateProp(webView, "allowedOrigins", null)
+        assertFalse(navigationBlocked(webView, "https://example.com/b"))
+    }
+
+    @Test
+    fun loadingANewSourceReplacesThePreviousSourceOrigin() {
+        factory.updateProp(webView, "source", mapOf("uri" to "https://a.example.com/one"))
+        factory.updateProp(webView, "source", mapOf("uri" to "https://b.example.com/two"))
+
+        assertTrue(navigationBlocked(webView, "https://a.example.com/three"))
+        assertFalse(navigationBlocked(webView, "https://b.example.com/three"))
+    }
+
+    @Test
+    fun inlineHtmlStaysOpaqueWhenAllowedOriginsIsSet() {
+        factory.updateProp(webView, "source", mapOf("html" to "<h1>hi</h1>"))
+        factory.updateProp(webView, "allowedOrigins", listOf("https://x.example.com"))
+
+        assertFalse(navigationBlocked(webView, "about:blank"))
+        val received = mutableListOf<Any?>()
+        factory.addEventListener(webView, "message") { received.add(it) }
+        postMessageFromPage(webView, "from inline")
+        assertEquals(listOf<Any?>(mapOf("data" to "from inline")), received)
     }
 }

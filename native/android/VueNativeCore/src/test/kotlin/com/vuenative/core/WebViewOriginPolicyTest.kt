@@ -127,6 +127,52 @@ class WebViewOriginPolicyTest {
     }
 
     @Test
+    fun recordingANewSourceReplacesTheDerivedOrigin() {
+        val policy = WebViewOriginPolicy()
+        policy.allowOrigin("https://a.example.com/one")
+        policy.allowOrigin("https://b.example.com/two")
+
+        assertEquals(setOf("https://b.example.com"), policy.allowedOrigins)
+        assertFalse(policy.isNavigationAllowed("https://a.example.com/x", isExplicitSourceLoad = false))
+    }
+
+    @Test
+    fun aNonHttpSourceClearsThePreviousDerivedOrigin() {
+        val policy = WebViewOriginPolicy()
+        policy.allowOrigin("https://a.example.com/")
+        policy.allowOrigin("file:///etc/passwd")
+
+        assertTrue(policy.allowedOrigins.isEmpty())
+        assertFalse(policy.isNavigationAllowed("https://a.example.com/", isExplicitSourceLoad = false))
+    }
+
+    @Test
+    fun inlineHtmlReplacesTheDerivedOriginWithAboutBlank() {
+        val policy = WebViewOriginPolicy()
+        policy.allowOrigin("https://a.example.com/")
+        policy.enableAboutBlank()
+
+        assertEquals(setOf(WebViewOriginPolicy.ABOUT_BLANK_ORIGIN), policy.allowedOrigins)
+        assertFalse(policy.isNavigationAllowed("https://a.example.com/", isExplicitSourceLoad = false))
+
+        policy.allowOrigin("https://b.example.com/")
+        assertFalse("a later URI source must clear the inline opaque origin", policy.allowsAboutBlank)
+    }
+
+    @Test
+    fun emptyAllowedOriginsRestoresTheDerivedOrigin() {
+        val policy = WebViewOriginPolicy()
+        policy.allowOrigin("https://app.example.com/")
+        policy.replaceAllowedOrigins(listOf("https://cdn.example.com"))
+        assertEquals(setOf("https://cdn.example.com"), policy.allowedOrigins)
+
+        policy.replaceAllowedOrigins(emptyList())
+
+        assertEquals(setOf("https://app.example.com"), policy.allowedOrigins)
+        assertTrue(policy.isNavigationAllowed("https://app.example.com/x", isExplicitSourceLoad = false))
+    }
+
+    @Test
     fun replaceAllowedOriginsDropsUnusableEntries() {
         val policy = WebViewOriginPolicy()
         policy.replaceAllowedOrigins(listOf("https://ok.example.com", "javascript:alert(1)", "", "nonsense"))
@@ -161,6 +207,52 @@ class WebViewOriginPolicyTest {
         assertFalse(policy.isMessageOriginAllowed("https://evil.example.com/"))
     }
 
+    // -- Web message origins (listener path) --
+
+    @Test
+    fun webMessageFromAnAllowedOriginIsAcceptedInTheMainFrameAndASubframe() {
+        val policy = WebViewOriginPolicy()
+        policy.allowOrigin("https://app.example.com/page")
+
+        assertTrue(policy.isWebMessageAllowed("https://app.example.com", isMainFrame = true))
+        assertTrue(policy.isWebMessageAllowed("https://APP.example.com:443", isMainFrame = false))
+    }
+
+    @Test
+    fun webMessageFromADisallowedOriginIsRejectedInEveryFrame() {
+        val policy = WebViewOriginPolicy()
+        policy.allowOrigin("https://app.example.com/page")
+
+        assertFalse(policy.isWebMessageAllowed("https://evil.example.com", isMainFrame = true))
+        assertFalse(policy.isWebMessageAllowed("https://evil.example.com", isMainFrame = false))
+        assertFalse(policy.isWebMessageAllowed("javascript:alert(1)", isMainFrame = true))
+    }
+
+    @Test
+    fun opaqueOriginIsAcceptedOnlyForInlineHtmlInTheMainFrame() {
+        val policy = WebViewOriginPolicy()
+        assertFalse(policy.isWebMessageAllowed("null", isMainFrame = true))
+        assertFalse(policy.isWebMessageAllowed("", isMainFrame = true))
+
+        policy.enableAboutBlank()
+
+        assertTrue(policy.isWebMessageAllowed("null", isMainFrame = true))
+        assertTrue(policy.isWebMessageAllowed("", isMainFrame = true))
+        assertTrue(policy.isWebMessageAllowed("about:blank", isMainFrame = true))
+        assertFalse(
+            "an opaque subframe must never reach the app",
+            policy.isWebMessageAllowed("null", isMainFrame = false),
+        )
+    }
+
+    @Test
+    fun opaqueOriginIsRejectedForRemoteContentEvenInTheMainFrame() {
+        val policy = WebViewOriginPolicy()
+        policy.allowOrigin("https://app.example.com/page")
+
+        assertFalse(policy.isWebMessageAllowed("null", isMainFrame = true))
+    }
+
     // -- Factory prop parsing --
 
     @Test
@@ -178,6 +270,7 @@ class WebViewOriginPolicyTest {
             VWebViewFactory.originValues("https://a.example, https://b.example"),
         )
         assertEquals(emptyList<String>(), VWebViewFactory.originValues(null))
+        assertEquals(emptyList<String>(), VWebViewFactory.originValues(org.json.JSONObject.NULL))
         assertEquals(emptyList<String>(), VWebViewFactory.originValues(42))
     }
 }

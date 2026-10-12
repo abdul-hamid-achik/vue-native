@@ -50,7 +50,7 @@ final class WebViewOriginPolicyTests: XCTestCase {
         // A redirect to the same origin is refused until the app records it.
         XCTAssertFalse(policy.isNavigationAllowed(source, isExplicitSourceLoad: false))
 
-        policy.allowOrigin(of: source)
+        policy.recordSource(of: source)
         XCTAssertTrue(
             policy.isNavigationAllowed(URL(string: "https://app.example.com/other"), isExplicitSourceLoad: false)
         )
@@ -59,7 +59,7 @@ final class WebViewOriginPolicyTests: XCTestCase {
 
     func testAllowlistingOneOriginDoesNotAllowAnother() throws {
         let policy = WebViewOriginPolicy()
-        policy.allowOrigin(of: try XCTUnwrap(URL(string: "https://app.example.com/")))
+        policy.recordSource(of: try XCTUnwrap(URL(string: "https://app.example.com/")))
 
         XCTAssertFalse(policy.isNavigationAllowed(URL(string: "https://evil.example.com/"), isExplicitSourceLoad: false))
         XCTAssertFalse(policy.isMessageOriginAllowed(scheme: "https", host: "evil.example.com", port: 0))
@@ -73,7 +73,7 @@ final class WebViewOriginPolicyTests: XCTestCase {
 
     func testNonHttpSourceNeverWidensTheAllowlist() throws {
         let policy = WebViewOriginPolicy()
-        policy.allowOrigin(of: try XCTUnwrap(URL(string: "file:///etc/passwd")))
+        policy.recordSource(of: try XCTUnwrap(URL(string: "file:///etc/passwd")))
         XCTAssertTrue(policy.allowedOrigins.isEmpty)
     }
 
@@ -104,7 +104,7 @@ final class WebViewOriginPolicyTests: XCTestCase {
 
     func testReplaceAllowedOriginsOverwritesTheDerivedDefault() throws {
         let policy = WebViewOriginPolicy()
-        policy.allowOrigin(of: try XCTUnwrap(URL(string: "https://app.example.com/")))
+        policy.recordSource(of: try XCTUnwrap(URL(string: "https://app.example.com/")))
 
         policy.replaceAllowedOrigins(["https://cdn.example.com", "https://other.example.com/", "HTTPS://UPPER.example"])
 
@@ -180,5 +180,134 @@ final class WebViewOriginPolicyTests: XCTestCase {
         factory.updateProp(view: webView, key: "source", value: ["uri": "https://app.example.com/"])
         factory.destroyView(view: webView)
         XCTAssertNil(webView.navigationDelegate)
+    }
+
+    // MARK: - Source and allowedOrigins prop ordering
+
+    /// The bridge batches `source` and `allowedOrigins` in one flush, in either
+    /// order, so the policy must reach the same state for both orders.
+    private func apply(
+        _ props: [(key: String, value: Any?)],
+        to webView: WKWebView,
+        factory: VWebViewFactory
+    ) {
+        for prop in props {
+            factory.updateProp(view: webView, key: prop.key, value: prop.value)
+        }
+    }
+
+    func testEmptyAllowedOriginsFallsBackToTheSourceOrigin() throws {
+        let factory = VWebViewFactory()
+        let webView = try XCTUnwrap(factory.createView() as? WKWebView)
+        defer { factory.destroyView(view: webView) }
+
+        apply(
+            [
+                (key: "source", value: ["uri": "https://example.com/a"] as Any?),
+                (key: "allowedOrigins", value: [String]() as Any?),
+            ],
+            to: webView,
+            factory: factory
+        )
+        let policy = try XCTUnwrap(factory.policy(for: webView))
+
+        XCTAssertTrue(policy.isNavigationAllowed(URL(string: "https://example.com/b"), isExplicitSourceLoad: false))
+        XCTAssertTrue(policy.isMessageOriginAllowed(scheme: "https", host: "example.com", port: 0))
+    }
+
+    func testHostAllowedOriginsReplacesTheSourceOriginInEitherOrder() throws {
+        let source = (key: "source", value: ["uri": "https://example.com/a"] as Any?)
+        let allowed = (key: "allowedOrigins", value: ["https://other.com"] as Any?)
+        for props in [[source, allowed], [allowed, source]] {
+            let factory = VWebViewFactory()
+            let webView = try XCTUnwrap(factory.createView() as? WKWebView)
+            apply(props, to: webView, factory: factory)
+            let policy = try XCTUnwrap(factory.policy(for: webView))
+
+            XCTAssertEqual(policy.allowedOrigins, ["https://other.com"], "order: \(props.map(\.key))")
+            XCTAssertFalse(policy.isMessageOriginAllowed(scheme: "https", host: "example.com", port: 0))
+            factory.destroyView(view: webView)
+        }
+    }
+
+    func testClearingAllowedOriginsRestoresTheSourceOrigin() throws {
+        for cleared in [NSNull() as Any, nil as Any?] {
+            let factory = VWebViewFactory()
+            let webView = try XCTUnwrap(factory.createView() as? WKWebView)
+            apply(
+                [
+                    (key: "source", value: ["uri": "https://example.com/a"] as Any?),
+                    (key: "allowedOrigins", value: ["https://other.com"] as Any?),
+                    (key: "allowedOrigins", value: cleared),
+                ],
+                to: webView,
+                factory: factory
+            )
+            let policy = try XCTUnwrap(factory.policy(for: webView))
+
+            XCTAssertEqual(policy.allowedOrigins, ["https://example.com"], "cleared with \(cleared)")
+            XCTAssertTrue(policy.isMessageOriginAllowed(scheme: "https", host: "example.com", port: 0))
+            factory.destroyView(view: webView)
+        }
+    }
+
+    func testNonArrayAllowedOriginsValueIsAnEmptyList() throws {
+        let factory = VWebViewFactory()
+        let webView = try XCTUnwrap(factory.createView() as? WKWebView)
+        defer { factory.destroyView(view: webView) }
+
+        apply(
+            [
+                (key: "source", value: ["uri": "https://example.com/a"] as Any?),
+                (key: "allowedOrigins", value: "https://other.com,https://third.com" as Any?),
+            ],
+            to: webView,
+            factory: factory
+        )
+        let policy = try XCTUnwrap(factory.policy(for: webView))
+
+        XCTAssertEqual(policy.allowedOrigins, ["https://example.com"])
+        XCTAssertFalse(policy.isMessageOriginAllowed(scheme: "https", host: "other.com", port: 0))
+    }
+
+    func testChangingSourceReplacesThePreviousOrigin() throws {
+        let factory = VWebViewFactory()
+        let webView = try XCTUnwrap(factory.createView() as? WKWebView)
+        defer { factory.destroyView(view: webView) }
+
+        apply(
+            [
+                (key: "source", value: ["uri": "https://a.example.com/"] as Any?),
+                (key: "source", value: ["uri": "https://b.example.com/"] as Any?),
+            ],
+            to: webView,
+            factory: factory
+        )
+        let policy = try XCTUnwrap(factory.policy(for: webView))
+
+        XCTAssertEqual(policy.allowedOrigins, ["https://b.example.com"])
+        XCTAssertFalse(policy.isNavigationAllowed(URL(string: "https://a.example.com/x"), isExplicitSourceLoad: false))
+        XCTAssertFalse(policy.isMessageOriginAllowed(scheme: "https", host: "a.example.com", port: 0))
+    }
+
+    func testInlineHtmlKeepsAboutBlankMessagesWhenAllowedOriginsIsSet() throws {
+        let factory = VWebViewFactory()
+        let webView = try XCTUnwrap(factory.createView() as? WKWebView)
+        defer { factory.destroyView(view: webView) }
+
+        apply(
+            [
+                (key: "source", value: ["html": "<p>Inline</p>"] as Any?),
+                (key: "allowedOrigins", value: ["https://x.com"] as Any?),
+            ],
+            to: webView,
+            factory: factory
+        )
+        let policy = try XCTUnwrap(factory.policy(for: webView))
+
+        XCTAssertEqual(policy.allowedOrigins, ["https://x.com"])
+        XCTAssertTrue(policy.isMessageOriginAllowed(scheme: "", host: "", port: 0))
+        XCTAssertTrue(policy.isMessageOriginAllowed(scheme: "about", host: "blank", port: 0))
+        XCTAssertTrue(policy.isNavigationAllowed(URL(string: "about:blank"), isExplicitSourceLoad: false))
     }
 }

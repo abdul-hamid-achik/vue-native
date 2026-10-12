@@ -11,8 +11,11 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.webkit.WebViewCompat
+import androidx.webkit.WebViewFeature
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Factory for `VWebView`.
@@ -22,8 +25,13 @@ import org.json.JSONObject
  * every inbound message is checked against a [WebViewOriginPolicy]. The policy
  * is safe by default: it is seeded only from the URI or inline HTML the app
  * itself supplied. See [WebViewOriginPolicy] for the threat model.
+ *
+ * Messages arrive through a `WebViewCompat` web message listener when the WebView
+ * supports it, so the source origin and frame of every message are checked, in
+ * subframes too. [legacyBridgeOnly] forces the older `addJavascriptInterface`
+ * bridge, which only sees the main frame, for WebViews without the listener.
  */
-class VWebViewFactory : NativeComponentFactory {
+class VWebViewFactory(private val legacyBridgeOnly: Boolean = false) : NativeComponentFactory {
     private val loadHandlers = mutableMapOf<WebView, (Any?) -> Unit>()
     private val errorHandlers = mutableMapOf<WebView, (Any?) -> Unit>()
     private val messageHandlers = mutableMapOf<WebView, (Any?) -> Unit>()
@@ -96,23 +104,31 @@ class VWebViewFactory : NativeComponentFactory {
                 }
             }
             webChromeClient = WebChromeClient()
-            // JavaScript bridge for message passing
-            addJavascriptInterface(object {
-                @android.webkit.JavascriptInterface
-                fun postMessage(msg: String) {
-                    android.os.Handler(android.os.Looper.getMainLooper()).post {
-                        val wv = this@apply
-                        // Origin check. Without it any page reachable inside the
-                        // web view can inject arbitrary payloads into the Vue
-                        // app's event stream.
-                        if (!policyFor(wv).isMessageOriginAllowed(wv.url)) {
-                            logBlocked("Dropped VWebView message from non-allowlisted origin: ${wv.url}")
-                            return@post
-                        }
-                        messageHandlers[wv]?.invoke(mapOf("data" to msg))
-                    }
+            // Message passing. The listener sees each message's source origin and
+            // frame, so the origin policy applies in every frame.
+            if (!legacyBridgeOnly && WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) {
+                WebViewCompat.addWebMessageListener(this, BRIDGE_NAME, setOf("*")) { view, message, sourceOrigin, isMainFrame, _ ->
+                    handleWebMessage(view, message.data, sourceOrigin.toString(), isMainFrame)
                 }
-            }, "vueNative")
+            } else {
+                warnLegacyBridgeOnce()
+                addJavascriptInterface(object {
+                    @android.webkit.JavascriptInterface
+                    fun postMessage(msg: String) {
+                        android.os.Handler(android.os.Looper.getMainLooper()).post {
+                            val wv = this@apply
+                            // Origin check. Without it any page reachable inside the
+                            // web view can inject arbitrary payloads into the Vue
+                            // app's event stream.
+                            if (!policyFor(wv).isMessageOriginAllowed(wv.url)) {
+                                logBlocked("Dropped VWebView message from non-allowlisted origin: ${wv.url}")
+                                return@post
+                            }
+                            messageHandlers[wv]?.invoke(mapOf("data" to msg))
+                        }
+                    }
+                }, BRIDGE_NAME)
+            }
         }
     }
 
@@ -170,7 +186,10 @@ class VWebViewFactory : NativeComponentFactory {
         messageHandlers.remove(wv)
         policies.remove(wv)
         wv.stopLoading()
-        wv.removeJavascriptInterface("vueNative")
+        if (WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) {
+            WebViewCompat.removeWebMessageListener(wv, BRIDGE_NAME)
+        }
+        wv.removeJavascriptInterface(BRIDGE_NAME)
         wv.webViewClient = WebViewClient()
         wv.webChromeClient = null
         wv.removeAllViews()
@@ -185,11 +204,13 @@ class VWebViewFactory : NativeComponentFactory {
      */
     private fun loadRequestedUri(wv: WebView, uri: String) {
         val policy = policyFor(wv)
+        // Record the source before checking it, so a refused source also drops the
+        // previous source's origin rather than leaving it allowed.
+        policy.allowOrigin(uri)
         if (!policy.isNavigationAllowed(uri, isExplicitSourceLoad = true)) {
             logBlocked("Blocked VWebView source with disallowed scheme: $uri")
             return
         }
-        policy.allowOrigin(uri)
         wv.loadUrl(uri)
     }
 
@@ -197,6 +218,19 @@ class VWebViewFactory : NativeComponentFactory {
     private fun loadInlineHtml(wv: WebView, html: String) {
         policyFor(wv).enableAboutBlank()
         wv.loadData(html, "text/html", "UTF-8")
+    }
+
+    /**
+     * Forward a page message to the app only when its source origin is allowed.
+     * Called from the web message listener on the main thread.
+     */
+    internal fun handleWebMessage(wv: WebView, data: String?, sourceOrigin: String, isMainFrame: Boolean) {
+        val message = data ?: return
+        if (!policyFor(wv).isWebMessageAllowed(sourceOrigin, isMainFrame)) {
+            logBlocked("Dropped VWebView message from non-allowlisted origin: $sourceOrigin (mainFrame=$isMainFrame)")
+            return
+        }
+        messageHandlers[wv]?.invoke(mapOf("data" to message))
     }
 
     private fun policyFor(wv: WebView): WebViewOriginPolicy =
@@ -215,8 +249,23 @@ class VWebViewFactory : NativeComponentFactory {
         Log.w(TAG, message)
     }
 
+    private fun warnLegacyBridgeOnce() {
+        if (legacyBridgeWarned.compareAndSet(false, true)) {
+            Log.w(
+                TAG,
+                "WebView message listener unsupported; using the legacy JavaScript bridge, " +
+                    "which only checks the main frame. Update the Android System WebView."
+            )
+        }
+    }
+
     companion object {
         private const val TAG = "VueNative-WebView"
+
+        /** Name of the `window` object the page posts to. */
+        private const val BRIDGE_NAME = "vueNative"
+
+        private val legacyBridgeWarned = AtomicBoolean(false)
 
         /** Accept `allowedOrigins` as a list, a JSONArray, or a comma-separated string. */
         internal fun originValues(value: Any?): List<String> = when (value) {

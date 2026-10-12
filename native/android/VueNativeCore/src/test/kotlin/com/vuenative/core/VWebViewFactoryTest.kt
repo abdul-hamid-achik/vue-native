@@ -12,6 +12,7 @@ import io.mockk.mockk
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -129,5 +130,29 @@ class VWebViewFactoryTest {
 
         factory.updateProp(webView, "javaScriptEnabled", true)
         assertTrue(webView.settings.javaScriptEnabled)
+    }
+
+    @Test
+    fun messagesFromDisallowedOriginsAreDroppedInEveryFrame() {
+        factory.updateProp(webView, "source", mapOf("uri" to "https://app.example.com/page"))
+        val received = mutableListOf<Any?>()
+        factory.addEventListener(webView, "message") { received.add(it) }
+
+        factory.handleWebMessage(webView, "from evil subframe", "https://evil.example.com", isMainFrame = false)
+        factory.handleWebMessage(webView, "from app subframe", "https://app.example.com", isMainFrame = false)
+        factory.handleWebMessage(webView, null, "https://app.example.com", isMainFrame = true)
+
+        assertEquals(listOf<Any?>(mapOf("data" to "from app subframe")), received)
+    }
+
+    @Test
+    fun legacyBridgeIsInstalledWhenTheListenerIsNotUsed() {
+        val legacy = VWebViewFactory(legacyBridgeOnly = true)
+        val wv = legacy.createView(ApplicationProvider.getApplicationContext<Context>()) as WebView
+        try {
+            assertNotNull(shadowOf(wv).getJavascriptInterface("vueNative"))
+        } finally {
+            legacy.destroyView(wv)
+        }
     }
 }

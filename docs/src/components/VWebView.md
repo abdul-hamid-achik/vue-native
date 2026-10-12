@@ -18,6 +18,7 @@ An embedded web view component for displaying web content. Maps to `WKWebView` o
 |------|------|---------|-------------|
 | `source` | `WebViewSource` | **required** | The content to display (URL or inline HTML) |
 | `javaScriptEnabled` | `boolean` | `true` | Enable JavaScript execution in the web view |
+| `allowedOrigins` | `string[]` | origin of `source` | Origins allowed to navigate the web view and post messages into the app. A non-empty list replaces the default, so include the source origin if it still needs access. An empty list restores the default. Navigation to `file:`, `javascript:` and `data:` sources is refused. |
 | `style` | `StyleProp` | — | Layout + appearance styles |
 
 ### WebViewSource
@@ -116,6 +117,8 @@ On Android, use the injected `window.vueNative` interface. Android receives a st
 ```js
 window.vueNative.postMessage(JSON.stringify({ type: 'ready', count: 42 }))
 ```
+
+On Android, each message is checked against the origin of the frame that sent it. Where WebView's message listener is available, that check uses the listener. On outdated WebViews without it, the older JavaScript interface is used as a fallback. Messages from origins outside `allowedOrigins` are dropped.
 
 ```vue
 <template>
