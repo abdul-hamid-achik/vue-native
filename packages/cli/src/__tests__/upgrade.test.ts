@@ -10,7 +10,7 @@
  * result, and cli.test.ts's global fs mocks would hide both.
  */
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from 'node:fs'
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -217,5 +217,61 @@ describe('vue-native upgrade', () => {
     expect(refused.status).not.toBe(0)
     expect(refused.output).toContain('local modification')
     expect(existsSync(join(dir, 'native', 'MINE.swift'))).toBe(true)
+  })
+
+  it('warns that local edits cannot be detected outside a git repository', () => {
+    const dir = makeProject('nogit', { schema: 1, frameworkVersion: '0.20.0' })
+
+    const result = runUpgrade(dir, [])
+    expect(result.status).toBe(0)
+    expect(result.output).toContain('cannot be detected')
+  })
+
+  it('writes the version stamp last, so a failed VSVG patch is retried', () => {
+    const dir = makeProject('stampLast', { schema: 1, frameworkVersion: '0.20.0' })
+    mkdirSync(join(dir, 'ios', 'Sources'), { recursive: true })
+    writeFileSync(join(dir, 'ios', 'project.yml'), [
+      'packages:',
+      '  VueNativeCore:',
+      '    path: ../native/ios/VueNativeCore',
+      'targets:',
+      '  App:',
+      '    dependencies:',
+      '      - package: VueNativeCore',
+      '        product: VueNativeCore',
+      '',
+    ].join('\n'))
+    const appDelegate = join(dir, 'ios', 'Sources', 'AppDelegate.swift')
+    writeFileSync(appDelegate, [
+      'import UIKit',
+      '',
+      'class AppDelegate: UIResponder, UIApplicationDelegate {',
+      '    func application(',
+      '        _ application: UIApplication,',
+      '        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?',
+      '    ) -> Bool {',
+      '        return true',
+      '    }',
+      '}',
+      '',
+    ].join('\n'))
+    // Read-only, so the VSVG patch write fails after the re-vendor has run.
+    chmodSync(appDelegate, 0o444)
+
+    try {
+      const failed = runUpgrade(dir, [])
+      expect(failed.status).not.toBe(0)
+
+      const stamp = JSON.parse(readFileSync(join(dir, 'native', '.vue-native-version'), 'utf8'))
+      expect(stamp.frameworkVersion).toBe('0.20.0')
+    } finally {
+      chmodSync(appDelegate, 0o644)
+    }
+
+    // The retry finds the stamp still old, so it re-runs the wiring and succeeds.
+    expect(runUpgrade(dir, []).status).toBe(0)
+    const stamp = JSON.parse(readFileSync(join(dir, 'native', '.vue-native-version'), 'utf8'))
+    expect(stamp.frameworkVersion).toBe(CLI_VERSION)
+    expect(readFileSync(join(dir, 'ios', 'project.yml'), 'utf8')).toContain('product: VueNativeCoreSVG')
   })
 })

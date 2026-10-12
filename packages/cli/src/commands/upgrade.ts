@@ -211,6 +211,13 @@ export const upgradeCommand = new Command('upgrade')
     if (changes !== null && changes.length > 0) {
       p.log.warn(`--force: overwriting ${changes.length} local modification(s) in native/`)
     }
+    if (changes === null && !options.force) {
+      p.log.warn(
+        'Not a git repository, so local edits to native/ cannot be detected and '
+        + 're-vendoring overwrites them. Put the project under git to have upgrade check for '
+        + 'local edits, or pass --force to skip this warning.',
+      )
+    }
 
     const packageJsonPath = join(cwd, 'package.json')
     let packageJson: { dependencies?: Record<string, string>, devDependencies?: Record<string, string> } = {}
@@ -261,6 +268,12 @@ export const upgradeCommand = new Command('upgrade')
       await writeFile(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`)
     }
 
+    for (const entry of svgWiring.patches) {
+      await writeFile(join(cwd, entry.relativePath), entry.content)
+    }
+
+    // The stamp is written last: it records a finished upgrade, so a failure
+    // above leaves the old stamp in place and the next run retries the patches.
     await writeFile(
       join(cwd, STAMP_RELATIVE_PATH),
       `${JSON.stringify({
@@ -272,10 +285,6 @@ export const upgradeCommand = new Command('upgrade')
         upgradedAt: new Date().toISOString(),
       }, null, 2)}\n`,
     )
-
-    for (const entry of svgWiring.patches) {
-      await writeFile(join(cwd, entry.relativePath), entry.content)
-    }
 
     const repository = typeof cliPackage.repository === 'object' && cliPackage.repository !== null
       ? (cliPackage.repository as { url?: string }).url
