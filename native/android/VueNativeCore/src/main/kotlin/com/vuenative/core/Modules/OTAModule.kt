@@ -2,7 +2,9 @@ package com.vuenative.core
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
+import android.os.Bundle
 import android.util.Base64
 import android.util.Log
 import java.io.File
@@ -46,7 +48,27 @@ class OTAModule : NativeModule {
         internal const val KEY_PENDING_VERSION = "vue_native_ota_pending_version"
         internal const val KEY_PENDING_BUNDLE_HASH = "vue_native_ota_pending_bundle_hash"
 
+        /** Highest version ever applied. Rollback never lowers it (anti-downgrade floor). */
+        internal const val KEY_HIGHEST_ACCEPTED_VERSION = "vue_native_ota_highest_accepted_version"
+
         private val SHA256_PATTERN = Regex("^[a-fA-F0-9]{64}$")
+
+        /** Domain prefix of the signed manifest: `vue-native-ota-v1\n<version>\n<sha256>`. */
+        internal const val MANIFEST_DOMAIN = "vue-native-ota-v1"
+
+        /**
+         * AndroidManifest `<meta-data>` boolean. When true, only signed manifests
+         * are accepted; a signature over the bundle bytes alone is refused.
+         */
+        internal const val META_DATA_REQUIRE_SIGNED_MANIFEST = "com.vuenative.ota.requireSignedManifest"
+
+        /** Rejection for a legacy bundle-bytes signature when signed manifests are required. */
+        internal const val LEGACY_SIGNATURE_REJECTION =
+            "OTA update rejected: signed manifest required (legacy bundle-bytes signature)"
+
+        private const val LEGACY_SIGNATURE_DEPRECATION =
+            "Accepting a legacy bundle-bytes OTA signature; it does not authenticate the version. " +
+                "Sign the manifest instead, or set com.vuenative.ota.requireSignedManifest."
 
         /**
          * AndroidManifest `<meta-data>` key holding the base64 DER (X.509/SPKI)
@@ -83,6 +105,17 @@ class OTAModule : NativeModule {
         @Volatile
         private var decodedHostKey: PublicKey? = null
 
+        @Volatile
+        private var hostRequireSignedManifest: Boolean? = null
+
+        /**
+         * Host-only switch: when true, a bundle is accepted only when its signature
+         * covers the signed manifest. Not reachable from JavaScript.
+         */
+        fun configureRequireSignedManifest(required: Boolean) {
+            hostRequireSignedManifest = required
+        }
+
         /**
          * Host-only entry point for apps that prefer code over manifest
          * meta-data. Not reachable from JavaScript.
@@ -103,69 +136,138 @@ class OTAModule : NativeModule {
         internal fun resetPublisherKeyForTests() {
             hostPublisherKeyBase64 = null
             decodedHostKey = null
+            hostRequireSignedManifest = null
         }
 
-        /** Read the publisher key from the host app's manifest meta-data. */
-        internal fun manifestPublisherKey(context: Context): String? = try {
-            val info = context.applicationContext.packageManager.getApplicationInfo(
+        /** The host app's manifest meta-data, or null when it cannot be read. */
+        private fun applicationMetaData(context: Context): Bundle? = try {
+            context.applicationContext.packageManager.getApplicationInfo(
                 context.applicationContext.packageName,
                 PackageManager.GET_META_DATA
-            )
-            info.metaData?.getString(META_DATA_PUBLISHER_KEY)
+            ).metaData
         } catch (error: PackageManager.NameNotFoundException) {
             null
         } catch (error: RuntimeException) {
             null
         }
 
+        /** Read the publisher key from the host app's manifest meta-data. */
+        internal fun manifestPublisherKey(context: Context): String? =
+            applicationMetaData(context)?.getString(META_DATA_PUBLISHER_KEY)
+
+        /** Read the signed-manifest requirement from manifest meta-data. Defaults to false. */
+        internal fun manifestRequireSignedManifest(context: Context): Boolean =
+            applicationMetaData(context)?.getBoolean(META_DATA_REQUIRE_SIGNED_MANIFEST, false) ?: false
+
         /**
-         * Compare two dotted version strings.
+         * A parsed version: a numeric core (missing components count as 0) plus
+         * optional pre-release identifiers. Build metadata is dropped.
+         */
+        private data class ParsedVersion(val core: List<Long>, val prerelease: List<String>)
+
+        private val CORE_COMPONENT_PATTERN = Regex("^[0-9]{1,9}$")
+        private val IDENTIFIER_PATTERN = Regex("^[0-9A-Za-z-]+$")
+
+        /**
+         * Parse a publisher version. Accepts an optional leading `v` or `V`, a core
+         * of 1 to 4 dot-separated non-negative integers (each at most 9 digits), an
+         * optional `-prerelease` of dot-separated identifiers, and an optional
+         * `+build` suffix. Returns null for anything else.
+         */
+        private fun parseVersion(raw: String): ParsedVersion? {
+            val unprefixed = if (raw.startsWith("v") || raw.startsWith("V")) raw.substring(1) else raw
+
+            val buildStart = unprefixed.indexOf('+')
+            if (buildStart >= 0 && !unprefixed.substring(buildStart + 1).split('.').all { IDENTIFIER_PATTERN.matches(it) }) {
+                return null
+            }
+            val withoutBuild = if (buildStart >= 0) unprefixed.substring(0, buildStart) else unprefixed
+
+            val preStart = withoutBuild.indexOf('-')
+            val corePart = if (preStart >= 0) withoutBuild.substring(0, preStart) else withoutBuild
+            val prerelease = if (preStart >= 0) withoutBuild.substring(preStart + 1).split('.') else emptyList()
+            if (preStart >= 0 && !prerelease.all { IDENTIFIER_PATTERN.matches(it) }) return null
+
+            val components = corePart.split('.')
+            if (components.size !in 1..4 || !components.all { CORE_COMPONENT_PATTERN.matches(it) }) return null
+            return ParsedVersion(components.map { it.toLong() }, prerelease)
+        }
+
+        /** `true` when [raw] is a version the OTA updater accepts. */
+        internal fun isValidVersion(raw: String): Boolean = parseVersion(raw) != null
+
+        /** Rejection message for a candidate version that does not parse. */
+        internal fun invalidVersionMessage(candidate: String) =
+            "OTA version '$candidate' is not a valid version (expected dotted numbers such as 1.4.2)"
+
+        /**
+         * Compare two versions by semver precedence. Returns -1, 0 or 1.
          *
-         * Segments that are all ASCII digits on both sides compare numerically
-         * (so `1.10.0` > `1.9.0`); any other pair compares lexically. A missing
-         * segment counts as `0` numerically and as the empty string lexically.
+         * Core components compare numerically, with missing components counting as
+         * 0 (so `1.2` equals `1.2.0`). A release outranks any pre-release of the same
+         * core. Pre-release identifiers compare numerically when both are numeric,
+         * numeric ranks below alphanumeric, alphanumeric compares in ASCII, and a
+         * shorter identifier list ranks lower when it is a prefix of the other.
          *
-         * Semver pre-release ordering is deliberately NOT implemented:
-         * `1.0.0-a` and `1.0.0-b` compare lexically as whole segments.
+         * @throws IllegalArgumentException when either version does not parse.
          */
         internal fun compareVersions(lhs: String, rhs: String): Int {
-            val left = lhs.split(".")
-            val right = rhs.split(".")
-            for (index in 0 until maxOf(left.size, right.size)) {
-                // A missing segment counts as "0", not as the empty string, so
-                // `2.0.1` is correctly newer than `2.0` and `2.0` equals `2.0.0`.
-                val leftSegment = left.getOrElse(index) { "0" }
-                val rightSegment = right.getOrElse(index) { "0" }
-                val leftDigits = isNumericSegment(leftSegment)
-                val rightDigits = isNumericSegment(rightSegment)
-                if (leftDigits && rightDigits) {
-                    val leftValue = leftSegment.toLongOrNull() ?: 0L
-                    val rightValue = rightSegment.toLongOrNull() ?: 0L
-                    if (leftValue != rightValue) {
-                        return leftValue.compareTo(rightValue).coerceIn(-1, 1)
-                    }
-                } else {
-                    val leftText = if (leftDigits) "" else leftSegment
-                    val rightText = if (rightDigits) "" else rightSegment
-                    if (leftText != rightText) {
-                        // `String.compareTo` returns a character delta, so
-                        // normalise to the sign the contract promises.
-                        return leftText.compareTo(rightText).coerceIn(-1, 1)
-                    }
-                }
+            val left = requireNotNull(parseVersion(lhs)) { invalidVersionMessage(lhs) }
+            val right = requireNotNull(parseVersion(rhs)) { invalidVersionMessage(rhs) }
+            return compareParsed(left, right)
+        }
+
+        private fun compareParsed(left: ParsedVersion, right: ParsedVersion): Int {
+            for (index in 0 until maxOf(left.core.size, right.core.size)) {
+                val diff = left.core.getOrElse(index) { 0L }.compareTo(right.core.getOrElse(index) { 0L })
+                if (diff != 0) return diff.coerceIn(-1, 1)
             }
-            return 0
+            if (left.prerelease.isEmpty()) return if (right.prerelease.isEmpty()) 0 else 1
+            if (right.prerelease.isEmpty()) return -1
+            for (index in 0 until minOf(left.prerelease.size, right.prerelease.size)) {
+                val diff = compareIdentifier(left.prerelease[index], right.prerelease[index])
+                if (diff != 0) return diff
+            }
+            return left.prerelease.size.compareTo(right.prerelease.size).coerceIn(-1, 1)
+        }
+
+        private fun compareIdentifier(left: String, right: String): Int {
+            val leftNumeric = isNumericSegment(left)
+            val rightNumeric = isNumericSegment(right)
+            return when {
+                leftNumeric && rightNumeric -> compareNumericIdentifier(left, right)
+                leftNumeric -> -1
+                rightNumeric -> 1
+                else -> left.compareTo(right).coerceIn(-1, 1)
+            }
+        }
+
+        /** Compares digit strings by value without parsing them, so long identifiers cannot overflow. */
+        private fun compareNumericIdentifier(left: String, right: String): Int {
+            val leftDigits = left.trimStart('0')
+            val rightDigits = right.trimStart('0')
+            if (leftDigits.length != rightDigits.length) {
+                return leftDigits.length.compareTo(rightDigits.length)
+            }
+            return leftDigits.compareTo(rightDigits).coerceIn(-1, 1)
         }
 
         /**
-         * `true` when [candidate] is strictly newer than the installed version.
-         * A null/blank current version means the app is running its embedded
-         * bundle, so any candidate is newer.
+         * `true` when [candidate] is strictly newer than [current]. A null/blank
+         * current version means the app is running its embedded bundle, so any
+         * candidate is newer. An unparseable [current] is treated as no floor, so a
+         * damaged stored value never locks a device out of updates.
          */
         internal fun isStrictlyNewer(candidate: String, current: String?): Boolean {
             if (current.isNullOrBlank()) return true
-            return compareVersions(candidate, current) > 0
+            val candidateVersion = parseVersion(candidate) ?: return false
+            val currentVersion = parseVersion(current) ?: return true
+            return compareParsed(candidateVersion, currentVersion) > 0
         }
+
+        /** The greater of [stored] and [applied]. An unparseable or missing [stored] yields [applied]. */
+        internal fun higherVersion(stored: String?, applied: String): String =
+            if (stored.isNullOrBlank() || isStrictlyNewer(applied, stored)) applied else stored
 
         /** Rejection message for a downgrade attempt. */
         internal fun downgradeMessage(candidate: String, current: String) =
@@ -173,6 +275,13 @@ class OTAModule : NativeModule {
 
         private fun isNumericSegment(segment: String) =
             segment.isNotEmpty() && segment.all { it in '0'..'9' }
+
+        /**
+         * The message a publisher signs for a manifest:
+         * `vue-native-ota-v1\n<version>\n<sha256>`, UTF-8, with no trailing newline.
+         */
+        internal fun manifestMessage(version: String, sha256: String): ByteArray =
+            "$MANIFEST_DOMAIN\n$version\n$sha256".toByteArray(Charsets.UTF_8)
 
         internal fun preferences(context: Context): SharedPreferences =
             context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -283,13 +392,26 @@ class OTAModule : NativeModule {
     // written on the initialize thread and read on the OkHttp callback thread.
     @Volatile private var verifyKey: PublicKey? = null
 
+    // When true, only signatures over the signed manifest are accepted.
+    @Volatile private var requireSignedManifest = false
+
+    // Enables the deprecation log for legacy signatures. Mirrors the host app's
+    // build type, since this library's own BuildConfig is not generated.
+    @Volatile private var debugBuild = false
+
     override fun initialize(context: Context, bridge: NativeBridge) {
         appContext = context.applicationContext
         bridgeRef = bridge
         prefs = preferences(context)
         destroyed = false
         verifyKey = resolvePublisherKey(context)
+        requireSignedManifest = resolveRequireSignedManifest(context)
+        debugBuild = (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
     }
+
+    /** Host configuration wins over manifest meta-data; the default is false. */
+    private fun resolveRequireSignedManifest(context: Context): Boolean =
+        hostRequireSignedManifest ?: manifestRequireSignedManifest(context)
 
     /**
      * Resolve the publisher key from native configuration only.
@@ -319,6 +441,21 @@ class OTAModule : NativeModule {
     private fun installedVersion(context: Context, prefs: SharedPreferences): String? {
         if (activeBundleFile(context) == null) return null
         return prefs.getString(KEY_CURRENT_VERSION, null)?.trim()?.takeIf { it.isNotEmpty() }
+    }
+
+    /**
+     * The lowest version a candidate must be strictly newer than: the greater of
+     * the installed version and the highest version ever applied. Null means there
+     * is no floor yet.
+     */
+    private fun versionFloor(context: Context, prefs: SharedPreferences): String? {
+        val installed = installedVersion(context, prefs)
+        val highest = prefs.getString(KEY_HIGHEST_ACCEPTED_VERSION, null)?.trim()?.takeIf { it.isNotEmpty() }
+        return when {
+            highest == null -> installed
+            installed == null -> highest
+            else -> higherVersion(installed, highest)
+        }
     }
 
     override fun invoke(
@@ -477,12 +614,17 @@ class OTAModule : NativeModule {
             return
         }
 
+        if (!isValidVersion(normalizedVersion)) {
+            callback(null, invalidVersionMessage(normalizedVersion))
+            return
+        }
+
         // Anti-downgrade, checked before spending any bandwidth. Without this an
         // attacker who can serve bytes could reinstall an older, vulnerable
         // bundle whose signature is still valid.
-        val installed = installedVersion(context, prefs)
-        if (installed != null && !isStrictlyNewer(normalizedVersion, installed)) {
-            callback(null, downgradeMessage(normalizedVersion, installed))
+        val floor = versionFloor(context, prefs)
+        if (floor != null && !isStrictlyNewer(normalizedVersion, floor)) {
+            callback(null, downgradeMessage(normalizedVersion, floor))
             return
         }
 
@@ -552,7 +694,7 @@ class OTAModule : NativeModule {
                         // Publisher authentication. Runs after the integrity hash
                         // so a corrupt bundle is rejected before we spend time on
                         // signature math; a failure here removes the partial file.
-                        val signatureError = verifySignature(partial, signature)
+                        val signatureError = verifySignature(partial, signature, normalizedVersion, normalizedHash)
                         if (signatureError != null) {
                             partial.delete()
                             callback(null, signatureError)
@@ -601,18 +743,20 @@ class OTAModule : NativeModule {
      * Verify the downloaded bundle's publisher signature.
      *
      * Publisher authentication is MANDATORY:
-     * - No publisher key configured natively: FAIL CLOSED and reject. The old
-     *   behaviour logged a warning and accepted the bundle on its hash alone,
-     *   which only proves the bytes were not corrupted in transit — not who
-     *   produced them. Attacker JS can compute a matching SHA-256 for its own
-     *   bundle trivially.
+     * - No publisher key configured natively: FAIL CLOSED and reject. Attacker JS
+     *   can compute a matching SHA-256 for its own bundle, so integrity alone
+     *   proves nothing about who produced it.
      * - Key configured but signature missing/empty: reject.
-     * - Key configured and signature present: verify SHA256withECDSA over the
-     *   bundle bytes; reject on any failure or mismatch.
+     * - Key configured and the signature verifies over the signed manifest
+     *   ([manifestMessage]): accept. The version is authenticated.
+     * - Otherwise, if it verifies over the bundle bytes alone (the legacy format):
+     *   accept only when signed manifests are not required. The version is not
+     *   authenticated in this format, so it is logged as deprecated.
+     * - Anything else: reject.
      *
      * Returns an error message on rejection, or null when the bundle is accepted.
      */
-    private fun verifySignature(bundleFile: File, signature: String?): String? {
+    private fun verifySignature(bundleFile: File, signature: String?, version: String, sha256: String): String? {
         val publicKey = verifyKey
         if (publicKey == null) {
             Log.e(TAG, MISSING_PUBLISHER_KEY)
@@ -622,15 +766,30 @@ class OTAModule : NativeModule {
             return "signature required when a verify key is configured"
         }
         return try {
-            val bundleBytes = bundleFile.readBytes()
-            val verifier = Signature.getInstance("SHA256withECDSA")
-            verifier.initVerify(publicKey)
-            verifier.update(bundleBytes)
-            val valid = verifier.verify(Base64.decode(signature, Base64.DEFAULT))
-            if (valid) null else "signature verification failed"
+            val signatureBytes = Base64.decode(signature, Base64.DEFAULT)
+            if (verifyEcdsa(publicKey, manifestMessage(version, sha256), signatureBytes)) {
+                null
+            } else if (verifyEcdsa(publicKey, bundleFile.readBytes(), signatureBytes)) {
+                if (requireSignedManifest) {
+                    Log.e(TAG, LEGACY_SIGNATURE_REJECTION)
+                    LEGACY_SIGNATURE_REJECTION
+                } else {
+                    if (debugBuild) Log.w(TAG, LEGACY_SIGNATURE_DEPRECATION)
+                    null
+                }
+            } else {
+                "signature verification failed"
+            }
         } catch (error: Exception) {
             "signature verification failed: ${error.message}"
         }
+    }
+
+    private fun verifyEcdsa(publicKey: PublicKey, data: ByteArray, signatureBytes: ByteArray): Boolean {
+        val verifier = Signature.getInstance("SHA256withECDSA")
+        verifier.initVerify(publicKey)
+        verifier.update(data)
+        return verifier.verify(signatureBytes)
     }
 
     private fun verifyBundle(prefs: SharedPreferences, callback: (Any?, String?) -> Unit) {
@@ -660,12 +819,17 @@ class OTAModule : NativeModule {
             return
         }
 
+        if (!isValidVersion(pending.version)) {
+            callback(null, invalidVersionMessage(pending.version))
+            return
+        }
+
         // Authoritative anti-downgrade gate. `downloadUpdate` checks the same
         // rule, but the pending state lives in SharedPreferences and could have
         // been staged by an older build or written directly, so re-check here.
-        val installed = installedVersion(context, prefs)
-        if (installed != null && !isStrictlyNewer(pending.version, installed)) {
-            callback(null, downgradeMessage(pending.version, installed))
+        val floor = versionFloor(context, prefs)
+        if (floor != null && !isStrictlyNewer(pending.version, floor)) {
+            callback(null, downgradeMessage(pending.version, floor))
             return
         }
 
@@ -688,6 +852,10 @@ class OTAModule : NativeModule {
             .remove(KEY_PENDING_BUNDLE_PATH)
             .remove(KEY_PENDING_VERSION)
             .remove(KEY_PENDING_BUNDLE_HASH)
+            .putString(
+                KEY_HIGHEST_ACCEPTED_VERSION,
+                higherVersion(prefs.getString(KEY_HIGHEST_ACCEPTED_VERSION, null), pending.version),
+            )
 
         if (!editor.commit()) {
             callback(null, "Failed to persist applied OTA state")

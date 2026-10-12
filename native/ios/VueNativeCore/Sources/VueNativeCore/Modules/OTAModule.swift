@@ -21,6 +21,9 @@ final class OTAModule: NativeModule {
     static let pendingBundlePathKey = "VueNative.OTA.pendingBundlePath"
     static let pendingVersionKey = "VueNative.OTA.pendingVersion"
     static let pendingBundleHashKey = "VueNative.OTA.pendingBundleHash"
+    /// Highest version this device has ever accepted. It only rises, and rollback
+    /// never lowers it, so a rolled-back device still refuses older releases.
+    static let highestAcceptedVersionKey = "VueNative.OTA.highestAcceptedVersion"
 
     /// Info.plist key holding the base64 DER (X.509 SubjectPublicKeyInfo) ECDSA
     /// P-256 publisher key.
@@ -48,6 +51,21 @@ final class OTAModule: NativeModule {
         "OTA update rejected: no publisher verification key is configured natively; "
         + "refusing to install an unauthenticated bundle"
 
+    /// Domain tag for the signed release manifest. The publisher signs
+    /// `vue-native-ota-v1\n<version>\n<sha256>` as UTF-8 with no trailing newline.
+    static let manifestDomain = "vue-native-ota-v1"
+
+    /// Info.plist key (Boolean) for the require-signed-manifest flag. Off by default.
+    static let requireSignedManifestInfoPlistKey = "VueNativeOTARequireSignedManifest"
+
+    /// Returned for a legacy bundle-bytes signature when the manifest is required.
+    static let signedManifestRequiredMessage =
+        "OTA update rejected: signed manifest required (legacy bundle-bytes signature)"
+
+    static func invalidVersionMessage(_ version: String) -> String {
+        "OTA version '\(version)' is not a valid version (expected dotted numbers such as 1.4.2)"
+    }
+
     /// Error raised by the host-only key configuration entry point.
     enum PublisherKeyError: LocalizedError {
         case invalidBase64
@@ -65,6 +83,7 @@ final class OTAModule: NativeModule {
 
     private static let hostKeyLock = NSLock()
     private static var storedHostKeyBase64: String?
+    private static var storedRequireSignedManifest: Bool?
 
     /// Host-only entry point for apps that prefer code over Info.plist.
     /// Not reachable from JavaScript.
@@ -80,9 +99,28 @@ final class OTAModule: NativeModule {
         hostKeyLock.withLock { storedHostKeyBase64 = base64SPKI }
     }
 
-    /// Test seam for the host-only configuration path.
+    /// Host-only switch that refuses legacy bundle-bytes signatures. Off by default.
+    /// Not reachable from JavaScript.
+    static func configureRequireSignedManifest(_ required: Bool) {
+        hostKeyLock.withLock { storedRequireSignedManifest = required }
+    }
+
+    /// Resolve the require-signed-manifest flag: host-configured value first, then
+    /// Info.plist, then `false`.
+    static func signedManifestRequired(bundle: Bundle = .main) -> Bool {
+        if let configured = hostKeyLock.withLock({ storedRequireSignedManifest }) {
+            return configured
+        }
+        return bundle.object(forInfoDictionaryKey: requireSignedManifestInfoPlistKey) as? Bool ?? false
+    }
+
+    /// Test seam for the host-only configuration path. Clears the host-configured
+    /// publisher key and the signed-manifest flag.
     static func resetPublisherKeyForTesting() {
-        hostKeyLock.withLock { storedHostKeyBase64 = nil }
+        hostKeyLock.withLock {
+            storedHostKeyBase64 = nil
+            storedRequireSignedManifest = nil
+        }
     }
 
     /// Resolve the configured publisher key material: host-configured key first,
@@ -109,8 +147,16 @@ final class OTAModule: NativeModule {
     /// key and its cache slot are guarded by `keyLock`.
     private let keyLock = NSLock()
     private let injectedKeyBase64: String?
+    /// Explicit override for the signed-manifest flag. `nil` defers to native configuration.
+    private let injectedRequireSignedManifest: Bool?
     private var cachedKeySource: String?
     private var cachedVerifyKey: P256.Signing.PublicKey?
+
+    /// When `true`, a legacy bundle-bytes signature is refused and only a signed
+    /// manifest is accepted. See `verificationError`.
+    private var requiresSignedManifest: Bool {
+        injectedRequireSignedManifest ?? Self.signedManifestRequired()
+    }
 
     /// The resolved publisher key, or `nil` when the host configured none.
     /// A `nil` result makes verification FAIL CLOSED — see `verificationError`.
@@ -142,7 +188,8 @@ final class OTAModule: NativeModule {
         defaults: UserDefaults = .standard,
         fileManager: FileManager = .default,
         bundleDirectory: URL? = nil,
-        publisherKeyBase64: String? = nil
+        publisherKeyBase64: String? = nil,
+        requireSignedManifest: Bool? = nil
     ) {
         self.bridge = bridge
         self.defaults = defaults
@@ -152,6 +199,7 @@ final class OTAModule: NativeModule {
         // Info.plist so tests and hosts that build the module directly are
         // deterministic regardless of process-global state.
         self.injectedKeyBase64 = publisherKeyBase64 ?? Self.publisherKeyBase64()
+        self.injectedRequireSignedManifest = requireSignedManifest
     }
 
     func invoke(method: String, args: [Any], callback: @escaping (Any?, String?) -> Void) {
@@ -292,12 +340,18 @@ final class OTAModule: NativeModule {
             return
         }
 
+        guard OTAVersion(normalizedVersion) != nil else {
+            callback(nil, Self.invalidVersionMessage(normalizedVersion))
+            return
+        }
+
         // Anti-downgrade, checked before spending any bandwidth. Without this an
         // attacker who can serve bytes could reinstall an older, vulnerable
-        // bundle whose signature is still valid.
-        if let installed = installedVersion(),
-           !Self.isStrictlyNewer(candidate: normalizedVersion, current: installed) {
-            callback(nil, Self.downgradeMessage(candidate: normalizedVersion, current: installed))
+        // bundle whose signature is still valid. The floor also covers versions
+        // this device accepted before a rollback.
+        if let floor = versionFloor(),
+           !Self.isStrictlyNewer(candidate: normalizedVersion, current: floor) {
+            callback(nil, Self.downgradeMessage(candidate: normalizedVersion, current: floor))
             return
         }
 
@@ -337,7 +391,8 @@ final class OTAModule: NativeModule {
                 if let verificationError = self.verificationError(
                     for: data,
                     expectedHash: normalizedHash,
-                    signature: signature
+                    signature: signature,
+                    version: normalizedVersion
                 ) {
                     callback(nil, verificationError)
                     return
@@ -369,24 +424,40 @@ final class OTAModule: NativeModule {
     /// Verify downloaded bundle bytes: SHA-256 integrity, then the ECDSA P-256
     /// (SHA-256, DER) publisher signature.
     ///
+    /// Two signature formats are accepted, in this order:
+    ///
+    /// 1. The signed manifest (preferred). The signature covers the UTF-8 bytes of
+    ///    `vue-native-ota-v1\n<version>\n<sha256>`, so a valid manifest signature
+    ///    also authenticates the version string.
+    /// 2. Legacy. The signature covers the raw bundle bytes. That does not bind the
+    ///    version, so it is refused when the host sets
+    ///    ``requiresSignedManifest`` (see ``signedManifestRequired(bundle:)``).
+    ///
     /// CryptoKit's `isValidSignature(_:for:)` hashes the supplied data internally
-    /// (SHA-256 for P-256), so the signature is verified against the raw bundle
-    /// bytes, not a pre-computed digest. The signing side must likewise sign the
-    /// raw bytes (`signature(for: data)`).
+    /// (SHA-256 for P-256), so signatures are checked over the raw message bytes,
+    /// not a pre-computed digest. The signing side must sign those same bytes
+    /// (`signature(for: message)`).
     ///
     /// Publisher authentication is MANDATORY. When the host has not configured a
     /// key this returns ``missingPublisherKeyMessage`` instead of accepting the
     /// bundle on its hash alone — integrity without authentication only proves
     /// the bytes were not corrupted in transit, not who produced them.
     ///
+    /// - Parameter version: the trimmed version string the update claims.
     /// - Returns: `nil` when the bundle passes every check, or a rejection message.
-    func verificationError(for data: Data, expectedHash: String, signature: String?) -> String? {
+    func verificationError(
+        for data: Data,
+        expectedHash: String,
+        signature: String?,
+        version: String
+    ) -> String? {
         guard !data.isEmpty, Self.isReadableJavaScript(data) else {
             return "Downloaded bundle is empty or is not valid UTF-8 text"
         }
+        let expected = expectedHash.lowercased()
         let actualHash = Self.sha256(data: data)
-        guard actualHash == expectedHash.lowercased() else {
-            return "Bundle integrity check failed. Expected: \(expectedHash.lowercased()), got: \(actualHash)"
+        guard actualHash == expected else {
+            return "Bundle integrity check failed. Expected: \(expected), got: \(actualHash)"
         }
 
         guard let verifyKey = self.verifyKey else {
@@ -396,59 +467,75 @@ final class OTAModule: NativeModule {
             return "OTA update rejected: signature required when a verify key is configured"
         }
         guard let signatureData = Data(base64Encoded: signature),
-              let ecdsaSignature = try? P256.Signing.ECDSASignature(derRepresentation: signatureData),
-              verifyKey.isValidSignature(ecdsaSignature, for: data) else {
+              let ecdsaSignature = try? P256.Signing.ECDSASignature(derRepresentation: signatureData) else {
             return "OTA update rejected: signature verification failed"
         }
-        return nil
+        if verifyKey.isValidSignature(ecdsaSignature, for: Self.manifestMessage(version: version, sha256: expected)) {
+            return nil
+        }
+        if verifyKey.isValidSignature(ecdsaSignature, for: data) {
+            guard !requiresSignedManifest else {
+                return Self.signedManifestRequiredMessage
+            }
+            #if DEBUG
+            NSLog(
+                "[VueNative OTA] Accepted a legacy bundle-bytes signature. Sign the release manifest "
+                + "instead; it becomes mandatory when '%@' is set.",
+                Self.requireSignedManifestInfoPlistKey
+            )
+            #endif
+            return nil
+        }
+        return "OTA update rejected: signature verification failed"
+    }
+
+    /// The message a publisher signs for a release manifest: the domain tag, the
+    /// version and the bundle SHA-256, newline-separated, UTF-8, no trailing newline.
+    static func manifestMessage(version: String, sha256: String) -> Data {
+        Data("\(manifestDomain)\n\(version)\n\(sha256.lowercased())".utf8)
     }
 
     // MARK: - Version ordering (anti-downgrade)
 
-    /// Compare two dotted version strings.
+    /// Compare two OTA version strings by semver precedence. See ``OTAVersion``.
     ///
-    /// Segments that are all digits on both sides compare numerically (so
-    /// `1.10.0` > `1.9.0`); any other pair compares lexically. A missing segment
-    /// counts as `0` numerically and as the empty string lexically.
-    ///
-    /// Semver pre-release ordering is deliberately NOT implemented: `1.0.0-a`
-    /// and `1.0.0-b` compare lexically as whole segments. Versions used for OTA
-    /// gating should be plain dotted numerics.
+    /// A string that does not parse sorts below every valid version, and two
+    /// invalid strings compare equal. Candidates are rejected before comparison,
+    /// so this matters only for stored state.
     static func compareVersions(_ lhs: String, _ rhs: String) -> Int {
-        let left = lhs.split(separator: ".", omittingEmptySubsequences: false).map(String.init)
-        let right = rhs.split(separator: ".", omittingEmptySubsequences: false).map(String.init)
-        for index in 0..<max(left.count, right.count) {
-            // A missing segment counts as "0", not as the empty string, so
-            // `2.0.1` is correctly newer than `2.0` and `2.0` equals `2.0.0`.
-            let leftSegment = index < left.count ? left[index] : "0"
-            let rightSegment = index < right.count ? right[index] : "0"
-            let leftDigits = Self.isNumericSegment(leftSegment)
-            let rightDigits = Self.isNumericSegment(rightSegment)
-            if leftDigits && rightDigits {
-                let leftValue = Int(leftSegment) ?? 0
-                let rightValue = Int(rightSegment) ?? 0
-                if leftValue != rightValue { return leftValue < rightValue ? -1 : 1 }
-            } else {
-                let leftText = leftDigits ? "" : leftSegment
-                let rightText = rightDigits ? "" : rightSegment
-                if leftText != rightText { return leftText < rightText ? -1 : 1 }
-            }
+        switch (OTAVersion(lhs), OTAVersion(rhs)) {
+        case let (left?, right?): return OTAVersion.compare(left, right)
+        case (nil, nil): return 0
+        case (nil, _): return -1
+        case (_, nil): return 1
         }
-        return 0
     }
 
-    /// `true` when `candidate` is strictly newer than the installed version.
-    /// A `nil` current version means the app is running its embedded bundle, so
-    /// any candidate is newer.
+    /// `true` when `candidate` is strictly newer than `current`. A `nil` or empty
+    /// current version means nothing is installed, so any candidate is newer. An
+    /// unparseable current version sorts below every valid one, so bad stored state
+    /// never locks a device out of updates.
     static func isStrictlyNewer(candidate: String, current: String?) -> Bool {
         guard let current, !current.isEmpty else { return true }
         return compareVersions(candidate, current) > 0
     }
 
-    /// ASCII-only digit test. `Character.isNumber` also accepts non-ASCII digits
-    /// that `Int(_:)` cannot parse, which would silently collapse to 0.
-    private static func isNumericSegment(_ segment: String) -> Bool {
-        !segment.isEmpty && segment.allSatisfy { $0.isASCII && $0.isNumber }
+    /// The lowest version a new update may carry: the greater of the installed
+    /// version and the highest version ever accepted. Unparseable stored values are
+    /// ignored and never act as a floor.
+    private func versionFloor() -> String? {
+        [installedVersion(), defaults.string(forKey: Self.highestAcceptedVersionKey)]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { OTAVersion($0) != nil }
+            .max { Self.compareVersions($0, $1) < 0 }
+    }
+
+    /// Raise the highest accepted version. It only ever increases, and rollback
+    /// never touches it, so a rolled-back device still refuses older releases.
+    private func recordAcceptedVersion(_ version: String) {
+        let stored = defaults.string(forKey: Self.highestAcceptedVersionKey)
+        guard Self.isStrictlyNewer(candidate: version, current: stored) else { return }
+        defaults.set(version, forKey: Self.highestAcceptedVersionKey)
     }
 
     /// Rejection message for a downgrade attempt.
@@ -495,12 +582,17 @@ final class OTAModule: NativeModule {
             return
         }
 
+        guard OTAVersion(pending.version) != nil else {
+            callback(nil, Self.invalidVersionMessage(pending.version))
+            return
+        }
+
         // Authoritative anti-downgrade gate. `downloadUpdate` checks the same
         // rule, but the pending state lives in `UserDefaults` and could have
         // been staged by an older build or written directly, so re-check here.
-        if let installed = installedVersion(),
-           !Self.isStrictlyNewer(candidate: pending.version, current: installed) {
-            callback(nil, Self.downgradeMessage(candidate: pending.version, current: installed))
+        if let floor = versionFloor(),
+           !Self.isStrictlyNewer(candidate: pending.version, current: floor) {
+            callback(nil, Self.downgradeMessage(candidate: pending.version, current: floor))
             return
         }
 
@@ -521,6 +613,7 @@ final class OTAModule: NativeModule {
         defaults.set(pending.url.path, forKey: Self.bundlePathKey)
         defaults.set(pending.version, forKey: Self.currentVersionKey)
         defaults.set(pending.hash, forKey: Self.bundleHashKey)
+        recordAcceptedVersion(pending.version)
         cleanupPendingBundle(removeFile: false)
 
         callback(["applied": true, "version": pending.version], nil)
@@ -789,6 +882,119 @@ final class OTAModule: NativeModule {
         }
         activeDownload?.invalidateAndCancel()
         bridge = nil
+    }
+}
+
+// MARK: - OTAVersion
+
+/// A parsed OTA version: `[v|V]core[-prerelease][+build]`.
+///
+/// - `core` is 1 to 4 dot-separated non-negative integers of at most 9 digits.
+///   Missing components count as 0, so `1.2` equals `1.2.0`.
+/// - `prerelease` is dot-separated identifiers made of `[0-9A-Za-z-]`, none empty.
+/// - `build` must be valid identifiers but is ignored for ordering.
+///
+/// Ordering is semver precedence. A release is newer than any prerelease of the
+/// same core. Numeric identifiers compare numerically and rank below alphanumeric
+/// ones. Alphanumeric identifiers compare in ASCII order. A shorter identifier list
+/// ranks lower when it is a prefix of the longer one.
+struct OTAVersion: Equatable, Comparable {
+    let core: [Int]
+    let prerelease: [String]
+
+    init?(_ text: String) {
+        var rest = Substring(text)
+        if let first = rest.first, first == "v" || first == "V" {
+            rest = rest.dropFirst()
+        }
+        // Build metadata is split off first, so a `-` inside it is not read as a
+        // prerelease separator.
+        if let plus = rest.firstIndex(of: "+") {
+            guard Self.isIdentifierList(rest[rest.index(after: plus)...]) else { return nil }
+            rest = rest[..<plus]
+        }
+        var prerelease: [String] = []
+        if let dash = rest.firstIndex(of: "-") {
+            let identifiers = rest[rest.index(after: dash)...]
+            guard Self.isIdentifierList(identifiers) else { return nil }
+            prerelease = identifiers.split(separator: ".", omittingEmptySubsequences: false).map(String.init)
+            rest = rest[..<dash]
+        }
+        let parts = rest.split(separator: ".", omittingEmptySubsequences: false)
+        guard (1...4).contains(parts.count) else { return nil }
+        var core: [Int] = []
+        for part in parts {
+            guard (1...9).contains(part.count),
+                  part.allSatisfy({ $0.isASCII && $0.isNumber }),
+                  let value = Int(part) else { return nil }
+            core.append(value)
+        }
+        self.core = core
+        self.prerelease = prerelease
+    }
+
+    static func == (lhs: OTAVersion, rhs: OTAVersion) -> Bool {
+        compare(lhs, rhs) == 0
+    }
+
+    static func < (lhs: OTAVersion, rhs: OTAVersion) -> Bool {
+        compare(lhs, rhs) < 0
+    }
+
+    /// Returns -1, 0 or 1 by semver precedence.
+    static func compare(_ lhs: OTAVersion, _ rhs: OTAVersion) -> Int {
+        for index in 0..<max(lhs.core.count, rhs.core.count) {
+            let left = index < lhs.core.count ? lhs.core[index] : 0
+            let right = index < rhs.core.count ? rhs.core[index] : 0
+            if left != right { return left < right ? -1 : 1 }
+        }
+        switch (lhs.prerelease.isEmpty, rhs.prerelease.isEmpty) {
+        case (true, true): return 0
+        case (true, false): return 1
+        case (false, true): return -1
+        case (false, false): break
+        }
+        for (left, right) in zip(lhs.prerelease, rhs.prerelease) {
+            let result = comparePrereleaseIdentifier(left, right)
+            if result != 0 { return result }
+        }
+        if lhs.prerelease.count == rhs.prerelease.count { return 0 }
+        return lhs.prerelease.count < rhs.prerelease.count ? -1 : 1
+    }
+
+    private static func comparePrereleaseIdentifier(_ left: String, _ right: String) -> Int {
+        switch (isNumericIdentifier(left), isNumericIdentifier(right)) {
+        case (true, true):
+            // Compare by magnitude without Int, so long numbers cannot overflow.
+            let leftDigits = left.drop(while: { $0 == "0" })
+            let rightDigits = right.drop(while: { $0 == "0" })
+            if leftDigits.count != rightDigits.count {
+                return leftDigits.count < rightDigits.count ? -1 : 1
+            }
+            return compareBytes(leftDigits, rightDigits)
+        case (true, false): return -1
+        case (false, true): return 1
+        case (false, false): return compareBytes(left, right)
+        }
+    }
+
+    private static func compareBytes<S: StringProtocol>(_ left: S, _ right: S) -> Int {
+        if left == right { return 0 }
+        return left.utf8.lexicographicallyPrecedes(right.utf8) ? -1 : 1
+    }
+
+    private static func isNumericIdentifier(_ identifier: String) -> Bool {
+        !identifier.isEmpty && identifier.allSatisfy { $0.isASCII && $0.isNumber }
+    }
+
+    /// `true` for one or more dot-separated identifiers, each non-empty and made of
+    /// `[0-9A-Za-z-]`.
+    private static func isIdentifierList(_ text: Substring) -> Bool {
+        text.split(separator: ".", omittingEmptySubsequences: false).allSatisfy { identifier in
+            !identifier.isEmpty && identifier.allSatisfy { character in
+                character == "-" || (character.isASCII && (character.isLetter || character.isNumber))
+            }
+        }
     }
 }
 

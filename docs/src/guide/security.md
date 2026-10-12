@@ -215,7 +215,7 @@ async function handleAppleLogin() {
 
 ### OTA Update Verification
 
-The `useOTAUpdate` composable requires a SHA-256 hash from your update server. Native code checks the downloaded bytes before staging, before apply, and again when the app selects an applied bundle at startup:
+The `useOTAUpdate` composable requires a SHA-256 hash and a publisher signature from your update server. Sign the release manifest, which binds the version to the hash; signatures over the raw bundle bytes are still accepted but deprecated, unless the host requires the manifest. Native code checks the downloaded bytes before staging, before apply, and again when the app selects an applied bundle at startup. The publisher key is configured natively (Info.plist `VueNativeOTAVerifyKey` on iOS, or the `com.vuenative.ota.verifyKey` meta-data on Android), and updates are rejected while none is configured. See [Publisher signature verification](/composables/useOTAUpdate.md#publisher-signature-verification) for the signed message format.
 
 ```ts
 import { useOTAUpdate } from '@thelacanians/vue-native-runtime'
@@ -232,12 +232,12 @@ if (info.updateAvailable) {
 ```
 
 ::: tip
-Serve both OTA metadata and bundles over HTTPS. The OTA module does not currently expose certificate-pinning or public-key signature configuration; add native signature verification before using it for a high-risk application.
+Serve both OTA metadata and bundles over HTTPS.
 :::
 
 ### Code Signing
 
-The JS bundle embedded in your app is covered by the platform's binary code signature. An OTA bundle is not. SHA-256 proves that downloaded bytes match the metadata, but it does not authenticate the publisher if an attacker can replace both the bundle and metadata. Treat signing and store-policy review as separate requirements.
+The JS bundle embedded in your app is covered by the platform's binary code signature. An OTA bundle is not. SHA-256 proves that downloaded bytes match the metadata, but it does not authenticate the publisher if an attacker can replace both the bundle and metadata. Vue Native closes that gap with an ECDSA P-256 signature over the signed manifest, verified against a key the app binary carries. Keep the private signing key offline. Treat signing and store-policy review as separate requirements.
 
 ## Common Pitfalls
 

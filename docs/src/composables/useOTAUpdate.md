@@ -39,7 +39,7 @@ useOTAUpdate(serverUrl: string, options?: { verifyKey?: string }): {
 
 | Option | Type | Description |
 |--------|------|-------------|
-| `verifyKey` | `string?` | Base64 DER (SPKI) ECDSA P-256 public key. When set, the native side verifies the publisher signature on every downloaded bundle. See [Publisher signature verification](#publisher-signature-verification). |
+| `verifyKey` | `string?` | **Deprecated and ignored.** A key passed from JavaScript is not a trust anchor, and native rejects it. Configure the publisher key in native code instead: `VueNativeOTAVerifyKey` in Info.plist on iOS, or the `com.vuenative.ota.verifyKey` meta-data on Android. See [Publisher signature verification](#publisher-signature-verification). |
 
 ### Methods
 
@@ -59,7 +59,7 @@ Check the update server for a new bundle version. Returns the update info.
 | `hash` | `string` | SHA-256 hash for integrity verification. |
 | `size` | `number` | Bundle size in bytes. |
 | `releaseNotes` | `string` | Release notes for this version. |
-| `signature` | `string?` | Optional base64 ECDSA (P-256, SHA-256, DER) signature over the bundle bytes. Verified against `verifyKey` when one is configured. |
+| `signature` | `string?` | Base64 ECDSA (P-256, SHA-256, DER) publisher signature over the signed manifest. Required when a publisher key is configured. See [Publisher signature verification](#publisher-signature-verification). |
 
 #### `downloadUpdate(url?, hash?, version?, signature?)`
 
@@ -70,7 +70,7 @@ Download a new bundle. With no arguments, it uses the URL, hash, version, and si
 | `url` | `string?` | Download URL. Defaults to `lastUpdateInfo.downloadUrl`. |
 | `hash` | `string?` | Expected 64-character hexadecimal SHA-256 digest. Defaults to `lastUpdateInfo.hash`. |
 | `version` | `string?` | Offered version to persist with the bundle. Defaults to `lastUpdateInfo.version`. |
-| `signature` | `string?` | Publisher signature passed to native for verification when a `verifyKey` is set. Defaults to `lastUpdateInfo.signature`. |
+| `signature` | `string?` | Publisher signature passed to native, which verifies it against the configured publisher key. Defaults to `lastUpdateInfo.signature`. |
 
 #### `applyUpdate()`
 
@@ -136,8 +136,7 @@ The server should return JSON:
 }
 ```
 
-`signature` is optional and only required when clients configure a `verifyKey`
-(see below).
+`signature` is required when the app configures a publisher key (see below).
 
 When no update is available:
 
@@ -154,35 +153,78 @@ The `downloadUrl` should point to the IIFE output of your Vite build. `hash` is 
 ## Publisher signature verification
 
 A SHA-256 hash proves a bundle was not corrupted, but it does **not** prove who
-published it — an attacker who can replace both the bundle and the update
-response can supply a matching hash. To authenticate the publisher, configure a
-signing key:
+published it. An attacker who can replace both the bundle and the update
+response can supply a matching hash. To authenticate the publisher, the app
+carries a public key that is configured natively. A key passed from JavaScript
+is ignored, and `OTA.setVerifyKey` is rejected.
 
-```ts
-const { checkForUpdate, downloadUpdate, applyUpdate } = useOTAUpdate(
-  'https://updates.myapp.com/api/check',
-  {
-    // Base64 DER (SPKI) ECDSA P-256 public key, embedded in the app binary.
-    verifyKey: 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE...',
-  },
-)
+Where the key comes from:
+
+- **iOS:** the Info.plist string `VueNativeOTAVerifyKey`, holding the base64 DER
+  (SPKI) ECDSA P-256 public key. Host Swift code can also call
+  `OTAModule.configurePublisherKey(base64SPKI:)`.
+- **Android:** the `com.vuenative.ota.verifyKey` `<meta-data>` entry on the
+  `<application>` element of the host manifest, holding the same key format.
+  Host code can also call the `configurePublisherKey` API.
+
+```xml
+<!-- Android: app/src/main/AndroidManifest.xml -->
+<meta-data
+    android:name="com.vuenative.ota.verifyKey"
+    android:value="MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE..." />
 ```
 
-How it works:
+If no publisher key is configured, native code rejects every update. There is
+no hash-only mode.
 
-- When `verifyKey` is set, the composable calls the native `OTA.setVerifyKey`
-  method once at setup to register the public key.
-- Your release pipeline signs each bundle's bytes with the matching ECDSA P-256
-  private key (SHA-256, DER-encoded signature, base64) and ships the signature
-  in `UpdateInfo.signature`.
-- During `downloadUpdate()`, the native side verifies the signature against the
-  registered key. A bundle with a missing or invalid signature is **rejected**
-  and the download fails.
-- Without a `verifyKey`, only the SHA-256 integrity check runs. The framework
-  logs a warning in development that publisher authentication is disabled.
+### Signed manifest
 
-Keep the private signing key offline and out of the app binary — only the public
-`verifyKey` ships with the app.
+Sign the manifest, not the raw bundle bytes. The signed message is the UTF-8
+bytes of these three lines, joined by newlines, with no trailing newline:
+
+```text
+vue-native-ota-v1
+<version>
+<sha256>
+```
+
+`<version>` is the version you publish in `UpdateInfo.version`, and `<sha256>`
+is the lowercase hexadecimal SHA-256 digest of the bundle, the value you publish
+in `UpdateInfo.hash`. Sign the message with the ECDSA P-256 private key (SHA-256,
+DER-encoded signature, base64) and ship the result in `UpdateInfo.signature`:
+
+```sh
+VERSION=2.1.0
+SHA256=$(shasum -a 256 dist/bundle.js | awk '{print $1}')
+printf 'vue-native-ota-v1\n%s\n%s' "$VERSION" "$SHA256" | openssl dgst -sha256 -sign private.pem | base64
+```
+
+Put the base64 string in the manifest on a single line.
+
+During `downloadUpdate()`, native code rebuilds the same message from the offered
+version and hash, then verifies the signature against the configured key. A
+missing or invalid signature is **rejected** and the download fails.
+
+Signatures over the raw bundle bytes still verify, but that form is deprecated.
+To refuse anything except a signed manifest, set the Info.plist Boolean
+`VueNativeOTARequireSignedManifest` on iOS, or the
+`com.vuenative.ota.requireSignedManifest` meta-data on Android.
+
+Keep the private signing key offline and out of the app binary. Only the public
+key ships with the app.
+
+## Version format and rollback floor
+
+Versions take this form: an optional `v` prefix, then one to four dotted
+numbers, then an optional `-prerelease` suffix. Build metadata after `+` is
+ignored, so `v2.1.0-beta.1` and `2.1.0+451` are valid. Numeric segments compare
+as numbers. Prerelease text compares as plain text, so use plain dotted numbers
+for versions you gate on.
+
+Once a version is applied, it sets a floor. Native code accepts only versions
+strictly newer than the floor, so `rollback()` does not lower it. After a
+rollback, ship a higher version to move forward again. Re-publishing the old
+version is rejected.
 
 ## Platform Details
 
@@ -267,9 +309,9 @@ const styles = createStyleSheet({
 ## Security Considerations
 
 - **A SHA-256 hash is mandatory.** The bundle is checked after download, immediately before apply, and again during startup selection.
-- **A hash is integrity metadata, not a signature.** If an attacker can replace both the bundle and the update response, the hash alone does not authenticate the publisher. Vue Native does not currently include public-key bundle-signature verification.
+- **Configure a publisher key.** The hash is integrity metadata, not a signature. If an attacker can replace both the bundle and the update response, the hash alone does not authenticate the publisher. Publisher authentication comes from the signed manifest, and without a configured key every update is rejected. See [Publisher signature verification](#publisher-signature-verification).
 - **Use HTTPS for the check endpoint and bundle URL in production.** The native clients accept HTTP so local/test infrastructure can work; the framework cannot determine whether a host is production.
-- Keep update metadata and bundles behind the same authentication, authorization, rollout, and audit controls you use for a production release pipeline. Consider adding native public-key signature verification before OTA is used for high-risk applications.
+- Keep update metadata and bundles behind the same authentication, authorization, rollout, and audit controls you use for a production release pipeline.
 - Ship only JavaScript compatible with the native APIs in the installed app binary. An OTA bundle cannot add native permissions, entitlements, SDKs, components, or module methods.
 - SHA-256/readability validation cannot prove application semantics. Test the exact production bundle, use staged rollout, and retain an operational rollback path.
 

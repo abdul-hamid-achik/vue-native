@@ -500,6 +500,239 @@ class OTAModuleTest {
         assertEquals("1.0.0", prefs.getString(OTAModule.KEY_CURRENT_VERSION, null))
     }
 
+    // -------------------------------------------------------------------------
+    // Version parsing, semver ordering and the monotonic floor
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun semverOrderingCoversPrereleasesBuildsAndPrefixes() {
+        assertEquals(-1, OTAModule.compareVersions("v1.8.0", "1.9.0"))
+        assertEquals(1, OTAModule.compareVersions("1.10.0", "1.9.0"))
+        assertEquals(-1, OTAModule.compareVersions("1.2.3-beta", "1.2.3"))
+        assertEquals(1, OTAModule.compareVersions("1.0.0", "1.0.0-rc.1"))
+        assertEquals(-1, OTAModule.compareVersions("1.2.3-alpha.2", "1.2.3-alpha.10"))
+        assertEquals(1, OTAModule.compareVersions("1.2.3-alpha.10", "1.2.3-alpha.9"))
+        assertEquals(0, OTAModule.compareVersions("1.2", "1.2.0"))
+        assertEquals(0, OTAModule.compareVersions("1.2.3+build.9", "1.2.3"))
+        // Numeric identifiers rank below alphanumeric ones.
+        assertEquals(-1, OTAModule.compareVersions("1.0.0-1", "1.0.0-alpha"))
+        // A shorter identifier list ranks lower when it is a prefix.
+        assertEquals(-1, OTAModule.compareVersions("1.0.0-alpha", "1.0.0-alpha.1"))
+    }
+
+    @Test
+    fun malformedVersionsDoNotParse() {
+        for (raw in listOf("a", "", "1..2", "1.2.3.4.5", "1.2.x", "v", "1.2.3-", "1.2.3+", "1234567890", " 1.2.3")) {
+            assertFalse("'$raw' must be rejected", OTAModule.isValidVersion(raw))
+        }
+        for (raw in listOf("1", "v1.4.2", "V2.0", "1.2.3-beta.1", "1.2.3+build-7", "0.0.0.1")) {
+            assertTrue("'$raw' must be accepted", OTAModule.isValidVersion(raw))
+        }
+    }
+
+    @Test
+    fun downloadAndApplyRejectUnparseableCandidateVersions() {
+        val download = invokeAsync(
+            "downloadUpdate",
+            listOf("http://127.0.0.1:1/bundle.js", "a".repeat(64), "1.2.x"),
+        )
+        assertNull(download.result)
+        assertEquals(
+            "OTA version '1.2.x' is not a valid version (expected dotted numbers such as 1.4.2)",
+            download.error,
+        )
+
+        stageBundle("globalThis.__v = 1;", "a")
+        val applied = invoke("applyUpdate")
+        assertNull(applied.result)
+        assertEquals(
+            "OTA version 'a' is not a valid version (expected dotted numbers such as 1.4.2)",
+            applied.error,
+        )
+        assertNull(prefs.getString(OTAModule.KEY_CURRENT_VERSION, null))
+    }
+
+    @Test
+    fun unparseableStoredFloorIsIgnoredSoTheDeviceIsNotLockedOut() {
+        prefs.edit().putString(OTAModule.KEY_HIGHEST_ACCEPTED_VERSION, "nightly-build").commit()
+        stageBundle("globalThis.__v = 1;", "1.0.0")
+
+        assertNull(invoke("applyUpdate").error)
+        assertEquals("1.0.0", prefs.getString(OTAModule.KEY_CURRENT_VERSION, null))
+    }
+
+    @Test
+    fun unparseableInstalledVersionDoesNotBlockUpdates() {
+        stageBundle("globalThis.__v = 3;", "3.0.0")
+        assertNull(invoke("applyUpdate").error)
+        prefs.edit()
+            .remove(OTAModule.KEY_HIGHEST_ACCEPTED_VERSION)
+            .putString(OTAModule.KEY_CURRENT_VERSION, "nightly")
+            .commit()
+        stageBundle("globalThis.__v = 1;", "1.0.0")
+
+        assertNull(invoke("applyUpdate").error)
+        assertEquals("1.0.0", prefs.getString(OTAModule.KEY_CURRENT_VERSION, null))
+    }
+
+    @Test
+    fun highestAcceptedVersionSurvivesRollbackAsAFloor() {
+        stageBundle("globalThis.__v = 2;", "2.0.0")
+        assertNull(invoke("applyUpdate").error)
+
+        // Rolling back to the embedded bundle leaves nothing installed, but the
+        // floor must still stop an older bundle from being reinstalled.
+        val rolledBack = invoke("rollback")
+        assertNull(rolledBack.error)
+        @Suppress("UNCHECKED_CAST")
+        assertEquals(true, (rolledBack.result as Map<String, Any>)["toEmbedded"])
+        assertNull(OTAModule.activeBundleFile(context))
+
+        val olderMessage = "OTA update rejected: version '1.5.0' is not newer than the installed version '2.0.0'"
+        val downloadOlder = invokeAsync(
+            "downloadUpdate",
+            listOf("http://127.0.0.1:1/bundle.js", "a".repeat(64), "1.5.0"),
+        )
+        assertEquals(olderMessage, downloadOlder.error)
+
+        stageBundle("globalThis.__v = 15;", "1.5.0")
+        val applyOlder = invoke("applyUpdate")
+        assertNull(applyOlder.result)
+        assertEquals(olderMessage, applyOlder.error)
+
+        stageBundle("globalThis.__v = 201;", "2.0.1")
+        assertNull(invoke("applyUpdate").error)
+        assertEquals("2.0.1", prefs.getString(OTAModule.KEY_CURRENT_VERSION, null))
+        assertEquals("2.0.1", prefs.getString(OTAModule.KEY_HIGHEST_ACCEPTED_VERSION, null))
+    }
+
+    // -------------------------------------------------------------------------
+    // Signed manifest (version-authenticated) and the legacy bundle-bytes format
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun manifestMessageIsDomainVersionAndHashWithoutTrailingNewline() {
+        assertEquals(
+            "vue-native-ota-v1\n1.2.3\nabc",
+            String(OTAModule.manifestMessage("1.2.3", "abc"), Charsets.UTF_8),
+        )
+    }
+
+    @Test
+    fun signedManifestIsAcceptedAndAuthenticatesTheVersion() {
+        val keyPair = generateEcKeyPair()
+        withPublisherKey(keyPair)
+
+        LocalHttpServer().use { server ->
+            val source = "globalThis.__manifest = true;".toByteArray()
+            val hash = OTAModule.sha256(source)
+            server.respond("/manifest.js", source)
+
+            val result = invokeAsync(
+                "downloadUpdate",
+                listOf("${server.baseUrl}/manifest.js", hash, "1.4.2", signManifest("1.4.2", hash, keyPair)),
+            )
+
+            assertNull(result.error)
+            assertEquals("1.4.2", prefs.getString(OTAModule.KEY_PENDING_VERSION, null))
+        }
+    }
+
+    @Test
+    fun signedManifestForAnotherVersionIsRejected() {
+        val keyPair = generateEcKeyPair()
+        withPublisherKey(keyPair)
+
+        LocalHttpServer().use { server ->
+            val source = "globalThis.__swapped = true;".toByteArray()
+            val hash = OTAModule.sha256(source)
+            server.respond("/swapped.js", source)
+
+            // The publisher signed 9.9.9; an attacker relabels the bundle as 1.4.2.
+            val result = invokeAsync(
+                "downloadUpdate",
+                listOf("${server.baseUrl}/swapped.js", hash, "1.4.2", signManifest("9.9.9", hash, keyPair)),
+            )
+
+            assertTrue(result.error?.contains("signature verification failed") == true)
+            assertNull(prefs.getString(OTAModule.KEY_PENDING_BUNDLE_PATH, null))
+        }
+    }
+
+    @Test
+    fun legacyBundleBytesSignatureIsAcceptedWhenSignedManifestIsNotRequired() {
+        val keyPair = generateEcKeyPair()
+        withPublisherKey(keyPair)
+
+        LocalHttpServer().use { server ->
+            val source = "globalThis.__legacy = true;".toByteArray()
+            val hash = OTAModule.sha256(source)
+            server.respond("/legacy.js", source)
+
+            val result = invokeAsync(
+                "downloadUpdate",
+                listOf("${server.baseUrl}/legacy.js", hash, "1.0.0", sign(source, keyPair)),
+            )
+
+            assertNull(result.error)
+            assertEquals("1.0.0", prefs.getString(OTAModule.KEY_PENDING_VERSION, null))
+        }
+    }
+
+    @Test
+    fun legacyBundleBytesSignatureIsRejectedWhenSignedManifestIsRequired() {
+        OTAModule.configureRequireSignedManifest(true)
+        val keyPair = generateEcKeyPair()
+        withPublisherKey(keyPair)
+
+        LocalHttpServer().use { server ->
+            val source = "globalThis.__legacyStrict = true;".toByteArray()
+            val hash = OTAModule.sha256(source)
+            server.respond("/legacy-strict.js", source)
+
+            val result = invokeAsync(
+                "downloadUpdate",
+                listOf("${server.baseUrl}/legacy-strict.js", hash, "1.0.0", sign(source, keyPair)),
+            )
+
+            assertEquals(
+                "OTA update rejected: signed manifest required (legacy bundle-bytes signature)",
+                result.error,
+            )
+            assertNull(prefs.getString(OTAModule.KEY_PENDING_BUNDLE_PATH, null))
+            assertFalse(File(OTAModule.bundleDirectory(context), "bundle-$hash.js").exists())
+        }
+    }
+
+    @Test
+    fun signedManifestIsStillAcceptedWhenSignedManifestIsRequired() {
+        OTAModule.configureRequireSignedManifest(true)
+        val keyPair = generateEcKeyPair()
+        withPublisherKey(keyPair)
+
+        LocalHttpServer().use { server ->
+            val source = "globalThis.__strictManifest = true;".toByteArray()
+            val hash = OTAModule.sha256(source)
+            server.respond("/strict-manifest.js", source)
+
+            val result = invokeAsync(
+                "downloadUpdate",
+                listOf("${server.baseUrl}/strict-manifest.js", hash, "2.1.0", signManifest("2.1.0", hash, keyPair)),
+            )
+
+            assertNull(result.error)
+            assertEquals("2.1.0", prefs.getString(OTAModule.KEY_PENDING_VERSION, null))
+        }
+    }
+
+    /** Sign the manifest the way a publisher does: `vue-native-ota-v1\n<version>\n<sha256>`. */
+    private fun signManifest(version: String, sha256: String, keyPair: KeyPair): String {
+        val signer = Signature.getInstance("SHA256withECDSA")
+        signer.initSign(keyPair.private)
+        signer.update("vue-native-ota-v1\n$version\n$sha256".toByteArray(Charsets.UTF_8))
+        return Base64.encodeToString(signer.sign(), Base64.DEFAULT)
+    }
+
     /**
      * Configure the publisher key the way a host app would (programmatically or
      * via manifest meta-data), then rebuild the module so it resolves the key at

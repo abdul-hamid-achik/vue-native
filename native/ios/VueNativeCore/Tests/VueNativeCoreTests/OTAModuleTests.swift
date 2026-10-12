@@ -40,12 +40,13 @@ final class OTAModuleTests: XCTestCase {
     /// Build a module whose publisher key comes from native configuration — the
     /// only supported source. `publisherKeyBase64` stands in for the Info.plist
     /// entry / `OTAModule.configurePublisherKey`.
-    private func makeModule(publisherKeyBase64: String?) throws -> OTAModule {
+    private func makeModule(publisherKeyBase64: String?, requireSignedManifest: Bool? = nil) throws -> OTAModule {
         OTAModule(
             bridge: NativeBridge.shared,
             defaults: defaults,
             bundleDirectory: bundleDirectory,
-            publisherKeyBase64: publisherKeyBase64
+            publisherKeyBase64: publisherKeyBase64,
+            requireSignedManifest: requireSignedManifest
         )
     }
 
@@ -205,7 +206,7 @@ final class OTAModuleTests: XCTestCase {
         let hash = OTAModule.sha256(data: bundleData)
         let signature = try privateKey.signature(for: bundleData).derRepresentation.base64EncodedString()
         XCTAssertEqual(
-            module.verificationError(for: bundleData, expectedHash: hash, signature: signature),
+            module.verificationError(for: bundleData, expectedHash: hash, signature: signature, version: "1.0.0"),
             OTAModule.missingPublisherKeyMessage
         )
     }
@@ -216,21 +217,21 @@ final class OTAModuleTests: XCTestCase {
         let hash = OTAModule.sha256(data: bundleData)
 
         XCTAssertEqual(
-            module.verificationError(for: bundleData, expectedHash: hash, signature: nil),
+            module.verificationError(for: bundleData, expectedHash: hash, signature: nil, version: "1.0.0"),
             OTAModule.missingPublisherKeyMessage
         )
         // Even a signature is useless without a key to check it against.
         let signature = try P256.Signing.PrivateKey()
             .signature(for: bundleData).derRepresentation.base64EncodedString()
         XCTAssertEqual(
-            module.verificationError(for: bundleData, expectedHash: hash, signature: signature),
+            module.verificationError(for: bundleData, expectedHash: hash, signature: signature, version: "1.0.0"),
             OTAModule.missingPublisherKeyMessage
         )
 
         // A hash mismatch is still reported as such (it is checked first).
         let badHash = String(repeating: "0", count: 64)
         XCTAssertEqual(
-            module.verificationError(for: bundleData, expectedHash: badHash, signature: nil),
+            module.verificationError(for: bundleData, expectedHash: badHash, signature: nil, version: "1.0.0"),
             "Bundle integrity check failed. Expected: \(badHash), got: \(hash)"
         )
     }
@@ -252,7 +253,7 @@ final class OTAModuleTests: XCTestCase {
         let bundleData = Data("globalThis.__hostSigned = true;".utf8)
         let hash = OTAModule.sha256(data: bundleData)
         let signature = try privateKey.signature(for: bundleData).derRepresentation.base64EncodedString()
-        XCTAssertNil(configured.verificationError(for: bundleData, expectedHash: hash, signature: signature))
+        XCTAssertNil(configured.verificationError(for: bundleData, expectedHash: hash, signature: signature, version: "1.0.0"))
         configured.destroy()
     }
 
@@ -275,7 +276,7 @@ final class OTAModuleTests: XCTestCase {
         // the test signs `for: data` (raw bytes) — a digest-based convention would
         // fail here.
         XCTAssertNil(
-            signed.verificationError(for: bundleData, expectedHash: hash, signature: signatureBase64),
+            signed.verificationError(for: bundleData, expectedHash: hash, signature: signatureBase64, version: "1.0.0"),
             "a valid signature over the bundle bytes must pass"
         )
 
@@ -286,23 +287,25 @@ final class OTAModuleTests: XCTestCase {
         let tamperedError = signed.verificationError(
             for: tamperedData,
             expectedHash: tamperedHash,
-            signature: signatureBase64
+            signature: signatureBase64,
+            version: "1.0.0"
         )
         XCTAssertEqual(tamperedError, "OTA update rejected: signature verification failed")
 
         // (c) With a verify key configured, a missing signature is rejected.
-        let missingError = signed.verificationError(for: bundleData, expectedHash: hash, signature: nil)
+        let missingError = signed.verificationError(for: bundleData, expectedHash: hash, signature: nil, version: "1.0.0")
         XCTAssertEqual(missingError, "OTA update rejected: signature required when a verify key is configured")
 
         // An empty signature is treated the same as a missing one.
-        let emptyError = signed.verificationError(for: bundleData, expectedHash: hash, signature: "")
+        let emptyError = signed.verificationError(for: bundleData, expectedHash: hash, signature: "", version: "1.0.0")
         XCTAssertEqual(emptyError, "OTA update rejected: signature required when a verify key is configured")
 
         // Malformed signature bytes are rejected as a verification failure.
         let malformedError = signed.verificationError(
             for: bundleData,
             expectedHash: hash,
-            signature: Data("garbage".utf8).base64EncodedString()
+            signature: Data("garbage".utf8).base64EncodedString(),
+            version: "1.0.0"
         )
         XCTAssertEqual(malformedError, "OTA update rejected: signature verification failed")
     }
@@ -321,7 +324,7 @@ final class OTAModuleTests: XCTestCase {
         let attackerSignature = try attackerKey.signature(for: bundleData).derRepresentation.base64EncodedString()
 
         XCTAssertEqual(
-            configured.verificationError(for: bundleData, expectedHash: hash, signature: attackerSignature),
+            configured.verificationError(for: bundleData, expectedHash: hash, signature: attackerSignature, version: "1.0.0"),
             "OTA update rejected: signature verification failed",
             "a signature from a non-publisher key must be rejected"
         )
@@ -333,7 +336,7 @@ final class OTAModuleTests: XCTestCase {
 
         let bundleData = Data("globalThis.__broken = true;".utf8)
         XCTAssertEqual(
-            broken.verificationError(for: bundleData, expectedHash: OTAModule.sha256(data: bundleData), signature: nil),
+            broken.verificationError(for: bundleData, expectedHash: OTAModule.sha256(data: bundleData), signature: nil, version: "1.0.0"),
             OTAModule.missingPublisherKeyMessage,
             "undecodable native key material must not fall back to hash-only"
         )
@@ -422,6 +425,231 @@ final class OTAModuleTests: XCTestCase {
         // Rolling back to an OLDER version must still work — that is its purpose.
         XCTAssertNil(invoke("rollback").error)
         XCTAssertEqual(defaults.string(forKey: OTAModule.currentVersionKey), "1.0.0")
+    }
+
+    // MARK: - Version parsing and precedence
+
+    func testVersionParserAcceptsTheDocumentedShapes() {
+        for text in [
+            "1.2.3", "v1.8.0", "V2", "1.2", "1.2.3.4", "1.2.3-beta", "1.2.3-alpha.2",
+            "1.2.3-alpha-1", "1.2.3+build.7", "1.2.3-rc.1+exp.sha.5114f85",
+        ] {
+            XCTAssertNotNil(OTAVersion(text), "\(text) should parse")
+        }
+    }
+
+    func testVersionParserRejectsMalformedVersions() {
+        for text in [
+            "a", "", "v", "1..2", "1.2.3.4.5", "1.2.x", "1234567890", "-1.2",
+            "1.2.3-", "1.2.3-alpha..1", "1.2.3-bad_id", "1.2.3+", "1.2.3+build..1",
+        ] {
+            XCTAssertNil(OTAVersion(text), "\(text) should be rejected")
+        }
+    }
+
+    func testSemverPrecedenceOrdersVersions() {
+        XCTAssertEqual(OTAModule.compareVersions("v1.8.0", "1.9.0"), -1)
+        XCTAssertEqual(OTAModule.compareVersions("1.10.0", "1.9.0"), 1)
+        XCTAssertEqual(OTAModule.compareVersions("1.2.3-beta", "1.2.3"), -1)
+        XCTAssertEqual(OTAModule.compareVersions("1.2.3", "1.2.3-rc.9"), 1)
+        XCTAssertEqual(OTAModule.compareVersions("1.2.3-alpha.2", "1.2.3-alpha.10"), -1)
+        XCTAssertEqual(OTAModule.compareVersions("1.2", "1.2.0"), 0)
+        // A shorter identifier list is lower when it is a prefix.
+        XCTAssertEqual(OTAModule.compareVersions("1.0.0-alpha", "1.0.0-alpha.1"), -1)
+        // Numeric identifiers rank below alphanumeric ones.
+        XCTAssertEqual(OTAModule.compareVersions("1.0.0-alpha.1", "1.0.0-alpha.beta"), -1)
+        // Numeric identifiers compare by value, and by ASCII otherwise.
+        XCTAssertEqual(OTAModule.compareVersions("1.0.0-9", "1.0.0-10"), -1)
+        XCTAssertEqual(OTAModule.compareVersions("1.0.0-beta.11", "1.0.0-rc.1"), -1)
+        // Long numeric identifiers must not overflow.
+        XCTAssertEqual(
+            OTAModule.compareVersions("1.0.0-99999999999999999999", "1.0.0-100000000000000000000"),
+            -1
+        )
+    }
+
+    func testBuildMetadataIsIgnoredForOrdering() {
+        XCTAssertEqual(OTAModule.compareVersions("1.2.3+a", "1.2.3+b"), 0)
+        XCTAssertEqual(OTAModule.compareVersions("1.2.3+a", "1.2.3"), 0)
+    }
+
+    func testInvalidVersionsSortBelowValidOnes() {
+        XCTAssertEqual(OTAModule.compareVersions("a", "1.0.0"), -1)
+        XCTAssertEqual(OTAModule.compareVersions("1.0.0", "garbage"), 1)
+        // So an unparseable stored version never blocks a valid candidate.
+        XCTAssertTrue(OTAModule.isStrictlyNewer(candidate: "0.0.1", current: "garbage"))
+        XCTAssertFalse(OTAModule.isStrictlyNewer(candidate: "garbage", current: "1.0.0"))
+    }
+
+    // MARK: - Monotonic floor
+
+    func testRollbackDoesNotLowerTheAcceptedFloor() throws {
+        _ = try stageBundle(source: "globalThis.__v = 2;", version: "2.0.0")
+        XCTAssertNil(invoke("applyUpdate").error)
+        XCTAssertNil(invoke("rollback").error)
+        XCTAssertNil(
+            OTAModule.activeBundleURL(defaults: defaults, bundleDirectory: bundleDirectory),
+            "rollback should reach the embedded bundle"
+        )
+        XCTAssertEqual(defaults.string(forKey: OTAModule.highestAcceptedVersionKey), "2.0.0")
+
+        // The embedded bundle is installed, but 2.0.0 was accepted before, so an
+        // older release is still refused on both entry points.
+        let download = invokeAsync(
+            "downloadUpdate",
+            args: ["https://example.invalid/bundle.js", String(repeating: "a", count: 64), "1.5.0"]
+        )
+        XCTAssertEqual(download.error, OTAModule.downgradeMessage(candidate: "1.5.0", current: "2.0.0"))
+
+        _ = try stageBundle(source: "globalThis.__v = 15;", version: "1.5.0")
+        XCTAssertEqual(
+            invoke("applyUpdate").error,
+            OTAModule.downgradeMessage(candidate: "1.5.0", current: "2.0.0")
+        )
+
+        _ = try stageBundle(source: "globalThis.__v = 201;", version: "2.0.1")
+        XCTAssertNil(invoke("applyUpdate").error)
+        XCTAssertEqual(defaults.string(forKey: OTAModule.currentVersionKey), "2.0.1")
+        XCTAssertEqual(defaults.string(forKey: OTAModule.highestAcceptedVersionKey), "2.0.1")
+    }
+
+    func testInvalidCandidateVersionIsRejectedByDownloadAndApply() throws {
+        let download = invokeAsync(
+            "downloadUpdate",
+            args: ["https://example.invalid/bundle.js", String(repeating: "a", count: 64), "1.2.x"]
+        )
+        XCTAssertNil(download.result)
+        XCTAssertEqual(download.error, OTAModule.invalidVersionMessage("1.2.x"))
+
+        _ = try stageBundle(source: "globalThis.__v = 9;", version: "a")
+        XCTAssertEqual(invoke("applyUpdate").error, OTAModule.invalidVersionMessage("a"))
+        XCTAssertNil(defaults.string(forKey: OTAModule.currentVersionKey))
+    }
+
+    func testUnparseableStoredFloorIsIgnored() throws {
+        defaults.set("not-a-version", forKey: OTAModule.highestAcceptedVersionKey)
+
+        _ = try stageBundle(source: "globalThis.__v = 1;", version: "1.0.0")
+        XCTAssertNil(invoke("applyUpdate").error, "bad stored state must not lock the device out")
+        XCTAssertEqual(defaults.string(forKey: OTAModule.highestAcceptedVersionKey), "1.0.0")
+    }
+
+    // MARK: - Signed manifest
+
+    /// Signs the manifest message as the publisher does, built here independently
+    /// of production: `vue-native-ota-v1\n<version>\n<sha256>`.
+    private func manifestSignature(
+        _ key: P256.Signing.PrivateKey,
+        version: String,
+        bundle: Data
+    ) throws -> String {
+        let message = Data("vue-native-ota-v1\n\(version)\n\(OTAModule.sha256(data: bundle))".utf8)
+        return try key.signature(for: message).derRepresentation.base64EncodedString()
+    }
+
+    func testSignedManifestForTheClaimedVersionIsAccepted() throws {
+        let key = P256.Signing.PrivateKey()
+        let spki = key.publicKey.derRepresentation.base64EncodedString()
+        let bundle = Data("globalThis.__manifest = true;".utf8)
+        let hash = OTAModule.sha256(data: bundle)
+        let signature = try manifestSignature(key, version: "2.0.0", bundle: bundle)
+
+        let lenient = try makeModule(publisherKeyBase64: spki, requireSignedManifest: false)
+        defer { lenient.destroy() }
+        XCTAssertNil(
+            lenient.verificationError(for: bundle, expectedHash: hash, signature: signature, version: "2.0.0")
+        )
+
+        let strict = try makeModule(publisherKeyBase64: spki, requireSignedManifest: true)
+        defer { strict.destroy() }
+        XCTAssertNil(
+            strict.verificationError(for: bundle, expectedHash: hash, signature: signature, version: "2.0.0"),
+            "a manifest signature is accepted even when the manifest is required"
+        )
+    }
+
+    func testSignedManifestForAnotherVersionIsRejected() throws {
+        let key = P256.Signing.PrivateKey()
+        let spki = key.publicKey.derRepresentation.base64EncodedString()
+        let bundle = Data("globalThis.__manifest = 2;".utf8)
+        let hash = OTAModule.sha256(data: bundle)
+        // Signed for 1.0.0, but the update claims 1.0.1: the version is authenticated.
+        let signature = try manifestSignature(key, version: "1.0.0", bundle: bundle)
+
+        for required in [false, true] {
+            let configured = try makeModule(publisherKeyBase64: spki, requireSignedManifest: required)
+            defer { configured.destroy() }
+            XCTAssertEqual(
+                configured.verificationError(for: bundle, expectedHash: hash, signature: signature, version: "1.0.1"),
+                "OTA update rejected: signature verification failed",
+                "a manifest for a different version must fail (required: \(required))"
+            )
+        }
+    }
+
+    func testLegacyBundleSignatureIsAcceptedOnlyWhileTheManifestIsOptional() throws {
+        let key = P256.Signing.PrivateKey()
+        let spki = key.publicKey.derRepresentation.base64EncodedString()
+        let bundle = Data("globalThis.__legacy = true;".utf8)
+        let hash = OTAModule.sha256(data: bundle)
+        let legacySignature = try key.signature(for: bundle).derRepresentation.base64EncodedString()
+
+        let optional = try makeModule(publisherKeyBase64: spki, requireSignedManifest: false)
+        defer { optional.destroy() }
+        XCTAssertNil(
+            optional.verificationError(for: bundle, expectedHash: hash, signature: legacySignature, version: "3.0.0"),
+            "the legacy format keeps working while the manifest is optional"
+        )
+
+        let required = try makeModule(publisherKeyBase64: spki, requireSignedManifest: true)
+        defer { required.destroy() }
+        XCTAssertEqual(
+            required.verificationError(for: bundle, expectedHash: hash, signature: legacySignature, version: "3.0.0"),
+            "OTA update rejected: signed manifest required (legacy bundle-bytes signature)"
+        )
+    }
+
+    func testMissingSignatureStaysRejectedWhenTheManifestIsRequired() throws {
+        let key = P256.Signing.PrivateKey()
+        let required = try makeModule(
+            publisherKeyBase64: key.publicKey.derRepresentation.base64EncodedString(),
+            requireSignedManifest: true
+        )
+        defer { required.destroy() }
+
+        let bundle = Data("globalThis.__unsigned = true;".utf8)
+        XCTAssertEqual(
+            required.verificationError(
+                for: bundle,
+                expectedHash: OTAModule.sha256(data: bundle),
+                signature: nil,
+                version: "1.0.0"
+            ),
+            "OTA update rejected: signature required when a verify key is configured"
+        )
+    }
+
+    func testSignedManifestRequirementCanBeConfiguredNatively() throws {
+        // Default: the flag is off when nothing is configured.
+        XCTAssertFalse(OTAModule.signedManifestRequired(bundle: Bundle(for: OTAModuleTests.self)))
+
+        let key = P256.Signing.PrivateKey()
+        OTAModule.configureRequireSignedManifest(true)
+        // No injected flag: the module resolves the host-configured value.
+        let host = try makeModule(publisherKeyBase64: key.publicKey.derRepresentation.base64EncodedString())
+        defer { host.destroy() }
+
+        let bundle = Data("globalThis.__host = true;".utf8)
+        let legacySignature = try key.signature(for: bundle).derRepresentation.base64EncodedString()
+        XCTAssertEqual(
+            host.verificationError(
+                for: bundle,
+                expectedHash: OTAModule.sha256(data: bundle),
+                signature: legacySignature,
+                version: "1.0.0"
+            ),
+            OTAModule.signedManifestRequiredMessage
+        )
     }
 
     private func invokeOn(
