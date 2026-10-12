@@ -219,6 +219,27 @@ final class SecureStorageModuleTests: XCTestCase {
         XCTAssertNil(keychain.items["\(SecureStorageModule.protectedService)|token"])
     }
 
+    /// `setProtected` deletes the existing item before it writes. A rejected value
+    /// must fail before that delete, or a bad call would destroy the stored secret.
+    func testSetProtectedRejectsANonStringValueBeforeDeletingTheExistingItem() {
+        let existing = "\(SecureStorageModule.protectedService)|token"
+        keychain.items[existing] = Data("gated".utf8)
+        keychain.recorded.removeAll()
+
+        let response = invoke("setProtected", args: ["token", 42])
+        XCTAssertNil(response.result)
+        XCTAssertEqual(response.error, "setProtected: missing key or value")
+        XCTAssertEqual(
+            keychain.items[existing],
+            Data("gated".utf8),
+            "a rejected setProtected must leave the existing protected item in place"
+        )
+        XCTAssertNil(
+            keychain.recorded.first { $0.operation == "delete" },
+            "no delete may run for a rejected value"
+        )
+    }
+
     func testProtectedReadsDoNotReachUnprotectedItems() {
         XCTAssertNil(invoke("set", args: ["token", "plain"]).error)
 

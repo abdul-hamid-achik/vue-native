@@ -137,8 +137,16 @@ public final class SecureStorageModule: NativeModule {
                 self.read(key: args.first, service: Self.protectedService, prefix: "getProtected", callback: callback)
 
             case "setProtected":
-                guard args.count >= 2, let protectedKey = args[0] as? String else {
+                // Validate the whole request before the delete below: a malformed value
+                // must never cost the caller the item it was meant to replace.
+                guard args.count >= 2,
+                      let protectedKey = args[0] as? String,
+                      let protectedValue = args[1] as? String else {
                     callback(nil, "setProtected: missing key or value")
+                    return
+                }
+                guard protectedValue.data(using: .utf8) != nil else {
+                    callback(nil, "setProtected: failed to encode value")
                     return
                 }
                 guard let accessControl = self.makeAccessControl(errorPrefix: "setProtected", callback: callback) else {
@@ -154,7 +162,7 @@ public final class SecureStorageModule: NativeModule {
                 ])
                 self.write(
                     key: protectedKey,
-                    value: args[1],
+                    value: protectedValue,
                     service: Self.protectedService,
                     accessControl: accessControl,
                     prefix: "setProtected",

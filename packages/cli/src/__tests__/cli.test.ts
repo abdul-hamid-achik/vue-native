@@ -1041,6 +1041,34 @@ describe('create command', () => {
       expect(content).toContain('android:windowSoftInputMode="adjustResize"')
       expect(content).toContain('@style/Theme.VueNative')
       expect(content).toContain('@string/app_name')
+      expect(content).toContain('android:fullBackupContent="@xml/vue_native_backup_rules"')
+      expect(content).toContain('android:dataExtractionRules="@xml/vue_native_data_extraction_rules"')
+    })
+
+    it('excludes the SecureStorage prefs from Auto Backup and device transfer', async () => {
+      await runCreate('my-app')
+
+      const backupCall = mockWriteFile.mock.calls.find(
+        ([path]: any[]) => (path as string).endsWith('xml/vue_native_backup_rules.xml'),
+      )
+      const extractionCall = mockWriteFile.mock.calls.find(
+        ([path]: any[]) => (path as string).endsWith('xml/vue_native_data_extraction_rules.xml'),
+      )
+      expect(backupCall).toBeDefined()
+      expect(extractionCall).toBeDefined()
+
+      // API 23-30: full backup only.
+      const backup = backupCall![1] as string
+      expect(backup).toContain('<full-backup-content>')
+      expect(backup).toContain('<exclude domain="sharedpref" path="vue_native_secure_storage.xml" />')
+
+      // API 31+: the same exclusion must apply to cloud backup and device transfer.
+      const extraction = extractionCall![1] as string
+      expect(extraction).toContain('<data-extraction-rules>')
+      const cloud = extraction.slice(extraction.indexOf('<cloud-backup>'), extraction.indexOf('</cloud-backup>'))
+      const transfer = extraction.slice(extraction.indexOf('<device-transfer>'), extraction.indexOf('</device-transfer>'))
+      expect(cloud).toContain('<exclude domain="sharedpref" path="vue_native_secure_storage.xml" />')
+      expect(transfer).toContain('<exclude domain="sharedpref" path="vue_native_secure_storage.xml" />')
     })
 
     it('creates MainActivity.kt with BuildConfig-guarded dev server', async () => {

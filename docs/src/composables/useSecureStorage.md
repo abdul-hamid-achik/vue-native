@@ -99,3 +99,4 @@ async function logout() {
 - Operations run on a background thread and return Promises.
 - On iOS, Keychain items persist across app reinstalls by default. Call `clear()` on first launch if you want a fresh start after reinstall.
 - This composable has no reactive state and no cleanup -- it returns async functions only.
+- On Android, the store is an encrypted SharedPreferences file (`vue_native_secure_storage`) whose key lives in the Android Keystore. Keystore keys do not migrate between devices, so a restored copy cannot be decrypted. The scaffold excludes that file from Auto Backup, cloud backup and device transfer through `vue_native_backup_rules.xml` and `vue_native_data_extraction_rules.xml`. Existing apps should add the same rules. If an undecryptable store is found, the module resets it.

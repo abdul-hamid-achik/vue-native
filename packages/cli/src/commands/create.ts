@@ -570,6 +570,8 @@ dependencies {
 
     <application
         android:allowBackup="true"
+        android:fullBackupContent="@xml/vue_native_backup_rules"
+        android:dataExtractionRules="@xml/vue_native_data_extraction_rules"
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@style/Theme.VueNative"
@@ -615,6 +617,27 @@ dependencies {
 <network-security-config>
     <base-config cleartextTrafficPermitted="false" />
 </network-security-config>
+`)
+
+      // Auto Backup: the SecureStorage prefs are encrypted with a Keystore key
+      // that does not migrate, so a restored copy is undecryptable. Exclude them
+      // from backup (API 23-30) and from cloud backup and device transfer (31+).
+      // Existing apps that copy this scaffold must add the same rules.
+      await writeFile(join(androidResXmlDir, 'vue_native_backup_rules.xml'), `<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <exclude domain="sharedpref" path="vue_native_secure_storage.xml" />
+</full-backup-content>
+`)
+
+      await writeFile(join(androidResXmlDir, 'vue_native_data_extraction_rules.xml'), `<?xml version="1.0" encoding="utf-8"?>
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="sharedpref" path="vue_native_secure_storage.xml" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="vue_native_secure_storage.xml" />
+    </device-transfer>
+</data-extraction-rules>
 `)
 
       // android/app/src/debug/res/xml/network_security_config.xml (debug: allow dev server)
