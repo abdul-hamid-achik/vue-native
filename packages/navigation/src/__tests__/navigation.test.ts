@@ -1891,4 +1891,92 @@ describe('Navigation — tab/drawer router integration (opt-in)', () => {
     // Guard blocked the switch.
     expect(activeScreen.value).toBe('home')
   })
+
+  it('keeps the last tapped tab when earlier async guards resolve late', async () => {
+    const { createRouter, createTabNavigator } = await import('../index')
+    const { createApp, createNativeNode } = await import('@thelacanians/vue-native-runtime')
+
+    const router = createRouter([{ name: 'root', component: HomeScreen }])
+    // Each guard stays pending until the test releases it, so the test controls resolve order.
+    const release: Record<string, () => void> = {}
+    router.beforeEach((to: any, _from: any, next: any) => new Promise<void>((resolve) => {
+      release[to.config.name] = () => {
+        next()
+        resolve()
+      }
+    }))
+
+    const { TabNavigator, activeTab } = createTabNavigator(router)
+    const root = createNativeNode('__ROOT__')
+    const app = createApp({
+      render: () => h(TabNavigator, {
+        screens: [
+          { name: 'home', component: HomeScreen },
+          { name: 'settings', component: _SettingsScreen },
+          { name: 'profile', component: _SettingsScreen },
+        ],
+      }),
+    })
+    app.mount(root as any)
+    await nextTick()
+
+    const tabPresses = mockBridge.getOpsByType('addEventListener')
+      .filter(op => op.args[1] === 'press')
+    NativeBridge.handleNativeEvent(tabPresses[1].args[0], 'press', null)
+    NativeBridge.handleNativeEvent(tabPresses[2].args[0], 'press', null)
+    await nextTick()
+
+    // The later tap's guard resolves first, then the earlier one resolves late.
+    release.profile!()
+    await nextTick()
+    await nextTick()
+    release.settings!()
+    await nextTick()
+    await nextTick()
+
+    expect(activeTab.value).toBe('profile')
+  })
+
+  it('keeps the last selected drawer screen when earlier async guards resolve late', async () => {
+    const { createRouter, createDrawerNavigator } = await import('../index')
+    const { createApp, createNativeNode } = await import('@thelacanians/vue-native-runtime')
+
+    const router = createRouter([{ name: 'root', component: HomeScreen }])
+    const release: Record<string, () => void> = {}
+    router.beforeEach((to: any, _from: any, next: any) => new Promise<void>((resolve) => {
+      release[to.config.name] = () => {
+        next()
+        resolve()
+      }
+    }))
+
+    const { DrawerNavigator, activeScreen } = createDrawerNavigator(router)
+    const root = createNativeNode('__ROOT__')
+    const app = createApp({
+      render: () => h(DrawerNavigator, {
+        screens: [
+          { name: 'home', component: HomeScreen },
+          { name: 'settings', component: _SettingsScreen },
+          { name: 'profile', component: _SettingsScreen },
+        ],
+      }),
+    })
+    app.mount(root as any)
+    await nextTick()
+
+    const drawerPresses = mockBridge.getOpsByType('addEventListener')
+      .filter(op => op.args[1] === 'press')
+    NativeBridge.handleNativeEvent(drawerPresses[1].args[0], 'press', null)
+    NativeBridge.handleNativeEvent(drawerPresses[2].args[0], 'press', null)
+    await nextTick()
+
+    release.profile!()
+    await nextTick()
+    await nextTick()
+    release.settings!()
+    await nextTick()
+    await nextTick()
+
+    expect(activeScreen.value).toBe('profile')
+  })
 })

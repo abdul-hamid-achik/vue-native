@@ -102,10 +102,15 @@ export function useDatabase(name: string = 'default') {
         }
       })()
     }
+    const pending = openPromise
     try {
-      await openPromise
+      await pending
+    } catch (err) {
+      // Drop the rejected open so the next call retries instead of replaying it.
+      if (openPromise === pending) openPromise = null
+      throw err
     } finally {
-      if (opened) {
+      if (opened && openPromise === pending) {
         openPromise = null
       }
     }

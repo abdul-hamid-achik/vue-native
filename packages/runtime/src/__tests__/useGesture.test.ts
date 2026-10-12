@@ -342,6 +342,66 @@ describe('useGesture', () => {
     })
   })
 
+  describe('target changes', () => {
+    it('moves listeners from the old node to the new one when the ref changes', async () => {
+      let nodeRef: ReturnType<typeof ref<{ id: number } | null>>
+      await withSetup(() => {
+        nodeRef = ref<{ id: number } | null>({ id: 10 })
+        useGesture(nodeRef, { pan: true })
+        return {}
+      })
+      await nextTick()
+      expect(mockBridge.getOpsByType('addEventListener').map(o => o.args)).toEqual([[10, 'pan']])
+
+      mockBridge.reset()
+      nodeRef!.value = { id: 20 }
+      await nextTick()
+
+      expect(mockBridge.getOpsByType('removeEventListener').map(o => o.args)).toEqual([[10, 'pan']])
+      expect(mockBridge.getOpsByType('addEventListener').map(o => o.args)).toEqual([[20, 'pan']])
+    })
+
+    it('removes listeners when the ref is cleared and re-attaches when it is populated again', async () => {
+      let nodeRef: ReturnType<typeof ref<{ id: number } | null>>
+      await withSetup(() => {
+        nodeRef = ref<{ id: number } | null>({ id: 10 })
+        useGesture(nodeRef, { pan: true })
+        return {}
+      })
+      await nextTick()
+
+      mockBridge.reset()
+      nodeRef!.value = null
+      await nextTick()
+      expect(mockBridge.getOpsByType('removeEventListener').map(o => o.args)).toEqual([[10, 'pan']])
+
+      mockBridge.reset()
+      nodeRef!.value = { id: 30 }
+      await nextTick()
+      expect(mockBridge.getOpsByType('addEventListener').map(o => o.args)).toEqual([[30, 'pan']])
+    })
+
+    it('does not attach to a comment anchor', async () => {
+      const { createCommentNode } = await import('../node')
+      let nodeRef: ReturnType<typeof ref<unknown>>
+      await withSetup(() => {
+        nodeRef = ref<unknown>(createCommentNode('v-if'))
+        useGesture(nodeRef as Parameters<typeof useGesture>[0], { pan: true })
+        return {}
+      })
+      await nextTick()
+      expect(mockBridge.getOpsByType('addEventListener')).toHaveLength(0)
+
+      nodeRef!.value = { $el: createCommentNode('') }
+      await nextTick()
+      expect(mockBridge.getOpsByType('addEventListener')).toHaveLength(0)
+
+      nodeRef!.value = { id: 40 }
+      await nextTick()
+      expect(mockBridge.getOpsByType('addEventListener').map(o => o.args)).toEqual([[40, 'pan']])
+    })
+  })
+
   describe('detach', () => {
     it('removes all event listeners on detach', async () => {
       const gestures = await withSetup(() => useGesture({ id: 1 }, { pan: true, pinch: true, rotate: true }))
@@ -399,5 +459,33 @@ describe('useComposedGestures', () => {
     expect(events).not.toContain('pan')
     expect(events).toContain('pinch')
     expect(events).toContain('rotate')
+  })
+
+  it('moves composed listeners when the target ref points at a new node', async () => {
+    let nodeRef: ReturnType<typeof ref<{ id: number } | null>>
+    await withSetup(() => {
+      nodeRef = ref<{ id: number } | null>({ id: 1 })
+      useComposedGestures(nodeRef)
+      return {}
+    })
+    await nextTick()
+    expect(mockBridge.getOpsByType('addEventListener').map(o => o.args)).toEqual([
+      [1, 'pan'],
+      [1, 'pinch'],
+      [1, 'rotate'],
+    ])
+
+    mockBridge.reset()
+    nodeRef!.value = { id: 2 }
+    await nextTick()
+
+    const removed = mockBridge.getOpsByType('removeEventListener').map(o => o.args)
+    expect(removed).toEqual(expect.arrayContaining([[1, 'pan'], [1, 'pinch'], [1, 'rotate']]))
+    const added = mockBridge.getOpsByType('addEventListener').map(o => o.args)
+    expect(added).toEqual([
+      [2, 'pan'],
+      [2, 'pinch'],
+      [2, 'rotate'],
+    ])
   })
 })

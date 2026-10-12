@@ -101,8 +101,20 @@ function isGestureRef(target: GestureTarget): target is GestureTargetRef {
 }
 
 /**
+ * True for Vue's comment placeholder nodes (`createCommentNode`, type
+ * `__COMMENT__`), either directly or as a component's `$el`. An anchor is not a
+ * view: it has an id but no native view to receive gestures.
+ */
+function isAnchorValue(value: unknown): boolean {
+  if (typeof value !== 'object' || value === null) return false
+  if ((value as { type?: unknown }).type === '__COMMENT__') return true
+  const el = (value as { $el?: unknown }).$el
+  return typeof el === 'object' && el !== null && (el as { type?: unknown }).type === '__COMMENT__'
+}
+
+/**
  * Extract a native view id from a resolved target value, or `null` when the
- * value carries none.
+ * value carries none (including comment anchors).
  *
  * A template ref on a component (`<VView ref="viewRef">`) does not resolve to
  * the native node: Vue's `setRef` stores the component's public instance
@@ -110,6 +122,7 @@ function isGestureRef(target: GestureTarget): target is GestureTargetRef {
  * what makes the documented `useGesture(viewRef)` pattern attach at all.
  */
 function viewIdOf(value: unknown): number | null {
+  if (isAnchorValue(value)) return null
   if (hasViewId(value)) return value.id
   if (typeof value === 'object' && value !== null && '$el' in value) {
     const el = (value as { $el?: unknown }).$el
@@ -130,9 +143,10 @@ function viewIdOf(value: unknown): number | null {
  */
 function tryResolveViewId(target: GestureTarget): number | null {
   if (typeof target === 'number') return target
+  if (isAnchorValue(target)) return null
   if (isGestureRef(target)) {
     const val = target.value
-    if (val == null) return null
+    if (val == null || isAnchorValue(val)) return null
     const id = viewIdOf(val)
     if (id !== null) return id
     throw new Error('[useGesture] Target ref has no .value.id — is the ref attached to a component?')
@@ -192,13 +206,12 @@ class GestureManager {
       if (config?.enabled === false) return
       callback(payload as GestureEventMap[K])
     }
-    NativeBridge.addEventListener(this.nodeId, event, listener)
+    const nodeId = this.nodeId
+    NativeBridge.addEventListener(nodeId, event, listener)
 
     const dispose = () => {
       this.handlers.get(event)?.delete(callback as (state: unknown) => void)
-      if (this.nodeId) {
-        NativeBridge.removeEventListener(this.nodeId, event, listener)
-      }
+      NativeBridge.removeEventListener(nodeId, event, listener)
       if (this.nativeDriven.delete(event)) {
         this.syncNativeDriven()
       }
@@ -294,27 +307,32 @@ export function useGesture(target?: GestureTarget, options: UseGestureOptions = 
 
   let stopTargetWatch: (() => void) | null = null
   let listenersActive = false
+  let boundId: number | null = null
 
   function attach(t: GestureTarget): void {
-    if (!manager.attach(t)) {
-      // Template ref not populated yet. Vue fills refs after the first render, so
-      // retry when the view appears instead of registering listeners against a
-      // null node id — manager.on() hands back a no-op disposer in that case, so
-      // the bindings would be lost permanently even after a later attach.
-      if (isGestureRef(t)) watchTarget(t)
+    stopTargetWatch?.()
+    stopTargetWatch = null
+    if (isGestureRef(t)) {
+      // Keep watching a ref for the life of the scope: a v-if remount or key change
+      // swaps the native node, and the listeners must move with it.
+      stopTargetWatch = watch(t, () => bindTo(t), { immediate: true })
       return
     }
-    activateListeners()
+    bindTo(t)
   }
 
-  function watchTarget(t: GestureTargetRef): void {
-    stopTargetWatch?.()
-    stopTargetWatch = watch(t, (value) => {
-      if (value == null || !manager.attach(t)) return
-      stopTargetWatch?.()
-      stopTargetWatch = null
-      activateListeners()
-    })
+  /**
+   * Point the listeners at the target's current node. A null target (ref not
+   * populated yet, or a comment anchor) leaves them detached until it resolves.
+   */
+  function bindTo(t: GestureTarget): void {
+    const id = tryResolveViewId(t)
+    if (id === boundId) return
+    unbindListeners()
+    boundId = id
+    if (id === null) return
+    manager.attach(id)
+    activateListeners()
   }
 
   /** Register the native listeners exactly once per attach cycle. */
@@ -327,6 +345,11 @@ export function useGesture(target?: GestureTarget, options: UseGestureOptions = 
   function detach(): void {
     stopTargetWatch?.()
     stopTargetWatch = null
+    boundId = null
+    unbindListeners()
+  }
+
+  function unbindListeners(): void {
     listenersActive = false
     for (const fn of cleanupFns) fn()
     cleanupFns.length = 0
@@ -577,6 +600,29 @@ export function useComposedGestures(
   const cleanupFns: Array<() => void> = []
   let stopTargetWatch: (() => void) | null = null
   let listenersActive = false
+  let boundId: number | null = null
+
+  function attach(t: GestureTarget): void {
+    stopTargetWatch?.()
+    stopTargetWatch = null
+    if (isGestureRef(t)) {
+      // Keep watching a ref for the life of the scope so a remounted node gets the listeners.
+      stopTargetWatch = watch(t, () => bindTo(t), { immediate: true })
+      return
+    }
+    bindTo(t)
+  }
+
+  /** Point the listeners at the target's current node, re-binding when it moved. */
+  function bindTo(t: GestureTarget): void {
+    const id = tryResolveViewId(t)
+    if (id === boundId) return
+    unbindListeners()
+    boundId = id
+    if (id === null) return
+    manager.attach(id)
+    activateListeners()
+  }
 
   function setupListeners(): void {
     if (options.pan !== false) {
@@ -618,27 +664,14 @@ export function useComposedGestures(
     setupListeners()
   }
 
-  function attach(t: GestureTarget): void {
-    if (!manager.attach(t)) {
-      if (isGestureRef(t)) watchTarget(t)
-      return
-    }
-    activateListeners()
-  }
-
-  function watchTarget(t: GestureTargetRef): void {
-    stopTargetWatch?.()
-    stopTargetWatch = watch(t, (value) => {
-      if (value == null || !manager.attach(t)) return
-      stopTargetWatch?.()
-      stopTargetWatch = null
-      activateListeners()
-    })
-  }
-
   function detach(): void {
     stopTargetWatch?.()
     stopTargetWatch = null
+    boundId = null
+    unbindListeners()
+  }
+
+  function unbindListeners(): void {
     listenersActive = false
     for (const fn of cleanupFns) fn()
     cleanupFns.length = 0

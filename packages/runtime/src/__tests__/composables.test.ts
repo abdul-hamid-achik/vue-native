@@ -685,6 +685,22 @@ describe('Composables', () => {
       await db.close()
       expect(invokeModuleSpy).toHaveBeenCalledWith('Database', 'close', ['race'])
     })
+
+    it('retries the open after a failed open instead of replaying the rejection', async () => {
+      const { useDatabase } = await import('../composables/useDatabase')
+      const db = await withSetup(() => useDatabase('flaky'))
+      invokeModuleSpy.mockImplementationOnce(() => Promise.reject(new Error('database locked')))
+
+      await expect(db.execute('SELECT 1')).rejects.toThrow('database locked')
+      await expect(db.execute('SELECT 2')).resolves.toBeUndefined()
+
+      const openCalls = invokeModuleSpy.mock.calls.filter(
+        (call: unknown[]) => call[0] === 'Database' && call[1] === 'open',
+      )
+      expect(openCalls).toHaveLength(2)
+      expect(invokeModuleSpy).toHaveBeenCalledWith('Database', 'execute', ['flaky', 'SELECT 2', []])
+      expect(db.isOpen.value).toBe(true)
+    })
   })
 
   // ---------------------------------------------------------------------------

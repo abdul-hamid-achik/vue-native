@@ -1163,6 +1163,8 @@ export function createTabNavigator(router?: RouterInstance) {
   const activeTab = ref<string>('')
   /** Tracks which tabs have been visited (for lazy mounting). */
   const visitedTabs = new Set<string>()
+  /** Bumped on every tab request so a slower guard cannot overwrite a newer tap. */
+  let tabRequestToken = 0
 
   // ── Optional router integration helpers ───────────────────────────────────
   // Build a synthetic RouteEntry for a tab screen so guards receive the same
@@ -1188,6 +1190,7 @@ export function createTabNavigator(router?: RouterInstance) {
 
   // Switch tabs, running router guards first when a router is attached.
   async function requestTabChange(name: string, screens: TabScreenConfig[]): Promise<void> {
+    const token = ++tabRequestToken
     if (name === activeTab.value) return
     if (!router || !router._guardTransition) {
       activeTab.value = name
@@ -1202,7 +1205,9 @@ export function createTabNavigator(router?: RouterInstance) {
     const to = buildEntry(toScreen)
     const from = fromScreen ? buildEntry(fromScreen) : to
     const allowed = await router._guardTransition(to, from)
-    if (allowed) {
+    // A newer tap started while the guards ran: its outcome wins, not this one.
+    if (token !== tabRequestToken) return
+    if (allowed && activeTab.value !== name) {
       activeTab.value = name
       router._notifyAfter?.(to, from)
     }
@@ -1368,6 +1373,8 @@ export function createDrawerNavigator(router?: RouterInstance) {
   // ── Optional router integration helpers ───────────────────────────────────
   // Same contract as the tab navigator: synthetic RouteEntry for guards,
   // idempotent route-map registration, and guard-gated screen switches.
+  let screenRequestToken = 0
+
   function buildEntry(screen: DrawerScreenConfig): RouteEntry {
     return {
       config: { name: screen.name, component: screen.component },
@@ -1386,6 +1393,7 @@ export function createDrawerNavigator(router?: RouterInstance) {
   }
 
   async function requestScreenChange(name: string, screens: DrawerScreenConfig[]): Promise<void> {
+    const token = ++screenRequestToken
     if (name === activeScreen.value) {
       closeDrawer()
       return
@@ -1405,7 +1413,8 @@ export function createDrawerNavigator(router?: RouterInstance) {
     const to = buildEntry(toScreen)
     const from = fromScreen ? buildEntry(fromScreen) : to
     const allowed = await router._guardTransition(to, from)
-    if (allowed) {
+    // A newer selection started while the guards ran: its outcome wins, not this one.
+    if (token === screenRequestToken && allowed && activeScreen.value !== name) {
       activeScreen.value = name
       router._notifyAfter?.(to, from)
     }
