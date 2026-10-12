@@ -475,6 +475,11 @@ object StyleEngine {
             }
 
             // --- Accessibility ---
+            "testID" -> {
+                // A keyed tag, since the unkeyed view.tag is used elsewhere.
+                view.setTag(R.id.vn_test_id, value?.toString())
+                installTestIdDelegate(view)
+            }
             "accessibilityLabel" -> {
                 view.setTag(TAG_ACCESSIBILITY_LABEL, value?.toString())
                 view.contentDescription = value?.toString()
@@ -1064,6 +1069,35 @@ object StyleEngine {
     )
 
     // -- Shadow helpers -----------------------------------------------------------
+
+    /**
+     * Expose `testID` as the node's `viewIdResourceName`, which UI automation reads
+     * (UiAutomator, Appium). Installed once per view: the delegate reads the tag on
+     * every call, so later `testID` changes need no new delegate. It wraps any
+     * delegate already on the view, so role delegates keep working.
+     */
+    private fun installTestIdDelegate(view: View) {
+        if (view.getTag(R.id.vn_test_id_delegate) == true) return
+        view.setTag(R.id.vn_test_id_delegate, true)
+        ViewCompat.setAccessibilityDelegate(
+            view,
+            TestIdAccessibilityDelegate(ViewCompat.getAccessibilityDelegate(view))
+        )
+    }
+
+    private class TestIdAccessibilityDelegate(
+        private val existing: androidx.core.view.AccessibilityDelegateCompat?,
+    ) : androidx.core.view.AccessibilityDelegateCompat() {
+        override fun onInitializeAccessibilityNodeInfo(host: View, info: AccessibilityNodeInfoCompat) {
+            if (existing != null) {
+                existing.onInitializeAccessibilityNodeInfo(host, info)
+            } else {
+                super.onInitializeAccessibilityNodeInfo(host, info)
+            }
+            val testId = host.getTag(R.id.vn_test_id) as? String
+            if (!testId.isNullOrEmpty()) info.setViewIdResourceName(testId)
+        }
+    }
 
     private fun applyShadow(view: View, ctx: Context) {
         val radius = (view.getTag(TAG_SHADOW_RADIUS) as? Float) ?: 0f

@@ -803,6 +803,12 @@ enum StyleEngine {
             }
             return true
 
+        case "testID":
+            // Not an accessibility prop, but the identifier UI automation finds
+            // elements by. Non-string values clear it.
+            view.accessibilityIdentifier = value as? String
+            return true
+
         case "accessibilityLabel":
             view.accessibilityLabel = value as? String
             view.isAccessibilityElement = true

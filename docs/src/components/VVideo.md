@@ -30,7 +30,7 @@ play button, seeking, or fullscreen behavior.
 | `resizeMode` | `'cover' \| 'contain' \| 'stretch' \| 'center'` | `'cover'` | How the video is scaled within the frame |
 | `poster` | `String` | -- | Reserved for poster rendering; currently has no effect |
 | `style` | `ViewStyle` | -- | Layout + appearance styles |
-| `testID` | `String` | -- | Test identifier for end-to-end testing |
+| `testID` | `String` | -- | Test identifier for end-to-end testing. Maps to `accessibilityIdentifier` on iOS and macOS, and to the view's resource id (`viewIdResourceName`) on Android. |
 | `accessibilityLabel` | `String` | -- | Accessibility label read by screen readers |
 
 ## Events

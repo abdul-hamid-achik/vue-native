@@ -23,7 +23,7 @@ VSVG in the core library and needs no extra setup.
 | `source` | `SVGSource` | — | The SVG to render. Provide exactly one of `svg`, `asset`, or `uri` (see below). |
 | `tintColor` | `string` | — | Optional hex color applied as a tint to the rendered SVG. |
 | `style` | `ViewStyle` | `{}` | Layout/visual style. Set `width`/`height` to size the SVG. |
-| `testID` | `string` | — | Test identifier for end-to-end testing. |
+| `testID` | `string` | — | Test identifier for end-to-end testing. Maps to `accessibilityIdentifier` on iOS and macOS, and to the view's resource id (`viewIdResourceName`) on Android. |
 | `accessibilityLabel` | `string` | — | Accessibility label. |
 | `accessibilityRole` | `string` | `'image'` | Accessibility role. |
 | `accessibilityHint` | `string` | — | Additional accessibility context. |

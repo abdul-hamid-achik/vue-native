@@ -843,10 +843,16 @@ enum StyleEngine {
                 case "text":       view.setAccessibilityRole(.staticText)
                 case "search":     view.setAccessibilityRole(.textField)
                 case "tab":        view.setAccessibilityRole(.tabGroup)
+                case "adjustable": view.setAccessibilityRole(.slider)
                 case "none":       view.setAccessibilityRole(.unknown)
                 default:           break
                 }
             }
+            return true
+
+        case "testID":
+            // Exposed as the identifier UI automation and XCUITest query by.
+            view.setAccessibilityIdentifier(value as? String)
             return true
 
         case "accessibilityState":

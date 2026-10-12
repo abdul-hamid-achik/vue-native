@@ -308,6 +308,31 @@ class StyleEngineTest {
     }
 
     // -------------------------------------------------------------------------
+    // testID
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun testIdIsStoredInAKeyedTagAndExposedAsViewIdResourceName() {
+        val view = View(context)
+        StyleEngine.apply("testID", "submit-button", view)
+
+        assertEquals("submit-button", view.getTag(R.id.vn_test_id))
+        assertEquals("submit-button", view.createAccessibilityNodeInfo().viewIdResourceName)
+    }
+
+    @Test
+    fun testIdUpdatesReplaceTheValueWithoutStackingDelegates() {
+        val view = View(context)
+        StyleEngine.apply("testID", "first", view)
+        StyleEngine.apply("testID", "second", view)
+
+        assertEquals("second", view.createAccessibilityNodeInfo().viewIdResourceName)
+
+        StyleEngine.apply("testID", null, view)
+        assertNull(view.createAccessibilityNodeInfo().viewIdResourceName)
+    }
+
+    // -------------------------------------------------------------------------
     // accessibilityLabel
     // -------------------------------------------------------------------------
 

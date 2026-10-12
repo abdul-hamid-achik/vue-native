@@ -5,4 +5,6 @@
     <item name="vue_native_event_handlers" type="id"/>
     <item name="vue_native_node_id" type="id"/>
     <item name="vue_native_factory" type="id"/>
+    <item name="vn_test_id" type="id"/>
+    <item name="vn_test_id_delegate" type="id"/>
 </resources>

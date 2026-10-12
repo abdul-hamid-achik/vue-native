@@ -17,6 +17,13 @@ final class VCheckboxFactory: NativeComponentFactory {
         container.alignment = .center
         _ = container.flex
 
+        // VoiceOver reads the whole row as one control. The child image and label
+        // are hidden from it, so the container carries the label, the button
+        // role and the checked value (see updateProp).
+        container.isAccessibilityElement = true
+        container.accessibilityTraits = .button
+        container.accessibilityValue = "unchecked"
+
         let checkbox = UIImageView()
         checkbox.contentMode = .scaleAspectFit
         checkbox.isUserInteractionEnabled = true
@@ -55,13 +62,23 @@ final class VCheckboxFactory: NativeComponentFactory {
                 let tintColor = cb.tintColor
                 updateCheckboxImage(cb, checked: checked, tintColor: tintColor)
             }
+            stack.accessibilityValue = checked ? "checked" : "unchecked"
         case "label":
-            label?.text = value as? String
-            label?.isHidden = (value as? String)?.isEmpty ?? true
+            let text = value as? String
+            label?.text = text
+            label?.isHidden = text?.isEmpty ?? true
+            stack.accessibilityLabel = (text?.isEmpty ?? true) ? nil : text
         case "disabled":
             let disabled = (value as? Bool) ?? false
             stack.isUserInteractionEnabled = !disabled
             stack.alpha = disabled ? 0.4 : 1.0
+            // Insert/remove rather than assign, so the button trait and any
+            // traits StyleEngine set through accessibilityRole/State survive.
+            if disabled {
+                stack.accessibilityTraits.insert(.notEnabled)
+            } else {
+                stack.accessibilityTraits.remove(.notEnabled)
+            }
         case "checkColor", "tintColor":
             if let colorStr = value as? String, let cb = checkbox, let color = UIColor.fromHex(colorStr) {
                 cb.tintColor = color

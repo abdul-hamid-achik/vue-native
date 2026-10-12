@@ -328,6 +328,20 @@ final class StyleEngineTests: XCTestCase {
 
     // MARK: - Accessibility Tests
 
+    /// C1-2: `testID` was dropped on iOS. It is the accessibility identifier that
+    /// UI automation (XCUITest, device farms) finds elements by.
+    func testTestIDSetsTheAccessibilityIdentifier() {
+        StyleEngine.apply(key: "testID", value: "submit-button", to: view)
+        XCTAssertEqual(view.accessibilityIdentifier, "submit-button")
+
+        StyleEngine.apply(key: "testID", value: NSNull(), to: view)
+        XCTAssertNil(view.accessibilityIdentifier, "NSNull clears the identifier")
+
+        StyleEngine.apply(key: "testID", value: "again", to: view)
+        StyleEngine.apply(key: "testID", value: 42, to: view)
+        XCTAssertNil(view.accessibilityIdentifier, "a non-string testID clears the identifier")
+    }
+
     func testAccessibilityLabel() {
         StyleEngine.apply(key: "accessibilityLabel", value: "Test Label", to: view)
         XCTAssertEqual(view.accessibilityLabel, "Test Label", "accessibilityLabel should be set")

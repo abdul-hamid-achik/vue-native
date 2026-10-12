@@ -17,7 +17,7 @@ Equivalent to `<div>` in web, `UIView` on iOS, `FlexboxLayout` on Android.
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
 | `style` | `StyleProp` | -- | Flexbox layout + appearance styles |
-| `testID` | `string` | -- | Test identifier for end-to-end testing |
+| `testID` | `string` | -- | Test identifier for end-to-end testing. Maps to `accessibilityIdentifier` on iOS and macOS, and to the view's resource id (`viewIdResourceName`) on Android. |
 | `accessibilityLabel` | `string` | -- | Accessible description |
 | `accessibilityRole` | `string` | -- | Accessibility role (e.g. `'button'`, `'header'`) |
 | `accessibilityHint` | `string` | -- | Additional accessibility context |

@@ -225,6 +225,25 @@ final class StyleEngineTests: XCTestCase {
         XCTAssertEqual(view.accessibilityRole(), NSAccessibility.Role.button)
     }
 
+    /// iOS and Android map `adjustable` (a value the user changes with
+    /// increment/decrement gestures) to a slider; macOS must match.
+    func testAdjustableAccessibilityRoleMapsToSlider() {
+        let view = FlippedView()
+        StyleEngine.apply(key: "accessibilityRole", value: "adjustable", to: view)
+        XCTAssertEqual(view.accessibilityRole(), NSAccessibility.Role.slider)
+    }
+
+    /// `testID` is exposed as the accessibility identifier, which UI automation
+    /// reads. Clearing it with null removes the identifier.
+    func testTestIDSetsAndClearsAccessibilityIdentifier() {
+        let view = FlippedView()
+        StyleEngine.apply(key: "testID", value: "save-button", to: view)
+        XCTAssertEqual(view.accessibilityIdentifier(), "save-button")
+
+        StyleEngine.apply(key: "testID", value: nil, to: view)
+        XCTAssertEqual(view.accessibilityIdentifier(), "", "AppKit reports an unset identifier as empty")
+    }
+
     // MARK: - Default a11y roles on controls
 
     func testVButtonHasButtonRoleAndRowLayout() {

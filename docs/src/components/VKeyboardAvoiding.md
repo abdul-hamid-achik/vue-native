@@ -20,7 +20,7 @@ A container that adjusts its bottom padding when the software keyboard appears, 
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
 | `style` | `Object` | -- | Layout + appearance styles |
-| `testID` | `string` | -- | Test identifier for end-to-end testing |
+| `testID` | `string` | -- | Test identifier for end-to-end testing. Maps to `accessibilityIdentifier` on iOS and macOS, and to the view's resource id (`viewIdResourceName`) on Android. |
 
 ## Example
 

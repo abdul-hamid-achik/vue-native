@@ -419,23 +419,6 @@ const componentDrift = []
  * Key format: `<platform>|<Tag>|prop:<name>` or `<platform>|<Tag>|event:<name>`.
  */
 const baselinedComponentGaps = new Set([
-  // testID is declared on five components and implemented on no platform, so
-  // there is currently no way to address a native view from a test.
-  'android|VView|prop:testID',
-  'android|VImage|prop:testID',
-  'android|VKeyboardAvoiding|prop:testID',
-  'android|VSVG|prop:testID',
-  'android|VVideo|prop:testID',
-  'ios|VView|prop:testID',
-  'ios|VImage|prop:testID',
-  'ios|VKeyboardAvoiding|prop:testID',
-  'ios|VSVG|prop:testID',
-  'ios|VVideo|prop:testID',
-  'macos|VView|prop:testID',
-  'macos|VImage|prop:testID',
-  'macos|VKeyboardAvoiding|prop:testID',
-  'macos|VSVG|prop:testID',
-  'macos|VVideo|prop:testID',
   // Text selection is unimplemented everywhere despite being documented.
   'android|VText|prop:selectable',
   'ios|VText|prop:selectable',

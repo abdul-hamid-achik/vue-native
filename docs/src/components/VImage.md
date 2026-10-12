@@ -26,7 +26,7 @@ Displays images from remote URLs or bundled local assets. Maps to `UIImageView` 
 | `source` | `ImageSource` (`{ uri?: string; asset?: string }`) | -- | Image source object. Provide `uri` for a remote/absolute URL, or `asset` to load a bundled image by name. Set exactly one. |
 | `resizeMode` | `'cover' \| 'contain' \| 'stretch' \| 'center'` | `'cover'` | How the image is scaled to fit its container |
 | `style` | `Object` | -- | Layout + appearance styles (width and height recommended) |
-| `testID` | `string` | -- | Test identifier for end-to-end testing |
+| `testID` | `string` | -- | Test identifier for end-to-end testing. Maps to `accessibilityIdentifier` on iOS and macOS, and to the view's resource id (`viewIdResourceName`) on Android. |
 | `accessibilityLabel` | `string` | -- | Accessible description of the image |
 | `accessibilityRole` | `string` | -- | The accessibility role (e.g. `'image'`) |
 | `accessibilityHint` | `string` | -- | Describes what happens when the user interacts with the element |
