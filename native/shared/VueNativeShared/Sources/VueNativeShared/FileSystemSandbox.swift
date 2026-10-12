@@ -159,8 +159,11 @@ public final class FileSystemSandbox {
         appDirectory(.applicationSupportDirectory, fileManager: fileManager)
     }
 
-    /// Temporary root. Always available.
-    func temporaryRoot(fileManager: FileManager = .default) -> URL {
+    /// Temporary root. Always available. Public so framework modules that write a
+    /// scratch file and hand its path to JavaScript (recordings, captured photos)
+    /// put it where `useFileSystem` can read it back: on an unsandboxed macOS host
+    /// the bare temporary directory is outside the sandbox.
+    public func temporaryRoot(fileManager: FileManager = .default) -> URL {
         #if os(macOS)
         if !Self.isAppSandboxed {
             return ownedDirectory(

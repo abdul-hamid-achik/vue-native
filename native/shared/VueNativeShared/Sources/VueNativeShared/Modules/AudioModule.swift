@@ -245,6 +245,12 @@ public final class AudioModule: NSObject, NativeModule {
 
     // MARK: - Recording
 
+    /// Where a new recording is written. The path is handed to JavaScript, so it
+    /// lives under the sandbox's temporary root where `useFileSystem` can read it.
+    static func recordingURL(fileExtension: String, sandbox: FileSystemSandbox = .shared) -> URL {
+        sandbox.temporaryRoot().appendingPathComponent(UUID().uuidString + ".\(fileExtension)")
+    }
+
     private func startRecording(options: [String: Any], callback: @escaping (Any?, String?) -> Void) {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
@@ -253,8 +259,7 @@ public final class AudioModule: NSObject, NativeModule {
             let format = options["format"] as? String ?? "m4a"
 
             let ext = format == "wav" ? "wav" : "m4a"
-            let url = FileManager.default.temporaryDirectory
-                .appendingPathComponent(UUID().uuidString + ".\(ext)")
+            let url = Self.recordingURL(fileExtension: ext)
 
             var settings: [String: Any] = [:]
             if format == "wav" {

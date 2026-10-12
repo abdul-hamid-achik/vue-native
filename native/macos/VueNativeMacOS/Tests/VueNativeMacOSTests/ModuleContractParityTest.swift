@@ -250,4 +250,13 @@ final class ModuleContractParityTest: XCTestCase {
         XCTAssertNil(read.result)
         XCTAssertTrue(read.error?.contains("escapes the app sandbox") == true)
     }
+
+    func testCapturedPhotosAreWrittenWhereFileSystemCanReadThemBack() {
+        // The camera hands the photo URI to JS, which may read or upload it through
+        // useFileSystem; the unsandboxed host's bare temp directory is outside the
+        // sandbox, so the file must land under the sandbox's temporary root.
+        let url = CameraModule.photoFileURL()
+        XCTAssertTrue(FileSystemSandbox.shared.isAllowed(url.path), "\(url.path) must be inside the sandbox")
+        XCTAssertEqual(url.pathExtension, "jpg")
+    }
 }

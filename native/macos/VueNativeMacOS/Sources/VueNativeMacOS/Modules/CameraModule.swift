@@ -191,25 +191,30 @@ private final class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegat
             return
         }
 
-        // Write to temp file
-        let tempDir = NSTemporaryDirectory()
-        let fileName = "vue_native_photo_\(UUID().uuidString).jpg"
-        let filePath = (tempDir as NSString).appendingPathComponent(fileName)
-
+        let fileURL = CameraModule.photoFileURL()
         do {
-            try imageData.write(to: URL(fileURLWithPath: filePath))
+            try imageData.write(to: fileURL)
         } catch {
             callback(nil, "Failed to save photo: \(error.localizedDescription)")
             return
         }
 
         let result: [String: Any] = [
-            "uri": URL(fileURLWithPath: filePath).absoluteString,
+            "uri": fileURL.absoluteString,
             "width": image.size.width,
             "height": image.size.height,
             "type": "image/jpeg",
             "didCancel": false,
         ]
         callback(result, nil)
+    }
+}
+
+extension CameraModule {
+    /// Where a captured photo is written. The URI is handed to JavaScript, so the
+    /// file lives under the sandbox's temporary root where `useFileSystem` can
+    /// read it; on an unsandboxed host the bare temporary directory is outside it.
+    static func photoFileURL(sandbox: FileSystemSandbox = .shared) -> URL {
+        sandbox.temporaryRoot().appendingPathComponent("vue_native_photo_\(UUID().uuidString).jpg")
     }
 }

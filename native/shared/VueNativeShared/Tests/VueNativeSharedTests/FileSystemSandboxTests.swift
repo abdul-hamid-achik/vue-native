@@ -251,4 +251,13 @@ final class FileSystemSandboxTests: XCTestCase {
         XCTAssertNoThrow(try sandbox.resolve("~/Documents/vuenative-opt-in.txt"))
     }
     #endif
+
+    func testRecordingsAreWrittenWhereFileSystemCanReadThemBack() {
+        // AudioModule hands the recording path to JS, which may read or upload it
+        // through useFileSystem, so it must resolve inside the sandbox. On an
+        // unsandboxed macOS host the bare temporary directory no longer does.
+        let url = AudioModule.recordingURL(fileExtension: "m4a")
+        XCTAssertTrue(FileSystemSandbox.shared.isAllowed(url.path), "\(url.path) must be inside the sandbox")
+        XCTAssertEqual(url.pathExtension, "m4a")
+    }
 }

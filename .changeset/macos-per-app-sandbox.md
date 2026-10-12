@@ -11,7 +11,9 @@ there. On a non-sandboxed host the roots are now
 `~/Library/Application Support/<bundle id>`, `~/Library/Caches/<bundle id>` and
 `$TMPDIR/<bundle id>`, and documents live in
 `<Application Support>/<bundle id>/Documents`. `getDocumentsPath` and
-`getCachesPath` report the new folders. Sandboxed hosts and iOS are unchanged.
+`getCachesPath` report the new folders, and audio recordings and captured photos
+are written to the per-app temporary folder so their paths stay readable.
+Sandboxed hosts and iOS are unchanged.
 
 Breaking for existing macOS apps: files written under `~/Documents`, and
 databases in `~/Documents/databases`, are no longer reachable from JavaScript.
