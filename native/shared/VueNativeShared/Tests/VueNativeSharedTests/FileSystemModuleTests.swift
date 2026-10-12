@@ -7,21 +7,30 @@ import XCTest
 final class FileSystemModuleTests: XCTestCase {
 
     private let fileManager = FileManager.default
+    private var sandbox: FileSystemSandbox!
     private var module: FileSystemModule!
     private var scratch: URL!
+    private var plantedSentinels: [URL] = []
 
     override func setUpWithError() throws {
         try super.setUpWithError()
-        scratch = fileManager.temporaryDirectory
+        sandbox = FileSystemSandbox()
+        // Scratch lives under the sandbox temporary root so every write is in-sandbox.
+        scratch = sandbox.temporaryRoot()
             .appendingPathComponent("VueNativeShared-FSTests-\(UUID().uuidString)", isDirectory: true)
         try fileManager.createDirectory(at: scratch, withIntermediateDirectories: true)
-        module = FileSystemModule(sandbox: FileSystemSandbox())
+        module = FileSystemModule(sandbox: sandbox)
     }
 
     override func tearDownWithError() throws {
         module.destroy()
         try? fileManager.removeItem(at: scratch)
+        for sentinel in plantedSentinels {
+            try? fileManager.removeItem(at: sentinel)
+        }
+        plantedSentinels.removeAll()
         module = nil
+        sandbox = nil
         scratch = nil
         try super.tearDownWithError()
     }
@@ -69,7 +78,7 @@ final class FileSystemModuleTests: XCTestCase {
     }
 
     func testDeleteFileRefusesSandboxRoot() {
-        let root = fileManager.temporaryDirectory.resolvingSymlinksInPath().path
+        let root = sandbox.temporaryRoot().path
         let response = invoke("deleteFile", args: [root])
         XCTAssertNil(response.result)
         XCTAssertEqual(response.error, "FileSystem: refusing to delete a sandbox root directory")
@@ -92,6 +101,197 @@ final class FileSystemModuleTests: XCTestCase {
         XCTAssertTrue(escaping.error?.contains("escapes the app sandbox") == true)
 
         XCTAssertFalse(fileManager.fileExists(atPath: destination))
+    }
+
+    // MARK: - Redirects
+
+    func testRedirectToInsecureURLFailsTheDownload() throws {
+        let destination = scratch.appendingPathComponent("redirected.bin")
+        var failures: [String?] = []
+        let delegate = StreamingDownloadDelegate(
+            destination: destination,
+            maxBytes: 1024,
+            fileManager: fileManager,
+            sandbox: sandbox
+        ) { _, failure in
+            failures.append(failure)
+        }
+        let session = URLSession(configuration: .ephemeral)
+        defer { session.invalidateAndCancel() }
+        let start = try XCTUnwrap(URL(string: "https://example.com/start.bin"))
+        let task = session.dataTask(with: start)
+        let redirect = try XCTUnwrap(HTTPURLResponse(
+            url: start,
+            statusCode: 302,
+            httpVersion: nil,
+            headerFields: ["Location": "http://example.com/evil.bin"]
+        ))
+        let insecure = URLRequest(url: try XCTUnwrap(URL(string: "http://example.com/evil.bin")))
+
+        var handled = false
+        var followed: URLRequest?
+        delegate.urlSession(session, task: task, willPerformHTTPRedirection: redirect, newRequest: insecure) { request in
+            handled = true
+            followed = request
+        }
+        XCTAssertTrue(handled, "the redirect decision must be delivered")
+        XCTAssertNil(followed, "an insecure redirect must not be followed")
+
+        delegate.urlSession(session, task: task, didCompleteWithError: nil)
+        XCTAssertEqual(failures.count, 1, "the completion must fire exactly once")
+        XCTAssertEqual(failures.first ?? nil, "downloadFile: redirect to an insecure URL was refused")
+        XCTAssertFalse(fileManager.fileExists(atPath: destination.path))
+    }
+
+    func testRedirectToSecureURLIsFollowed() throws {
+        let destination = scratch.appendingPathComponent("redirected.bin")
+        let delegate = StreamingDownloadDelegate(
+            destination: destination,
+            maxBytes: 1024,
+            fileManager: fileManager,
+            sandbox: sandbox
+        ) { _, _ in }
+        let session = URLSession(configuration: .ephemeral)
+        defer { session.invalidateAndCancel() }
+        let start = try XCTUnwrap(URL(string: "https://example.com/start.bin"))
+        let task = session.dataTask(with: start)
+        let redirect = try XCTUnwrap(HTTPURLResponse(
+            url: start,
+            statusCode: 302,
+            httpVersion: nil,
+            headerFields: ["Location": "https://cdn.example.com/file.bin"]
+        ))
+        let secureTarget = try XCTUnwrap(URL(string: "https://cdn.example.com/file.bin"))
+
+        var followed: URLRequest?
+        delegate.urlSession(session, task: task, willPerformHTTPRedirection: redirect, newRequest: URLRequest(url: secureTarget)) { request in
+            followed = request
+        }
+        XCTAssertEqual(followed?.url, secureTarget, "an HTTPS redirect must be followed unchanged")
+    }
+
+    // MARK: - Roots and the reserved OTA store are never replaced or moved
+
+    func testCopyRefusesToReplaceASandboxRoot() {
+        let payload = scratch.appendingPathComponent("payload.txt").path
+        XCTAssertNil(invoke("writeFile", args: [payload, "data"]).error)
+        let root = sandbox.temporaryRoot().path
+
+        let response = invoke("copyFile", args: [payload, root])
+        XCTAssertNil(response.result)
+        XCTAssertEqual(response.error, "copyFile: refusing to touch a sandbox root directory")
+        XCTAssertTrue(fileManager.fileExists(atPath: payload), "replacing a root would delete the whole tree")
+    }
+
+    func testCopyRefusesToReplaceAnAncestorOfTheOTAStore() throws {
+        let sentinel = try plantOTASentinel()
+        let support = try XCTUnwrap(sandbox.applicationSupportRoot()).path
+        let payload = scratch.appendingPathComponent("payload.txt").path
+        XCTAssertNil(invoke("writeFile", args: [payload, "data"]).error)
+
+        let response = invoke("copyFile", args: [payload, support])
+        XCTAssertNil(response.result)
+        XCTAssertEqual(
+            response.error,
+            "copyFile: refusing to touch an ancestor of the reserved OTA directory"
+        )
+        XCTAssertTrue(fileManager.fileExists(atPath: sentinel.path), "the OTA store must survive")
+    }
+
+    func testCopyRefusesToCopyAnAncestorOfTheOTAStore() throws {
+        let sentinel = try plantOTASentinel()
+        let support = try XCTUnwrap(sandbox.applicationSupportRoot()).path
+        let copy = scratch.appendingPathComponent("support-copy").path
+
+        let response = invoke("copyFile", args: [support, copy])
+        XCTAssertNil(response.result)
+        XCTAssertEqual(
+            response.error,
+            "copyFile: refusing to copy an ancestor of the reserved OTA directory"
+        )
+        XCTAssertFalse(fileManager.fileExists(atPath: copy), "the OTA store must not be copied out")
+        XCTAssertTrue(fileManager.fileExists(atPath: sentinel.path))
+    }
+
+    func testMoveRefusesToMoveASandboxRoot() {
+        let payload = scratch.appendingPathComponent("payload.txt").path
+        XCTAssertNil(invoke("writeFile", args: [payload, "data"]).error)
+        let root = sandbox.temporaryRoot().path
+        let destination = scratch.appendingPathComponent("moved-root").path
+
+        let response = invoke("moveFile", args: [root, destination])
+        XCTAssertNil(response.result)
+        XCTAssertEqual(response.error, "moveFile: refusing to touch a sandbox root directory")
+        XCTAssertTrue(fileManager.fileExists(atPath: payload), "the root must stay in place")
+        XCTAssertFalse(fileManager.fileExists(atPath: destination))
+    }
+
+    func testMoveRefusesToReplaceASandboxRoot() {
+        let payload = scratch.appendingPathComponent("payload.txt").path
+        XCTAssertNil(invoke("writeFile", args: [payload, "data"]).error)
+        let root = sandbox.temporaryRoot().path
+
+        let response = invoke("moveFile", args: [payload, root])
+        XCTAssertNil(response.result)
+        XCTAssertEqual(response.error, "moveFile: refusing to touch a sandbox root directory")
+        XCTAssertTrue(fileManager.fileExists(atPath: payload), "the source must not be consumed")
+    }
+
+    func testMoveRefusesToMoveAnAncestorOfTheOTAStore() throws {
+        let sentinel = try plantOTASentinel()
+        let support = try XCTUnwrap(sandbox.applicationSupportRoot()).path
+        let destination = scratch.appendingPathComponent("moved-support").path
+
+        let response = invoke("moveFile", args: [support, destination])
+        XCTAssertNil(response.result)
+        XCTAssertEqual(
+            response.error,
+            "moveFile: refusing to touch an ancestor of the reserved OTA directory"
+        )
+        XCTAssertFalse(fileManager.fileExists(atPath: destination))
+        XCTAssertTrue(fileManager.fileExists(atPath: sentinel.path), "the OTA store must not move")
+    }
+
+    func testMoveRefusesToReplaceAnAncestorOfTheOTAStore() throws {
+        let sentinel = try plantOTASentinel()
+        let support = try XCTUnwrap(sandbox.applicationSupportRoot()).path
+        let payload = scratch.appendingPathComponent("payload.txt").path
+        XCTAssertNil(invoke("writeFile", args: [payload, "data"]).error)
+
+        let response = invoke("moveFile", args: [payload, support])
+        XCTAssertNil(response.result)
+        XCTAssertEqual(
+            response.error,
+            "moveFile: refusing to touch an ancestor of the reserved OTA directory"
+        )
+        XCTAssertTrue(fileManager.fileExists(atPath: payload), "the source must not be consumed")
+        XCTAssertTrue(fileManager.fileExists(atPath: sentinel.path), "the OTA store must survive")
+    }
+
+    func testDownloadRefusesToReplaceASandboxRoot() {
+        let root = sandbox.temporaryRoot().path
+        let payload = scratch.appendingPathComponent("payload.txt").path
+        XCTAssertNil(invoke("writeFile", args: [payload, "data"]).error)
+
+        // Loopback HTTPS: a missing guard fails fast with a connection error instead of
+        // reaching the network.
+        let response = invoke("downloadFile", args: ["https://127.0.0.1:1/payload.bin", root])
+        XCTAssertNil(response.result)
+        XCTAssertEqual(response.error, "downloadFile: refusing to touch a sandbox root directory")
+        XCTAssertTrue(fileManager.fileExists(atPath: payload), "the download must not replace the root")
+    }
+
+    func testDownloadRefusesToReplaceAnAncestorOfTheOTAStore() throws {
+        let sentinel = try plantOTASentinel()
+        let support = try XCTUnwrap(sandbox.applicationSupportRoot()).path
+
+        let response = invoke("downloadFile", args: ["https://127.0.0.1:1/bundle.js", support])
+        XCTAssertNil(response.result)
+        XCTAssertEqual(
+            response.error,
+            "downloadFile: refusing to touch an ancestor of the reserved OTA directory"
+        )
+        XCTAssertTrue(fileManager.fileExists(atPath: sentinel.path), "the OTA store must survive")
     }
 
     // MARK: - Legitimate in-sandbox use still works
@@ -134,21 +334,37 @@ final class FileSystemModuleTests: XCTestCase {
     }
 
     func testDocumentAndCachePathsAreInsideTheSandbox() {
-        let sandbox = FileSystemSandbox()
-        for method in ["getDocumentsPath", "getCachesPath"] {
+        let expected = [
+            "getDocumentsPath": sandbox.documentsRoot()?.path,
+            "getCachesPath": sandbox.cachesRoot()?.path,
+        ]
+        for (method, scopedPath) in expected {
             let path = invoke(method, args: []).result as? String
-            let unwrapped = try? XCTUnwrap(path)
-            XCTAssertNotNil(unwrapped)
+            XCTAssertNotNil(path, "\(method) returned no path")
             if let path {
                 XCTAssertTrue(
                     sandbox.isAllowed(path),
                     "\(method) returned a path outside the sandbox: \(path)"
                 )
+                // JS must receive the same scoped directory that relative paths use.
+                XCTAssertEqual(path, scopedPath, "\(method) must report the sandbox root")
             }
         }
     }
 
     // MARK: - Helper
+
+    /// Plants a file inside the reserved OTA directory so tests can prove it survives.
+    /// The file is removed in `tearDownWithError`; the directory itself is left alone,
+    /// because on a real machine it may hold genuine OTA bundles.
+    private func plantOTASentinel() throws -> URL {
+        let reserved = try XCTUnwrap(sandbox.reservedOTADirectory())
+        try fileManager.createDirectory(at: reserved, withIntermediateDirectories: true)
+        let sentinel = reserved.appendingPathComponent("sentinel-\(UUID().uuidString).js")
+        XCTAssertTrue(fileManager.createFile(atPath: sentinel.path, contents: Data("bundle".utf8)))
+        plantedSentinels.append(sentinel)
+        return sentinel
+    }
 
     private func invoke(
         _ method: String,

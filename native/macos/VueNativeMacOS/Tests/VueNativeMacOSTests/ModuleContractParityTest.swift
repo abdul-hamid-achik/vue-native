@@ -199,9 +199,20 @@ final class ModuleContractParityTest: XCTestCase {
 
     // MARK: - FileSystem (shared module)
 
+    /// A scratch path inside the module's own sandbox. The root is asked of the
+    /// module, because an unsandboxed macOS host scopes its roots to the app
+    /// (`Caches/<id>`), so the bare temporary directory is refused.
+    private func sandboxScratchPath(_ module: FileSystemModule, _ name: String) async -> String? {
+        let caches = await invoke(module, method: "getCachesPath", args: [])
+        guard let root = caches.result as? String else { return nil }
+        return root + "/" + name
+    }
+
     func testFileSystemWriteAndReadRoundtrip() async {
         let module = FileSystemModule()
-        let dir = NSTemporaryDirectory() + "vn-parity-\(UUID().uuidString)"
+        guard let dir = await sandboxScratchPath(module, "vn-parity-\(UUID().uuidString)") else {
+            return XCTFail("getCachesPath returned no directory")
+        }
         let path = dir + "/hello.txt"
         let content = "Vue Native FileSystem"
         defer { try? FileManager.default.removeItem(atPath: dir) }
@@ -219,7 +230,9 @@ final class ModuleContractParityTest: XCTestCase {
         // `exists` must be probed with an in-sandbox path: since P0-2 the module
         // rejects anything outside the app sandbox instead of reporting `false`,
         // so an out-of-sandbox probe no longer describes the result shape.
-        let inside = NSTemporaryDirectory() + "vn-parity-missing-\(UUID().uuidString).txt"
+        guard let inside = await sandboxScratchPath(module, "vn-parity-missing-\(UUID().uuidString).txt") else {
+            return XCTFail("getCachesPath returned no directory")
+        }
         let result = await invoke(module, method: "exists", args: [inside])
         XCTAssertNil(result.error)
         XCTAssertEqual(result.result as? Bool, false)

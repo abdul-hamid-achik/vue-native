@@ -148,7 +148,7 @@ Ships live values, not commented-out placeholders: `NSPrincipalClass` = `NSAppli
 
 ### `App.entitlements`
 
-Sets `com.apple.security.app-sandbox` to `false`. That is deliberate: `useFileSystem()` writes to arbitrary paths, the dev host opens a `ws://localhost:8174` socket, and `useCamera()` / `useGeolocation()` reach device hardware. Under the sandbox each of those needs its own entitlement (`network.client`, `files.user-selected.read-write`, `device.camera`) or the call fails at runtime. Sandboxing is a distribution decision, so the scaffold states the non-sandboxed default in one editable place. If you enable the sandbox, add the entitlements your app actually uses.
+Sets `com.apple.security.app-sandbox` to `false`. That is deliberate: `useFileSystem()` and `useDatabase()` read and write per-app folders under `~/Library` (see [useFileSystem](/composables/useFileSystem.md)), the dev host opens a `ws://localhost:8174` socket, and `useCamera()` / `useGeolocation()` reach device hardware. Under the sandbox each of those needs its own entitlement (`network.client`, `files.user-selected.read-write`, `device.camera`) or the call fails at runtime. Sandboxing is a distribution decision, so the scaffold states the non-sandboxed default in one editable place. If you enable the sandbox, add the entitlements your app actually uses.
 
 ### `project.yml`
 

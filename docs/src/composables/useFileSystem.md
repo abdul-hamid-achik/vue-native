@@ -91,6 +91,7 @@ interface FileStat {
 |----------|---------|
 | iOS | Uses `FileManager` for all file operations. Documents and caches directories map to the standard iOS sandbox locations. |
 | Android | Uses `java.io.File` for all file operations. Documents directory maps to the app's internal files directory. Caches directory maps to the app's cache directory. |
+| macOS | Uses `FileManager`. On a non-sandboxed host the roots are per-app: `~/Library/Application Support/<bundle id>`, `~/Library/Caches/<bundle id>`, and a per-app temp folder. Documents live at `<Application Support>/<bundle id>/Documents`. A sandboxed host keeps its container. A host can opt back into the real `~/Documents` from Swift with `FileSystemSandbox.shared.allowsUserDocumentsDirectory = true`. |
 
 ## Example
 

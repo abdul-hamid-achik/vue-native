@@ -215,9 +215,16 @@ class FileSystemModule : NativeModule {
                     }
                 val src = resolve(ctx, srcPath, callback) ?: return
                 val dest = resolve(ctx, destPath, callback) ?: return
+                val refusal = transferRefusal(ctx, src, dest)
+                if (refusal != null) {
+                    callback(null, "copyFile: $refusal")
+                    return
+                }
                 try {
-                    dest.parentFile?.mkdirs()
-                    src.copyTo(dest, overwrite = true)
+                    if (src.path != dest.path) {
+                        dest.parentFile?.mkdirs()
+                        replaceWithCopy(src, dest)
+                    }
                     callback(null, null)
                 } catch (e: Exception) {
                     callback(null, "copyFile: ${e.message}")
@@ -236,10 +243,16 @@ class FileSystemModule : NativeModule {
                     }
                 val src = resolve(ctx, srcPath, callback) ?: return
                 val dest = resolve(ctx, destPath, callback) ?: return
+                val refusal = transferRefusal(ctx, src, dest)
+                if (refusal != null) {
+                    callback(null, "moveFile: $refusal")
+                    return
+                }
                 try {
-                    dest.parentFile?.mkdirs()
-                    src.copyTo(dest, overwrite = true)
-                    src.delete()
+                    if (src.path != dest.path) {
+                        dest.parentFile?.mkdirs()
+                        moveTree(src, dest)
+                    }
                     callback(null, null)
                 } catch (e: Exception) {
                     callback(null, "moveFile: ${e.message}")
@@ -265,6 +278,55 @@ class FileSystemModule : NativeModule {
     }
 
     /**
+     * Why [src] cannot be copied or moved to [dest], or null when it can. Neither
+     * end may be a protected tree, the source must exist, and a directory cannot be
+     * placed inside itself.
+     */
+    private fun transferRefusal(context: Context, src: File, dest: File): String? {
+        FileSystemSandbox.treeRefusal(context, src)?.let { return it }
+        FileSystemSandbox.treeRefusal(context, dest)?.let { return it }
+        if (!src.exists()) return "source does not exist: ${src.path}"
+        val intoItself = src.isDirectory && dest.path != src.path &&
+            dest.path.startsWith(src.path + File.separator)
+        return if (intoItself) "refusing to copy or move a directory into itself" else null
+    }
+
+    /** Copy a file or a whole directory tree over [dest]. Throws when any step fails. */
+    private fun replaceWithCopy(src: File, dest: File) {
+        if (dest.exists() && !dest.deleteRecursively()) {
+            throw IOException("could not replace ${dest.path}")
+        }
+        if (src.isDirectory) {
+            if (!src.copyRecursively(dest, overwrite = true)) {
+                throw IOException("could not copy ${src.path}")
+            }
+        } else {
+            src.copyTo(dest, overwrite = true)
+        }
+    }
+
+    /**
+     * Move a file or a whole directory tree over [dest]. Renames when possible and
+     * otherwise copies then removes the source. Throws when any step fails.
+     */
+    private fun moveTree(src: File, dest: File) {
+        if (dest.exists() && !dest.deleteRecursively()) {
+            throw IOException("could not replace ${dest.path}")
+        }
+        if (src.renameTo(dest)) return
+        replaceWithCopy(src, dest)
+        if (!src.deleteRecursively()) {
+            throw IOException("could not remove ${src.path}")
+        }
+    }
+
+    /**
+     * The client `downloadFile` uses. It follows redirects, but never from https to
+     * http, so a redirect cannot move the body onto cleartext.
+     */
+    internal fun downloadClient(): OkHttpClient = httpClient().newBuilder().followSslRedirects(false).build()
+
+    /**
      * Stream a remote body to disk under a byte cap.
      *
      * Written incrementally to a `.part` file rather than buffered in memory with
@@ -278,7 +340,7 @@ class FileSystemModule : NativeModule {
     ) {
         val limit = FileSystemSandbox.maxDownloadBytes
         val request = Request.Builder().url(url).build()
-        httpClient().newCall(request).enqueue(object : okhttp3.Callback {
+        downloadClient().newCall(request).enqueue(object : okhttp3.Callback {
             override fun onFailure(call: okhttp3.Call, e: IOException) {
                 callback(null, "downloadFile: ${e.message}")
             }

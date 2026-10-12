@@ -47,6 +47,17 @@ public enum FileSystemSandboxError: LocalizedError {
 /// 4. Reserved framework directories are denied.
 /// 5. The canonical path must be inside one of the resolved sandbox roots.
 ///
+/// ## Roots on macOS
+///
+/// The macOS scaffold does not enable the App Sandbox, so `~/Documents`,
+/// `~/Library/Caches`, `~/Library/Application Support` and `$TMPDIR` are shared by
+/// every app of the user. An unsandboxed process therefore gets per-app roots
+/// instead: `~/Library/Application Support/<id>`, `~/Library/Caches/<id>`,
+/// `$TMPDIR/<id>`, and `<id>/Documents` inside Application Support. `<id>` is the
+/// bundle identifier, or the process name when there is none. A host that needs
+/// the real `~/Documents` sets ``allowsUserDocumentsDirectory``. Sandboxed builds
+/// and iOS keep the system directories.
+///
 /// Rejections are always surfaced as errors. Nothing here falls back silently to
 /// "use the path anyway".
 public final class FileSystemSandbox {
@@ -60,6 +71,7 @@ public final class FileSystemSandbox {
     private let configLock = NSLock()
     private var storedMaxDownloadBytes: Int
     private var storedAllowInsecureDownloads: Bool
+    private var storedAllowsUserDocumentsDirectory = false
 
     /// Directory name of the OTA bundle store, relative to Application Support.
     static let reservedOTADirectoryName = "VueNativeOTA"
@@ -88,6 +100,15 @@ public final class FileSystemSandbox {
         set { configLock.withLock { storedAllowInsecureDownloads = newValue } }
     }
 
+    /// macOS builds without the App Sandbox only. When `true` the documents root
+    /// is the real `~/Documents`, which every app of the user shares; when `false`
+    /// (the default) it is the app's own `Application Support/<id>/Documents`.
+    /// Ignored on iOS and in sandboxed builds. Host-configurable only.
+    public var allowsUserDocumentsDirectory: Bool {
+        get { configLock.withLock { storedAllowsUserDocumentsDirectory } }
+        set { configLock.withLock { storedAllowsUserDocumentsDirectory = newValue } }
+    }
+
     // MARK: - Roots
 
     /// Canonicalised sandbox roots: documents, caches, application support and
@@ -95,19 +116,72 @@ public final class FileSystemSandbox {
     /// embeds a per-install UUID and caching it would make the class hold
     /// mutable state across threads for no benefit.
     public func allowedRoots(fileManager: FileManager = .default) -> [URL] {
-        let searchPaths: [FileManager.SearchPathDirectory] = [
-            .documentDirectory,
-            .cachesDirectory,
-            .applicationSupportDirectory,
-        ]
         var roots: [URL] = []
-        for directory in searchPaths {
-            if let url = fileManager.urls(for: directory, in: .userDomainMask).first {
-                roots.append(canonicalise(url, fileManager: fileManager))
-            }
+        if let documents = documentsRoot(fileManager: fileManager) {
+            roots.append(documents)
         }
-        roots.append(canonicalise(fileManager.temporaryDirectory, fileManager: fileManager))
+        if let caches = cachesRoot(fileManager: fileManager) {
+            roots.append(caches)
+        }
+        if let support = applicationSupportRoot(fileManager: fileManager) {
+            roots.append(support)
+        }
+        roots.append(temporaryRoot(fileManager: fileManager))
         return roots
+    }
+
+    /// Documents root: the anchor for relative paths and the directory that
+    /// `FileSystem.getDocumentsPath` reports. See the type documentation for the
+    /// unsandboxed macOS layout.
+    func documentsRoot(fileManager: FileManager = .default) -> URL? {
+        #if os(macOS)
+        if !Self.isAppSandboxed {
+            if allowsUserDocumentsDirectory {
+                return systemDirectory(.documentDirectory, fileManager: fileManager)
+            }
+            guard let support = applicationSupportRoot(fileManager: fileManager) else { return nil }
+            return ownedDirectory(
+                support.appendingPathComponent("Documents", isDirectory: true),
+                fileManager: fileManager
+            )
+        }
+        #endif
+        return systemDirectory(.documentDirectory, fileManager: fileManager)
+    }
+
+    /// Caches root, reported by `FileSystem.getCachesPath`.
+    func cachesRoot(fileManager: FileManager = .default) -> URL? {
+        appDirectory(.cachesDirectory, fileManager: fileManager)
+    }
+
+    /// Application Support root. The reserved OTA store lives inside it.
+    func applicationSupportRoot(fileManager: FileManager = .default) -> URL? {
+        appDirectory(.applicationSupportDirectory, fileManager: fileManager)
+    }
+
+    /// Temporary root. Always available.
+    func temporaryRoot(fileManager: FileManager = .default) -> URL {
+        #if os(macOS)
+        if !Self.isAppSandboxed {
+            return ownedDirectory(
+                fileManager.temporaryDirectory.appendingPathComponent(
+                    Self.unsandboxedAppIdentifier,
+                    isDirectory: true
+                ),
+                fileManager: fileManager
+            )
+        }
+        #endif
+        return canonicalise(fileManager.temporaryDirectory, fileManager: fileManager)
+    }
+
+    /// Canonical location of the reserved OTA store.
+    func reservedOTADirectory(fileManager: FileManager = .default) -> URL? {
+        guard let support = applicationSupportRoot(fileManager: fileManager) else { return nil }
+        return canonicalise(
+            support.appendingPathComponent(Self.reservedOTADirectoryName, isDirectory: true),
+            fileManager: fileManager
+        )
     }
 
     // MARK: - Resolution
@@ -162,6 +236,15 @@ public final class FileSystemSandbox {
         return allowedRoots(fileManager: fileManager).contains { $0.path == path }
     }
 
+    /// `true` when the resolved path is a strict ancestor of the reserved OTA
+    /// directory. Replacing or moving such a directory would remove the OTA store,
+    /// and copying it would expose the bundles stored there.
+    public func isAncestorOfReserved(_ url: URL, fileManager: FileManager = .default) -> Bool {
+        guard let reserved = reservedOTADirectory(fileManager: fileManager) else { return false }
+        let path = canonicalise(url, fileManager: fileManager).path
+        return reserved.path.hasPrefix(path + "/")
+    }
+
     // MARK: - Downloads
 
     /// HTTPS is required unless the host opted into insecure downloads.
@@ -177,20 +260,64 @@ public final class FileSystemSandbox {
 
     // MARK: - Helpers
 
-    private func documentsRoot(fileManager: FileManager) -> URL? {
-        fileManager.urls(for: .documentDirectory, in: .userDomainMask).first
+    /// The system directory itself, canonicalised. Used directly on iOS and by
+    /// sandboxed macOS builds, where the directory already belongs to this app.
+    private func systemDirectory(
+        _ searchPath: FileManager.SearchPathDirectory,
+        fileManager: FileManager
+    ) -> URL? {
+        guard let url = fileManager.urls(for: searchPath, in: .userDomainMask).first else {
+            return nil
+        }
+        return canonicalise(url, fileManager: fileManager)
     }
 
-    private func reservedOTADirectory(fileManager: FileManager) -> URL? {
-        guard let support = fileManager.urls(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask
-        ).first else { return nil }
-        return canonicalise(
-            support.appendingPathComponent(Self.reservedOTADirectoryName, isDirectory: true),
-            fileManager: fileManager
-        )
+    /// A system directory the app owns. Unsandboxed macOS shares these directories
+    /// between every app of the user, so the app gets `<directory>/<app id>`.
+    private func appDirectory(
+        _ searchPath: FileManager.SearchPathDirectory,
+        fileManager: FileManager
+    ) -> URL? {
+        #if os(macOS)
+        if !Self.isAppSandboxed {
+            guard let base = fileManager.urls(for: searchPath, in: .userDomainMask).first else {
+                return nil
+            }
+            return ownedDirectory(
+                base.appendingPathComponent(Self.unsandboxedAppIdentifier, isDirectory: true),
+                fileManager: fileManager
+            )
+        }
+        #endif
+        return systemDirectory(searchPath, fileManager: fileManager)
     }
+
+    #if os(macOS)
+    /// `true` when the process runs inside the App Sandbox, where the system
+    /// directories already belong to this app alone.
+    static var isAppSandboxed: Bool {
+        ProcessInfo.processInfo.environment["APP_SANDBOX_CONTAINER_ID"] != nil
+    }
+
+    /// Folder name for this app under the shared macOS directories. The bundle
+    /// identifier is used when there is one; under `swift test` the bundle is
+    /// usually absent, so the process name stands in.
+    static var unsandboxedAppIdentifier: String {
+        if let identifier = Bundle.main.bundleIdentifier, !identifier.isEmpty {
+            return identifier
+        }
+        let processName = ProcessInfo.processInfo.processName
+        return processName.isEmpty ? "VueNativeApp" : processName
+    }
+
+    /// Creates `url` when it is missing, then returns its canonical form.
+    private func ownedDirectory(_ url: URL, fileManager: FileManager) -> URL {
+        if !fileManager.fileExists(atPath: url.path) {
+            try? fileManager.createDirectory(at: url, withIntermediateDirectories: true)
+        }
+        return canonicalise(url, fileManager: fileManager)
+    }
+    #endif
 
     /// Collapse `..` and resolve symlinks so the result can be compared against
     /// the canonicalised roots by plain string prefix.

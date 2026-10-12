@@ -160,15 +160,19 @@ public final class FileSystemModule: NativeModule {
                     return
                 }
                 guard let destination = self.resolve(destPath, callback: callback) else { return }
+                if let reason = self.protectedTreeRefusal(for: destination) {
+                    callback(nil, "downloadFile: \(reason)")
+                    return
+                }
                 self.downloadFile(from: url, to: destination, callback: callback)
 
             case "getDocumentsPath":
-                let paths = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true)
-                callback(paths.first, nil)
+                // Report the sandbox root so JS receives the same scoped directory that
+                // relative paths resolve against, not the shared system directory.
+                callback(self.sandbox.documentsRoot(fileManager: self.fileManager)?.path, nil)
 
             case "getCachesPath":
-                let paths = NSSearchPathForDirectoriesInDomains(.cachesDirectory, .userDomainMask, true)
-                callback(paths.first, nil)
+                callback(self.sandbox.cachesRoot(fileManager: self.fileManager)?.path, nil)
 
             case "stat":
                 guard let path = args.first as? String else {
@@ -215,6 +219,14 @@ public final class FileSystemModule: NativeModule {
                 }
                 guard let source = self.resolve(srcPath, callback: callback) else { return }
                 guard let destination = self.resolve(destPath, callback: callback) else { return }
+                guard !self.sandbox.isAncestorOfReserved(source, fileManager: self.fileManager) else {
+                    callback(nil, "copyFile: refusing to copy an ancestor of the reserved OTA directory")
+                    return
+                }
+                if let reason = self.protectedTreeRefusal(for: destination) {
+                    callback(nil, "copyFile: \(reason)")
+                    return
+                }
                 do {
                     // Remove destination if it exists (copyItem throws if dest exists)
                     if self.fileManager.fileExists(atPath: destination.path) {
@@ -239,6 +251,11 @@ public final class FileSystemModule: NativeModule {
                 }
                 guard let source = self.resolve(srcPath, callback: callback) else { return }
                 guard let destination = self.resolve(destPath, callback: callback) else { return }
+                if let reason = self.protectedTreeRefusal(for: source)
+                    ?? self.protectedTreeRefusal(for: destination) {
+                    callback(nil, "moveFile: \(reason)")
+                    return
+                }
                 do {
                     if self.fileManager.fileExists(atPath: destination.path) {
                         try self.fileManager.removeItem(atPath: destination.path)
@@ -273,6 +290,19 @@ public final class FileSystemModule: NativeModule {
             callback(nil, error.localizedDescription)
             return nil
         }
+    }
+
+    /// Why `url` must not be replaced or moved, or `nil` when it may be. Replacing a
+    /// sandbox root or an ancestor of the OTA store would remove that whole tree in
+    /// one call, so these are refused before any `removeItem`.
+    private func protectedTreeRefusal(for url: URL) -> String? {
+        if sandbox.isAncestorOfReserved(url, fileManager: fileManager) {
+            return "refusing to touch an ancestor of the reserved OTA directory"
+        }
+        if sandbox.isSandboxRoot(url, fileManager: fileManager) {
+            return "refusing to touch a sandbox root directory"
+        }
+        return nil
     }
 
     private func ensureParentDirectory(of url: URL) -> String? {
@@ -312,7 +342,8 @@ public final class FileSystemModule: NativeModule {
         let delegate = StreamingDownloadDelegate(
             destination: destination,
             maxBytes: sandbox.maxDownloadBytes,
-            fileManager: fileManager
+            fileManager: fileManager,
+            sandbox: sandbox
         ) { [weak self] session, failure in
             session.finishTasksAndInvalidate()
             self?.retireDownloadSession(session)
@@ -375,11 +406,12 @@ public final class FileSystemModule: NativeModule {
 /// `@unchecked Sendable`: the delegate is called on the session's own queue
 /// while the owning module may be torn down on another, so every mutable field
 /// is read and written under `stateLock`.
-private final class StreamingDownloadDelegate: NSObject, URLSessionDataDelegate, @unchecked Sendable {
+final class StreamingDownloadDelegate: NSObject, URLSessionDataDelegate, @unchecked Sendable {
 
     private let destination: URL
     private let maxBytes: Int
     private let fileManager: FileManager
+    private let sandbox: FileSystemSandbox
     private let completion: (URLSession, String?) -> Void
 
     private let stateLock = NSLock()
@@ -393,11 +425,13 @@ private final class StreamingDownloadDelegate: NSObject, URLSessionDataDelegate,
         destination: URL,
         maxBytes: Int,
         fileManager: FileManager,
+        sandbox: FileSystemSandbox,
         completion: @escaping (URLSession, String?) -> Void
     ) {
         self.destination = destination
         self.maxBytes = maxBytes
         self.fileManager = fileManager
+        self.sandbox = sandbox
         self.completion = completion
         super.init()
     }
@@ -500,6 +534,24 @@ private final class StreamingDownloadDelegate: NSObject, URLSessionDataDelegate,
         } catch {
             completion(session, "downloadFile: could not save file: \(error.localizedDescription)")
         }
+    }
+
+    /// The URL checked by `invoke` is only the first hop. Without this, an HTTPS
+    /// download could be redirected to `http://` (or any other scheme the sandbox
+    /// refuses) and the body would be fetched in cleartext.
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        willPerformHTTPRedirection response: HTTPURLResponse,
+        newRequest request: URLRequest,
+        completionHandler: @escaping (URLRequest?) -> Void
+    ) {
+        guard let target = request.url, sandbox.isSecureDownload(target) else {
+            recordFailure("downloadFile: redirect to an insecure URL was refused")
+            completionHandler(nil)
+            return
+        }
+        completionHandler(request)
     }
 
     // MARK: URLSessionDelegate (TLS)

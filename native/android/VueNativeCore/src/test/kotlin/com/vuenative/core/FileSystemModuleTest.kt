@@ -187,6 +187,91 @@ class FileSystemModuleTest {
         }
     }
 
+    // -- Directory copy and move --
+
+    @Test
+    fun copyFileCopiesADirectoryTreeWithItsContents() {
+        val tree = directoryTree()
+        val copied = File(scratch, "copied")
+
+        assertNull(invoke("copyFile", listOf<Any?>(tree.absolutePath, copied.absolutePath)).error)
+
+        assertEquals("alpha", File(copied, "a.txt").readText())
+        assertEquals("beta", File(copied, "nested/b.txt").readText())
+        assertTrue("a copy must leave the source tree in place", File(tree, "nested/b.txt").exists())
+    }
+
+    @Test
+    fun moveFileMovesADirectoryTreeWithItsContents() {
+        val tree = directoryTree()
+        val moved = File(scratch, "moved")
+
+        assertNull(invoke("moveFile", listOf<Any?>(tree.absolutePath, moved.absolutePath)).error)
+
+        assertEquals("alpha", File(moved, "a.txt").readText())
+        assertEquals("beta", File(moved, "nested/b.txt").readText())
+        assertFalse("a move must remove the source", tree.exists())
+    }
+
+    @Test
+    fun copyAndMoveRefuseSandboxRootsAndTheOtaAncestor() {
+        val inside = File(scratch, "payload.txt").also { it.writeText("data") }
+        val filesRoot = context.filesDir.canonicalPath
+        val cacheRoot = context.cacheDir.canonicalPath
+
+        // filesDir is a sandbox root and an ancestor of the reserved OTA store.
+        val copyFilesRoot = invoke("copyFile", listOf<Any?>(filesRoot, File(scratch, "copy").path))
+        assertTrue(copyFilesRoot.error?.contains("ancestor of the reserved OTA directory") == true)
+
+        assertEquals(
+            "moveFile: refusing to touch a sandbox root directory",
+            invoke("moveFile", listOf<Any?>(cacheRoot, File(scratch, "moved").path)).error,
+        )
+        assertEquals(
+            "copyFile: refusing to touch a sandbox root directory",
+            invoke("copyFile", listOf<Any?>(inside.absolutePath, cacheRoot)).error,
+        )
+        assertTrue("refused operations must not touch the roots", context.cacheDir.isDirectory)
+        assertTrue(inside.exists())
+    }
+
+    @Test
+    fun copyingOrMovingAFileOntoItselfKeepsIt() {
+        val file = File(scratch, "same.txt").also { it.writeText("keep") }.absolutePath
+
+        assertNull(invoke("moveFile", listOf<Any?>(file, file)).error)
+        assertNull(invoke("copyFile", listOf<Any?>(file, file)).error)
+        assertEquals("keep", File(file).readText())
+    }
+
+    @Test
+    fun aDirectoryCannotBeCopiedOrMovedIntoItself() {
+        val tree = File(scratch, "tree").also { File(it, "inner").mkdirs() }
+        val into = File(tree, "inner/copy").absolutePath
+
+        assertEquals(
+            "copyFile: refusing to copy or move a directory into itself",
+            invoke("copyFile", listOf<Any?>(tree.absolutePath, into)).error,
+        )
+        assertEquals(
+            "moveFile: refusing to copy or move a directory into itself",
+            invoke("moveFile", listOf<Any?>(tree.absolutePath, into)).error,
+        )
+        assertTrue(tree.isDirectory)
+    }
+
+    @Test
+    fun downloadClientNeverFollowsHttpsToHttpRedirects() {
+        assertFalse(module.downloadClient().followSslRedirects)
+    }
+
+    private fun directoryTree(): File {
+        val tree = File(scratch, "tree").also { File(it, "nested").mkdirs() }
+        File(tree, "a.txt").writeText("alpha")
+        File(tree, "nested/b.txt").writeText("beta")
+        return tree
+    }
+
     private fun invoke(method: String, args: List<Any?>): InvocationResult {
         var result: Any? = null
         var error: String? = null

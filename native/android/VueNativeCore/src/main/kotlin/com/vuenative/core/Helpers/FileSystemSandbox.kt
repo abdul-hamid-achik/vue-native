@@ -130,6 +130,25 @@ object FileSystemSandbox {
         return allowedRoots(context).any { it.path == path }
     }
 
+    /** `true` when [file] is a strict ancestor of the reserved OTA directory. */
+    fun isAncestorOfReserved(context: Context, file: File): Boolean {
+        val reserved = reservedOtaDirectory(context) ?: return false
+        val path = runCatching { file.canonicalFile.path }.getOrNull() ?: return false
+        return reserved.path.startsWith(path + File.separator)
+    }
+
+    /**
+     * Why [file] must not be replaced or moved as a whole tree, or null when it may
+     * be. Replacing a sandbox root, or an ancestor of the OTA store, would remove
+     * that whole tree in one call, so both are refused. Mirrors the Apple
+     * `protectedTreeRefusal`.
+     */
+    fun treeRefusal(context: Context, file: File): String? = when {
+        isAncestorOfReserved(context, file) -> "refusing to touch an ancestor of the reserved OTA directory"
+        isSandboxRoot(context, file) -> "refusing to touch a sandbox root directory"
+        else -> null
+    }
+
     /**
      * HTTPS is required unless the host opted into insecure downloads. Loopback
      * hosts are always permitted: that traffic never leaves the device, so local
