@@ -196,7 +196,7 @@ DER-encoded signature, base64) and ship the result in `UpdateInfo.signature`:
 ```sh
 VERSION=2.1.0
 SHA256=$(shasum -a 256 dist/bundle.js | awk '{print $1}')
-printf 'vue-native-ota-v1\n%s\n%s' "$VERSION" "$SHA256" | openssl dgst -sha256 -sign private.pem | base64
+printf 'vue-native-ota-v1\n%s\n%s' "$VERSION" "$SHA256" | openssl dgst -sha256 -sign private.pem | openssl base64 -A
 ```
 
 Put the base64 string in the manifest on a single line.

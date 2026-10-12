@@ -18,3 +18,5 @@ OTA: signed release manifests, a monotonic version floor, and strict versions.
   `-prerelease` and an ignored `+build`. Anything else is rejected. The old
   comparator ranked `v1.8.0` above `1.9.0`; ordering now follows semver
   precedence on iOS and Android.
+- iOS accepts a base64 signature split across lines, as Android already did,
+  so a `base64` that wraps its output no longer fails verification on iOS only.

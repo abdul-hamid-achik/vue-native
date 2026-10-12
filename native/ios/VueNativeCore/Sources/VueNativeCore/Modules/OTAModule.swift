@@ -466,7 +466,10 @@ final class OTAModule: NativeModule {
         guard let signature, !signature.isEmpty else {
             return "OTA update rejected: signature required when a verify key is configured"
         }
-        guard let signatureData = Data(base64Encoded: signature),
+        // `.ignoreUnknownCharacters` accepts the line breaks that common `base64`
+        // tools insert every 64 or 76 characters; the DER parse and the signature
+        // check still reject anything that is not a valid signature.
+        guard let signatureData = Data(base64Encoded: signature, options: .ignoreUnknownCharacters),
               let ecdsaSignature = try? P256.Signing.ECDSASignature(derRepresentation: signatureData) else {
             return "OTA update rejected: signature verification failed"
         }

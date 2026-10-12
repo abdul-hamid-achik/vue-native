@@ -211,6 +211,31 @@ final class OTAModuleTests: XCTestCase {
         )
     }
 
+    /// A manifest signed with the exact pipeline the docs give publishers:
+    /// `printf 'vue-native-ota-v1\n%s\n%s' "$VERSION" "$SHA256" | openssl dgst -sha256
+    /// -sign private.pem | openssl base64 -A`, with the key from `openssl ecparam
+    /// -name prime256v1 -genkey`. Pins the documented format to the verifier.
+    func testManifestSignedWithTheDocumentedOpenSSLPipelineVerifies() throws {
+        let configured = try makeModule(publisherKeyBase64: "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEC0CpFblo4nH7yscLDLCutyC/zM1AEJtMGteAqD8cRJ6N0zaPFZHLO1kHs5oa2eZXh6ILEn2EcFwR4K0TKTTYVw==")
+        let bundleData = Data("globalThis.__vnOtaFixture = 1;\n".utf8)
+        let hash = "95e9ddb8598755e6c5c9cd289c6552a51cd1c98eb44594f005481f73d7ebab12"
+        XCTAssertEqual(OTAModule.sha256(data: bundleData), hash)
+
+        let signature = "MEUCIAf/iX48eiA/au+qyc5Z13TMmmbZC+N/EJF61/8hEr8UAiEA5Q+0GkZTuqEGyH9XUaBfUH+VP3V/v0oXttJSHXb5ccg="
+        XCTAssertNil(configured.verificationError(for: bundleData, expectedHash: hash, signature: signature, version: "1.4.2"))
+
+        // `openssl base64` without -A (and GNU `base64`) wraps the output. The
+        // verifier must accept the same signature split across lines.
+        let wrapped = "MEUCIAf/iX48eiA/au+qyc5Z13TMmmbZC+N/EJF61/8hEr8UAiEA5Q+0GkZTuqEG\nyH9XUaBfUH+VP3V/v0oXttJSHXb5ccg=\n"
+        XCTAssertNil(configured.verificationError(for: bundleData, expectedHash: hash, signature: wrapped, version: "1.4.2"))
+
+        // The signature binds the version: relabelling the bundle fails.
+        XCTAssertEqual(
+            configured.verificationError(for: bundleData, expectedHash: hash, signature: signature, version: "1.4.3"),
+            "OTA update rejected: signature verification failed"
+        )
+    }
+
     func testVerificationFailsClosedWithoutANativePublisherKey() throws {
         // No key configured anywhere: integrity alone must NOT be enough.
         let bundleData = Data("globalThis.__unsigned = true;".utf8)

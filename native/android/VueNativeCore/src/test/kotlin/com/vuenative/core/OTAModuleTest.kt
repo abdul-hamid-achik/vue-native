@@ -638,6 +638,35 @@ class OTAModuleTest {
         }
     }
 
+    /**
+     * A manifest signed with the exact pipeline the docs give publishers
+     * (`printf ... | openssl dgst -sha256 -sign private.pem | openssl base64 -A`,
+     * key from `openssl ecparam -name prime256v1 -genkey`), plus the same
+     * signature line-wrapped the way GNU `base64` prints it.
+     */
+    @Test
+    fun manifestSignedWithTheDocumentedOpenSSLPipelineVerifies() {
+        assertNull(OTAModule.configurePublisherKey(FIXTURE_SPKI))
+        module.destroy()
+        module = OTAModule().also { it.initialize(context, bridge) }
+
+        LocalHttpServer().use { server ->
+            val source = "globalThis.__vnOtaFixture = 1;\n".toByteArray()
+            assertEquals(FIXTURE_SHA256, OTAModule.sha256(source))
+            server.respond("/fixture.js", source)
+
+            for (signature in listOf(FIXTURE_SIGNATURE, FIXTURE_SIGNATURE_WRAPPED)) {
+                invoke("cleanupPartialDownload")
+                val result = invokeAsync(
+                    "downloadUpdate",
+                    listOf("${server.baseUrl}/fixture.js", FIXTURE_SHA256, "1.4.2", signature),
+                )
+                assertNull(result.error)
+                assertEquals("1.4.2", prefs.getString(OTAModule.KEY_PENDING_VERSION, null))
+            }
+        }
+    }
+
     @Test
     fun signedManifestForAnotherVersionIsRejected() {
         val keyPair = generateEcKeyPair()
@@ -803,6 +832,15 @@ class OTAModuleTest {
     private data class StagedBundle(val file: File, val hash: String)
     private data class InvocationResult(val result: Any?, val error: String?)
 }
+
+// Generated once with openssl; see manifestSignedWithTheDocumentedOpenSSLPipelineVerifies.
+private const val FIXTURE_SPKI =
+    "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEC0CpFblo4nH7yscLDLCutyC/zM1AEJtMGteAqD8cRJ6N0zaPFZHLO1kHs5oa2eZXh6ILEn2EcFwR4K0TKTTYVw=="
+private const val FIXTURE_SHA256 = "95e9ddb8598755e6c5c9cd289c6552a51cd1c98eb44594f005481f73d7ebab12"
+private const val FIXTURE_SIGNATURE =
+    "MEUCIAf/iX48eiA/au+qyc5Z13TMmmbZC+N/EJF61/8hEr8UAiEA5Q+0GkZTuqEGyH9XUaBfUH+VP3V/v0oXttJSHXb5ccg="
+private const val FIXTURE_SIGNATURE_WRAPPED =
+    "MEUCIAf/iX48eiA/au+qyc5Z13TMmmbZC+N/EJF61/8hEr8UAiEA5Q+0GkZTuqEG\nyH9XUaBfUH+VP3V/v0oXttJSHXb5ccg=\n"
 
 private class LocalHttpServer : Closeable {
     data class Request(val path: String, val headers: Map<String, String>)
