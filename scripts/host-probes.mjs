@@ -10,6 +10,10 @@ export function runCapture(command, args, options = {}) {
       stdout: execFileSync(command, args, {
         encoding: 'utf8',
         stdio: ['ignore', 'pipe', 'pipe'],
+        // A probe must never hang the smoke. `adb devices` can start a daemon
+        // that inherits the stdout pipe, and execFileSync then waits forever.
+        timeout: 60_000,
+        killSignal: 'SIGKILL',
         ...options,
       }),
     }

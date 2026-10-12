@@ -47,6 +47,9 @@ function git(command) {
   }
 }
 
+/** Per-gate ceiling. A cold build plus one test target fits well inside it. */
+const GATE_TIMEOUT_MS = 20 * 60_000
+
 function runGate(id, command, args, options = {}) {
   const started = Date.now()
   if (options.skipReason) {
@@ -59,13 +62,29 @@ function runGate(id, command, args, options = {}) {
     }
   }
 
+  // Gate output is captured, so print progress: a hung gate is otherwise
+  // indistinguishable from a slow one in the CI log.
+  process.stdout.write(`[run] ${id}\n`)
+  const timeoutMs = options.timeoutMs ?? GATE_TIMEOUT_MS
   const result = spawnSync(command, args, {
     cwd: options.cwd ?? root,
     encoding: 'utf8',
     maxBuffer: 64 * 1024 * 1024,
     env: { ...process.env, CI: '1' },
+    timeout: timeoutMs,
+    killSignal: 'SIGKILL',
   })
   const durationMs = Date.now() - started
+  if (result.error?.code === 'ETIMEDOUT') {
+    return {
+      id,
+      status: 'failed',
+      reason: `timed out after ${Math.round(timeoutMs / 60_000)} min`,
+      command: [command, ...args].join(' '),
+      durationMs,
+      stderr: `${result.stdout ?? ''}${result.stderr ?? ''}`.slice(-4000),
+    }
+  }
   if (result.status === 0) {
     return {
       id,
@@ -85,6 +104,7 @@ function runGate(id, command, args, options = {}) {
 }
 
 const fixtureErrors = collectAppShellFixtureErrors(loadAppShellFixture())
+process.stdout.write('[probe] iOS simulators, iOS devices, Android devices\n')
 const iosSim = probeIosSimulators()
 const iosDevice = probeIosDevices()
 const androidDevice = probeAndroidDevices()
