@@ -13,9 +13,9 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
+import java.util.concurrent.atomic.AtomicBoolean
 import org.json.JSONArray
 import org.json.JSONObject
-import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Factory for `VWebView`.

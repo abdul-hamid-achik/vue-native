@@ -2,6 +2,8 @@ package com.vuenative.core
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
+import java.security.GeneralSecurityException
+import javax.crypto.AEADBadTagException
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertThrows
@@ -9,8 +11,6 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
-import java.security.GeneralSecurityException
-import javax.crypto.AEADBadTagException
 
 /**
  * Regression tests for the Auto Backup restore case: the Keystore master key does
@@ -31,7 +31,10 @@ class SecureStorageRecoveryTest {
         var deletes = 0
 
         val opened = SecureStorageModule.openWithRecovery(
-            create = { creates += 1; healthy },
+            create = {
+                creates += 1
+                healthy
+            },
             deleteStore = { deletes += 1 },
         )
 
