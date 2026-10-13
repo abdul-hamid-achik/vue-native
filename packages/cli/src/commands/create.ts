@@ -488,6 +488,12 @@ dependencyResolutionManagement {
         google()
         mavenCentral()
     }
+    // :VueNativeCore reads its dependency versions from the vendored catalog.
+    versionCatalogs {
+        create("libs") {
+            from(files("../native/android/gradle/libs.versions.toml"))
+        }
+    }
 }
 
 rootProject.name = "${name}"

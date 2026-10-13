@@ -46,9 +46,15 @@ function insertBefore(lines: string[], anchor: (line: string) => boolean, insert
 }
 
 /**
- * Host-side wiring for the optional `<VSVG>` add-on products.
+ * Host-side wiring that re-vendoring `native/` cannot reach: the Android version
+ * catalog and the optional `<VSVG>` add-on products.
  *
- * Re-vendoring `native/` brings the sibling `VueNativeCoreSVG` package into an
+ * Since 0.21.0 `:VueNativeCore` reads its dependency versions from
+ * `native/android/gradle/libs.versions.toml`, but hosts scaffolded before
+ * 0.23.1 never registered that catalog, so their Android build fails with
+ * "Unresolved reference: libs".
+ *
+ * For `<VSVG>`, re-vendoring `native/` brings the sibling `VueNativeCoreSVG` package into an
  * upgraded project, but a host that linked the old single-product core keeps
  * building WITHOUT it — `<VSVG>` silently degrades to a logged error and a
  * blank view. The scaffold writes this wiring for new projects; upgrade must
@@ -56,21 +62,39 @@ function insertBefore(lines: string[], anchor: (line: string) => boolean, insert
  * skipped when its marker is already present, and a file whose anchors do not
  * match (hand-edited host) is left alone with a warning instead of a guess.
  */
-function svgAddonPatches(projectDir: string): { patches: FilePatch[], warnings: string[] } {
+function hostWiringPatches(projectDir: string): { patches: FilePatch[], warnings: string[] } {
   const patches: FilePatch[] = []
   const warnings: string[] = []
 
-  function patch(relativePath: string, edit: (lines: string[]) => { lines: string[], summary: string } | null): void {
+  function patch(
+    relativePath: string,
+    edit: (lines: string[]) => { lines: string[], summary: string } | null,
+    handEdit = 'add the <VSVG> product and register() call by hand',
+  ): void {
     const absolute = join(projectDir, relativePath)
     if (!existsSync(absolute)) return
     const original = readFileSync(absolute, 'utf8')
     const result = edit(original.split('\n'))
     if (result === null) {
-      warnings.push(`${relativePath}: recognised anchors not found; add the <VSVG> product and register() call by hand`)
+      warnings.push(`${relativePath}: recognised anchors not found; ${handEdit}`)
       return
     }
     patches.push({ relativePath, content: result.lines.join('\n'), summary: result.summary })
   }
+
+  patch(join('android', 'settings.gradle.kts'), (lines) => {
+    if (lines.some(line => line.includes('versionCatalogs'))) return { lines, summary: '' }
+    const withCatalog = insertAfter(lines, line => line.trim().startsWith('repositoriesMode.set('), [
+      '    // :VueNativeCore reads its dependency versions from the vendored catalog.',
+      '    versionCatalogs {',
+      '        create("libs") {',
+      '            from(files("../native/android/gradle/libs.versions.toml"))',
+      '        }',
+      '    }',
+    ])
+    if (withCatalog === null) return null
+    return { lines: withCatalog, summary: 'register the vendored Android version catalog' }
+  }, 'register native/android/gradle/libs.versions.toml as the "libs" version catalog by hand')
 
   patch(join('ios', 'project.yml'), (lines) => {
     if (lines.some(line => line.includes('VueNativeCoreSVG'))) return { lines, summary: '' }
@@ -235,16 +259,16 @@ export const upgradeCommand = new Command('upgrade')
       }
     }
 
-    const svgWiring = svgAddonPatches(cwd)
+    const hostWiring = hostWiringPatches(cwd)
 
     const plan = [
       `re-vendor native/ from the CLI package (${targetVersion})`,
       `rewrite ${STAMP_RELATIVE_PATH}`,
       ...dependencyEdits.map(edit => `package.json ${edit}`),
-      ...svgWiring.patches.map(entry => `${entry.relativePath}: ${entry.summary}`),
+      ...hostWiring.patches.map(entry => `${entry.relativePath}: ${entry.summary}`),
     ]
     for (const line of plan) p.log.step(`would ${line}`)
-    for (const warning of svgWiring.warnings) p.log.warn(warning)
+    for (const warning of hostWiring.warnings) p.log.warn(warning)
 
     if (options.dryRun) {
       p.outro('Dry run: nothing written.')
@@ -268,7 +292,7 @@ export const upgradeCommand = new Command('upgrade')
       await writeFile(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`)
     }
 
-    for (const entry of svgWiring.patches) {
+    for (const entry of hostWiring.patches) {
       await writeFile(join(cwd, entry.relativePath), entry.content)
     }
 

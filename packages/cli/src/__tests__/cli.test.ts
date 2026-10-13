@@ -1002,6 +1002,9 @@ describe('create command', () => {
       expect(content).toContain('include(":app")')
       expect(content).toContain('include(":VueNativeCore")')
       expect(content).toContain('file("../native/android/VueNativeCore")')
+      // :VueNativeCore's build script reads `libs.*`; without this the host
+      // fails with "Unresolved reference: libs" (every scaffold 0.21.0–0.23.0).
+      expect(content).toContain('from(files("../native/android/gradle/libs.versions.toml"))')
 
       const appGradleCall = mockWriteFile.mock.calls.find(
         ([path]: any[]) => path.endsWith('app/build.gradle.kts'),

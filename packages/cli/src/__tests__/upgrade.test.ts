@@ -204,6 +204,39 @@ describe('vue-native upgrade', () => {
     expect(iosDelegateAgain.split('VueNativeCoreSVG.register()').length - 1).toBe(1)
   })
 
+  it('registers the vendored Android version catalog in older hosts, idempotently', () => {
+    const dir = makeProject('catalog', { schema: 1, frameworkVersion: '0.22.0' })
+    mkdirSync(join(dir, 'android'), { recursive: true })
+    // The settings.gradle.kts that `create` wrote from 0.21.0 through 0.23.0.
+    writeFileSync(join(dir, 'android', 'settings.gradle.kts'), [
+      'dependencyResolutionManagement {',
+      '    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)',
+      '    repositories {',
+      '        google()',
+      '        mavenCentral()',
+      '    }',
+      '}',
+      '',
+      'include(":VueNativeCore")',
+      '',
+    ].join('\n'))
+
+    expect(runUpgrade(dir, []).status).toBe(0)
+    const settings = readFileSync(join(dir, 'android', 'settings.gradle.kts'), 'utf8')
+    expect(settings).toContain('from(files("../native/android/gradle/libs.versions.toml"))')
+    // Without this catalog :VueNativeCore fails with "Unresolved reference: libs".
+    expect(existsSync(join(dir, 'native', 'android', 'gradle', 'libs.versions.toml'))).toBe(true)
+
+    const stamp = JSON.parse(readFileSync(join(dir, 'native', '.vue-native-version'), 'utf8'))
+    writeFileSync(
+      join(dir, 'native', '.vue-native-version'),
+      `${JSON.stringify({ ...stamp, frameworkVersion: '0.22.0' }, null, 2)}\n`,
+    )
+    expect(runUpgrade(dir, []).status).toBe(0)
+    const again = readFileSync(join(dir, 'android', 'settings.gradle.kts'), 'utf8')
+    expect(again.split('versionCatalogs').length - 1).toBe(1)
+  })
+
   it('refuses to destroy local modifications in native/ without --force', () => {
     const dir = makeProject('dirty', { schema: 1, frameworkVersion: '0.20.0' })
     execFileSync('git', ['init', '-q'], { cwd: dir })
