@@ -1,6 +1,7 @@
 package com.vuenative.core
 
 import android.util.Base64
+import android.util.Log
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 import okhttp3.CertificatePinner
@@ -33,6 +34,15 @@ class HttpModule : NativeModule {
         private const val PIN_PREFIX = "sha256/"
 
         /**
+         * Deprecated SHA-1 pins. Android accepted them through OkHttp before
+         * 0.23.0, and rejecting them in 0.23.0 refused every connection to a host
+         * pinned only with sha1/. They are accepted again with a warning; Apple
+         * platforms have never accepted them.
+         */
+        private const val LEGACY_SHA1_PIN_PREFIX = "sha1/"
+        private const val TAG = "VueNative.Http"
+
+        /**
          * A pin no certificate can match (32 zero bytes). It is stored for a host
          * whose pins were all malformed and had nothing valid to fall back on, so
          * the pinning check fails every connection to that host.
@@ -48,7 +58,8 @@ class HttpModule : NativeModule {
          * Merge pin lists into the process-wide map (Apple semantics).
          *
          * An empty list removes the host's pins. A non-empty list keeps only its
-         * valid `sha256/<base64>` pins. When none are valid, the host keeps its
+         * valid `sha256/<base64>` pins (and deprecated `sha1/<base64>` ones, with a
+         * warning). When none are valid, the host keeps its
          * previous pins; a host with no previous pins is refused instead of being
          * left unpinned, so a typo cannot silently disable pinning. Rebuilds the
          * shared client.
@@ -62,6 +73,13 @@ class HttpModule : NativeModule {
                         continue
                     }
                     val valid = pins.filter { isValidPin(it) }
+                    if (valid.any { it.startsWith(LEGACY_SHA1_PIN_PREFIX) }) {
+                        Log.w(
+                            TAG,
+                            "Certificate pins for '$host' use deprecated sha1/ hashes. They work on " +
+                                "Android only; use sha256/ pins, which every platform accepts.",
+                        )
+                    }
                     when {
                         valid.isNotEmpty() -> pinMap[host] = valid
                         pinMap[host] == null -> pinMap[host] = listOf(REFUSE_ALL_PIN)
@@ -72,8 +90,12 @@ class HttpModule : NativeModule {
         }
 
         private fun isValidPin(pin: String): Boolean {
-            if (!pin.startsWith(PIN_PREFIX)) return false
-            val encoded = pin.substring(PIN_PREFIX.length)
+            val prefix = when {
+                pin.startsWith(PIN_PREFIX) -> PIN_PREFIX
+                pin.startsWith(LEGACY_SHA1_PIN_PREFIX) -> LEGACY_SHA1_PIN_PREFIX
+                else -> return false
+            }
+            val encoded = pin.substring(prefix.length)
             return try {
                 encoded.isNotEmpty() && Base64.decode(encoded, Base64.DEFAULT).isNotEmpty()
             } catch (e: IllegalArgumentException) {

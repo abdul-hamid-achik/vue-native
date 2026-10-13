@@ -1,5 +1,6 @@
 package com.vuenative.core
 
+import io.mockk.every
 import io.mockk.mockk
 import java.security.cert.X509Certificate
 import javax.net.ssl.SSLPeerUnverifiedException
@@ -62,7 +63,7 @@ class HttpModulePinningTest {
 
         assertTrue(HttpModule.pinnedHosts().contains("api.example.com"))
         assertThrows(SSLPeerUnverifiedException::class.java) {
-            HttpModule.client().certificatePinner.check("api.example.com", unmatchedChain())
+            storedPinner("api.example.com").check("api.example.com", chainWithKey("any-key".toByteArray()))
         }
     }
 
@@ -90,6 +91,44 @@ class HttpModulePinningTest {
         assertEquals(listOf("sha256/AAA="), HttpModule.pinsFor("api.example.com"))
     }
 
-    /** A peer chain whose key cannot match any pin. Its key material is not needed to fail the check. */
-    private fun unmatchedChain() = listOf<java.security.cert.Certificate>(mockk<X509Certificate>(relaxed = true))
+    @Test
+    fun aHostPinnedOnlyWithLegacySha1PinsKeepsWorking() {
+        val spki = "legacy-spki".toByteArray()
+        val sha1Pin = "sha1/" + java.util.Base64.getEncoder().encodeToString(
+            java.security.MessageDigest.getInstance("SHA-1").digest(spki),
+        )
+        HttpModule.configurePins(mapOf("legacy.example.com" to listOf(sha1Pin)))
+
+        assertEquals(listOf(sha1Pin), HttpModule.pinsFor("legacy.example.com"))
+        // Must pass: the 0.23.0 regression stored a refuse-all pin here instead.
+        storedPinner("legacy.example.com").check("legacy.example.com", chainWithKey(spki))
+        assertThrows(SSLPeerUnverifiedException::class.java) {
+            storedPinner("legacy.example.com").check("legacy.example.com", chainWithKey("other".toByteArray()))
+        }
+    }
+
+    @Test
+    fun malformedSha1PinsAreStillRefused() {
+        HttpModule.configurePins(mapOf("api.example.com" to listOf("sha1/", "sha1/%%%")))
+
+        assertThrows(SSLPeerUnverifiedException::class.java) {
+            storedPinner("api.example.com").check("api.example.com", chainWithKey("any-key".toByteArray()))
+        }
+    }
+
+    /**
+     * A pinner built from the module's stored pins, without the client's chain
+     * cleaner. The shared client cleans the chain against the system trust store
+     * before it compares pins, so a mocked chain fails there whatever the pins are.
+     */
+    private fun storedPinner(host: String): okhttp3.CertificatePinner {
+        val builder = okhttp3.CertificatePinner.Builder()
+        HttpModule.pinsFor(host).orEmpty().forEach { builder.add(host, it) }
+        return builder.build()
+    }
+
+    private fun chainWithKey(encoded: ByteArray): List<java.security.cert.Certificate> {
+        val key = mockk<java.security.PublicKey> { every { this@mockk.encoded } returns encoded }
+        return listOf(mockk<X509Certificate>(relaxed = true) { every { publicKey } returns key })
+    }
 }

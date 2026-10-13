@@ -18,7 +18,7 @@ openssl s_client -connect api.example.com:443 -servername api.example.com </dev/
   | openssl enc -base64
 ```
 
-Prefix the output with `sha256/` when configuring pins.
+Prefix the output with `sha256/` when configuring pins. Android still accepts deprecated `sha1/` pins (with a warning) for older apps; iOS and macOS accept only `sha256/`.
 
 ::: tip
 Always pin at least two hashes -- the current certificate and a backup. If you only pin one and the certificate rotates, your app will be unable to connect until you ship an update.

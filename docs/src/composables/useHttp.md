@@ -103,7 +103,7 @@ const http = useHttp({
 })
 ```
 
-Each pin must be in the format `sha256/<base64-encoded-hash>`. Provide multiple pins to support certificate rotation. On iOS this uses `URLSession` with a custom delegate; on Android it uses OkHttp's `CertificatePinner`.
+Each pin must be in the format `sha256/<base64-encoded-hash>`. Provide multiple pins to support certificate rotation. Android also accepts deprecated `sha1/` pins and logs a warning; iOS and macOS do not, so use `sha256/` everywhere. On iOS this uses `URLSession` with a custom delegate; on Android it uses OkHttp's `CertificatePinner`.
 
 ## Platform Support
 
