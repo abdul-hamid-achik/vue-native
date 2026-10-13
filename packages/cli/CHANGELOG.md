@@ -1,5 +1,41 @@
 # @thelacanians/vue-native-cli
 
+## 0.23.1
+
+### Patch Changes
+
+- 3c680d2: Android accepts `sha1/` certificate pins again, fixing a 0.23.0 regression.
+
+  0.23.0 started treating `sha1/` pins as malformed on Android, and the same
+  release refuses a host whose pins are all malformed, so an app that pinned a
+  host only with `sha1/` hashes could no longer connect to it. `sha1/` pins are
+  valid again on Android and log a deprecation warning. They have never worked
+  on iOS or macOS; move to `sha256/` pins, which every platform accepts.
+
+- f90dc8b: Android projects created with `vue-native create` build again.
+
+  Since 0.21.0 the vendored `:VueNativeCore` module reads its dependency
+  versions from `native/android/gradle/libs.versions.toml`, but the generated
+  `android/settings.gradle.kts` never registered that catalog, so every
+  scaffolded Android build failed with "Unresolved reference: libs". New
+  projects register it, and `vue-native upgrade` adds it to existing ones.
+  Hosts that do not upgrade can add this inside `dependencyResolutionManagement`:
+
+  ```kotlin
+  versionCatalogs {
+      create("libs") {
+          from(files("../native/android/gradle/libs.versions.toml"))
+      }
+  }
+  ```
+
+- 204f598: `vue-native run ios` and `run macos` no longer hang during the build.
+
+  The CLI started xcodebuild with piped output and read only stderr. Once
+  xcodebuild had written about 64 KB to stdout, which a first build does, it
+  blocked on the full pipe and the command waited forever with no CPU use.
+  Output streams without a reader are now drained.
+
 ## 0.23.0
 
 ### Minor Changes
