@@ -49,11 +49,18 @@ export function runManagedProcess(
     process.on('SIGINT', onSigint)
     process.on('SIGTERM', onSigterm)
 
+    // A piped stream nobody reads fills its OS buffer (64 KB on macOS) and the
+    // child blocks on its next write forever, so drain any stream without a
+    // handler. A cold `xcodebuild build` writes far more than that to stdout.
     if (output.stdout) {
       child.stdout?.on('data', output.stdout)
+    } else {
+      child.stdout?.resume()
     }
     if (output.stderr) {
       child.stderr?.on('data', output.stderr)
+    } else {
+      child.stderr?.resume()
     }
 
     child.on('error', (error) => {

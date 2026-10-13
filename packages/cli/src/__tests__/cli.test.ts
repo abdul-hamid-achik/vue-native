@@ -76,8 +76,8 @@ vi.mock('node:fs', async () => {
 const mockExecSync = vi.fn()
 const mockExecFileSync = vi.fn()
 const mockSpawn = vi.fn().mockReturnValue({
-  stdout: { on: vi.fn() },
-  stderr: { on: vi.fn() },
+  stdout: { on: vi.fn(), resume: vi.fn() },
+  stderr: { on: vi.fn(), resume: vi.fn() },
   on: vi.fn(),
   kill: vi.fn(),
   killed: false,
@@ -88,8 +88,8 @@ type ChildProcessHandler = (...args: any[]) => void
 function createMockChildProcess(autoClose = true) {
   const handlers = new Map<string, ChildProcessHandler>()
   const child = {
-    stdout: { on: vi.fn() },
-    stderr: { on: vi.fn() },
+    stdout: { on: vi.fn(), resume: vi.fn() },
+    stderr: { on: vi.fn(), resume: vi.fn() },
     on: vi.fn((event: string, handler: ChildProcessHandler) => {
       handlers.set(event, handler)
       if (autoClose && event === 'close') {
