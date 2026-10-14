@@ -93,6 +93,12 @@ final class VScrollViewFactory: NativeComponentFactory {
         case "pagingEnabled":
             if let paging = value as? Bool { scrollView.isPagingEnabled = paging }
 
+        case "contentContainerStyle":
+            // Children live in the inner content view (the node Yoga lays out), so the
+            // container styles belong there (VN-13). Keys dropped since the last update are
+            // reset so a removed style does not linger.
+            Self.applyContentContainerStyle(value as? [String: Any] ?? [:], to: scrollView)
+
         case "refreshing":
             let refreshing: Bool
             if let boolValue = value as? Bool {
@@ -275,6 +281,27 @@ final class VScrollViewFactory: NativeComponentFactory {
     /// Recompute the content view's layout and update the scroll view's contentSize.
     /// Call this after the main Yoga layout pass, once the scroll view's frame is set.
     @MainActor
+    static var contentContainerStyleKey: UInt8 = 0
+
+    static func applyContentContainerStyle(_ styles: [String: Any], to scrollView: UIScrollView) {
+        guard let contentView = contentView(for: scrollView) else { return }
+        let previous = objc_getAssociatedObject(scrollView, &contentContainerStyleKey) as? [String: Any] ?? [:]
+        for key in previous.keys where styles[key] == nil {
+            StyleEngine.apply(key: key, value: nil, to: contentView)
+        }
+        for (key, value) in styles {
+            StyleEngine.apply(key: key, value: value is NSNull ? nil : value, to: contentView)
+        }
+        objc_setAssociatedObject(scrollView, &contentContainerStyleKey, styles, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+    }
+
+    /// `flexGrow` in contentContainerStyle means "at least fill the viewport" (as on the web
+    /// and in React Native), so `justifyContent: 'center'` has room to centre short content.
+    static func fillsViewport(_ scrollView: UIScrollView) -> Bool {
+        let styles = objc_getAssociatedObject(scrollView, &contentContainerStyleKey) as? [String: Any]
+        return (StyleEngine.yogaValue(styles?["flexGrow"]) ?? 0) > 0
+    }
+
     static func layoutContentView(for scrollView: UIScrollView) {
         guard let contentView = contentView(for: scrollView) else { return }
 
@@ -293,6 +320,7 @@ final class VScrollViewFactory: NativeComponentFactory {
 
             // Pin the content view's origin and width
             contentView.frame = CGRect(x: 0, y: 0, width: scrollWidth, height: 0)
+            contentView.flex.minHeight(fillsViewport(scrollView) ? scrollView.bounds.height : nil)
 
             // Compute natural height — adjustHeight mode grows height to fit children
             contentView.flex.layout(mode: .adjustHeight)
