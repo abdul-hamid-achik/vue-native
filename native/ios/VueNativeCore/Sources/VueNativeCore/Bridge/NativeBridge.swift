@@ -1027,9 +1027,33 @@ public final class NativeBridge {
         // After the main layout pass, recompute content sizes for all scroll views.
         updateScrollViewContentSizes()
 
+        // Frames are final: cap requested corner radii at half of each view's shortest side.
+        CornerRadiusClamp.applyAll()
+
+        // The root view is pinned to the safe area, so the host view shows above and below
+        // it (status bar, home indicator). Paint those areas with the app's root background
+        // instead of the black loading colour (VN-14).
+        if let host = rootViewController?.view {
+            let background = Self.appBackground(from: rootView) ?? .systemBackground
+            if host.backgroundColor != background { host.backgroundColor = background }
+        }
+
         // With frames resolved, report measured heights for variable-height
         // VFlatList items so JS can position them by cumulative real heights.
         reportFlatListItemHeights()
+    }
+
+    /// The first opaque background going down the root's largest-child chain: the root
+    /// container is transparent (and also holds zero-size Vue anchors), and the app paints
+    /// its outermost `VView`.
+    static func appBackground(from root: UIView, maxDepth: Int = 4) -> UIColor? {
+        var view: UIView? = root
+        for _ in 0...maxDepth {
+            guard let current = view else { return nil }
+            if let color = current.backgroundColor, color.cgColor.alpha > 0 { return color }
+            view = current.subviews.max { $0.bounds.width * $0.bounds.height < $1.bounds.width * $1.bounds.height }
+        }
+        return nil
     }
 
     /// Request a full layout pass from component code that changed Yoga geometry on

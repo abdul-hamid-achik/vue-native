@@ -677,12 +677,15 @@ enum StyleEngine {
 
         case "borderRadius":
             if let num = yogaValue(value) {
-                view.layer.cornerRadius = num
+                // Clamped to half the shortest side after layout: a pill radius such as 999
+                // would otherwise hide the whole clipped view (VN-15).
+                CornerRadiusClamp.request(num, on: view)
                 // Automatically enable clipping when border radius is set
                 if num > 0 {
                     view.clipsToBounds = true
                 }
             } else {
+                CornerRadiusClamp.request(nil, on: view)
                 view.layer.cornerRadius = 0
             }
             return true
@@ -1016,7 +1019,7 @@ enum StyleEngine {
         }
         view.clipsToBounds = true
         view.layer.maskedCorners.insert(corner)
-        view.layer.cornerRadius = radius
+        CornerRadiusClamp.request(radius, on: view)
     }
 
     // MARK: - Helpers
