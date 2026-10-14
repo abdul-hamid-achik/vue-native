@@ -2,6 +2,7 @@
 import JavaScriptCore
 import Security
 import UIKit
+import VueNativeShared
 
 /// Registers browser-like APIs in JSContext that the Vue runtime and application code expect.
 /// All callbacks execute on the JS queue (not the main thread) unless noted otherwise.
@@ -611,7 +612,9 @@ enum JSPolyfills {
                             for (k, v) in headersDict {
                                 headersObj.setObject(v, forKeyedSubscript: k as NSString)
                             }
-                            responseObj.setObject(headersObj, forKeyedSubscript: "headers" as NSString)
+                            responseObj.setObject(
+                                SharedJSPolyfills.makeHeaders(headersObj, in: context),
+                                forKeyedSubscript: "headers" as NSString)
                         }
 
                         // .text() method

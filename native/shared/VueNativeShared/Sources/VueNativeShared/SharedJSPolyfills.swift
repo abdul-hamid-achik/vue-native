@@ -10,6 +10,37 @@ import Foundation
 /// Each platform adds its own RAF registration after calling `SharedJSPolyfills.register(in:)`.
 public enum SharedJSPolyfills {
 
+    /// JS factory turning a plain `{ name: value }` object into a `Headers`-like object:
+    /// case-insensitive `get` / `has`, plus `forEach`, `entries`, `keys`, `values` and
+    /// iteration, so `response.headers.get("x")` works as on the web. The original keys stay
+    /// as own enumerable properties for code that reads `headers[name]`.
+    public static let headersFactorySource = """
+    (function (raw) {
+      var map = {};
+      Object.keys(raw).forEach(function (k) { map[k.toLowerCase()] = String(raw[k]); });
+      var has = function (n) { return Object.prototype.hasOwnProperty.call(map, String(n).toLowerCase()); };
+      var h = {};
+      Object.keys(raw).forEach(function (k) { h[k] = raw[k]; });
+      var def = function (name, fn) { Object.defineProperty(h, name, { value: fn, enumerable: false }); };
+      var list = function (pick) { return Object.keys(map).sort().map(function (k) { return pick(k, map[k]); }); };
+      def("get", function (n) { return has(n) ? map[String(n).toLowerCase()] : null; });
+      def("has", has);
+      def("forEach", function (cb, self) { list(function (k, v) { cb.call(self, v, k, h); }); });
+      def("entries", function () { return list(function (k, v) { return [k, v]; })[Symbol.iterator](); });
+      def("keys", function () { return Object.keys(map).sort()[Symbol.iterator](); });
+      def("values", function () { return list(function (k, v) { return v; })[Symbol.iterator](); });
+      def(Symbol.iterator, function () { return h.entries(); });
+      return h;
+    })
+    """
+
+    /// Wrap a plain headers object with `headersFactorySource` in `context`.
+    public static func makeHeaders(_ raw: JSValue, in context: JSContext) -> JSValue {
+        guard let factory = context.evaluateScript(headersFactorySource), !factory.isUndefined,
+              let wrapped = factory.call(withArguments: [raw]) else { return raw }
+        return wrapped
+    }
+
     // MARK: - Timer storage
 
     /// Holds a scheduled Timer alongside its JSManagedValue so both can be cleaned up together.
@@ -474,7 +505,9 @@ public enum SharedJSPolyfills {
                             for (k, v) in headersDict {
                                 headersObj.setObject(v, forKeyedSubscript: k as NSString)
                             }
-                            responseObj.setObject(headersObj, forKeyedSubscript: "headers" as NSString)
+                            responseObj.setObject(
+                                SharedJSPolyfills.makeHeaders(headersObj, in: context),
+                                forKeyedSubscript: "headers" as NSString)
                         }
 
                         // .text() method

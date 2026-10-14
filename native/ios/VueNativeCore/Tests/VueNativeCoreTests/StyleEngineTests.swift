@@ -371,6 +371,17 @@ final class StyleEngineTests: XCTestCase {
         XCTAssertTrue(view.isAccessibilityElement, "isAccessibilityElement should be true")
     }
 
+    /// The renderer sends null for unset accessibility props on every view. Those must not
+    /// turn a container into an element, which would hide its whole subtree from VoiceOver
+    /// and UI automation.
+    func testNullAccessibilityPropsKeepContainersTransparent() {
+        for key in ["accessibilityLabel", "accessibilityHint", "accessibilityValue", "accessibilityState"] {
+            StyleEngine.apply(key: key, value: NSNull(), to: view)
+            StyleEngine.apply(key: key, value: nil, to: view)
+        }
+        XCTAssertFalse(view.isAccessibilityElement)
+    }
+
     func testAccessibilityRoleButton() {
         StyleEngine.apply(key: "accessibilityRole", value: "button", to: view)
         XCTAssertTrue(
