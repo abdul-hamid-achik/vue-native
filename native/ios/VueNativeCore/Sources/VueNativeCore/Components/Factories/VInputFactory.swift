@@ -84,9 +84,37 @@ final class VInputContainerView: UIView {
 
     // MARK: - Layout
 
+    /// The style's padding, in points per style key. The editing control is not a Yoga
+    /// child, so Yoga padding alone never reached the text: it ran edge to edge (VN-26).
+    private var paddingStyles: [String: CGFloat] = [:]
+
+    /// Record a padding style key; returns false for keys that are not padding.
+    func setPadding(key: String, value: CGFloat?) -> Bool {
+        guard key.hasPrefix("padding") else { return false }
+        paddingStyles[key] = value
+        setNeedsLayout()
+        return true
+    }
+
+    /// Resolved like CSS / React Native: a side beats its axis, the axis beats `padding`.
+    var contentInsets: UIEdgeInsets {
+        let all = paddingStyles["padding"] ?? 0
+        let h = paddingStyles["paddingHorizontal"] ?? all
+        let v = paddingStyles["paddingVertical"] ?? all
+        let rtl = effectiveUserInterfaceLayoutDirection == .rightToLeft
+        let start = paddingStyles["paddingStart"]
+        let end = paddingStyles["paddingEnd"]
+        return UIEdgeInsets(
+            top: paddingStyles["paddingTop"] ?? v,
+            left: paddingStyles["paddingLeft"] ?? (rtl ? end : start) ?? h,
+            bottom: paddingStyles["paddingBottom"] ?? v,
+            right: paddingStyles["paddingRight"] ?? (rtl ? start : end) ?? h
+        )
+    }
+
     override func layoutSubviews() {
         super.layoutSubviews()
-        innerControl.frame = bounds
+        innerControl.frame = bounds.inset(by: contentInsets)
         layoutPlaceholderLabel()
     }
 
@@ -155,10 +183,12 @@ final class VInputContainerView: UIView {
         guard let tv = textView else { return }
         let inset = tv.textContainerInset
         let padding = tv.textContainer.lineFragmentPadding
-        let originX = inset.left + padding
-        let originY = inset.top
-        let width = max(0, bounds.width - inset.left - inset.right - 2 * padding)
-        let height = max(0, bounds.height - inset.top - inset.bottom)
+        // The label is the container's subview: place it over the (inset) text view.
+        let frame = tv.frame
+        let originX = frame.minX + inset.left + padding
+        let originY = frame.minY + inset.top
+        let width = max(0, frame.width - inset.left - inset.right - 2 * padding)
+        let height = max(0, frame.height - inset.top - inset.bottom)
         placeholderLabel.frame = CGRect(x: originX, y: originY, width: width, height: height)
         placeholderLabel.font = tv.font
     }
@@ -405,6 +435,8 @@ final class VInputFactory: NativeComponentFactory {
             container.setMultiline(Self.boolValue(value))
 
         default:
+            // Padding also insets the editing control inside the container (VN-26).
+            _ = container.setPadding(key: key, value: StyleEngine.yogaValue(value))
             StyleEngine.apply(key: key, value: value, to: view)
         }
     }

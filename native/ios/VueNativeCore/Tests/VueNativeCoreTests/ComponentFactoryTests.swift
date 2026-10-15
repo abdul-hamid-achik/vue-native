@@ -340,6 +340,24 @@ final class ComponentFactoryTests: XCTestCase {
         XCTAssertTrue(view === inputContainer(view), "registered container identity must survive toggling back")
     }
 
+    func testVInputFactoryInsetsTheEditingControlByPadding() {
+        let factory = VInputFactory()
+        let view = factory.createView()
+        guard let container = view as? VInputContainerView else { return XCTFail("expected a container") }
+        factory.updateProp(view: view, key: "padding", value: 12)
+        factory.updateProp(view: view, key: "paddingLeft", value: 16)
+        container.frame = CGRect(x: 0, y: 0, width: 200, height: 48)
+        container.layoutIfNeeded()
+        XCTAssertEqual(container.innerControl.frame, CGRect(x: 16, y: 12, width: 200 - 16 - 12, height: 48 - 24))
+
+        factory.updateProp(view: view, key: "paddingHorizontal", value: 20)
+        factory.updateProp(view: view, key: "paddingLeft", value: nil)
+        container.setNeedsLayout()
+        container.layoutIfNeeded()
+        XCTAssertEqual(container.innerControl.frame.minX, 20)
+        XCTAssertEqual(container.innerControl.frame.width, 160)
+    }
+
     func testVInputFactorySetsText() {
         let factory = VInputFactory()
         let view = factory.createView()
