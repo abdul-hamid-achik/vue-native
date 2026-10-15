@@ -10,12 +10,44 @@ import Foundation
 /// Each platform adds its own RAF registration after calling `SharedJSPolyfills.register(in:)`.
 public enum SharedJSPolyfills {
 
+    /// JS factory turning a plain `{ name: value }` object into a `Headers`-like object:
+    /// case-insensitive `get` / `has`, plus `forEach`, `entries`, `keys`, `values` and
+    /// iteration, so `response.headers.get("x")` works as on the web. The original keys stay
+    /// as own enumerable properties for code that reads `headers[name]`.
+    public static let headersFactorySource = """
+    (function (raw) {
+      var map = {};
+      Object.keys(raw).forEach(function (k) { map[k.toLowerCase()] = String(raw[k]); });
+      var has = function (n) { return Object.prototype.hasOwnProperty.call(map, String(n).toLowerCase()); };
+      var h = {};
+      Object.keys(raw).forEach(function (k) { h[k] = raw[k]; });
+      var def = function (name, fn) { Object.defineProperty(h, name, { value: fn, enumerable: false }); };
+      var list = function (pick) { return Object.keys(map).sort().map(function (k) { return pick(k, map[k]); }); };
+      def("get", function (n) { return has(n) ? map[String(n).toLowerCase()] : null; });
+      def("has", has);
+      def("forEach", function (cb, self) { list(function (k, v) { cb.call(self, v, k, h); }); });
+      def("entries", function () { return list(function (k, v) { return [k, v]; })[Symbol.iterator](); });
+      def("keys", function () { return Object.keys(map).sort()[Symbol.iterator](); });
+      def("values", function () { return list(function (k, v) { return v; })[Symbol.iterator](); });
+      def(Symbol.iterator, function () { return h.entries(); });
+      return h;
+    })
+    """
+
+    /// Wrap a plain headers object with `headersFactorySource` in `context`.
+    public static func makeHeaders(_ raw: JSValue, in context: JSContext) -> JSValue {
+        guard let factory = context.evaluateScript(headersFactorySource), !factory.isUndefined,
+              let wrapped = factory.call(withArguments: [raw]) else { return raw }
+        return wrapped
+    }
+
     // MARK: - Timer storage
 
-    /// Holds a scheduled Timer alongside its JSManagedValue so both can be cleaned up together.
+    /// Holds a scheduled Timer alongside the id of its callback in `JSCallbackRegistry`
+    /// (the callback itself lives in the JS heap; see that type for why).
     private struct TimerEntry {
         let timer: Timer
-        let callbackRef: JSManagedValue?
+        let callbackId: Int
     }
 
     /// Serial queue that guards all mutable timer state.
@@ -103,6 +135,7 @@ public enum SharedJSPolyfills {
     public static func register(in runtime: JSRuntime) {
         guard let context = runtime.context else { return }
 
+        JSCallbackRegistry.install(in: context)
         registerConsole(in: context)
         registerTimers(in: context, runtime: runtime)
         registerMicrotask(in: context)
@@ -200,9 +233,8 @@ public enum SharedJSPolyfills {
                 return id
             }
 
-            // Protect callback from GC by storing in the context
-            let callbackRef = JSManagedValue(value: callback)
-            context.virtualMachine.addManagedReference(callbackRef, withOwner: context)
+            // Keep the callback alive in the JS heap until it fires or is cleared.
+            let callbackId = JSCallbackRegistry.retain(callback, in: context)
 
             // Schedule timer on the main thread RunLoop, then dispatch callback to JS queue
             DispatchQueue.main.async {
@@ -210,26 +242,25 @@ public enum SharedJSPolyfills {
                     guard let runtime = runtime else { return }
                     runtime.jsQueue.async { [weak runtime] in
                         guard let runtime = runtime, let context = runtime.context else { return }
-                        // Timer already fired — only invoke if not cleared
-                        let stillActive: Bool = stateQueue.sync {
-                            guard timers[timerId] != nil else { return false }
-                            timers.removeValue(forKey: timerId)
-                            return true
+                        // Timer already fired: only invoke if not cleared. The id is read
+                        // out of the map, so a clear that landed after the Timer fired
+                        // still suppresses the call. Taking it releases the callback.
+                        let firedId: Int? = stateQueue.sync {
+                            timers.removeValue(forKey: timerId)?.callbackId
                         }
-                        guard stillActive else { return }
-                        if let cb = callbackRef?.value, !cb.isUndefined {
+                        guard let firedId else { return }
+                        if let cb = JSCallbackRegistry.take(firedId, in: context) {
                             cb.call(withArguments: [])
                             // Drain microtasks after timer callback
                             context.evaluateScript("void 0;")
                         }
-                        context.virtualMachine.removeManagedReference(callbackRef, withOwner: context)
                     }
                 }
                 RunLoop.main.add(timer, forMode: .common)
                 stateQueue.async {
                     // Only store if not already cleared before the timer was created
                     if timers[timerId] == nil {
-                        timers[timerId] = TimerEntry(timer: timer, callbackRef: callbackRef)
+                        timers[timerId] = TimerEntry(timer: timer, callbackId: callbackId)
                     }
                 }
             }
@@ -245,8 +276,8 @@ public enum SharedJSPolyfills {
                 return timers.removeValue(forKey: id)
             }
             if let entry = entry {
-                // Remove the managed reference so the JSValue can be GC'd
-                context.virtualMachine.removeManagedReference(entry.callbackRef, withOwner: context)
+                // Release the callback so the JS garbage collector can free it.
+                JSCallbackRegistry.release(entry.callbackId, in: context)
                 // Timer invalidation must happen on the main thread where it was created
                 DispatchQueue.main.async {
                     entry.timer.invalidate()
@@ -267,8 +298,8 @@ public enum SharedJSPolyfills {
                 return id
             }
 
-            let callbackRef = JSManagedValue(value: callback)
-            context.virtualMachine.addManagedReference(callbackRef, withOwner: context)
+            // Keep the callback alive in the JS heap until it fires or is cleared.
+            let callbackId = JSCallbackRegistry.retain(callback, in: context)
 
             DispatchQueue.main.async {
                 let timer = Timer.scheduledTimer(withTimeInterval: max(delayMs / 1000.0, 0.001), repeats: true) { [weak runtime] _ in
@@ -276,9 +307,9 @@ public enum SharedJSPolyfills {
                     runtime.jsQueue.async { [weak runtime] in
                         guard let runtime = runtime, let context = runtime.context else { return }
                         // If the interval was cleared, do not invoke the callback
-                        let stillActive: Bool = stateQueue.sync { timers[timerId] != nil }
-                        guard stillActive else { return }
-                        if let cb = callbackRef?.value, !cb.isUndefined {
+                        let intervalId: Int? = stateQueue.sync { timers[timerId]?.callbackId }
+                        guard let intervalId else { return }
+                        if let cb = JSCallbackRegistry.value(intervalId, in: context) {
                             cb.call(withArguments: [])
                             context.evaluateScript("void 0;")
                         }
@@ -286,7 +317,7 @@ public enum SharedJSPolyfills {
                 }
                 RunLoop.main.add(timer, forMode: .common)
                 stateQueue.async {
-                    timers[timerId] = TimerEntry(timer: timer, callbackRef: callbackRef)
+                    timers[timerId] = TimerEntry(timer: timer, callbackId: callbackId)
                 }
             }
 
@@ -301,8 +332,8 @@ public enum SharedJSPolyfills {
                 return timers.removeValue(forKey: id)
             }
             if let entry = entry {
-                // Remove the managed reference so the JSValue can be GC'd
-                context.virtualMachine.removeManagedReference(entry.callbackRef, withOwner: context)
+                // Release the callback so the JS garbage collector can free it.
+                JSCallbackRegistry.release(entry.callbackId, in: context)
                 // Invalidate the timer on the main thread where it was scheduled
                 DispatchQueue.main.async {
                     entry.timer.invalidate()
@@ -411,21 +442,23 @@ public enum SharedJSPolyfills {
             }
 
             // Create a Promise via JS with captured resolve/reject
-            var resolveRef: JSValue?
-            var rejectRef: JSValue?
-
-            let captureExecutor: @convention(block) (JSValue, JSValue) -> Void = { resolve, reject in
-                resolveRef = resolve
-                rejectRef = reject
+            // Create the Promise in JS and park its [resolve, reject] in `JSCallbackRegistry`,
+            // i.e. in the JS heap, until the response arrives. (JSManagedValue owned by the
+            // context let the GC free them mid-request, so the promise never settled.)
+            guard let created = context.evaluateScript("""
+                (function () {
+                  var handlers;
+                  var promise = new Promise(function (resolve, reject) { handlers = [resolve, reject]; });
+                  return [__vnCallbacks.put(handlers), promise];
+                })()
+                """),
+                  let handlersId = created.atIndex(0)?.toInt32(), handlersId > 0,
+                  let promise = created.atIndex(1) else {
+                return context.evaluateScript(
+                    "Promise.reject(new Error('fetch: failed to create the promise'))"
+                ) ?? JSValue(undefinedIn: context)
             }
-
-            let promiseCtor = context.evaluateScript("""
-                (function(executor) {
-                    return new Promise(executor);
-                })
-            """)
-            let captureBlock = JSValue(object: captureExecutor as AnyObject, in: context)
-            let promise = promiseCtor?.call(withArguments: [captureBlock as Any])
+            let callbackId = Int(handlersId)
 
             // When any host is pinned, the delegate-backed session must own the
             // initial request so cross-host redirects cannot bypass pinning.
@@ -436,9 +469,16 @@ public enum SharedJSPolyfills {
                 runtime.jsQueue.async { [weak runtime] in
                     guard runtime != nil, let context = runtime?.context else { return }
 
+                    // Take (and so release) the handlers on every exit path. A URLSession
+                    // task always completes (success, failure, or cancellation-as-failure),
+                    // so a finished request never pins them for the life of the context.
+                    let handlers = JSCallbackRegistry.take(callbackId, in: context)
+                    let resolve = handlers?.atIndex(0)
+                    let reject = handlers?.atIndex(1)
+
                     if let error = error {
                         let errMsg = error.localizedDescription
-                        if let reject = rejectRef, !reject.isUndefined {
+                        if let reject, !reject.isUndefined {
                             let errObj = context.evaluateScript("new Error(\(SharedJSPolyfillsJSON.encode(errMsg)))")
                             reject.call(withArguments: [errObj as Any])
                         }
@@ -460,7 +500,7 @@ public enum SharedJSPolyfills {
                     }
 
                     // Create response object in JS
-                    if let resolve = resolveRef, !resolve.isUndefined {
+                    if let resolve, !resolve.isUndefined {
                         guard let responseObj = JSValue(newObjectIn: context) else {
                             NSLog("[VueNative] Warning: failed to create response object")
                             return
@@ -474,7 +514,9 @@ public enum SharedJSPolyfills {
                             for (k, v) in headersDict {
                                 headersObj.setObject(v, forKeyedSubscript: k as NSString)
                             }
-                            responseObj.setObject(headersObj, forKeyedSubscript: "headers" as NSString)
+                            responseObj.setObject(
+                                SharedJSPolyfills.makeHeaders(headersObj, in: context),
+                                forKeyedSubscript: "headers" as NSString)
                         }
 
                         // .text() method
@@ -496,7 +538,7 @@ public enum SharedJSPolyfills {
             }
             task.resume()
 
-            return promise ?? JSValue(undefinedIn: context)
+            return promise
         }
 
         context.setObject(fetch, forKeyedSubscript: "fetch" as NSString)

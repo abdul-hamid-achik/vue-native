@@ -107,6 +107,36 @@ describe('useIAP', () => {
     expect(result).toEqual(mockPurchase)
   })
 
+  it('purchase forwards appAccountToken and returns the signed transaction', async () => {
+    const mockPurchase = {
+      productId: 'com.app.premium',
+      transactionId: 'txn123',
+      jwsRepresentation: 'eyJ.header.sig',
+      appAccountToken: '7d3c0a52-8f4e-4b8e-9a63-1f2b3c4d5e6f',
+    }
+    invokeModuleSpy.mockImplementation((module: string, method: string) => {
+      if (module === 'IAP' && method === 'purchase') return Promise.resolve(mockPurchase)
+      return Promise.resolve(undefined as any)
+    })
+
+    const { useIAP } = await import('../composables/useIAP')
+    const { purchase } = await withSetup(() => useIAP())
+    const result = await purchase('com.app.premium', { appAccountToken: mockPurchase.appAccountToken })
+    expect(invokeModuleSpy).toHaveBeenCalledWith(
+      'IAP', 'purchase', ['com.app.premium', { appAccountToken: mockPurchase.appAccountToken }], 0,
+    )
+    expect(result?.jwsRepresentation).toBe('eyJ.header.sig')
+  })
+
+  it('showManageSubscriptions opens the system sheet without a timeout', async () => {
+    invokeModuleSpy.mockImplementation(() => Promise.resolve(undefined as any))
+    const { useIAP } = await import('../composables/useIAP')
+    const { showManageSubscriptions, error } = await withSetup(() => useIAP())
+    await showManageSubscriptions()
+    expect(invokeModuleSpy).toHaveBeenCalledWith('IAP', 'showManageSubscriptions', [], 0)
+    expect(error.value).toBeNull()
+  })
+
   it('purchase sets error on failure', async () => {
     invokeModuleSpy.mockImplementation((module: string, method: string) => {
       if (module === 'IAP' && method === 'purchase') return Promise.reject('user cancelled')

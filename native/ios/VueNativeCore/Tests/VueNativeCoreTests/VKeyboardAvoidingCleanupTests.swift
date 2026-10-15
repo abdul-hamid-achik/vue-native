@@ -25,4 +25,29 @@ final class VKeyboardAvoidingCleanupTests: XCTestCase {
         return optional.displayStyle == .optional && optional.children.isEmpty
     }
 }
+
+/// VN-18: on keyboard show, the focused field's enclosing scroll view is found so the field
+/// (and the button under it) can be scrolled into view.
+@MainActor
+final class VKeyboardAvoidingScrollTests: XCTestCase {
+    func testFindsTheNearestScrollViewInsideTheContainer() {
+        let container = UIView()
+        let scroll = UIScrollView()
+        let content = UIView()
+        let field = UITextField()
+        container.addSubview(scroll)
+        scroll.addSubview(content)
+        content.addSubview(field)
+        XCTAssertTrue(KeyboardAvoidingView.enclosingScrollView(of: field, within: container) === scroll)
+    }
+
+    func testNoScrollViewInsideTheContainerReturnsNil() {
+        let outerScroll = UIScrollView()
+        let container = UIView()
+        let field = UITextField()
+        outerScroll.addSubview(container)
+        container.addSubview(field)
+        XCTAssertNil(KeyboardAvoidingView.enclosingScrollView(of: field, within: container))
+    }
+}
 #endif

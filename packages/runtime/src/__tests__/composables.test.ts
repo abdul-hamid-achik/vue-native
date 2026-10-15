@@ -762,6 +762,19 @@ describe('Composables', () => {
       expect(result).toEqual({ uri: '/tmp/rec.m4a', duration: 5.5 })
     })
 
+    it('reports the recording level from audio:recordingLevel events', async () => {
+      const { useAudio } = await import('../composables/useAudio')
+      const { recordingLevel, onRecordingLevel } = await withSetup(() => useAudio())
+      const seen: number[] = []
+      const off = onRecordingLevel(l => seen.push(l.level))
+      triggerGlobalEvent('audio:recordingLevel', { level: 0.6, power: -20, currentTime: 1.2 })
+      expect(recordingLevel.value).toBe(0.6)
+      off()
+      triggerGlobalEvent('audio:recordingLevel', { level: 0.2, power: -40, currentTime: 1.3 })
+      expect(seen).toEqual([0.6])
+      expect(recordingLevel.value).toBe(0.2)
+    })
+
     it('updates position/duration on audio:progress event', async () => {
       const { useAudio } = await import('../composables/useAudio')
       const { position, duration } = await withSetup(() => useAudio())

@@ -270,6 +270,7 @@ public final class NativeBridge {
         #endif
 
         var needsLayout = false
+        var backgroundChanged = false
 
         for operation in operations {
             guard let op = operation["op"] as? String,
@@ -290,6 +291,14 @@ public final class NativeBridge {
                     needsLayout = true
                     break
                 }
+            }
+
+            // A background change is not a layout change, but the host view mirrors the
+            // app's root background behind the safe area (VN-14): a light/dark theme switch
+            // would otherwise leave the status-bar strip in the old colour.
+            if !backgroundChanged && op == "updateStyle", args.count >= 2,
+               let styles = args[1] as? [String: Any], styles["backgroundColor"] != nil {
+                backgroundChanged = true
             }
 
             PerformanceModule.recordBridgeOperations(1)
@@ -337,6 +346,8 @@ public final class NativeBridge {
         // Trigger layout when tree was mutated or layout-affecting styles changed
         if needsLayout {
             triggerLayout()
+        } else if backgroundChanged {
+            syncHostBackground()
         }
     }
 
@@ -1027,9 +1038,46 @@ public final class NativeBridge {
         // After the main layout pass, recompute content sizes for all scroll views.
         updateScrollViewContentSizes()
 
+        // Frames are final: cap requested corner radii at half of each view's shortest side.
+        CornerRadiusClamp.applyAll()
+
+        // The root view is pinned to the safe area, so the host view shows above and below
+        // it (status bar, home indicator). Paint those areas with the app's root background
+        // instead of the black loading colour (VN-14).
+        syncHostBackground()
+
         // With frames resolved, report measured heights for variable-height
         // VFlatList items so JS can position them by cumulative real heights.
         reportFlatListItemHeights()
+    }
+
+    /// Paint the host view (behind the safe area) with the app's root background (VN-14).
+    private func syncHostBackground() {
+        guard let rootView = rootView, let host = rootViewController?.view else { return }
+        let background = Self.appBackground(from: rootView) ?? .systemBackground
+        if host.backgroundColor != background { host.backgroundColor = background }
+    }
+
+    /// The first opaque background going down the root's largest-child chain: the root
+    /// container is transparent (and also holds zero-size Vue anchors), and the app paints
+    /// its outermost `VView`.
+    static func appBackground(from root: UIView, maxDepth: Int = 4) -> UIColor? {
+        func area(_ v: UIView) -> CGFloat { v.bounds.width * v.bounds.height }
+        // Depth-first, largest children first. Siblings can tie in size (a full-screen,
+        // transparent overlay host next to the app's root view): a plain "largest child"
+        // walk then picked the empty overlay half the time and found no colour (VN-29).
+        func search(_ view: UIView, depth: Int) -> UIColor? {
+            if let color = view.backgroundColor, color.cgColor.alpha > 0 { return color }
+            guard depth < maxDepth else { return nil }
+            let children = view.subviews
+                .filter { !$0.isHidden && area($0) > 0 }
+                .sorted { area($0) > area($1) }
+            for child in children {
+                if let color = search(child, depth: depth + 1) { return color }
+            }
+            return nil
+        }
+        return search(root, depth: 0)
     }
 
     /// Request a full layout pass from component code that changed Yoga geometry on

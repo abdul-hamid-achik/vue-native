@@ -71,7 +71,7 @@ export { useAccelerometer, useGyroscope } from './useSensors'
 export type { SensorOptions, SensorData } from './useSensors'
 
 export { useAudio } from './useAudio'
-export type { AudioPlayOptions, AudioRecordOptions, AudioRecordResult } from './useAudio'
+export type { AudioPlayOptions, AudioRecordOptions, AudioRecordResult, RecordingLevel } from './useAudio'
 
 export { useDatabase } from './useDatabase'
 export type { ExecuteResult, Row, TransactionContext } from './useDatabase'
@@ -83,7 +83,7 @@ export { useSharedElementTransition, getSharedElementViewId, getRegisteredShared
 export type { SharedElementFrame, SharedElementRegistration } from './useSharedElementTransition'
 
 export { useIAP } from './useIAP'
-export type { Product, Purchase, TransactionState, TransactionUpdate, ProductType } from './useIAP'
+export type { Product, Purchase, PurchaseOptions, TransactionState, TransactionUpdate, ProductType } from './useIAP'
 
 export { useAppleSignIn } from './useAppleSignIn'
 export type { SocialUser, AuthResult } from './useAppleSignIn'

@@ -63,7 +63,7 @@ final class VKeyboardAvoidingFactory: NativeComponentFactory {
 
 /// UIView subclass that automatically adjusts its Yoga bottom padding
 /// based on keyboard visibility.
-private final class KeyboardAvoidingView: UIView {
+final class KeyboardAvoidingView: UIView {
 
     private var showObserver: NSObjectProtocol?
     private var hideObserver: NSObjectProtocol?
@@ -139,6 +139,42 @@ private final class KeyboardAvoidingView: UIView {
 
         flex.paddingBottom(padding)
         triggerLayout()
+        // Shrinking the container is not enough on its own: a scroll view inside keeps its
+        // offset, so the focused field (and the submit button under it) can end up hidden
+        // below the new bottom edge (VN-18). Scroll it into view once the layout settled.
+        DispatchQueue.main.async { [weak self] in
+            self?.scrollFirstResponderIntoView()
+        }
+    }
+
+    /// Room kept visible under the focused field, so what follows it (a submit button,
+    /// an error message) is not left just below the keyboard.
+    static let trailingContext: CGFloat = 120
+
+    private func scrollFirstResponderIntoView() {
+        guard let responder = Self.firstResponder(in: self),
+              let scrollView = Self.enclosingScrollView(of: responder, within: self) else { return }
+        var rect = responder.convert(responder.bounds, to: scrollView)
+        rect.size.height += Self.trailingContext
+        scrollView.scrollRectToVisible(rect, animated: true)
+    }
+
+    static func firstResponder(in view: UIView) -> UIView? {
+        if view.isFirstResponder { return view }
+        for subview in view.subviews {
+            if let found = firstResponder(in: subview) { return found }
+        }
+        return nil
+    }
+
+    /// The nearest scroll view between `view` (exclusive) and `container`.
+    static func enclosingScrollView(of view: UIView, within container: UIView) -> UIScrollView? {
+        var current = view.superview
+        while let candidate = current, candidate !== container.superview {
+            if let scrollView = candidate as? UIScrollView { return scrollView }
+            current = candidate.superview
+        }
+        return nil
     }
 
     private func handleKeyboardHide() {

@@ -15,6 +15,20 @@ export interface AudioRecordOptions {
   quality?: 'low' | 'medium' | 'high'
   /** Output format. Default "m4a". */
   format?: 'm4a' | 'wav'
+  /**
+   * iOS: report the input level while recording (`recordingLevel`, `onRecordingLevel`),
+   * about 12 times a second, e.g. to show that the microphone hears the user.
+   */
+  metering?: boolean
+}
+
+export interface RecordingLevel {
+  /** 0 (silence, −50 dBFS or less) … 1 (0 dBFS). */
+  level: number
+  /** Average power in dBFS. */
+  power: number
+  /** Seconds recorded so far. */
+  currentTime: number
 }
 
 export interface AudioRecordResult {
@@ -63,6 +77,14 @@ export function useAudio() {
   const isPlaying = ref(false)
   const isRecording = ref(false)
   const error = ref<string | null>(null)
+  /** Input level 0…1 while recording with `metering: true` (iOS); 0 otherwise. */
+  const recordingLevel = ref(0)
+  const levelHandlers = new Set<(l: RecordingLevel) => void>()
+
+  const unsubLevel = NativeBridge.onGlobalEvent<RecordingLevel>('audio:recordingLevel', (payload) => {
+    recordingLevel.value = payload.level ?? 0
+    levelHandlers.forEach(fn => fn(payload))
+  })
 
   // Subscribe to progress events
   const unsubProgress = NativeBridge.onGlobalEvent<{ currentTime?: number, duration?: number }>('audio:progress', (payload) => {
@@ -85,6 +107,8 @@ export function useAudio() {
     unsubProgress()
     unsubComplete()
     unsubError()
+    unsubLevel()
+    levelHandlers.clear()
     // Stop playback and recording to free resources
     NativeBridge.invokeNativeModule('Audio', 'stop', []).catch((err: unknown) => {
       if (__DEV__) console.warn('[vue-native] Audio.stop failed:', err)
@@ -141,6 +165,7 @@ export function useAudio() {
   async function stopRecording(): Promise<AudioRecordResult> {
     const result = asRecord(await NativeBridge.invokeNativeModule('Audio', 'stopRecording', []))
     isRecording.value = false
+    recordingLevel.value = 0
     return {
       uri: getStringProp(result, 'uri') ?? '',
       duration: getNumberProp(result, 'duration') ?? 0,
@@ -153,6 +178,12 @@ export function useAudio() {
 
   async function resumeRecording(): Promise<void> {
     await NativeBridge.invokeNativeModule('Audio', 'resumeRecording', [])
+  }
+
+  /** Called with every level sample while recording with `metering: true`. Returns an unsubscribe. */
+  function onRecordingLevel(handler: (level: RecordingLevel) => void): () => void {
+    levelHandlers.add(handler)
+    return () => levelHandlers.delete(handler)
   }
 
   return {
@@ -169,12 +200,14 @@ export function useAudio() {
     stopRecording,
     pauseRecording,
     resumeRecording,
+    onRecordingLevel,
 
     // Reactive state
     duration,
     position,
     isPlaying,
     isRecording,
+    recordingLevel,
     error,
   }
 }

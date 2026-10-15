@@ -1,6 +1,8 @@
 package com.vuenative.core
 
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import com.android.billingclient.api.*
@@ -52,6 +54,7 @@ class IAPModule : NativeModule, PurchasesUpdatedListener {
             }
             "restorePurchases" -> handleRestorePurchases(callback)
             "getActiveSubscriptions" -> handleGetActiveSubscriptions(callback)
+            "showManageSubscriptions" -> handleShowManageSubscriptions(callback)
             else -> callback(null, "IAPModule: unknown method '$method'")
         }
     }
@@ -322,5 +325,21 @@ class IAPModule : NativeModule, PurchasesUpdatedListener {
         cachedProducts.clear()
         context = null
         bridge = null
+    }
+
+    /** Play Store's subscription center (the counterpart of iOS's manage-subscriptions sheet). */
+    private fun handleShowManageSubscriptions(callback: (Any?, String?) -> Unit) {
+        val ctx = context ?: return callback(null, "showManageSubscriptions: not initialized")
+        val packageName = ctx.packageName
+        val intent = Intent(
+            Intent.ACTION_VIEW,
+            Uri.parse("https://play.google.com/store/account/subscriptions?package=$packageName"),
+        ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        try {
+            ctx.startActivity(intent)
+            callback(null, null)
+        } catch (e: Exception) {
+            callback(null, "showManageSubscriptions: ${e.message}")
+        }
     }
 }

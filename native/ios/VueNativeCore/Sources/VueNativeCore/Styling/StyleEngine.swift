@@ -677,12 +677,15 @@ enum StyleEngine {
 
         case "borderRadius":
             if let num = yogaValue(value) {
-                view.layer.cornerRadius = num
+                // Clamped to half the shortest side after layout: a pill radius such as 999
+                // would otherwise hide the whole clipped view (VN-15).
+                CornerRadiusClamp.request(num, on: view)
                 // Automatically enable clipping when border radius is set
                 if num > 0 {
                     view.clipsToBounds = true
                 }
             } else {
+                CornerRadiusClamp.request(nil, on: view)
                 view.layer.cornerRadius = 0
             }
             return true
@@ -811,17 +814,23 @@ enum StyleEngine {
 
         case "accessibilityLabel":
             view.accessibilityLabel = value as? String
-            view.isAccessibilityElement = true
+            // Only a real value makes the view an element: the renderer also sends null for
+            // unset props, and an element hides its whole subtree from VoiceOver and UI tests.
+            if value is String { view.isAccessibilityElement = true }
             return true
 
         case "accessibilityHint":
             view.accessibilityHint = value as? String
-            view.isAccessibilityElement = true
+            // Only a real value makes the view an element: the renderer also sends null for
+            // unset props, and an element hides its whole subtree from VoiceOver and UI tests.
+            if value is String { view.isAccessibilityElement = true }
             return true
 
         case "accessibilityValue":
             view.accessibilityValue = value as? String
-            view.isAccessibilityElement = true
+            // Only a real value makes the view an element: the renderer also sends null for
+            // unset props, and an element hides its whole subtree from VoiceOver and UI tests.
+            if value is String { view.isAccessibilityElement = true }
             return true
 
         case "accessibilityRole":
@@ -841,6 +850,7 @@ enum StyleEngine {
 
         case "accessibilityState":
             let state = value as? [String: Any] ?? [:]
+            let hasState = !state.isEmpty
             var traits = view.accessibilityTraits
             // State props are reactive. Remove the traits owned by the previous
             // state snapshot before applying the new one so true -> false and
@@ -851,7 +861,7 @@ enum StyleEngine {
                 traits.insert(.selected)
             }
             view.accessibilityTraits = traits
-            view.isAccessibilityElement = true
+            if hasState { view.isAccessibilityElement = true }
             return true
 
         case "accessible":
@@ -1016,7 +1026,7 @@ enum StyleEngine {
         }
         view.clipsToBounds = true
         view.layer.maskedCorners.insert(corner)
-        view.layer.cornerRadius = radius
+        CornerRadiusClamp.request(radius, on: view)
     }
 
     // MARK: - Helpers

@@ -21,11 +21,14 @@ import AVFoundation
 ///   - audio:progress { currentTime, duration }
 ///   - audio:complete {}
 ///   - audio:error { message }
+///   - audio:recordingLevel { level, power, currentTime } -- ~12×/s while recording with
+///     `startRecording({ metering: true })`; level is 0…1 (−50 dB…0 dB), power in dBFS
 final class AudioModule: NSObject, NativeModule {
     let moduleName = "Audio"
 
     private var player: AVAudioPlayer?
     private var recorder: AVAudioRecorder?
+    private var meterTimer: Timer?
     private var displayLink: CADisplayLink?
     private var isPlaying = false
     private weak var bridge: NativeBridge?
@@ -256,7 +259,10 @@ final class AudioModule: NSObject, NativeModule {
             guard let self = self else { return }
 
             do {
-                try AVAudioSession.sharedInstance().setCategory(.playAndRecord, mode: .default)
+                // defaultToSpeaker: playAndRecord otherwise routes playback to the earpiece,
+                // so everything played after a recording became nearly inaudible.
+                try AVAudioSession.sharedInstance().setCategory(
+                    .playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetoothA2DP])
                 try AVAudioSession.sharedInstance().setActive(true)
             } catch {
                 callback(nil, "Failed to set audio session for recording: \(error.localizedDescription)")
@@ -298,9 +304,12 @@ final class AudioModule: NSObject, NativeModule {
 
             do {
                 let recorder = try AVAudioRecorder(url: url, settings: settings)
+                let metering = options["metering"] as? Bool ?? false
+                recorder.isMeteringEnabled = metering
                 recorder.prepareToRecord()
                 recorder.record()
                 self.recorder = recorder
+                if metering { self.startMetering() }
                 callback(["uri": url.absoluteString], nil)
             } catch {
                 callback(nil, "Failed to start recording: \(error.localizedDescription)")
@@ -316,10 +325,41 @@ final class AudioModule: NSObject, NativeModule {
             }
             let duration = recorder.currentTime
             let uri = recorder.url.absoluteString
+            self.stopMetering()
             recorder.stop()
             self.recorder = nil
+            // Back to playback-only so later clips use the normal (speaker) route.
+            try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
             callback(["uri": uri, "duration": duration], nil)
         }
+    }
+
+    /// Normalized input level: −50 dBFS (silence) … 0 dBFS (loud) → 0…1.
+    static func normalizedLevel(power: Float) -> Double {
+        let floor: Float = -50
+        guard power.isFinite else { return 0 }
+        return Double(max(0, min(1, (power - floor) / -floor)))
+    }
+
+    private func startMetering() {
+        stopMetering()
+        let timer = Timer(timeInterval: 0.08, repeats: true) { [weak self] _ in
+            guard let self, let recorder = self.recorder, recorder.isRecording else { return }
+            recorder.updateMeters()
+            let power = recorder.averagePower(forChannel: 0)
+            self.bridge?.dispatchGlobalEvent("audio:recordingLevel", payload: [
+                "level": Self.normalizedLevel(power: power),
+                "power": Double(power.isFinite ? power : -160),
+                "currentTime": recorder.currentTime,
+            ])
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        meterTimer = timer
+    }
+
+    private func stopMetering() {
+        meterTimer?.invalidate()
+        meterTimer = nil
     }
 
     private func pauseRecording(callback: @escaping (Any?, String?) -> Void) {
@@ -361,6 +401,7 @@ final class AudioModule: NSObject, NativeModule {
             self.player?.delegate = nil
             self.player = nil
             self.playerDelegate = nil
+            self.stopMetering()
             self.recorder?.stop()
             self.recorder = nil
             self.isPlaying = false

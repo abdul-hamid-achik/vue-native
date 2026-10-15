@@ -424,7 +424,6 @@ const baselinedComponentGaps = new Set([
   'ios|VText|prop:selectable',
   'macos|VText|prop:selectable',
   'android|VScrollView|prop:contentContainerStyle',
-  'ios|VScrollView|prop:contentContainerStyle',
   'android|VScrollView|prop:pagingEnabled',
   'android|VActivityIndicator|prop:hidesWhenStopped',
   'android|VVideo|prop:controls',

@@ -1,5 +1,6 @@
 #if canImport(UIKit)
 import VueNativeCore
+import VueNativeCoreSVGCompat
 
 /// Bootstrap for the optional SVG component product.
 ///
@@ -40,6 +41,8 @@ public enum VueNativeCoreSVG {
     /// its registry: the factory is recorded for the registry's default
     /// registration pass and installed immediately if that pass already ran.
     public static func register() {
+        // Before any <VSVG> renders: see VNPrimeSVGKitDevicePPI (Debug crash on unknown devices).
+        VNPrimeSVGKitDevicePPI()
         VueNativeViewController.provideOptionalComponent("VSVG", factory: VSVGFactory())
     }
 }

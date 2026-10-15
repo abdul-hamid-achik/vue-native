@@ -5,7 +5,7 @@ import { NativeBridge } from '../bridge'
 
 export type ProductType = 'consumable' | 'nonConsumable' | 'autoRenewable' | 'nonRenewable'
 
-export type TransactionState = 'purchasing' | 'purchased' | 'failed' | 'restored' | 'deferred'
+export type TransactionState = 'purchasing' | 'purchased' | 'failed' | 'restored' | 'deferred' | 'revoked'
 
 export interface Product {
   id: string
@@ -23,9 +23,26 @@ export interface Purchase {
   originalTransactionId?: string
   purchaseDate: string
   expiresDate?: string
+  /**
+   * iOS: the App Store–signed transaction (JWS). Send it to your server and verify it there
+   * (App Store Server Library) before granting anything; never trust the other fields alone.
+   */
+  jwsRepresentation?: string
+  /** iOS: the `appAccountToken` passed to `purchase()`, lowercased UUID. */
+  appAccountToken?: string
+  /** iOS 16+: `Production`, `Sandbox` or `Xcode`. */
+  environment?: string
 }
 
-export interface TransactionUpdate {
+export interface PurchaseOptions {
+  /**
+   * iOS: a UUID that ties the purchase to your user. It comes back on every transaction and in
+   * App Store Server Notifications, so the server knows whose subscription renewed.
+   */
+  appAccountToken?: string
+}
+
+export interface TransactionUpdate extends Partial<Omit<Purchase, 'productId'>> {
   productId: string
   state: TransactionState
   transactionId?: string
@@ -91,14 +108,14 @@ export function useIAP() {
     }
   }
 
-  async function purchase(sku: string): Promise<Purchase | null> {
+  async function purchase(sku: string, options?: PurchaseOptions): Promise<Purchase | null> {
     error.value = null
     try {
       // timeoutMs=0: the store sheet is human-gated and can stay open for
       // minutes (password, 2FA, ask-to-buy). A 30s rejection is swallowed into
       // `null` below, which callers read as "user cancelled" — so the purchase
       // could complete natively while the app reports it abandoned.
-      return await NativeBridge.invokeNativeModule('IAP', 'purchase', [sku], 0)
+      return await NativeBridge.invokeNativeModule('IAP', 'purchase', options ? [sku, options] : [sku], 0)
     } catch (err: unknown) {
       error.value = getErrorMessage(err)
       return null
@@ -127,6 +144,17 @@ export function useIAP() {
     }
   }
 
+  /** iOS: open the system sheet where the user manages or cancels their subscriptions. */
+  async function showManageSubscriptions(): Promise<void> {
+    error.value = null
+    try {
+      // timeoutMs=0: the sheet stays open until the user closes it.
+      await NativeBridge.invokeNativeModule('IAP', 'showManageSubscriptions', [], 0)
+    } catch (err: unknown) {
+      error.value = getErrorMessage(err)
+    }
+  }
+
   function onTransactionUpdate(callback: (update: TransactionUpdate) => void): () => void {
     const unsub = NativeBridge.onGlobalEvent('iap:transactionUpdate', callback)
     cleanups.push(unsub)
@@ -146,6 +174,7 @@ export function useIAP() {
     purchase,
     restorePurchases,
     getActiveSubscriptions,
+    showManageSubscriptions,
     onTransactionUpdate,
   }
 }

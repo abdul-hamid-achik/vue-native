@@ -6,12 +6,17 @@ import StoreKit
 /// Methods:
 ///   - initialize() -- set up transaction listener
 ///   - getProducts(skus: [String]) -- fetch product info
-///   - purchase(sku: String) -- purchase a product
+///   - purchase(sku: String, options?: { appAccountToken?: UUID string }) -- purchase a product
 ///   - restorePurchases() -- restore completed transactions
 ///   - getActiveSubscriptions() -- list active auto-renewable subscriptions
+///   - showManageSubscriptions() -- open the system "manage subscriptions" sheet
+///
+/// Every transaction dictionary carries `jwsRepresentation` (the App Store–signed JWS a
+/// server verifies with the App Store Server Library) and the `appAccountToken` the app
+/// attached at purchase, so a backend can grant entitlements without trusting the client.
 ///
 /// Events:
-///   - iap:transactionUpdate { productId, state, transactionId, error? }
+///   - iap:transactionUpdate { productId, state, transactionId, jwsRepresentation?, error? }
 @available(iOS 15.0, *)
 final class IAPModule: NativeModule {
     let moduleName = "IAP"
@@ -58,6 +63,15 @@ final class IAPModule: NativeModule {
                 callback(nil, "purchase: expected SKU string")
                 return
             }
+            var purchaseOptions: Set<Product.PurchaseOption> = []
+            if let options = args.dropFirst().first as? [String: Any],
+               let token = options["appAccountToken"] as? String {
+                guard let uuid = UUID(uuidString: token) else {
+                    callback(nil, "purchase: appAccountToken must be a UUID string")
+                    return
+                }
+                purchaseOptions.insert(.appAccountToken(uuid))
+            }
             Task {
                 do {
                     let products = try await Product.products(for: [sku])
@@ -65,17 +79,12 @@ final class IAPModule: NativeModule {
                         callback(nil, "purchase: product '\(sku)' not found")
                         return
                     }
-                    let result = try await product.purchase()
+                    let result = try await product.purchase(options: purchaseOptions)
                     switch result {
                     case .success(let verification):
                         let transaction = try self.checkVerification(verification)
                         await transaction.finish()
-                        let purchaseInfo: [String: Any] = [
-                            "productId": transaction.productID,
-                            "transactionId": String(transaction.id),
-                            "purchaseDate": transaction.purchaseDate.ISO8601Format(),
-                        ]
-                        callback(purchaseInfo, nil)
+                        callback(Self.transactionInfo(transaction, jws: verification.jwsRepresentation), nil)
                     case .userCancelled:
                         callback(nil, "purchase: user cancelled")
                     case .pending:
@@ -95,15 +104,7 @@ final class IAPModule: NativeModule {
                     var restored: [[String: Any]] = []
                     for await result in Transaction.currentEntitlements {
                         if let transaction = try? self.checkVerification(result) {
-                            var info: [String: Any] = [
-                                "productId": transaction.productID,
-                                "transactionId": String(transaction.id),
-                                "purchaseDate": transaction.purchaseDate.ISO8601Format(),
-                            ]
-                            if let expires = transaction.expirationDate {
-                                info["expiresDate"] = expires.ISO8601Format()
-                            }
-                            restored.append(info)
+                            restored.append(Self.transactionInfo(transaction, jws: result.jwsRepresentation))
                         }
                     }
                     callback(restored, nil)
@@ -119,22 +120,37 @@ final class IAPModule: NativeModule {
                     if let transaction = try? self.checkVerification(result) {
                         guard transaction.productType == .autoRenewable else { continue }
                         guard transaction.revocationDate == nil else { continue }
-                        var info: [String: Any] = [
-                            "productId": transaction.productID,
-                            "transactionId": String(transaction.id),
-                            "purchaseDate": transaction.purchaseDate.ISO8601Format(),
-                        ]
-                        if let expires = transaction.expirationDate {
-                            info["expiresDate"] = expires.ISO8601Format()
-                        }
-                        active.append(info)
+                        active.append(Self.transactionInfo(transaction, jws: result.jwsRepresentation))
                     }
                 }
                 callback(active, nil)
             }
 
+        case "showManageSubscriptions":
+            showManageSubscriptions(callback: callback)
+
         default:
             callback(nil, "IAPModule: unknown method '\(method)'")
+        }
+    }
+
+    // MARK: - Manage subscriptions
+
+    private func showManageSubscriptions(callback: @escaping (Any?, String?) -> Void) {
+        Task { @MainActor in
+            guard let scene = UIApplication.shared.connectedScenes
+                .compactMap({ $0 as? UIWindowScene })
+                .first(where: { $0.activationState == .foregroundActive })
+            else {
+                callback(nil, "showManageSubscriptions: no active window scene")
+                return
+            }
+            do {
+                try await AppStore.showManageSubscriptions(in: scene)
+                callback(nil, nil)
+            } catch {
+                callback(nil, "showManageSubscriptions: \(error.localizedDescription)")
+            }
         }
     }
 
@@ -148,11 +164,8 @@ final class IAPModule: NativeModule {
                 do {
                     let transaction = try self.checkVerification(result)
                     await transaction.finish()
-                    let payload: [String: Any] = [
-                        "productId": transaction.productID,
-                        "state": "purchased",
-                        "transactionId": String(transaction.id),
-                    ]
+                    var payload = Self.transactionInfo(transaction, jws: result.jwsRepresentation)
+                    payload["state"] = transaction.revocationDate == nil ? "purchased" : "revoked"
                     await MainActor.run {
                         self.bridge?.dispatchGlobalEvent("iap:transactionUpdate", payload: payload)
                     }
@@ -171,6 +184,27 @@ final class IAPModule: NativeModule {
     }
 
     // MARK: - Helpers
+
+    /// The dictionary every method returns for a verified transaction.
+    static func transactionInfo(_ transaction: Transaction, jws: String) -> [String: Any] {
+        var info: [String: Any] = [
+            "productId": transaction.productID,
+            "transactionId": String(transaction.id),
+            "originalTransactionId": String(transaction.originalID),
+            "purchaseDate": transaction.purchaseDate.ISO8601Format(),
+            "jwsRepresentation": jws,
+        ]
+        if let expires = transaction.expirationDate {
+            info["expiresDate"] = expires.ISO8601Format()
+        }
+        if let token = transaction.appAccountToken {
+            info["appAccountToken"] = token.uuidString.lowercased()
+        }
+        if #available(iOS 16.0, *) {
+            info["environment"] = transaction.environment.rawValue
+        }
+        return info
+    }
 
     private func checkVerification<T>(_ result: VerificationResult<T>) throws -> T {
         switch result {

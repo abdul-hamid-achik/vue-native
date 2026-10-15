@@ -56,9 +56,15 @@ let package = Package(
                 // Referenced only to constrain the shared resolution graph to a
                 // CocoaLumberjack that SVGKit's iOS 9 floor can still build
                 // against; see the package declaration above.
-                .product(name: "CocoaLumberjack", package: "CocoaLumberjack")
+                .product(name: "CocoaLumberjack", package: "CocoaLumberjack"),
+                "VueNativeCoreSVGCompat"
             ],
             path: "Sources/VueNativeCoreSVG"
+        ),
+        // Objective-C shim: NSAssertionHandler's variadic hooks can't be overridden from Swift.
+        .target(
+            name: "VueNativeCoreSVGCompat",
+            path: "Sources/VueNativeCoreSVGCompat"
         ),
         .testTarget(
             name: "VueNativeCoreSVGTests",

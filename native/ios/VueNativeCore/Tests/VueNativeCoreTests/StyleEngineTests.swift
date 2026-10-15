@@ -189,6 +189,29 @@ final class StyleEngineTests: XCTestCase {
         XCTAssertTrue(view.clipsToBounds, "clipsToBounds should be true when borderRadius > 0")
     }
 
+    /// VN-15: a pill radius (999) on a clipped view hid the view entirely. The radius is
+    /// capped at half the shortest side once the view has a size.
+    func testPillBorderRadiusIsClampedToHalfTheShortestSide() {
+        view.frame = CGRect(x: 0, y: 0, width: 200, height: 50)
+        StyleEngine.apply(key: "borderRadius", value: 999.0, to: view)
+        XCTAssertEqual(view.layer.cornerRadius, 25.0, accuracy: 0.001)
+
+        view.frame = CGRect(x: 0, y: 0, width: 200, height: 40)
+        CornerRadiusClamp.applyAll()
+        XCTAssertEqual(view.layer.cornerRadius, 20.0, accuracy: 0.001, "re-clamped after the size changes")
+
+        StyleEngine.apply(key: "borderRadius", value: 6.0, to: view)
+        XCTAssertEqual(view.layer.cornerRadius, 6.0, accuracy: 0.001, "small radii are untouched")
+    }
+
+    func testBorderRadiusBeforeLayoutKeepsRequestedValue() {
+        StyleEngine.apply(key: "borderRadius", value: 999.0, to: view)
+        XCTAssertEqual(CornerRadiusClamp.requested(for: view), 999.0)
+        view.frame = CGRect(x: 0, y: 0, width: 120, height: 44)
+        CornerRadiusClamp.applyAll()
+        XCTAssertEqual(view.layer.cornerRadius, 22.0, accuracy: 0.001)
+    }
+
     /// Regression test: `applyCornerRadius` used to take `max(current, radius)`,
     /// so a smaller per-corner radius sent after a larger one was a silent
     /// no-op — the corner could grow but never shrink.
@@ -346,6 +369,17 @@ final class StyleEngineTests: XCTestCase {
         StyleEngine.apply(key: "accessibilityLabel", value: "Test Label", to: view)
         XCTAssertEqual(view.accessibilityLabel, "Test Label", "accessibilityLabel should be set")
         XCTAssertTrue(view.isAccessibilityElement, "isAccessibilityElement should be true")
+    }
+
+    /// The renderer sends null for unset accessibility props on every view. Those must not
+    /// turn a container into an element, which would hide its whole subtree from VoiceOver
+    /// and UI automation.
+    func testNullAccessibilityPropsKeepContainersTransparent() {
+        for key in ["accessibilityLabel", "accessibilityHint", "accessibilityValue", "accessibilityState"] {
+            StyleEngine.apply(key: key, value: NSNull(), to: view)
+            StyleEngine.apply(key: key, value: nil, to: view)
+        }
+        XCTAssertFalse(view.isAccessibilityElement)
     }
 
     func testAccessibilityRoleButton() {
