@@ -41,3 +41,14 @@ final class JSCallbackRetentionTests: XCTestCase {
         wait(for: [fired], timeout: 5)
     }
 }
+
+final class AudioLevelTests: XCTestCase {
+    func testNormalizedLevelMapsDecibelsToUnitRange() {
+        XCTAssertEqual(AudioModule.normalizedLevel(power: -160), 0)
+        XCTAssertEqual(AudioModule.normalizedLevel(power: -50), 0)
+        XCTAssertEqual(AudioModule.normalizedLevel(power: -25), 0.5, accuracy: 0.001)
+        XCTAssertEqual(AudioModule.normalizedLevel(power: 0), 1)
+        XCTAssertEqual(AudioModule.normalizedLevel(power: 3), 1)
+        XCTAssertEqual(AudioModule.normalizedLevel(power: -.infinity), 0)
+    }
+}

@@ -49,10 +49,12 @@ useAudio(): {
   stopRecording: () => Promise<AudioRecordResult>,
   pauseRecording: () => Promise<void>,
   resumeRecording: () => Promise<void>,
+  onRecordingLevel: (handler: (level: RecordingLevel) => void) => () => void,
   duration: Ref<number>,
   position: Ref<number>,
   isPlaying: Ref<boolean>,
   isRecording: Ref<boolean>,
+  recordingLevel: Ref<number>,
   error: Ref<string | null>
 }
 ```
@@ -71,10 +73,12 @@ useAudio(): {
 | `stopRecording` | `() => Promise<AudioRecordResult>` | Stop recording and return the recorded file info. |
 | `pauseRecording` | `() => Promise<void>` | Pause the current recording session. |
 | `resumeRecording` | `() => Promise<void>` | Resume a paused recording session. |
+| `onRecordingLevel` | `(handler) => () => void` | iOS: called about 12 times a second with the input level while recording with `metering: true`. Returns an unsubscribe function. |
 | `duration` | `Ref<number>` | Total duration of the current audio in seconds. |
 | `position` | `Ref<number>` | Current playback position in seconds. |
 | `isPlaying` | `Ref<boolean>` | Whether audio is currently playing. |
 | `isRecording` | `Ref<boolean>` | Whether audio is currently being recorded. |
+| `recordingLevel` | `Ref<number>` | iOS: input level from 0 (silence) to 1 while recording with `metering: true`; use it to show that the microphone hears the user. |
 | `error` | `Ref<string \| null>` | The last error message, or `null` if no error. |
 
 ### Types
@@ -92,6 +96,17 @@ interface AudioRecordOptions {
   quality?: 'low' | 'medium' | 'high'
   /** Output file format. Default: 'm4a' */
   format?: 'm4a' | 'wav'
+  /** iOS: report the input level while recording. Default: false */
+  metering?: boolean
+}
+
+interface RecordingLevel {
+  /** 0 (−50 dBFS or quieter) to 1 (0 dBFS). */
+  level: number
+  /** Average power in dBFS. */
+  power: number
+  /** Seconds recorded so far. */
+  currentTime: number
 }
 
 interface AudioRecordResult {

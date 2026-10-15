@@ -298,7 +298,7 @@ export type {
   BiometryType, BiometryResult, HttpRequestConfig, HttpResponse,
   ColorScheme, Platform, PlatformSelectSpec, Dimensions, WebSocketStatus, WebSocketOptions,
   FileStat, SensorOptions, SensorData,
-  AudioPlayOptions, AudioRecordOptions, AudioRecordResult,
+  AudioPlayOptions, AudioRecordOptions, AudioRecordResult, RecordingLevel,
   ExecuteResult, Row, TransactionContext,
   PerformanceMetrics,
   SharedElementFrame, SharedElementRegistration,

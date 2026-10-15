@@ -71,7 +71,7 @@ export { useAccelerometer, useGyroscope } from './useSensors'
 export type { SensorOptions, SensorData } from './useSensors'
 
 export { useAudio } from './useAudio'
-export type { AudioPlayOptions, AudioRecordOptions, AudioRecordResult } from './useAudio'
+export type { AudioPlayOptions, AudioRecordOptions, AudioRecordResult, RecordingLevel } from './useAudio'
 
 export { useDatabase } from './useDatabase'
 export type { ExecuteResult, Row, TransactionContext } from './useDatabase'
