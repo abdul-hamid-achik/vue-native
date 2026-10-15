@@ -1,5 +1,17 @@
 # @thelacanians/vue-native-cli
 
+## 0.23.2
+
+### Patch Changes
+
+- 83506d4: `useAudio`: `startRecording({ metering: true })` reports the microphone input level on iOS (`recordingLevel` ref, `onRecordingLevel(handler)`, event `audio:recordingLevel`). Recording no longer leaves later playback on the quiet earpiece route: the session uses `defaultToSpeaker` while recording and returns to playback when it stops.
+- 2678390: iOS: pending `fetch` promises and `setTimeout`/`setInterval` callbacks are now kept in the JS heap (`JSCallbackRegistry`) instead of `JSManagedValue`s owned by the context, which the garbage collector could free mid-request, so a request never settled or a timer never fired (intermittent hangs, most visible with concurrent requests). `VInput` padding now insets the text and placeholder instead of being ignored.
+- 3525d07: iOS: the area behind the safe area (status bar, home indicator) follows a background-only change of the app's root view, e.g. a light/dark theme switch, instead of waiting for the next layout pass.
+- 1278130: `useIAP`: iOS transactions now include the App Store–signed `jwsRepresentation` (plus `originalTransactionId`, `appAccountToken` and `environment`) so a server can verify purchases; `purchase(sku, { appAccountToken })` ties a purchase to your user; new `showManageSubscriptions()` opens the system subscription screen (iOS sheet, Play Store on Android); transaction updates carry the same fields and report refunds as `revoked`.
+- 2f04976: iOS native fixes: pill corner radii (`borderRadius: 999`) no longer hide the view, the area behind the safe area takes the app's background instead of black, unset accessibility props no longer hide whole subtrees from VoiceOver and UI tests, and `fetch` responses expose a `Headers`-like `response.headers` with `get()` (also on macOS).
+- 0abc22f: iOS: `<VSVG>` no longer crashes Debug builds on Apple Silicon simulators and new devices (SVGKit's device table assertion), `VKeyboardAvoiding` scrolls the focused field and what follows it into view, and `VScrollView` applies `contentContainerStyle` (with `flexGrow` filling the viewport).
+- b455249: macOS and the shared polyfills: pending `fetch` promises and `setTimeout`/`setInterval` callbacks are now kept in the JS heap (`JSCallbackRegistry`) instead of `JSManagedValue`s owned by the context, which the garbage collector could free mid-request, so a request never settled or a timer never fired.
+
 ## 0.23.1
 
 ### Patch Changes
