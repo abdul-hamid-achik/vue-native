@@ -302,7 +302,7 @@ export type {
   ExecuteResult, Row, TransactionContext,
   PerformanceMetrics,
   SharedElementFrame, SharedElementRegistration,
-  Product, Purchase, TransactionState, TransactionUpdate, ProductType,
+  Product, Purchase, PurchaseOptions, TransactionState, TransactionUpdate, ProductType,
   SocialUser, AuthResult,
   BackgroundTaskType, BackgroundTaskOptions,
   UpdateInfo, VersionInfo, UpdateStatus,

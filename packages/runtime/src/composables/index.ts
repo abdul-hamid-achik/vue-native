@@ -83,7 +83,7 @@ export { useSharedElementTransition, getSharedElementViewId, getRegisteredShared
 export type { SharedElementFrame, SharedElementRegistration } from './useSharedElementTransition'
 
 export { useIAP } from './useIAP'
-export type { Product, Purchase, TransactionState, TransactionUpdate, ProductType } from './useIAP'
+export type { Product, Purchase, PurchaseOptions, TransactionState, TransactionUpdate, ProductType } from './useIAP'
 
 export { useAppleSignIn } from './useAppleSignIn'
 export type { SocialUser, AuthResult } from './useAppleSignIn'

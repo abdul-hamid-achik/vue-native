@@ -68,9 +68,10 @@ useIAP(): {
   isReady: Ref<boolean>
   error: Ref<string | null>
   getProducts: (skus: string[]) => Promise<Product[]>
-  purchase: (sku: string) => Promise<Purchase | null>
+  purchase: (sku: string, options?: PurchaseOptions) => Promise<Purchase | null>
   restorePurchases: () => Promise<Purchase[]>
   getActiveSubscriptions: () => Promise<Purchase[]>
+  showManageSubscriptions: () => Promise<void>
   onTransactionUpdate: (callback: (update: TransactionUpdate) => void) => () => void
 }
 ```
@@ -95,13 +96,14 @@ Fetch product information from the store.
 
 Returns `Promise<Product[]>`. Also updates the reactive `products` ref.
 
-#### `purchase(sku)`
+#### `purchase(sku, options?)`
 
 Initiate a purchase flow for the given product.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `sku` | `string` | Product identifier to purchase. |
+| `options.appAccountToken` | `string?` | iOS: a UUID tying the purchase to your user. It comes back on every transaction and in App Store Server Notifications. |
 
 Returns `Promise<Purchase | null>`. Returns `null` on failure (error set in `error` ref).
 
@@ -116,6 +118,10 @@ Returns `Promise<Purchase[]>`.
 Get all currently active auto-renewable subscriptions.
 
 Returns `Promise<Purchase[]>`.
+
+#### `showManageSubscriptions()`
+
+Open the system screen where the user manages or cancels subscriptions: the StoreKit sheet on iOS, the Play Store subscription center on Android.
 
 #### `onTransactionUpdate(callback)`
 
@@ -154,6 +160,15 @@ Returns a cleanup function to unsubscribe.
 | `originalTransactionId` | `string?` | Original transaction ID (for renewals). |
 | `purchaseDate` | `string` | ISO 8601 purchase date. |
 | `expiresDate` | `string?` | Expiration date for subscriptions. |
+| `jwsRepresentation` | `string?` | iOS: the App Store–signed transaction (JWS). Verify it on your server (App Store Server Library) before granting anything. |
+| `appAccountToken` | `string?` | iOS: the token passed to `purchase()`, lowercased. |
+| `environment` | `string?` | iOS 16+: `Production`, `Sandbox` or `Xcode`. |
+
+#### PurchaseOptions
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `appAccountToken` | `string?` | iOS: UUID string attached to the transaction. |
 
 #### TransactionUpdate
 
@@ -163,10 +178,26 @@ Returns a cleanup function to unsubscribe.
 | `state` | `TransactionState` | Current state of the transaction. |
 | `transactionId` | `string?` | Transaction identifier. |
 | `error` | `string?` | Error message if state is `'failed'`. |
+| `jwsRepresentation`, `originalTransactionId`, `expiresDate`, `appAccountToken` | | iOS: same as on `Purchase`, for renewals and refunds that arrive while the app runs. |
 
 #### TransactionState
 
-`'purchasing' | 'purchased' | 'failed' | 'restored' | 'deferred'`
+`'purchasing' | 'purchased' | 'failed' | 'restored' | 'deferred' | 'revoked'`
+
+## Server Verification (iOS)
+
+Never unlock paid features from the client's word alone. Send `jwsRepresentation` to your server, verify its signature with Apple's App Store Server Library, and check that its `appAccountToken` matches the signed-in user:
+
+```ts
+const result = await purchase('com.myapp.premium.monthly', { appAccountToken: user.purchaseToken })
+if (result?.jwsRepresentation) {
+  await fetch('https://api.example.com/iap/verify', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ jws: result.jwsRepresentation }),
+  })
+}
+```
 
 ## Restore Purchases Example
 
