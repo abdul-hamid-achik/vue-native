@@ -9,9 +9,11 @@ enum JSPolyfills {
 
     // MARK: - Timer storage
 
+    /// A scheduled Timer plus the id of its callback in `JSCallbackRegistry` (the callback
+    /// itself lives in the JS heap; see that type for why).
     private struct TimerEntry {
         let timer: Timer
-        let callbackRef: JSManagedValue?
+        let callbackId: Int
     }
 
     private static let stateQueue = DispatchQueue(label: "com.vuenative.macos.polyfills.state")
@@ -41,7 +43,7 @@ enum JSPolyfills {
     // MARK: - Reset
 
     /// Clear all polyfill state. Must be called on the runtime's `jsQueue`:
-    /// it drops `JSValue`s (timers and RAF callbacks), and those may only be
+    /// it drops `JSValue`s (RAF callbacks), and those may only be
     /// released on the thread their `JSContext` lives on.
     static func reset() {
         let oldTimers: [String: TimerEntry] = stateQueue.sync {
@@ -68,6 +70,7 @@ enum JSPolyfills {
     static func register(in runtime: JSRuntime) {
         guard let context = runtime.context else { return }
 
+        JSCallbackRegistry.install(in: context)
         registerConsole(in: context)
         registerTimers(in: context, runtime: runtime)
         registerMicrotask(in: context)
@@ -159,31 +162,31 @@ enum JSPolyfills {
                 return id
             }
 
-            let callbackRef = JSManagedValue(value: callback)
-            context.virtualMachine.addManagedReference(callbackRef, withOwner: context)
+            // Keep the callback alive in the JS heap until it fires or is cleared.
+            let callbackId = JSCallbackRegistry.retain(callback, in: context)
 
             DispatchQueue.main.async {
                 let timer = Timer.scheduledTimer(withTimeInterval: max(delayMs / 1000.0, 0.001), repeats: false) { [weak runtime] _ in
                     guard let runtime = runtime else { return }
                     runtime.jsQueue.async { [weak runtime] in
                         guard let runtime = runtime, let context = runtime.context else { return }
-                        let stillActive: Bool = stateQueue.sync {
-                            guard timers[timerId] != nil else { return false }
-                            timers.removeValue(forKey: timerId)
-                            return true
+                        // Timer already fired: only invoke if not cleared. The id is read
+                        // out of the map, so a clear that landed after the Timer fired
+                        // still suppresses the call. Taking it releases the callback.
+                        let firedId: Int? = stateQueue.sync {
+                            timers.removeValue(forKey: timerId)?.callbackId
                         }
-                        guard stillActive else { return }
-                        if let cb = callbackRef?.value, !cb.isUndefined {
+                        guard let firedId else { return }
+                        if let cb = JSCallbackRegistry.take(firedId, in: context) {
                             cb.call(withArguments: [])
                             context.evaluateScript("void 0;")
                         }
-                        context.virtualMachine.removeManagedReference(callbackRef, withOwner: context)
                     }
                 }
                 RunLoop.main.add(timer, forMode: .common)
                 stateQueue.async {
                     if timers[timerId] == nil {
-                        timers[timerId] = TimerEntry(timer: timer, callbackRef: callbackRef)
+                        timers[timerId] = TimerEntry(timer: timer, callbackId: callbackId)
                     }
                 }
             }
@@ -198,7 +201,8 @@ enum JSPolyfills {
                 return timers.removeValue(forKey: id)
             }
             if let entry = entry {
-                context.virtualMachine.removeManagedReference(entry.callbackRef, withOwner: context)
+                // Release the callback so the JS garbage collector can free it.
+                JSCallbackRegistry.release(entry.callbackId, in: context)
                 DispatchQueue.main.async {
                     entry.timer.invalidate()
                 }
@@ -217,17 +221,17 @@ enum JSPolyfills {
                 return id
             }
 
-            let callbackRef = JSManagedValue(value: callback)
-            context.virtualMachine.addManagedReference(callbackRef, withOwner: context)
+            // Keep the callback alive in the JS heap until it fires or is cleared.
+            let callbackId = JSCallbackRegistry.retain(callback, in: context)
 
             DispatchQueue.main.async {
                 let timer = Timer.scheduledTimer(withTimeInterval: max(delayMs / 1000.0, 0.001), repeats: true) { [weak runtime] _ in
                     guard let runtime = runtime else { return }
                     runtime.jsQueue.async { [weak runtime] in
                         guard let runtime = runtime, let context = runtime.context else { return }
-                        let stillActive: Bool = stateQueue.sync { timers[timerId] != nil }
-                        guard stillActive else { return }
-                        if let cb = callbackRef?.value, !cb.isUndefined {
+                        let intervalId: Int? = stateQueue.sync { timers[timerId]?.callbackId }
+                        guard let intervalId else { return }
+                        if let cb = JSCallbackRegistry.value(intervalId, in: context) {
                             cb.call(withArguments: [])
                             context.evaluateScript("void 0;")
                         }
@@ -235,7 +239,7 @@ enum JSPolyfills {
                 }
                 RunLoop.main.add(timer, forMode: .common)
                 stateQueue.async {
-                    timers[timerId] = TimerEntry(timer: timer, callbackRef: callbackRef)
+                    timers[timerId] = TimerEntry(timer: timer, callbackId: callbackId)
                 }
             }
 
@@ -249,7 +253,8 @@ enum JSPolyfills {
                 return timers.removeValue(forKey: id)
             }
             if let entry = entry {
-                context.virtualMachine.removeManagedReference(entry.callbackRef, withOwner: context)
+                // Release the callback so the JS garbage collector can free it.
+                JSCallbackRegistry.release(entry.callbackId, in: context)
                 DispatchQueue.main.async {
                     entry.timer.invalidate()
                 }
@@ -454,21 +459,23 @@ enum JSPolyfills {
                 request.httpMethod = "GET"
             }
 
-            var resolveRef: JSValue?
-            var rejectRef: JSValue?
-
-            let captureExecutor: @convention(block) (JSValue, JSValue) -> Void = { resolve, reject in
-                resolveRef = resolve
-                rejectRef = reject
+            // Create the Promise in JS and park its [resolve, reject] in `JSCallbackRegistry`,
+            // i.e. in the JS heap, until the response arrives. (JSManagedValue owned by the
+            // context let the GC free them mid-request, so the promise never settled.)
+            guard let created = context.evaluateScript("""
+                (function () {
+                  var handlers;
+                  var promise = new Promise(function (resolve, reject) { handlers = [resolve, reject]; });
+                  return [__vnCallbacks.put(handlers), promise];
+                })()
+                """),
+                  let handlersId = created.atIndex(0)?.toInt32(), handlersId > 0,
+                  let promise = created.atIndex(1) else {
+                return context.evaluateScript(
+                    "Promise.reject(new Error('fetch: failed to create the promise'))"
+                ) ?? JSValue(undefinedIn: context)
             }
-
-            let promiseCtor = context.evaluateScript("""
-                (function(executor) {
-                    return new Promise(executor);
-                })
-            """)
-            let captureBlock = JSValue(object: captureExecutor as AnyObject, in: context)
-            let promise = promiseCtor?.call(withArguments: [captureBlock as Any])
+            let callbackId = Int(handlersId)
 
             // Keep the delegate attached across cross-host redirects whenever
             // any destination has configured pins.
@@ -479,9 +486,16 @@ enum JSPolyfills {
                 runtime.jsQueue.async { [weak runtime] in
                     guard runtime != nil, let context = runtime?.context else { return }
 
+                    // Take (and so release) the handlers on every exit path. A URLSession
+                    // task always completes (success, failure, or cancellation-as-failure),
+                    // so a finished request never pins them for the life of the context.
+                    let handlers = JSCallbackRegistry.take(callbackId, in: context)
+                    let resolve = handlers?.atIndex(0)
+                    let reject = handlers?.atIndex(1)
+
                     if let error = error {
                         let errMsg = error.localizedDescription
-                        if let reject = rejectRef, !reject.isUndefined {
+                        if let reject, !reject.isUndefined {
                             let errObj = context.evaluateScript("new Error(\(JSPolyfillsJSON.encode(errMsg)))")
                             reject.call(withArguments: [errObj as Any])
                         }
@@ -501,7 +515,7 @@ enum JSPolyfills {
                         }
                     }
 
-                    if let resolve = resolveRef, !resolve.isUndefined {
+                    if let resolve, !resolve.isUndefined {
                         guard let responseObj = JSValue(newObjectIn: context) else {
                             NSLog("[VueNative macOS] Warning: failed to create response object")
                             return
@@ -534,7 +548,7 @@ enum JSPolyfills {
             }
             task.resume()
 
-            return promise ?? JSValue(undefinedIn: context)
+            return promise
         }
 
         context.setObject(fetch, forKeyedSubscript: "fetch" as NSString)
