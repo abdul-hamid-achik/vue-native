@@ -127,24 +127,30 @@ final class IAPModule: NativeModule {
             }
 
         case "showManageSubscriptions":
-            Task { @MainActor in
-                guard let scene = UIApplication.shared.connectedScenes
-                    .compactMap({ $0 as? UIWindowScene })
-                    .first(where: { $0.activationState == .foregroundActive })
-                else {
-                    callback(nil, "showManageSubscriptions: no active window scene")
-                    return
-                }
-                do {
-                    try await AppStore.showManageSubscriptions(in: scene)
-                    callback(nil, nil)
-                } catch {
-                    callback(nil, "showManageSubscriptions: \(error.localizedDescription)")
-                }
-            }
+            showManageSubscriptions(callback: callback)
 
         default:
             callback(nil, "IAPModule: unknown method '\(method)'")
+        }
+    }
+
+    // MARK: - Manage subscriptions
+
+    private func showManageSubscriptions(callback: @escaping (Any?, String?) -> Void) {
+        Task { @MainActor in
+            guard let scene = UIApplication.shared.connectedScenes
+                .compactMap({ $0 as? UIWindowScene })
+                .first(where: { $0.activationState == .foregroundActive })
+            else {
+                callback(nil, "showManageSubscriptions: no active window scene")
+                return
+            }
+            do {
+                try await AppStore.showManageSubscriptions(in: scene)
+                callback(nil, nil)
+            } catch {
+                callback(nil, "showManageSubscriptions: \(error.localizedDescription)")
+            }
         }
     }
 
