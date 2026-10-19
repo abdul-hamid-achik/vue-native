@@ -14,7 +14,13 @@ import AVFoundation
 ///   - stop()                               -- stop playback and release player
 ///   - seek(position: Number)               -- seek to position in seconds
 ///   - setVolume(volume: Number)            -- set volume 0.0–1.0
-///   - startRecording(options?: Object)     -- start audio recording
+///   - startRecording(options?: Object)     -- start audio recording. Asks for microphone access
+///                                             first when the user was never asked (the call stays
+///                                             pending while the system prompt is up) and rejects
+///                                             with `permission_denied: ...` when access is denied
+///                                             or restricted. Also rejects when the recorder cannot
+///                                             prepare or start, so a failed start never looks
+///                                             like a recording that captured silence.
 ///   - stopRecording()                      -- stop recording, returns { uri, duration }
 ///   - pauseRecording()                     -- pause recording
 ///   - resumeRecording()                    -- resume recording
@@ -44,6 +50,78 @@ final class AudioModule: NSObject, NativeModule {
 
     /// Test seam: observes every global event this module dispatches.
     var eventObserver: ((String, [String: Any]) -> Void)?
+
+    /// Prefix of the error `startRecording` rejects with when the microphone is not
+    /// available to the app. JS can match it with `message.startsWith(...)`.
+    static let permissionDeniedCode = "permission_denied"
+
+    /// Microphone authorization as the recorder sees it. `denied` also covers a
+    /// restricted microphone (parental controls / MDM): both mean "do not record".
+    enum MicrophoneAccess: Equatable {
+        case undetermined, granted, denied
+    }
+
+    /// Test seam: the current microphone authorization. Defaults to the system's.
+    var microphoneStatus: () -> MicrophoneAccess = AudioModule.systemMicrophoneStatus
+
+    /// Test seam: shows the system prompt and reports the answer (any thread).
+    /// Defaults to the system's.
+    var requestMicrophoneAccess: (@escaping (Bool) -> Void) -> Void = AudioModule.systemRequestMicrophoneAccess
+
+    /// Test seam: creates the recorder (`AVAudioRecorder(url:settings:)` by default).
+    var recorderFactory: (URL, [String: Any]) throws -> AVAudioRecorder = { url, settings in
+        try AVAudioRecorder(url: url, settings: settings)
+    }
+
+    /// True while a recording exists (recording or paused): the session must keep its
+    /// input route, so `play()` must not drop to a playback-only category.
+    var isRecordingActive: Bool { recorder != nil }
+
+    /// Test hook: installs a recorder without starting one.
+    func installRecorderForTesting(_ recorder: AVAudioRecorder?) { self.recorder = recorder }
+
+    /// The microphone permission is the same one `PermissionsModule` reports for
+    /// "microphone" (one system switch for the app). iOS 17 moved the recorder
+    /// permission API from `AVAudioSession` to `AVAudioApplication`; this package still
+    /// supports iOS 16, which only has the session API.
+    static func systemMicrophoneStatus() -> MicrophoneAccess {
+        if #available(iOS 17.0, *) {
+            switch AVAudioApplication.shared.recordPermission {
+            case .granted: return .granted
+            case .denied: return .denied
+            case .undetermined: return .undetermined
+            @unknown default: return .undetermined
+            }
+        }
+        switch AVAudioSession.sharedInstance().recordPermission {
+        case .granted: return .granted
+        case .denied: return .denied
+        case .undetermined: return .undetermined
+        @unknown default: return .undetermined
+        }
+    }
+
+    static func systemRequestMicrophoneAccess(_ completion: @escaping (Bool) -> Void) {
+        if #available(iOS 17.0, *) {
+            AVAudioApplication.requestRecordPermission(completionHandler: completion)
+        } else {
+            AVAudioSession.sharedInstance().requestRecordPermission(completion)
+        }
+    }
+
+    /// Session settings shared by recording and by `play()` during a recording.
+    /// defaultToSpeaker: playAndRecord otherwise routes playback to the earpiece,
+    /// so everything played after a recording became nearly inaudible.
+    static let recordingSessionOptions: AVAudioSession.CategoryOptions = [.defaultToSpeaker, .allowBluetoothA2DP]
+
+    /// The session category `play()` needs. While a recording runs it stays
+    /// `.playAndRecord`: `.playback` has no input, so switching to it mid-take cut the
+    /// microphone and the rest of the take was silence.
+    static func playSessionConfiguration(
+        recording: Bool
+    ) -> (category: AVAudioSession.Category, options: AVAudioSession.CategoryOptions) {
+        recording ? (.playAndRecord, recordingSessionOptions) : (.playback, [])
+    }
 
     private func emit(_ event: String, _ payload: [String: Any] = [:]) {
         eventObserver?(event, payload)
@@ -139,7 +217,9 @@ final class AudioModule: NSObject, NativeModule {
             self.isPlaying = false
 
             do {
-                try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
+                let config = AudioModule.playSessionConfiguration(recording: self.isRecordingActive)
+                try AVAudioSession.sharedInstance().setCategory(
+                    config.category, mode: .default, options: config.options)
                 try AVAudioSession.sharedInstance().setActive(true)
             } catch {
                 self.fail("Failed to set audio session: \(error.localizedDescription)", callback: callback)
@@ -322,64 +402,101 @@ final class AudioModule: NSObject, NativeModule {
     private func startRecording(options: [String: Any], callback: @escaping (Any?, String?) -> Void) {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
-
-            do {
-                // defaultToSpeaker: playAndRecord otherwise routes playback to the earpiece,
-                // so everything played after a recording became nearly inaudible.
-                try AVAudioSession.sharedInstance().setCategory(
-                    .playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetoothA2DP])
-                try AVAudioSession.sharedInstance().setActive(true)
-            } catch {
-                callback(nil, "Failed to set audio session for recording: \(error.localizedDescription)")
-                return
-            }
-
-            let quality = options["quality"] as? String ?? "medium"
-            let format = options["format"] as? String ?? "m4a"
-
-            let ext = format == "wav" ? "wav" : "m4a"
-            let url = FileManager.default.temporaryDirectory
-                .appendingPathComponent(UUID().uuidString + ".\(ext)")
-
-            var settings: [String: Any] = [:]
-            if format == "wav" {
-                settings = [
-                    AVFormatIDKey: Int(kAudioFormatLinearPCM),
-                    AVSampleRateKey: quality == "high" ? 44100.0 : 22050.0,
-                    AVNumberOfChannelsKey: 1,
-                    AVLinearPCMBitDepthKey: 16,
-                    AVLinearPCMIsFloatKey: false,
-                ]
-            } else {
-                let sampleRate: Double
-                let bitRate: Int
-                switch quality {
-                case "low":  sampleRate = 22050; bitRate = 32000
-                case "high": sampleRate = 44100; bitRate = 128000
-                default:     sampleRate = 44100; bitRate = 64000
+            switch self.microphoneStatus() {
+            case .granted:
+                self.beginRecording(options: options, callback: callback)
+            case .denied:
+                callback(nil, AudioModule.permissionDeniedMessage)
+            case .undetermined:
+                // The first take must not start until the user answered the prompt, or it
+                // would capture silence. The callback stays pending meanwhile.
+                self.requestMicrophoneAccess { [weak self] granted in
+                    DispatchQueue.main.async {
+                        guard let self = self else { return }
+                        if granted {
+                            self.beginRecording(options: options, callback: callback)
+                        } else {
+                            callback(nil, AudioModule.permissionDeniedMessage)
+                        }
+                    }
                 }
-                settings = [
-                    AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
-                    AVSampleRateKey: sampleRate,
-                    AVNumberOfChannelsKey: 1,
-                    AVEncoderAudioQualityKey: AVAudioQuality.medium.rawValue,
-                    AVEncoderBitRateKey: bitRate,
-                ]
-            }
-
-            do {
-                let recorder = try AVAudioRecorder(url: url, settings: settings)
-                let metering = options["metering"] as? Bool ?? false
-                recorder.isMeteringEnabled = metering
-                recorder.prepareToRecord()
-                recorder.record()
-                self.recorder = recorder
-                if metering { self.startMetering() }
-                callback(["uri": url.absoluteString], nil)
-            } catch {
-                callback(nil, "Failed to start recording: \(error.localizedDescription)")
             }
         }
+    }
+
+    private static let permissionDeniedMessage =
+        "\(permissionDeniedCode): microphone access is not allowed for this app (Settings > Privacy > Microphone)"
+
+    /// Puts the session back to playback-only so later clips use the normal (speaker) route.
+    private func restorePlaybackSession() {
+        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
+    }
+
+    private static func recorderSettings(options: [String: Any]) -> (settings: [String: Any], ext: String) {
+        let quality = options["quality"] as? String ?? "medium"
+        let format = options["format"] as? String ?? "m4a"
+        if format == "wav" {
+            return ([
+                AVFormatIDKey: Int(kAudioFormatLinearPCM),
+                AVSampleRateKey: quality == "high" ? 44100.0 : 22050.0,
+                AVNumberOfChannelsKey: 1,
+                AVLinearPCMBitDepthKey: 16,
+                AVLinearPCMIsFloatKey: false,
+            ], "wav")
+        }
+        let sampleRate: Double
+        let bitRate: Int
+        switch quality {
+        case "low":  sampleRate = 22050; bitRate = 32000
+        case "high": sampleRate = 44100; bitRate = 128000
+        default:     sampleRate = 44100; bitRate = 64000
+        }
+        return ([
+            AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
+            AVSampleRateKey: sampleRate,
+            AVNumberOfChannelsKey: 1,
+            AVEncoderAudioQualityKey: AVAudioQuality.medium.rawValue,
+            AVEncoderBitRateKey: bitRate,
+        ], "m4a")
+    }
+
+    /// Starts the recorder once the microphone is available. Main thread only.
+    private func beginRecording(options: [String: Any], callback: @escaping (Any?, String?) -> Void) {
+        do {
+            try AVAudioSession.sharedInstance().setCategory(
+                .playAndRecord, mode: .default, options: AudioModule.recordingSessionOptions)
+            try AVAudioSession.sharedInstance().setActive(true)
+        } catch {
+            callback(nil, "Failed to set audio session for recording: \(error.localizedDescription)")
+            return
+        }
+
+        let (settings, ext) = AudioModule.recorderSettings(options: options)
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString + ".\(ext)")
+
+        let recorder: AVAudioRecorder
+        do {
+            recorder = try recorderFactory(url, settings)
+        } catch {
+            restorePlaybackSession()
+            callback(nil, "Failed to start recording: \(error.localizedDescription)")
+            return
+        }
+        recorder.isMeteringEnabled = options["metering"] as? Bool ?? false
+
+        // Both return false on failure (no input, session interrupted, bad format).
+        // Ignoring them reported success for a recording that never ran.
+        guard recorder.prepareToRecord(), recorder.record() else {
+            recorder.stop()
+            recorder.deleteRecording()
+            restorePlaybackSession()
+            callback(nil, "Failed to start recording: the recorder could not start (no usable microphone input?)")
+            return
+        }
+        self.recorder = recorder
+        if recorder.isMeteringEnabled { startMetering() }
+        callback(["uri": url.absoluteString], nil)
     }
 
     private func stopRecording(callback: @escaping (Any?, String?) -> Void) {
@@ -393,8 +510,7 @@ final class AudioModule: NSObject, NativeModule {
             self.stopMetering()
             recorder.stop()
             self.recorder = nil
-            // Back to playback-only so later clips use the normal (speaker) route.
-            try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
+            self.restorePlaybackSession()
             callback(["uri": uri, "duration": duration], nil)
         }
     }
