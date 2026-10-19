@@ -95,12 +95,10 @@ final class AnimationModule: NativeModule {
                 UIView.animate(
                     withDuration: duration,
                     delay: delay,
-                    options: [curve],
+                    options: AnimationModule.interactiveOptions.union(curve),
                     animations: { [styles] in
                         MainActor.assumeIsolated {
-                            for (key, value) in styles {
-                                StyleEngine.apply(key: key, value: value, to: view)
-                            }
+                            AnimationModule.applyAnimatedStyles(styles, to: view)
                         }
                     },
                     completion: { _ in
@@ -140,12 +138,10 @@ final class AnimationModule: NativeModule {
                     delay: delay,
                     usingSpringWithDamping: damping,
                     initialSpringVelocity: 0,
-                    options: [],
+                    options: AnimationModule.interactiveOptions,
                     animations: { [styles] in
                         MainActor.assumeIsolated {
-                            for (key, value) in styles {
-                                StyleEngine.apply(key: key, value: value, to: view)
-                            }
+                            AnimationModule.applyAnimatedStyles(styles, to: view)
                         }
                     },
                     completion: { _ in
@@ -154,6 +150,82 @@ final class AnimationModule: NativeModule {
                 )
             }
         }
+    }
+
+    // MARK: - Animated style application
+
+    /// Options shared by timing and spring animations.
+    /// - `.allowUserInteraction`: the view stays tappable while it animates (without it
+    ///   UIKit disables hit testing on the animating view for the whole duration).
+    /// - `.beginFromCurrentState`: an animation started while another one is running on
+    ///   the same view continues from the on-screen (presentation) value instead of
+    ///   snapping to the model value first, and does not wait for the earlier one.
+    static let interactiveOptions: UIView.AnimationOptions = [.allowUserInteraction, .beginFromCurrentState]
+
+    /// Style keys that are not StyleEngine keys: StyleEngine only reads translate/scale
+    /// inside its `transform` list, so these are applied here through `view.transform`.
+    private static let transformKeys: Set<String> = ["translateX", "translateY", "scale", "scaleX", "scaleY"]
+
+    /// Applies animatable styles inside an animation block. Regular keys (`opacity`,
+    /// `backgroundColor`, ...) go through `StyleEngine`; `translateX`, `translateY`,
+    /// `scale`, `scaleX` and `scaleY` are composed into `view.transform`. Any of the
+    /// transform components that is not specified keeps its current value.
+    @MainActor
+    static func applyAnimatedStyles(_ styles: [String: Any], to view: UIView) {
+        for (key, value) in styles where !transformKeys.contains(key) {
+            StyleEngine.apply(key: key, value: value, to: view)
+        }
+        guard styles.keys.contains(where: transformKeys.contains) else { return }
+
+        let uniformScale = number(styles["scale"])
+        view.transform = composedTransform(
+            from: view.transform,
+            translateX: number(styles["translateX"]),
+            translateY: number(styles["translateY"]),
+            scaleX: number(styles["scaleX"]) ?? uniformScale,
+            scaleY: number(styles["scaleY"]) ?? uniformScale
+        )
+    }
+
+    /// Returns `current` with the given components replaced; `nil` components are kept.
+    /// Translation is replaced directly. Scale is replaced per axis by rescaling the
+    /// matrix columns, so a rotation already present in `current` is preserved.
+    static func composedTransform(
+        from current: CGAffineTransform,
+        translateX: CGFloat?,
+        translateY: CGFloat?,
+        scaleX: CGFloat?,
+        scaleY: CGFloat?
+    ) -> CGAffineTransform {
+        var result = current
+        if let translateX { result.tx = translateX }
+        if let translateY { result.ty = translateY }
+        if let scaleX {
+            let currentX = hypot(current.a, current.b)
+            if currentX > 0 {
+                result.a = current.a / currentX * scaleX
+                result.b = current.b / currentX * scaleX
+            } else {
+                result.a = scaleX
+                result.b = 0
+            }
+        }
+        if let scaleY {
+            let currentY = hypot(current.c, current.d)
+            if currentY > 0 {
+                result.c = current.c / currentY * scaleY
+                result.d = current.d / currentY * scaleY
+            } else {
+                result.c = 0
+                result.d = scaleY
+            }
+        }
+        return result
+    }
+
+    private static func number(_ value: Any?) -> CGFloat? {
+        guard let number = value as? NSNumber else { return nil }
+        return CGFloat(number.doubleValue)
     }
 
     // MARK: - keyframe(viewId, keyframes, options)
