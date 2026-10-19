@@ -45,7 +45,7 @@ useAudio(): {
   stop: () => Promise<void>,
   seek: (positionSec: number) => Promise<void>,
   setVolume: (volume: number) => Promise<void>,
-  startRecording: (options?: AudioRecordOptions) => Promise<void>,
+  startRecording: (options?: AudioRecordOptions) => Promise<string>,
   stopRecording: () => Promise<AudioRecordResult>,
   pauseRecording: () => Promise<void>,
   resumeRecording: () => Promise<void>,
@@ -69,7 +69,7 @@ useAudio(): {
 | `stop` | `() => Promise<void>` | Stop playback and reset position to the beginning. |
 | `seek` | `(positionSec: number) => Promise<void>` | Seek to a specific position in seconds. |
 | `setVolume` | `(volume: number) => Promise<void>` | Set playback volume (0.0 to 1.0). |
-| `startRecording` | `(options?: AudioRecordOptions) => Promise<void>` | Start recording audio from the device microphone. |
+| `startRecording` | `(options?: AudioRecordOptions) => Promise<string>` | Start recording audio from the device microphone; resolves with the file URI once the recorder runs. iOS asks for microphone access first if the user was never asked, and rejects with a message starting with `permission_denied` when access is denied. See [Recording errors](#recording-errors). |
 | `stopRecording` | `() => Promise<AudioRecordResult>` | Stop recording and return the recorded file info. |
 | `pauseRecording` | `() => Promise<void>` | Pause the current recording session. |
 | `resumeRecording` | `() => Promise<void>` | Resume a paused recording session. |
@@ -123,8 +123,26 @@ interface AudioRecordResult {
 
 | Platform | Support |
 |----------|---------|
-| iOS | Uses `AVAudioPlayer` for playback and `AVAudioRecorder` for recording. Requires microphone permission for recording. |
-| Android | Uses `MediaPlayer` for playback and `MediaRecorder` for recording. Requires `RECORD_AUDIO` permission for recording. |
+| iOS | Uses `AVAudioPlayer` for playback and `AVAudioRecorder` for recording. `startRecording` requests microphone permission itself when it was never asked, and rejects with `permission_denied` when denied. |
+| Android | Uses `MediaPlayer` for playback and `MediaRecorder` for recording. Requires `RECORD_AUDIO` permission for recording; it does not request it, so ask with `usePermissions` first. |
+| macOS | No Audio module yet. |
+
+## Recording errors
+
+On iOS `startRecording` rejects, leaves `isRecording` `false` and sets `error` when:
+
+- microphone access is denied or restricted: the message starts with `permission_denied`. Send the learner to Settings > Privacy > Microphone instead of retrying;
+- the recorder cannot be created, prepared or started (for example no usable input): the message starts with `Failed to start recording`. The temporary file is removed and the session returns to playback.
+
+```ts
+try {
+  await startRecording({ format: 'wav' })
+} catch (e) {
+  if (e instanceof Error && e.message.startsWith('permission_denied')) {
+    // show "enable the microphone in Settings"
+  }
+}
+```
 
 ## Example
 
@@ -170,6 +188,7 @@ async function handleRecord() {
 - Subscribes to `audio:progress`, `audio:complete`, and `audio:error` global events from the native bridge.
 - iOS: calling `play()` again, or `stop()`, cancels a remote download that is still in flight, so a clip you stopped never starts playing afterwards. The superseded `play()` resolves without touching `isPlaying`, `duration`, or `error`. A `play()` that fails (bad URI, download or decode error) after the previous clip was stopped emits `audio:error`, which resets `isPlaying`.
 - The `position` ref updates in real time during playback via progress events from the native layer.
-- Recording requires the appropriate microphone permission on each platform. Use `usePermissions` to request access before calling `startRecording`.
+- Recording requires microphone permission on each platform. On iOS `startRecording` asks for it when the user was never asked (the call stays pending while the system prompt is up and has no timeout), so the first take no longer records silence. On Android, use `usePermissions` to request access before calling `startRecording`. On iOS, `usePermissions` first is still fine and lets you explain why you need the microphone before the system prompt appears.
+- iOS: calling `play()` while a recording is running keeps the audio session in `playAndRecord` (speaker output), so the microphone keeps capturing. After `stopRecording()` the session returns to playback-only.
 - Remote audio URIs are streamed — the file does not need to be fully downloaded before playback begins.
 - Calling `play()` while audio is already playing will stop the current track and start the new one.

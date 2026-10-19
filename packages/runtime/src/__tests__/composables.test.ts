@@ -764,9 +764,19 @@ describe('Composables', () => {
       const { useAudio } = await import('../composables/useAudio')
       const { startRecording, isRecording } = await withSetup(() => useAudio())
       const uri = await startRecording({ quality: 'high' })
-      expect(invokeModuleSpy).toHaveBeenCalledWith('Audio', 'startRecording', [{ quality: 'high' }])
+      // timeoutMs 0: the native call may wait on the microphone permission prompt.
+      expect(invokeModuleSpy).toHaveBeenCalledWith('Audio', 'startRecording', [{ quality: 'high' }], 0)
       expect(isRecording.value).toBe(true)
       expect(uri).toBe('/tmp/rec.m4a')
+    })
+
+    it('startRecording rejection leaves isRecording false and sets error', async () => {
+      invokeModuleSpy.mockRejectedValue(new Error('permission_denied: microphone access is not allowed'))
+      const { useAudio } = await import('../composables/useAudio')
+      const { startRecording, isRecording, error } = await withSetup(() => useAudio())
+      await expect(startRecording()).rejects.toThrow(/^permission_denied/)
+      expect(isRecording.value).toBe(false)
+      expect(error.value).toMatch(/^permission_denied/)
     })
 
     it('stopRecording calls Audio.stopRecording and returns result', async () => {
