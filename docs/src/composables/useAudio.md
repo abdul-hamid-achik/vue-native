@@ -89,6 +89,8 @@ interface AudioPlayOptions {
   volume?: number
   /** Whether to loop playback continuously. Default: false */
   loop?: boolean
+  /** Playback speed from 0.5 to 2.0 (clamped). Default: 1.0. iOS only for now. */
+  rate?: number
 }
 
 interface AudioRecordOptions {
@@ -166,6 +168,7 @@ async function handleRecord() {
 
 - Automatically stops playback and recording when the component unmounts to prevent resource leaks.
 - Subscribes to `audio:progress`, `audio:complete`, and `audio:error` global events from the native bridge.
+- iOS: calling `play()` again, or `stop()`, cancels a remote download that is still in flight, so a clip you stopped never starts playing afterwards. The superseded `play()` resolves without touching `isPlaying`, `duration`, or `error`. A `play()` that fails (bad URI, download or decode error) after the previous clip was stopped emits `audio:error`, which resets `isPlaying`.
 - The `position` ref updates in real time during playback via progress events from the native layer.
 - Recording requires the appropriate microphone permission on each platform. Use `usePermissions` to request access before calling `startRecording`.
 - Remote audio URIs are streamed — the file does not need to be fully downloaded before playback begins.

@@ -51,4 +51,57 @@ final class AudioLevelTests: XCTestCase {
         XCTAssertEqual(AudioModule.normalizedLevel(power: 3), 1)
         XCTAssertEqual(AudioModule.normalizedLevel(power: -.infinity), 0)
     }
+
+    func testPlaybackRateIsClampedAndOptional() {
+        XCTAssertNil(AudioModule.playbackRate(from: [:]))
+        XCTAssertNil(AudioModule.playbackRate(from: ["rate": "fast"]))
+        XCTAssertEqual(AudioModule.playbackRate(from: ["rate": 1.25]), 1.25)
+        XCTAssertEqual(AudioModule.playbackRate(from: ["rate": 1]), 1.0)
+        XCTAssertEqual(AudioModule.playbackRate(from: ["rate": 0.1]), 0.5)
+        XCTAssertEqual(AudioModule.playbackRate(from: ["rate": 9]), 2.0)
+    }
+
+    /// A remote clip that is stopped while its download is in flight must not start
+    /// playing: its play() resolves as cancelled and no audio:error is emitted.
+    func testStopCancelsInFlightRemotePlay() {
+        let module = AudioModule(bridge: NativeBridge.shared)
+        var events: [String] = []
+        module.eventObserver = { name, _ in events.append(name) }
+        let played = expectation(description: "play callback")
+        var playResult: [String: Any]?
+        var playError: String?
+
+        // Port 1 on loopback: nothing listens, so the request is pending/failing at
+        // the moment stop() runs on the next main-queue turn.
+        module.invoke(method: "play", args: ["http://127.0.0.1:1/clip.mp3"]) { result, error in
+            playResult = result as? [String: Any]
+            playError = error
+            played.fulfill()
+        }
+        module.invoke(method: "stop", args: []) { _, _ in }
+
+        wait(for: [played], timeout: 5)
+        XCTAssertEqual(playResult?["cancelled"] as? Bool, true)
+        XCTAssertNil(playError)
+        XCTAssertFalse(events.contains("audio:error"))
+    }
+
+    /// A play() that fails after the previous player was stopped must emit audio:error
+    /// so the JS isPlaying flag is reset.
+    func testFailedPlayEmitsAudioError() {
+        let module = AudioModule(bridge: NativeBridge.shared)
+        var events: [String] = []
+        module.eventObserver = { name, _ in events.append(name) }
+        let finished = expectation(description: "play callback")
+        var playError: String?
+
+        module.invoke(method: "play", args: ["file:///definitely/not/here.mp3"]) { _, error in
+            playError = error
+            finished.fulfill()
+        }
+
+        wait(for: [finished], timeout: 5)
+        XCTAssertNotNil(playError)
+        XCTAssertEqual(events, ["audio:error"])
+    }
 }

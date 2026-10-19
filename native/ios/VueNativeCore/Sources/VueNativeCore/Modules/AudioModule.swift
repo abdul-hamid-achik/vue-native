@@ -5,7 +5,10 @@ import AVFoundation
 /// Native module for audio playback and recording.
 ///
 /// Methods:
-///   - play(uri: String, options?: Object)  -- play audio from URI
+///   - play(uri: String, options?: Object)  -- play audio from URI. Options: volume (0–1),
+///                                             loop (Bool), rate (0.5–2.0, 1.0 = normal speed).
+///                                             Resolves `{ cancelled: true }` when a later
+///                                             play()/stop() superseded it before it started.
 ///   - pause()                              -- pause playback
 ///   - resume()                             -- resume playback
 ///   - stop()                               -- stop playback and release player
@@ -32,6 +35,36 @@ final class AudioModule: NSObject, NativeModule {
     private var displayLink: CADisplayLink?
     private var isPlaying = false
     private weak var bridge: NativeBridge?
+
+    /// Monotonic play generation. Bumped by `play()` and `stop()`; an asynchronous
+    /// remote download only starts playback when the generation it was started in is
+    /// still current, so a stopped or superseded clip never begins playing later.
+    private var playToken = 0
+    private var downloadTask: URLSessionDataTask?
+
+    /// Test seam: observes every global event this module dispatches.
+    var eventObserver: ((String, [String: Any]) -> Void)?
+
+    private func emit(_ event: String, _ payload: [String: Any] = [:]) {
+        eventObserver?(event, payload)
+        DispatchQueue.main.async { [weak self] in
+            self?.bridge?.dispatchGlobalEvent(event, payload: payload)
+        }
+    }
+
+    /// Result for a play() that was superseded by a later play()/stop(). It resolves
+    /// (instead of rejecting) so callers do not see an error for a clip they cancelled;
+    /// the JS `useAudio().play` leaves its state untouched when it sees this.
+    private static let cancelledResult: [String: Any] = ["cancelled": true]
+
+    /// Reads the optional playback `rate` option, clamped to AVAudioPlayer's supported
+    /// 0.5–2.0 range. `nil` when absent or not a number.
+    static func playbackRate(from options: [String: Any]) -> Float? {
+        guard let number = options["rate"] as? NSNumber else { return nil }
+        let rate = number.floatValue
+        guard rate.isFinite else { return nil }
+        return min(2.0, max(0.5, rate))
+    }
 
     init(bridge: NativeBridge) {
         self.bridge = bridge
@@ -92,53 +125,76 @@ final class AudioModule: NSObject, NativeModule {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
 
+            // Supersede any earlier play(): cancel its download and invalidate its token.
+            self.playToken += 1
+            let token = self.playToken
+            self.downloadTask?.cancel()
+            self.downloadTask = nil
+
             // Stop any existing playback
             self.stopProgressReporting()
             self.player?.stop()
+            self.player = nil
+            self.playerDelegate = nil
+            self.isPlaying = false
 
             do {
                 try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
                 try AVAudioSession.sharedInstance().setActive(true)
             } catch {
-                callback(nil, "Failed to set audio session: \(error.localizedDescription)")
+                self.fail("Failed to set audio session: \(error.localizedDescription)", callback: callback)
                 return
             }
 
             guard let url = URL(string: uri) else {
-                callback(nil, "Invalid audio URI: \(uri)")
+                self.fail("Invalid audio URI: \(uri)", callback: callback)
                 return
             }
 
             // Check if it's a remote URL — download first
             if url.scheme == "http" || url.scheme == "https" {
-                self.downloadAndPlay(url: url, options: options, callback: callback)
+                self.downloadAndPlay(url: url, token: token, options: options, callback: callback)
             } else {
                 self.playLocal(url: url, options: options, callback: callback)
             }
         }
     }
 
-    private func downloadAndPlay(url: URL, options: [String: Any], callback: @escaping (Any?, String?) -> Void) {
-        CertificatePinning.shared.requestSession.dataTask(with: url) { [weak self] data, _, error in
+    /// Rejects a play() and tells JS (`audio:error`) so `isPlaying` is reset: the
+    /// previous player was already stopped when this is reached.
+    private func fail(_ message: String, callback: @escaping (Any?, String?) -> Void) {
+        callback(nil, message)
+        emit("audio:error", ["message": message])
+    }
+
+    private func downloadAndPlay(url: URL, token: Int, options: [String: Any], callback: @escaping (Any?, String?) -> Void) {
+        let task = CertificatePinning.shared.requestSession.dataTask(with: url) { [weak self] data, _, error in
             DispatchQueue.main.async {
                 guard let self = self else { return }
+                // A later play()/stop() owns the player now: drop this result.
+                guard self.playToken == token else {
+                    callback(AudioModule.cancelledResult, nil)
+                    return
+                }
+                self.downloadTask = nil
                 if let error = error {
-                    callback(nil, "Failed to download audio: \(error.localizedDescription)")
-                    self.bridge?.dispatchGlobalEvent("audio:error", payload: ["message": error.localizedDescription])
+                    self.fail("Failed to download audio: \(error.localizedDescription)", callback: callback)
                     return
                 }
                 guard let data = data else {
-                    callback(nil, "No audio data received")
+                    self.fail("No audio data received", callback: callback)
                     return
                 }
                 do {
                     let player = try AVAudioPlayer(data: data)
                     self.setupPlayer(player, options: options, callback: callback)
                 } catch {
-                    callback(nil, "Failed to initialize player: \(error.localizedDescription)")
+                    self.fail("Failed to initialize player: \(error.localizedDescription)", callback: callback)
                 }
             }
-        }.resume()
+        }
+        downloadTask = task
+        task.resume()
     }
 
     private func playLocal(url: URL, options: [String: Any], callback: @escaping (Any?, String?) -> Void) {
@@ -146,7 +202,7 @@ final class AudioModule: NSObject, NativeModule {
             let player = try AVAudioPlayer(contentsOf: url)
             setupPlayer(player, options: options, callback: callback)
         } catch {
-            callback(nil, "Failed to play audio: \(error.localizedDescription)")
+            fail("Failed to play audio: \(error.localizedDescription)", callback: callback)
         }
     }
 
@@ -156,6 +212,11 @@ final class AudioModule: NSObject, NativeModule {
 
         player.volume = volume
         player.numberOfLoops = loop ? -1 : 0
+        if let rate = AudioModule.playbackRate(from: options) {
+            // enableRate must be set before prepareToPlay() for the rate to take effect.
+            player.enableRate = true
+            player.rate = rate
+        }
 
         let delegate = AudioPlayerDelegate { [weak self] _ in
             guard let self = self else { return }
@@ -202,6 +263,10 @@ final class AudioModule: NSObject, NativeModule {
     private func stop(callback: @escaping (Any?, String?) -> Void) {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
+            // Invalidate any in-flight download so it can not start playing later.
+            self.playToken += 1
+            self.downloadTask?.cancel()
+            self.downloadTask = nil
             self.player?.stop()
             self.player = nil
             self.playerDelegate = nil

@@ -8,6 +8,11 @@ export interface AudioPlayOptions {
   volume?: number
   /** Loop playback. Default false. */
   loop?: boolean
+  /**
+   * Playback speed, 0.5–2.0 (clamped). Default 1.0 (normal speed).
+   * iOS only; Android and macOS ignore it for now.
+   */
+  rate?: number
 }
 
 export interface AudioRecordOptions {
@@ -123,6 +128,9 @@ export function useAudio() {
   async function play(uri: string, options: AudioPlayOptions = {}): Promise<void> {
     error.value = null
     const result = asRecord(await NativeBridge.invokeNativeModule('Audio', 'play', [uri, options]))
+    // iOS resolves `{ cancelled: true }` when a later play()/stop() superseded this
+    // call before the clip (e.g. a remote download) started: leave the state alone.
+    if (result?.cancelled === true) return
     const audioDuration = getNumberProp(result, 'duration')
     if (audioDuration !== undefined) {
       duration.value = audioDuration

@@ -717,6 +717,23 @@ describe('Composables', () => {
       expect(duration.value).toBe(120)
     })
 
+    it('play forwards the rate option', async () => {
+      invokeModuleSpy.mockResolvedValue({ duration: 3 })
+      const { useAudio } = await import('../composables/useAudio')
+      const { play } = await withSetup(() => useAudio())
+      await play('https://example.com/clip.mp3', { rate: 0.75 })
+      expect(invokeModuleSpy).toHaveBeenCalledWith('Audio', 'play', ['https://example.com/clip.mp3', { rate: 0.75 }])
+    })
+
+    it('play leaves state untouched when native reports it was cancelled', async () => {
+      invokeModuleSpy.mockResolvedValue({ cancelled: true })
+      const { useAudio } = await import('../composables/useAudio')
+      const { play, isPlaying, duration } = await withSetup(() => useAudio())
+      await play('https://example.com/slow.mp3')
+      expect(isPlaying.value).toBe(false)
+      expect(duration.value).toBe(0)
+    })
+
     it('pause calls Audio.pause and clears isPlaying', async () => {
       const { useAudio } = await import('../composables/useAudio')
       const { pause, isPlaying } = await withSetup(() => useAudio())
