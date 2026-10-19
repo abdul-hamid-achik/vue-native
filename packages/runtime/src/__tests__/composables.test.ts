@@ -717,6 +717,23 @@ describe('Composables', () => {
       expect(duration.value).toBe(120)
     })
 
+    it('play forwards the rate option', async () => {
+      invokeModuleSpy.mockResolvedValue({ duration: 3 })
+      const { useAudio } = await import('../composables/useAudio')
+      const { play } = await withSetup(() => useAudio())
+      await play('https://example.com/clip.mp3', { rate: 0.75 })
+      expect(invokeModuleSpy).toHaveBeenCalledWith('Audio', 'play', ['https://example.com/clip.mp3', { rate: 0.75 }])
+    })
+
+    it('play leaves state untouched when native reports it was cancelled', async () => {
+      invokeModuleSpy.mockResolvedValue({ cancelled: true })
+      const { useAudio } = await import('../composables/useAudio')
+      const { play, isPlaying, duration } = await withSetup(() => useAudio())
+      await play('https://example.com/slow.mp3')
+      expect(isPlaying.value).toBe(false)
+      expect(duration.value).toBe(0)
+    })
+
     it('pause calls Audio.pause and clears isPlaying', async () => {
       const { useAudio } = await import('../composables/useAudio')
       const { pause, isPlaying } = await withSetup(() => useAudio())
@@ -747,9 +764,19 @@ describe('Composables', () => {
       const { useAudio } = await import('../composables/useAudio')
       const { startRecording, isRecording } = await withSetup(() => useAudio())
       const uri = await startRecording({ quality: 'high' })
-      expect(invokeModuleSpy).toHaveBeenCalledWith('Audio', 'startRecording', [{ quality: 'high' }])
+      // timeoutMs 0: the native call may wait on the microphone permission prompt.
+      expect(invokeModuleSpy).toHaveBeenCalledWith('Audio', 'startRecording', [{ quality: 'high' }], 0)
       expect(isRecording.value).toBe(true)
       expect(uri).toBe('/tmp/rec.m4a')
+    })
+
+    it('startRecording rejection leaves isRecording false and sets error', async () => {
+      invokeModuleSpy.mockRejectedValue(new Error('permission_denied: microphone access is not allowed'))
+      const { useAudio } = await import('../composables/useAudio')
+      const { startRecording, isRecording, error } = await withSetup(() => useAudio())
+      await expect(startRecording()).rejects.toThrow(/^permission_denied/)
+      expect(isRecording.value).toBe(false)
+      expect(error.value).toMatch(/^permission_denied/)
     })
 
     it('stopRecording calls Audio.stopRecording and returns result', async () => {

@@ -5,13 +5,22 @@ import AVFoundation
 /// Native module for audio playback and recording.
 ///
 /// Methods:
-///   - play(uri: String, options?: Object)  -- play audio from URI
+///   - play(uri: String, options?: Object)  -- play audio from URI. Options: volume (0–1),
+///                                             loop (Bool), rate (0.5–2.0, 1.0 = normal speed).
+///                                             Resolves `{ cancelled: true }` when a later
+///                                             play()/stop() superseded it before it started.
 ///   - pause()                              -- pause playback
 ///   - resume()                             -- resume playback
 ///   - stop()                               -- stop playback and release player
 ///   - seek(position: Number)               -- seek to position in seconds
 ///   - setVolume(volume: Number)            -- set volume 0.0–1.0
-///   - startRecording(options?: Object)     -- start audio recording
+///   - startRecording(options?: Object)     -- start audio recording. Asks for microphone access
+///                                             first when the user was never asked (the call stays
+///                                             pending while the system prompt is up) and rejects
+///                                             with `permission_denied: ...` when access is denied
+///                                             or restricted. Also rejects when the recorder cannot
+///                                             prepare or start, so a failed start never looks
+///                                             like a recording that captured silence.
 ///   - stopRecording()                      -- stop recording, returns { uri, duration }
 ///   - pauseRecording()                     -- pause recording
 ///   - resumeRecording()                    -- resume recording
@@ -32,6 +41,108 @@ final class AudioModule: NSObject, NativeModule {
     private var displayLink: CADisplayLink?
     private var isPlaying = false
     private weak var bridge: NativeBridge?
+
+    /// Monotonic play generation. Bumped by `play()` and `stop()`; an asynchronous
+    /// remote download only starts playback when the generation it was started in is
+    /// still current, so a stopped or superseded clip never begins playing later.
+    private var playToken = 0
+    private var downloadTask: URLSessionDataTask?
+
+    /// Test seam: observes every global event this module dispatches.
+    var eventObserver: ((String, [String: Any]) -> Void)?
+
+    /// Prefix of the error `startRecording` rejects with when the microphone is not
+    /// available to the app. JS can match it with `message.startsWith(...)`.
+    static let permissionDeniedCode = "permission_denied"
+
+    /// Microphone authorization as the recorder sees it. `denied` also covers a
+    /// restricted microphone (parental controls / MDM): both mean "do not record".
+    enum MicrophoneAccess: Equatable {
+        case undetermined, granted, denied
+    }
+
+    /// Test seam: the current microphone authorization. Defaults to the system's.
+    var microphoneStatus: () -> MicrophoneAccess = AudioModule.systemMicrophoneStatus
+
+    /// Test seam: shows the system prompt and reports the answer (any thread).
+    /// Defaults to the system's.
+    var requestMicrophoneAccess: (@escaping (Bool) -> Void) -> Void = AudioModule.systemRequestMicrophoneAccess
+
+    /// Test seam: creates the recorder (`AVAudioRecorder(url:settings:)` by default).
+    var recorderFactory: (URL, [String: Any]) throws -> AVAudioRecorder = { url, settings in
+        try AVAudioRecorder(url: url, settings: settings)
+    }
+
+    /// True while a recording exists (recording or paused): the session must keep its
+    /// input route, so `play()` must not drop to a playback-only category.
+    var isRecordingActive: Bool { recorder != nil }
+
+    /// Test hook: installs a recorder without starting one.
+    func installRecorderForTesting(_ recorder: AVAudioRecorder?) { self.recorder = recorder }
+
+    /// The microphone permission is the same one `PermissionsModule` reports for
+    /// "microphone" (one system switch for the app). iOS 17 moved the recorder
+    /// permission API from `AVAudioSession` to `AVAudioApplication`; this package still
+    /// supports iOS 16, which only has the session API.
+    static func systemMicrophoneStatus() -> MicrophoneAccess {
+        if #available(iOS 17.0, *) {
+            switch AVAudioApplication.shared.recordPermission {
+            case .granted: return .granted
+            case .denied: return .denied
+            case .undetermined: return .undetermined
+            @unknown default: return .undetermined
+            }
+        }
+        switch AVAudioSession.sharedInstance().recordPermission {
+        case .granted: return .granted
+        case .denied: return .denied
+        case .undetermined: return .undetermined
+        @unknown default: return .undetermined
+        }
+    }
+
+    static func systemRequestMicrophoneAccess(_ completion: @escaping (Bool) -> Void) {
+        if #available(iOS 17.0, *) {
+            AVAudioApplication.requestRecordPermission(completionHandler: completion)
+        } else {
+            AVAudioSession.sharedInstance().requestRecordPermission(completion)
+        }
+    }
+
+    /// Session settings shared by recording and by `play()` during a recording.
+    /// defaultToSpeaker: playAndRecord otherwise routes playback to the earpiece,
+    /// so everything played after a recording became nearly inaudible.
+    static let recordingSessionOptions: AVAudioSession.CategoryOptions = [.defaultToSpeaker, .allowBluetoothA2DP]
+
+    /// The session category `play()` needs. While a recording runs it stays
+    /// `.playAndRecord`: `.playback` has no input, so switching to it mid-take cut the
+    /// microphone and the rest of the take was silence.
+    static func playSessionConfiguration(
+        recording: Bool
+    ) -> (category: AVAudioSession.Category, options: AVAudioSession.CategoryOptions) {
+        recording ? (.playAndRecord, recordingSessionOptions) : (.playback, [])
+    }
+
+    private func emit(_ event: String, _ payload: [String: Any] = [:]) {
+        eventObserver?(event, payload)
+        DispatchQueue.main.async { [weak self] in
+            self?.bridge?.dispatchGlobalEvent(event, payload: payload)
+        }
+    }
+
+    /// Result for a play() that was superseded by a later play()/stop(). It resolves
+    /// (instead of rejecting) so callers do not see an error for a clip they cancelled;
+    /// the JS `useAudio().play` leaves its state untouched when it sees this.
+    private static let cancelledResult: [String: Any] = ["cancelled": true]
+
+    /// Reads the optional playback `rate` option, clamped to AVAudioPlayer's supported
+    /// 0.5–2.0 range. `nil` when absent or not a number.
+    static func playbackRate(from options: [String: Any]) -> Float? {
+        guard let number = options["rate"] as? NSNumber else { return nil }
+        let rate = number.floatValue
+        guard rate.isFinite else { return nil }
+        return min(2.0, max(0.5, rate))
+    }
 
     init(bridge: NativeBridge) {
         self.bridge = bridge
@@ -92,53 +203,78 @@ final class AudioModule: NSObject, NativeModule {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
 
+            // Supersede any earlier play(): cancel its download and invalidate its token.
+            self.playToken += 1
+            let token = self.playToken
+            self.downloadTask?.cancel()
+            self.downloadTask = nil
+
             // Stop any existing playback
             self.stopProgressReporting()
             self.player?.stop()
+            self.player = nil
+            self.playerDelegate = nil
+            self.isPlaying = false
 
             do {
-                try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
+                let config = AudioModule.playSessionConfiguration(recording: self.isRecordingActive)
+                try AVAudioSession.sharedInstance().setCategory(
+                    config.category, mode: .default, options: config.options)
                 try AVAudioSession.sharedInstance().setActive(true)
             } catch {
-                callback(nil, "Failed to set audio session: \(error.localizedDescription)")
+                self.fail("Failed to set audio session: \(error.localizedDescription)", callback: callback)
                 return
             }
 
             guard let url = URL(string: uri) else {
-                callback(nil, "Invalid audio URI: \(uri)")
+                self.fail("Invalid audio URI: \(uri)", callback: callback)
                 return
             }
 
             // Check if it's a remote URL — download first
             if url.scheme == "http" || url.scheme == "https" {
-                self.downloadAndPlay(url: url, options: options, callback: callback)
+                self.downloadAndPlay(url: url, token: token, options: options, callback: callback)
             } else {
                 self.playLocal(url: url, options: options, callback: callback)
             }
         }
     }
 
-    private func downloadAndPlay(url: URL, options: [String: Any], callback: @escaping (Any?, String?) -> Void) {
-        CertificatePinning.shared.requestSession.dataTask(with: url) { [weak self] data, _, error in
+    /// Rejects a play() and tells JS (`audio:error`) so `isPlaying` is reset: the
+    /// previous player was already stopped when this is reached.
+    private func fail(_ message: String, callback: @escaping (Any?, String?) -> Void) {
+        callback(nil, message)
+        emit("audio:error", ["message": message])
+    }
+
+    private func downloadAndPlay(url: URL, token: Int, options: [String: Any], callback: @escaping (Any?, String?) -> Void) {
+        let task = CertificatePinning.shared.requestSession.dataTask(with: url) { [weak self] data, _, error in
             DispatchQueue.main.async {
                 guard let self = self else { return }
+                // A later play()/stop() owns the player now: drop this result.
+                guard self.playToken == token else {
+                    callback(AudioModule.cancelledResult, nil)
+                    return
+                }
+                self.downloadTask = nil
                 if let error = error {
-                    callback(nil, "Failed to download audio: \(error.localizedDescription)")
-                    self.bridge?.dispatchGlobalEvent("audio:error", payload: ["message": error.localizedDescription])
+                    self.fail("Failed to download audio: \(error.localizedDescription)", callback: callback)
                     return
                 }
                 guard let data = data else {
-                    callback(nil, "No audio data received")
+                    self.fail("No audio data received", callback: callback)
                     return
                 }
                 do {
                     let player = try AVAudioPlayer(data: data)
                     self.setupPlayer(player, options: options, callback: callback)
                 } catch {
-                    callback(nil, "Failed to initialize player: \(error.localizedDescription)")
+                    self.fail("Failed to initialize player: \(error.localizedDescription)", callback: callback)
                 }
             }
-        }.resume()
+        }
+        downloadTask = task
+        task.resume()
     }
 
     private func playLocal(url: URL, options: [String: Any], callback: @escaping (Any?, String?) -> Void) {
@@ -146,7 +282,7 @@ final class AudioModule: NSObject, NativeModule {
             let player = try AVAudioPlayer(contentsOf: url)
             setupPlayer(player, options: options, callback: callback)
         } catch {
-            callback(nil, "Failed to play audio: \(error.localizedDescription)")
+            fail("Failed to play audio: \(error.localizedDescription)", callback: callback)
         }
     }
 
@@ -156,6 +292,11 @@ final class AudioModule: NSObject, NativeModule {
 
         player.volume = volume
         player.numberOfLoops = loop ? -1 : 0
+        if let rate = AudioModule.playbackRate(from: options) {
+            // enableRate must be set before prepareToPlay() for the rate to take effect.
+            player.enableRate = true
+            player.rate = rate
+        }
 
         let delegate = AudioPlayerDelegate { [weak self] _ in
             guard let self = self else { return }
@@ -202,6 +343,10 @@ final class AudioModule: NSObject, NativeModule {
     private func stop(callback: @escaping (Any?, String?) -> Void) {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
+            // Invalidate any in-flight download so it can not start playing later.
+            self.playToken += 1
+            self.downloadTask?.cancel()
+            self.downloadTask = nil
             self.player?.stop()
             self.player = nil
             self.playerDelegate = nil
@@ -257,64 +402,101 @@ final class AudioModule: NSObject, NativeModule {
     private func startRecording(options: [String: Any], callback: @escaping (Any?, String?) -> Void) {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
-
-            do {
-                // defaultToSpeaker: playAndRecord otherwise routes playback to the earpiece,
-                // so everything played after a recording became nearly inaudible.
-                try AVAudioSession.sharedInstance().setCategory(
-                    .playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetoothA2DP])
-                try AVAudioSession.sharedInstance().setActive(true)
-            } catch {
-                callback(nil, "Failed to set audio session for recording: \(error.localizedDescription)")
-                return
-            }
-
-            let quality = options["quality"] as? String ?? "medium"
-            let format = options["format"] as? String ?? "m4a"
-
-            let ext = format == "wav" ? "wav" : "m4a"
-            let url = FileManager.default.temporaryDirectory
-                .appendingPathComponent(UUID().uuidString + ".\(ext)")
-
-            var settings: [String: Any] = [:]
-            if format == "wav" {
-                settings = [
-                    AVFormatIDKey: Int(kAudioFormatLinearPCM),
-                    AVSampleRateKey: quality == "high" ? 44100.0 : 22050.0,
-                    AVNumberOfChannelsKey: 1,
-                    AVLinearPCMBitDepthKey: 16,
-                    AVLinearPCMIsFloatKey: false,
-                ]
-            } else {
-                let sampleRate: Double
-                let bitRate: Int
-                switch quality {
-                case "low":  sampleRate = 22050; bitRate = 32000
-                case "high": sampleRate = 44100; bitRate = 128000
-                default:     sampleRate = 44100; bitRate = 64000
+            switch self.microphoneStatus() {
+            case .granted:
+                self.beginRecording(options: options, callback: callback)
+            case .denied:
+                callback(nil, AudioModule.permissionDeniedMessage)
+            case .undetermined:
+                // The first take must not start until the user answered the prompt, or it
+                // would capture silence. The callback stays pending meanwhile.
+                self.requestMicrophoneAccess { [weak self] granted in
+                    DispatchQueue.main.async {
+                        guard let self = self else { return }
+                        if granted {
+                            self.beginRecording(options: options, callback: callback)
+                        } else {
+                            callback(nil, AudioModule.permissionDeniedMessage)
+                        }
+                    }
                 }
-                settings = [
-                    AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
-                    AVSampleRateKey: sampleRate,
-                    AVNumberOfChannelsKey: 1,
-                    AVEncoderAudioQualityKey: AVAudioQuality.medium.rawValue,
-                    AVEncoderBitRateKey: bitRate,
-                ]
-            }
-
-            do {
-                let recorder = try AVAudioRecorder(url: url, settings: settings)
-                let metering = options["metering"] as? Bool ?? false
-                recorder.isMeteringEnabled = metering
-                recorder.prepareToRecord()
-                recorder.record()
-                self.recorder = recorder
-                if metering { self.startMetering() }
-                callback(["uri": url.absoluteString], nil)
-            } catch {
-                callback(nil, "Failed to start recording: \(error.localizedDescription)")
             }
         }
+    }
+
+    private static let permissionDeniedMessage =
+        "\(permissionDeniedCode): microphone access is not allowed for this app (Settings > Privacy > Microphone)"
+
+    /// Puts the session back to playback-only so later clips use the normal (speaker) route.
+    private func restorePlaybackSession() {
+        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
+    }
+
+    private static func recorderSettings(options: [String: Any]) -> (settings: [String: Any], ext: String) {
+        let quality = options["quality"] as? String ?? "medium"
+        let format = options["format"] as? String ?? "m4a"
+        if format == "wav" {
+            return ([
+                AVFormatIDKey: Int(kAudioFormatLinearPCM),
+                AVSampleRateKey: quality == "high" ? 44100.0 : 22050.0,
+                AVNumberOfChannelsKey: 1,
+                AVLinearPCMBitDepthKey: 16,
+                AVLinearPCMIsFloatKey: false,
+            ], "wav")
+        }
+        let sampleRate: Double
+        let bitRate: Int
+        switch quality {
+        case "low":  sampleRate = 22050; bitRate = 32000
+        case "high": sampleRate = 44100; bitRate = 128000
+        default:     sampleRate = 44100; bitRate = 64000
+        }
+        return ([
+            AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
+            AVSampleRateKey: sampleRate,
+            AVNumberOfChannelsKey: 1,
+            AVEncoderAudioQualityKey: AVAudioQuality.medium.rawValue,
+            AVEncoderBitRateKey: bitRate,
+        ], "m4a")
+    }
+
+    /// Starts the recorder once the microphone is available. Main thread only.
+    private func beginRecording(options: [String: Any], callback: @escaping (Any?, String?) -> Void) {
+        do {
+            try AVAudioSession.sharedInstance().setCategory(
+                .playAndRecord, mode: .default, options: AudioModule.recordingSessionOptions)
+            try AVAudioSession.sharedInstance().setActive(true)
+        } catch {
+            callback(nil, "Failed to set audio session for recording: \(error.localizedDescription)")
+            return
+        }
+
+        let (settings, ext) = AudioModule.recorderSettings(options: options)
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString + ".\(ext)")
+
+        let recorder: AVAudioRecorder
+        do {
+            recorder = try recorderFactory(url, settings)
+        } catch {
+            restorePlaybackSession()
+            callback(nil, "Failed to start recording: \(error.localizedDescription)")
+            return
+        }
+        recorder.isMeteringEnabled = options["metering"] as? Bool ?? false
+
+        // Both return false on failure (no input, session interrupted, bad format).
+        // Ignoring them reported success for a recording that never ran.
+        guard recorder.prepareToRecord(), recorder.record() else {
+            recorder.stop()
+            recorder.deleteRecording()
+            restorePlaybackSession()
+            callback(nil, "Failed to start recording: the recorder could not start (no usable microphone input?)")
+            return
+        }
+        self.recorder = recorder
+        if recorder.isMeteringEnabled { startMetering() }
+        callback(["uri": url.absoluteString], nil)
     }
 
     private func stopRecording(callback: @escaping (Any?, String?) -> Void) {
@@ -328,8 +510,7 @@ final class AudioModule: NSObject, NativeModule {
             self.stopMetering()
             recorder.stop()
             self.recorder = nil
-            // Back to playback-only so later clips use the normal (speaker) route.
-            try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
+            self.restorePlaybackSession()
             callback(["uri": uri, "duration": duration], nil)
         }
     }

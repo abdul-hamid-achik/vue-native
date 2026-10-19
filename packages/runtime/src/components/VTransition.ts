@@ -88,6 +88,43 @@ export const VTransition = defineComponent({
     const isLeaving = ref(false)
     const hasEntered = ref(!transitionProps.appear)
 
+    // Per-element enter token. Bumped by every new doEnter, by doLeave and by
+    // onEnterCancelled so a superseded enter chain can detect (between awaits)
+    // that it is stale and must not touch the view anymore.
+    // Tokens come from one increasing counter (never reused), so deleting an
+    // entry can not make an old, stale chain look current again.
+    const enterTokens = new Map<number, number>()
+    let tokenSeq = 0
+
+    function bumpToken(viewId: number): number {
+      const next = ++tokenSeq
+      enterTokens.set(viewId, next)
+      return next
+    }
+
+    function enterDuration() {
+      return typeof transitionProps.duration === 'object'
+        ? (transitionProps.duration.enter ?? DefaultDuration)
+        : (transitionProps.duration ?? DefaultDuration)
+    }
+
+    function enterToStyles() {
+      return transitionProps.enterTo ?? presetStyles().enterTo
+    }
+
+    /**
+     * Snap the element to its final enter style without animating. Used when an
+     * enter chain fails or is cancelled so the view can never stay stuck at the
+     * enterFrom style (e.g. opacity 0) because the second bridge call was lost.
+     */
+    function restoreEnterTo(viewId: number) {
+      try {
+        timing(viewId, enterToStyles(), { duration: 0 }).catch(() => {})
+      } catch {
+        // resolveViewId / bridge errors must never escape a transition hook
+      }
+    }
+
     function presetStyles() {
       if (transitionProps.name === 'slide') {
         return {
@@ -119,11 +156,10 @@ export const VTransition = defineComponent({
       const viewId = resolveTransitionTarget(el)
       if (viewId == null) return
 
-      isAppearing.value = true
+      const token = bumpToken(viewId)
+      const isCurrent = () => enterTokens.get(viewId) === token
 
-      const enterDuration = typeof transitionProps.duration === 'object'
-        ? (transitionProps.duration.enter ?? DefaultDuration)
-        : (transitionProps.duration ?? DefaultDuration)
+      isAppearing.value = true
 
       const presets = presetStyles()
       const enterFrom = transitionProps.enterFrom ?? presets.enterFrom
@@ -131,14 +167,19 @@ export const VTransition = defineComponent({
 
       try {
         await timing(viewId, enterFrom, { duration: 0 })
+        if (!isCurrent()) return
         await timing(viewId, enterTo, {
-          duration: enterDuration,
+          duration: enterDuration(),
           easing: transitionProps.easing,
         })
+        if (!isCurrent()) return
+        enterTokens.delete(viewId)
         isAppearing.value = false
         hasEntered.value = true
       } catch (e) {
+        if (!isCurrent()) return
         console.warn('[VueNative Transition] enter animation failed:', e)
+        restoreEnterTo(viewId)
         isAppearing.value = false
         hasEntered.value = true
       }
@@ -148,6 +189,8 @@ export const VTransition = defineComponent({
       const viewId = resolveTransitionTarget(el)
       if (viewId == null) return
 
+      // Cancels any enter chain still in flight for this element.
+      const leaveToken = bumpToken(viewId)
       isLeaving.value = true
 
       const leaveDuration = typeof transitionProps.duration === 'object'
@@ -165,6 +208,7 @@ export const VTransition = defineComponent({
         console.warn('[VueNative Transition] leave animation failed:', e)
       } finally {
         isLeaving.value = false
+        if (enterTokens.get(viewId) === leaveToken) enterTokens.delete(viewId)
       }
     }
 
@@ -190,9 +234,17 @@ export const VTransition = defineComponent({
       callListener('onAfterLeave')
     }
 
-    function onEnterCancelled() {
+    function onEnterCancelled(el?: unknown) {
       isAppearing.value = false
-      callListener('onEnterCancelled')
+      const viewId = el == null ? undefined : resolveTransitionTarget(el)
+      if (viewId != null) {
+        // Invalidate the running enter chain, then make sure the view is not
+        // left at the enterFrom style. A leave (if any) starts afterwards with
+        // its own leaveFrom style, so this snap never wins over it.
+        bumpToken(viewId)
+        restoreEnterTo(viewId)
+      }
+      callListener('onEnterCancelled', el)
     }
 
     function onLeaveCancelled() {

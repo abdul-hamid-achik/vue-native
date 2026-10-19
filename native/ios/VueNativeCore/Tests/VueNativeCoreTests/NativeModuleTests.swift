@@ -328,6 +328,60 @@ final class NativeModuleTests: XCTestCase {
         XCTAssertEqual(AnimationModule.keyPaths(forKeyframeProperty: "scaleY"), ["transform.scale.y"])
     }
 
+    func testAnimationModuleInteractiveOptions() {
+        XCTAssertTrue(AnimationModule.interactiveOptions.contains(.allowUserInteraction))
+        XCTAssertTrue(AnimationModule.interactiveOptions.contains(.beginFromCurrentState))
+    }
+
+    /// Unspecified components must be preserved, specified ones replaced.
+    func testAnimationModuleComposedTransformKeepsUnspecifiedComponents() {
+        var base = CGAffineTransform(scaleX: 2, y: 3)
+        base.tx = 10
+        base.ty = 20
+
+        let moved = AnimationModule.composedTransform(from: base, translateX: 5, translateY: nil, scaleX: nil, scaleY: nil)
+        XCTAssertEqual(moved.tx, 5)
+        XCTAssertEqual(moved.ty, 20)
+        XCTAssertEqual(moved.a, 2)
+        XCTAssertEqual(moved.d, 3)
+
+        let scaled = AnimationModule.composedTransform(from: base, translateX: nil, translateY: nil, scaleX: 1, scaleY: nil)
+        XCTAssertEqual(scaled.a, 1)
+        XCTAssertEqual(scaled.d, 3)
+        XCTAssertEqual(scaled.tx, 10)
+        XCTAssertEqual(scaled.ty, 20)
+    }
+
+    func testAnimationModuleComposedTransformPreservesRotation() {
+        let rotated = CGAffineTransform(rotationAngle: .pi / 2)
+        let result = AnimationModule.composedTransform(from: rotated, translateX: nil, translateY: nil, scaleX: 2, scaleY: 2)
+        XCTAssertEqual(hypot(result.a, result.b), 2, accuracy: 0.0001)
+        XCTAssertEqual(hypot(result.c, result.d), 2, accuracy: 0.0001)
+        XCTAssertEqual(atan2(result.b, result.a), .pi / 2, accuracy: 0.0001)
+    }
+
+    func testAnimationModuleAppliesTranslateAndScaleStyles() {
+        let view = UIView(frame: CGRect(x: 0, y: 0, width: 50, height: 50))
+        MainActor.assumeIsolated {
+            AnimationModule.applyAnimatedStyles(
+                ["opacity": 0.5, "translateY": 12, "scale": 1.5],
+                to: view
+            )
+        }
+        XCTAssertEqual(view.alpha, 0.5, accuracy: 0.0001)
+        XCTAssertEqual(view.transform.ty, 12, accuracy: 0.0001)
+        XCTAssertEqual(view.transform.a, 1.5, accuracy: 0.0001)
+        XCTAssertEqual(view.transform.d, 1.5, accuracy: 0.0001)
+
+        // translateX alone keeps the earlier translateY and scale.
+        MainActor.assumeIsolated {
+            AnimationModule.applyAnimatedStyles(["translateX": -30], to: view)
+        }
+        XCTAssertEqual(view.transform.tx, -30, accuracy: 0.0001)
+        XCTAssertEqual(view.transform.ty, 12, accuracy: 0.0001)
+        XCTAssertEqual(view.transform.a, 1.5, accuracy: 0.0001)
+    }
+
     func testAnimationModuleKeyframeUnknownPropertyReturnsNil() {
         XCTAssertNil(AnimationModule.keyPaths(forKeyframeProperty: "unknownProp"), "an unrecognized keyframe property should not produce an animation")
     }

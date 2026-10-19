@@ -858,6 +858,103 @@ describe('Components', () => {
       )
       animation.mockRestore()
     })
+
+    it('re-applies enterTo when the animated enter step is rejected', async () => {
+      const enterTo = { opacity: 1 }
+      const animation = vi.spyOn(NativeBridge, 'invokeNativeModule').mockImplementation(
+        async (_module, _method, args) => {
+          const [, styles, config] = args as [number, Record<string, unknown>, { duration?: number }]
+          // Reject only the animated enterTo step, like a lost/superseded bridge call.
+          if (styles === enterTo && config.duration === 25) throw new Error('lost')
+        },
+      )
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const show = ref(false)
+      const Root = defineComponent({
+        render() {
+          return createVNode(VTransition, {
+            show: show.value,
+            duration: 25,
+            enterFrom: { opacity: 0 },
+            enterTo,
+          }, { default: () => [createVNode(VView)] })
+        },
+      })
+
+      renderComponent(createVNode(Root))
+      await nextTick()
+      show.value = true
+      await nextTick()
+      await nextTick()
+      await nextTick()
+
+      const timingCalls = animation.mock.calls
+        .filter(call => call[1] === 'timing')
+        .map(call => call[2] as [number, Record<string, unknown>, { duration?: number }])
+      const last = timingCalls[timingCalls.length - 1]
+      expect(last[1]).toEqual(enterTo)
+      expect(last[2]).toEqual({ duration: 0 })
+      warn.mockRestore()
+      animation.mockRestore()
+    })
+
+    it('rapid key changes end with the newest view at enterTo and never resume a stale enter', async () => {
+      type TimingArgs = [number, Record<string, unknown>, { duration?: number }]
+      const calls: TimingArgs[] = []
+      let releaseFirst: (() => void) | undefined
+      const animation = vi.spyOn(NativeBridge, 'invokeNativeModule').mockImplementation(
+        (_module, _method, args) => {
+          const call = args as TimingArgs
+          calls.push(call)
+          // Hold the very first call (enterFrom of the first view) in flight.
+          if (calls.length === 1) {
+            return new Promise<void>((resolve) => {
+              releaseFirst = resolve
+            })
+          }
+          return Promise.resolve()
+        },
+      )
+      const key = ref('a')
+      const Root = defineComponent({
+        render() {
+          return createVNode(VTransition, {
+            appear: true,
+            duration: 25,
+            enterFrom: { opacity: 0 },
+            enterTo: { opacity: 1 },
+            leaveTo: { opacity: 0 },
+          }, { default: () => [createVNode(VView, { key: key.value })] })
+        },
+      })
+
+      renderComponent(createVNode(Root))
+      await nextTick()
+      await nextTick()
+      const firstId = calls[0][0]
+
+      key.value = 'b'
+      await nextTick()
+      await nextTick()
+      releaseFirst?.()
+      await nextTick()
+      await nextTick()
+      await nextTick()
+
+      const secondId = calls.map(c => c[0]).find(id => id !== firstId)
+      expect(secondId).toBeDefined()
+
+      // The old view's enter chain must not run its animated enterTo step.
+      const staleEnter = calls.filter(c => c[0] === firstId && c[1].opacity === 1 && c[2].duration === 25)
+      expect(staleEnter).toHaveLength(0)
+
+      // The newest view's last step is the animated enterTo.
+      const newest = calls.filter(c => c[0] === secondId)
+      const last = newest[newest.length - 1]
+      expect(last[1]).toEqual({ opacity: 1 })
+      expect(last[2].duration).toBe(25)
+      animation.mockRestore()
+    })
   })
 
   describe('renderer-native state components', () => {

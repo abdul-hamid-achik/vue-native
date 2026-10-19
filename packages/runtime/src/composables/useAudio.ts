@@ -8,6 +8,11 @@ export interface AudioPlayOptions {
   volume?: number
   /** Loop playback. Default false. */
   loop?: boolean
+  /**
+   * Playback speed, 0.5–2.0 (clamped). Default 1.0 (normal speed).
+   * iOS only; Android and macOS ignore it for now.
+   */
+  rate?: number
 }
 
 export interface AudioRecordOptions {
@@ -123,6 +128,9 @@ export function useAudio() {
   async function play(uri: string, options: AudioPlayOptions = {}): Promise<void> {
     error.value = null
     const result = asRecord(await NativeBridge.invokeNativeModule('Audio', 'play', [uri, options]))
+    // iOS resolves `{ cancelled: true }` when a later play()/stop() superseded this
+    // call before the clip (e.g. a remote download) started: leave the state alone.
+    if (result?.cancelled === true) return
     const audioDuration = getNumberProp(result, 'duration')
     if (audioDuration !== undefined) {
       duration.value = audioDuration
@@ -155,9 +163,25 @@ export function useAudio() {
     await NativeBridge.invokeNativeModule('Audio', 'setVolume', [volume])
   }
 
+  /**
+   * Starts recording and resolves with the file URI once the recorder is running.
+   *
+   * iOS asks for microphone access first when the user was never asked (the promise
+   * stays pending while the system prompt is up, so it has no timeout) and rejects with
+   * a message starting with `permission_denied` when access is denied or restricted.
+   * It also rejects when the recorder cannot start.
+   * On a rejection `isRecording` stays `false` and `error` holds the message.
+   */
   async function startRecording(options: AudioRecordOptions = {}): Promise<string> {
     error.value = null
-    const result = asRecord(await NativeBridge.invokeNativeModule('Audio', 'startRecording', [options]))
+    let result: Record<string, unknown> | null
+    try {
+      // timeoutMs 0: the call waits for the user to answer the permission prompt.
+      result = asRecord(await NativeBridge.invokeNativeModule('Audio', 'startRecording', [options], 0))
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : String(err)
+      throw err
+    }
     isRecording.value = true
     return getStringProp(result, 'uri') ?? ''
   }
